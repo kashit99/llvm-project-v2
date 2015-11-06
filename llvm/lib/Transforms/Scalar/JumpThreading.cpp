@@ -895,14 +895,12 @@ bool JumpThreading::ProcessImpliedCondition(BasicBlock *BB) {
   BasicBlock *CurrentPred = BB->getSinglePredecessor();
   unsigned Iter = 0;
 
-  auto &DL = BB->getModule()->getDataLayout();
-
   while (CurrentPred && Iter++ < ImplicationSearchThreshold) {
     auto *PBI = dyn_cast<BranchInst>(CurrentPred->getTerminator());
     if (!PBI || !PBI->isConditional() || PBI->getSuccessor(0) != CurrentBB)
       return false;
 
-    if (isImpliedCondition(PBI->getCondition(), Cond, DL)) {
+    if (isImpliedCondition(PBI->getCondition(), Cond)) {
       BI->getSuccessor(1)->removePredecessor(BB);
       BranchInst::Create(BI->getSuccessor(0), BI);
       BI->eraseFromParent();

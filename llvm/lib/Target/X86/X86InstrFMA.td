@@ -15,31 +15,13 @@
 // FMA3 - Intel 3 operand Fused Multiply-Add instructions
 //===----------------------------------------------------------------------===//
 
-// For all FMA opcodes declared in fma3p_rm and fma3s_rm milticlasses defined
-// below, both the register and memory variants are commutable.
-// For the register form the commutable operands are 1, 2 and 3.
-// For the memory variant the folded operand must be in 3. Thus,
-// in that case, only the operands 1 and 2 can be swapped.
-// Commuting some of operands may require the opcode change.
-// FMA*213*:
-//   operands 1 and 2 (memory & register forms): *213* --> *213*(no changes);
-//   operands 1 and 3 (register forms only):     *213* --> *231*;
-//   operands 2 and 3 (register forms only):     *213* --> *132*.
-// FMA*132*:
-//   operands 1 and 2 (memory & register forms): *132* --> *231*;
-//   operands 1 and 3 (register forms only):     *132* --> *132*(no changes);
-//   operands 2 and 3 (register forms only):     *132* --> *213*.
-// FMA*231*:
-//   operands 1 and 2 (memory & register forms): *231* --> *132*;
-//   operands 1 and 3 (register forms only):     *231* --> *213*;
-//   operands 2 and 3 (register forms only):     *231* --> *231*(no changes).
-
-let Constraints = "$src1 = $dst", hasSideEffects = 0, isCommutable = 1 in
+let Constraints = "$src1 = $dst" in {
 multiclass fma3p_rm<bits<8> opc, string OpcodeStr,
                     PatFrag MemFrag128, PatFrag MemFrag256,
                     ValueType OpVT128, ValueType OpVT256,
+                    bit IsRVariantCommutable = 0, bit IsMVariantCommutable = 0,
                     SDPatternOperator Op = null_frag> {
-  let usesCustomInserter = 1 in
+  let usesCustomInserter = 1, isCommutable = IsRVariantCommutable in
   def r     : FMA3<opc, MRMSrcReg, (outs VR128:$dst),
                    (ins VR128:$src1, VR128:$src2, VR128:$src3),
                    !strconcat(OpcodeStr,
@@ -47,7 +29,7 @@ multiclass fma3p_rm<bits<8> opc, string OpcodeStr,
                    [(set VR128:$dst, (OpVT128 (Op VR128:$src2,
                                                VR128:$src1, VR128:$src3)))]>;
 
-  let mayLoad = 1 in
+  let mayLoad = 1, isCommutable = IsMVariantCommutable in
   def m     : FMA3<opc, MRMSrcMem, (outs VR128:$dst),
                    (ins VR128:$src1, VR128:$src2, f128mem:$src3),
                    !strconcat(OpcodeStr,
@@ -55,7 +37,7 @@ multiclass fma3p_rm<bits<8> opc, string OpcodeStr,
                    [(set VR128:$dst, (OpVT128 (Op VR128:$src2, VR128:$src1,
                                                (MemFrag128 addr:$src3))))]>;
 
-  let usesCustomInserter = 1 in
+  let usesCustomInserter = 1, isCommutable = IsRVariantCommutable in
   def rY    : FMA3<opc, MRMSrcReg, (outs VR256:$dst),
                    (ins VR256:$src1, VR256:$src2, VR256:$src3),
                    !strconcat(OpcodeStr,
@@ -63,7 +45,7 @@ multiclass fma3p_rm<bits<8> opc, string OpcodeStr,
                    [(set VR256:$dst, (OpVT256 (Op VR256:$src2, VR256:$src1,
                                                VR256:$src3)))]>, VEX_L;
 
-  let mayLoad = 1 in
+  let mayLoad = 1, isCommutable = IsMVariantCommutable in
   def mY    : FMA3<opc, MRMSrcMem, (outs VR256:$dst),
                    (ins VR256:$src1, VR256:$src2, f256mem:$src3),
                    !strconcat(OpcodeStr,
@@ -72,20 +54,34 @@ multiclass fma3p_rm<bits<8> opc, string OpcodeStr,
                      (OpVT256 (Op VR256:$src2, VR256:$src1,
                                (MemFrag256 addr:$src3))))]>, VEX_L;
 }
+} // Constraints = "$src1 = $dst"
 
 multiclass fma3p_forms<bits<8> opc132, bits<8> opc213, bits<8> opc231,
                        string OpcodeStr, string PackTy,
                        PatFrag MemFrag128, PatFrag MemFrag256,
                        SDNode Op, ValueType OpTy128, ValueType OpTy256> {
+  // For 213, both the register and memory variant are commutable.
+  // Indeed, the commutable operands are 1 and 2 and both live in registers
+  // for both variants.
   defm r213 : fma3p_rm<opc213,
                        !strconcat(OpcodeStr, "213", PackTy),
-                       MemFrag128, MemFrag256, OpTy128, OpTy256, Op>;
+                       MemFrag128, MemFrag256, OpTy128, OpTy256,
+                       /* IsRVariantCommutable */ 1,
+                       /* IsMVariantCommutable */ 1,
+                       Op>;
+let hasSideEffects = 0 in {
   defm r132 : fma3p_rm<opc132,
                        !strconcat(OpcodeStr, "132", PackTy),
                        MemFrag128, MemFrag256, OpTy128, OpTy256>;
+  // For 231, only the register variant is commutable.
+  // For the memory variant the folded operand must be in 3. Thus,
+  // in that case, it cannot be swapped with 2.
   defm r231 : fma3p_rm<opc231,
                        !strconcat(OpcodeStr, "231", PackTy),
-                       MemFrag128, MemFrag256, OpTy128, OpTy256>;
+                       MemFrag128, MemFrag256, OpTy128, OpTy256,
+                       /* IsRVariantCommutable */ 1,
+                       /* IsMVariantCommutable */ 0>;
+} // hasSideEffects = 0
 }
 
 // Fused Multiply-Add
@@ -130,27 +126,32 @@ let ExeDomain = SSEPackedDouble in {
                                v4f64>, VEX_W;
 }
 
-// All source register operands of FMA opcodes defined in fma3s_rm multiclass
-// can be commuted. In many cases such commute transformation requres an opcode
-// adjustment, for example, commuting the operands 1 and 2 in FMA*132 form
-// would require an opcode change to FMA*231:
+// All source register operands of FMA instructions can be commuted.
+// In many cases such commute transformation requres an opcode adjustment,
+// for example, commuting the operands 1 and 2 in FMA*132 form would require
+// an opcode change to FMA*231:
 //     FMA*132* reg1, reg2, reg3; // reg1 * reg3 + reg2;
 //     -->
 //     FMA*231* reg2, reg1, reg3; // reg1 * reg3 + reg2;
-// Please see more detailed comment at the very beginning of the section
-// defining FMA3 opcodes above.
-let Constraints = "$src1 = $dst", isCommutable = 1, hasSideEffects = 0 in
+// Currently, the commute transformation is supported for only few FMA forms.
+// That is the reason why \p IsRVariantCommutable and \p IsMVariantCommutable
+// parameters are used here.
+// The general commute operands optimization working for all forms is going
+// to be implemented soon. (Please, see http://reviews.llvm.org/D13269
+// for details).
+let Constraints = "$src1 = $dst", hasSideEffects = 0 in {
 multiclass fma3s_rm<bits<8> opc, string OpcodeStr,
                     X86MemOperand x86memop, RegisterClass RC,
+                    bit IsRVariantCommutable = 0, bit IsMVariantCommutable = 0,
                     SDPatternOperator OpNode = null_frag> {
-  let usesCustomInserter = 1 in
+  let usesCustomInserter = 1, isCommutable = IsRVariantCommutable in
   def r     : FMA3<opc, MRMSrcReg, (outs RC:$dst),
                    (ins RC:$src1, RC:$src2, RC:$src3),
                    !strconcat(OpcodeStr,
                               "\t{$src3, $src2, $dst|$dst, $src2, $src3}"),
                    [(set RC:$dst, (OpNode RC:$src2, RC:$src1, RC:$src3))]>;
 
-  let mayLoad = 1 in
+  let mayLoad = 1, isCommutable = IsMVariantCommutable in
   def m     : FMA3<opc, MRMSrcMem, (outs RC:$dst),
                    (ins RC:$src1, RC:$src2, x86memop:$src3),
                    !strconcat(OpcodeStr,
@@ -158,22 +159,22 @@ multiclass fma3s_rm<bits<8> opc, string OpcodeStr,
                    [(set RC:$dst,
                      (OpNode RC:$src2, RC:$src1, (load addr:$src3)))]>;
 }
+} // Constraints = "$src1 = $dst", hasSideEffects = 0
 
 // These FMA*_Int instructions are defined specially for being used when
 // the scalar FMA intrinsics are lowered to machine instructions, and in that
 // sence they are similar to existing ADD*_Int, SUB*_Int, MUL*_Int, etc.
 // instructions.
 //
-// FIXME: The FMA*_Int instructions are TEMPORARILY defined as NOT commutable.
-// Commuting the 2nd and 3rd source register operands of FMAs is quite trivial
-// and the corresponding optimization has been developed (please see
-// http://reviews.llvm.org/D13269 for details). The optimization though needs
-// some minor tuning to enable it for FMA*_Int opcodes.
-// Commuting the 1st operand of FMA*_Int requires some additional analysis,
-// the commute optimization is legal only if all users of FMA*_Int use only
-// the lowest element of the FMA*_Int instruction.
+// The FMA*_Int instructions are _TEMPORARILY_ defined as NOT commutable.
+// The upper bits of the result of scalar FMA intrinsics must be copied from
+// the upper bits of the 1st operand. So, commuting the 1st operand would
+// invalidate the upper bits of the intrinsic result.
+// The corresponding optimization which allows commuting 2nd and 3rd operands
+// of FMA*_Int instructions has been developed and is waiting for
+// code-review approval and checkin (Please see http://reviews.llvm.org/D13269).
 let Constraints = "$src1 = $dst", isCommutable = 0, isCodeGenOnly =1,
-    hasSideEffects = 0 in
+    hasSideEffects = 0 in {
 multiclass fma3s_rm_int<bits<8> opc, string OpcodeStr,
                         Operand memopr, RegisterClass RC> {
   def r_Int : FMA3<opc, MRMSrcReg, (outs RC:$dst),
@@ -189,6 +190,8 @@ multiclass fma3s_rm_int<bits<8> opc, string OpcodeStr,
                               "\t{$src3, $src2, $dst|$dst, $src2, $src3}"),
                    []>;
 }
+} // Constraints = "$src1 = $dst", isCommutable = 0, isCodeGenOnly =1,
+  // hasSideEffects = 0
 
 multiclass fma3s_forms<bits<8> opc132, bits<8> opc213, bits<8> opc231,
                        string OpStr, string PackTy,
@@ -196,8 +199,13 @@ multiclass fma3s_forms<bits<8> opc132, bits<8> opc213, bits<8> opc231,
                        X86MemOperand x86memop> {
   defm r132 : fma3s_rm<opc132, !strconcat(OpStr, "132", PackTy), x86memop, RC>;
   defm r213 : fma3s_rm<opc213, !strconcat(OpStr, "213", PackTy), x86memop, RC,
+                       /* IsRVariantCommutable */ 1,
+                       /* IsMVariantCommutable */ 1,
                        OpNode>;
-  defm r231 : fma3s_rm<opc231, !strconcat(OpStr, "231", PackTy), x86memop, RC>;
+  defm r231 : fma3s_rm<opc231, !strconcat(OpStr, "231", PackTy), x86memop, RC,
+                       /* IsRVariantCommutable */ 1,
+                       /* IsMVariantCommutable */ 0,
+                       null_frag>;
 }
 
 // The FMA 213 form is created for lowering of scalar FMA intrinscis

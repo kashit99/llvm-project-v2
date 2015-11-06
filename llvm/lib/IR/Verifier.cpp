@@ -1270,12 +1270,9 @@ void Verifier::VerifyParameterAttrs(AttributeSet Attrs, unsigned Idx, Type *Ty,
                !Attrs.hasAttribute(Idx, Attribute::StructRet) &&
                !Attrs.hasAttribute(Idx, Attribute::NoCapture) &&
                !Attrs.hasAttribute(Idx, Attribute::Returned) &&
-               !Attrs.hasAttribute(Idx, Attribute::InAlloca) &&
-               !Attrs.hasAttribute(Idx, Attribute::SwiftSelf) &&
-               !Attrs.hasAttribute(Idx, Attribute::SwiftError),
-           "Attributes 'byval', 'inalloca', 'nest', 'sret', 'nocapture', "
-           "'returned', 'swiftself', and 'swifterror' do not apply to return "
-           "values!",
+               !Attrs.hasAttribute(Idx, Attribute::InAlloca),
+           "Attributes 'byval', 'inalloca', 'nest', 'sret', 'nocapture', and "
+           "'returned' do not apply to return values!",
            V);
 
   // Check for mutually incompatible attributes.  Only inreg is compatible with
@@ -1352,8 +1349,6 @@ void Verifier::VerifyFunctionAttrs(FunctionType *FT, AttributeSet Attrs,
   bool SawNest = false;
   bool SawReturned = false;
   bool SawSRet = false;
-  bool SawSwiftSelf = false;
-  bool SawSwiftError = false;
 
   for (unsigned i = 0, e = Attrs.getNumSlots(); i != e; ++i) {
     unsigned Idx = Attrs.getSlotIndex(i);
@@ -1391,17 +1386,6 @@ void Verifier::VerifyFunctionAttrs(FunctionType *FT, AttributeSet Attrs,
       Assert(Idx == 1 || Idx == 2,
              "Attribute 'sret' is not on first or second parameter!", V);
       SawSRet = true;
-    }
-
-    if (Attrs.hasAttribute(Idx, Attribute::SwiftSelf)) {
-      Assert(!SawSwiftSelf, "Cannot have multiple 'swiftself' parameters!", V);
-      SawSwiftSelf = true;
-    }
-
-    if (Attrs.hasAttribute(Idx, Attribute::SwiftError)) {
-      Assert(!SawSwiftError, "Cannot have multiple 'swifterror' parameters!",
-             V);
-      SawSwiftError = true;
     }
 
     if (Attrs.hasAttribute(Idx, Attribute::InAlloca)) {
@@ -2280,16 +2264,6 @@ void Verifier::VerifyCallSite(CallSite CS) {
              "inalloca argument for call has mismatched alloca", AI, I);
   }
 
-  // For each argument of the callsite, if it has the swifterror argument,
-  // make sure the underlying alloca has swifterror as well.
-  for (unsigned i = 0, e = FTy->getNumParams(); i != e; ++i)
-    if (CS.paramHasAttr(i+1, Attribute::SwiftError)) {
-      Value *SwiftErrorArg = CS.getArgument(i);
-      if (auto AI = dyn_cast<AllocaInst>(SwiftErrorArg->stripInBoundsOffsets()))
-        Assert(AI->isSwiftError(),
-               "swifterror argument for call has mismatched alloca", AI, I);
-    }
-
   if (FTy->isVarArg()) {
     // FIXME? is 'nest' even legal here?
     bool SawNest = false;
@@ -2368,8 +2342,7 @@ static bool isTypeCongruent(Type *L, Type *R) {
 static AttrBuilder getParameterABIAttributes(int I, AttributeSet Attrs) {
   static const Attribute::AttrKind ABIAttrs[] = {
       Attribute::StructRet, Attribute::ByVal, Attribute::InAlloca,
-      Attribute::InReg, Attribute::Returned, Attribute::SwiftSelf,
-      Attribute::SwiftError};
+      Attribute::InReg, Attribute::Returned};
   AttrBuilder Copy;
   for (auto AK : ABIAttrs) {
     if (Attrs.hasAttribute(I + 1, AK))

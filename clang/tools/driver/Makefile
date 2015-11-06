@@ -47,8 +47,7 @@ ifeq ($(ENABLE_CLANG_ARCMT),1)
 USEDLIBS += clangARCMigrate.a
 endif
 
-USEDLIBS += clangAnalysis.a clangEdit.a clangAST.a clangLex.a \
-            clangAPINotes.a clangBasic.a
+USEDLIBS += clangAnalysis.a clangEdit.a clangAST.a clangLex.a clangBasic.a
 
 include $(CLANG_LEVEL)/Makefile
 

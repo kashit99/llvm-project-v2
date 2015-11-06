@@ -45,7 +45,6 @@ USEDLIBS = clang.a \
 	   clangFrontend.a clangDriver.a \
 	   clangStaticAnalyzerCheckers.a clangStaticAnalyzerCore.a \
 	   clangSerialization.a clangParse.a clangSema.a \
-	   clangAnalysis.a clangEdit.a clangAST.a clangLex.a clangAPINotes.a \
-           clangBasic.a
+	   clangAnalysis.a clangEdit.a clangAST.a clangLex.a clangBasic.a
 
 include $(CLANG_LEVEL)/Makefile

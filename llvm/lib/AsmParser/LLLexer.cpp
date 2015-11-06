@@ -583,7 +583,6 @@ lltok::Kind LLLexer::LexIdentifier() {
   KEYWORD(x86_64_sysvcc);
   KEYWORD(x86_64_win64cc);
   KEYWORD(webkit_jscc);
-  KEYWORD(swiftcc);
   KEYWORD(anyregcc);
   KEYWORD(preserve_mostcc);
   KEYWORD(preserve_allcc);
@@ -638,8 +637,6 @@ lltok::Kind LLLexer::LexIdentifier() {
   KEYWORD(sanitize_address);
   KEYWORD(sanitize_thread);
   KEYWORD(sanitize_memory);
-  KEYWORD(swifterror);
-  KEYWORD(swiftself);
   KEYWORD(uwtable);
   KEYWORD(zeroext);
 

@@ -345,10 +345,6 @@ bool MCMachOStreamer::EmitSymbolAttribute(MCSymbol *Sym,
     Symbol->setSymbolResolver();
     break;
 
-  case MCSA_AltEntry:
-    Symbol->setAltEntry();
-    break;
-
   case MCSA_PrivateExtern:
     Symbol->setExternal(true);
     Symbol->setPrivateExtern(true);

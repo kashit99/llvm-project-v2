@@ -371,14 +371,11 @@ bool Decl::isReferenced() const {
 ///
 /// FIXME: Make these strings localizable, since they end up in
 /// diagnostics.
-static AvailabilityResult
-checkAvailability(ASTContext &Context, const AvailabilityAttr *A,
-                  Optional<VersionTuple> Version, std::string *Message) {
-  VersionTuple TargetMinVersion;
-  if (Version.hasValue())
-    TargetMinVersion = Version.getValue();
-  else
-    TargetMinVersion = Context.getTargetInfo().getPlatformMinVersion();
+static AvailabilityResult CheckAvailability(ASTContext &Context,
+                                            const AvailabilityAttr *A,
+                                            std::string *Message) {
+  VersionTuple TargetMinVersion =
+    Context.getTargetInfo().getPlatformMinVersion();
 
   if (TargetMinVersion.empty())
     return AR_Available;
@@ -469,8 +466,7 @@ checkAvailability(ASTContext &Context, const AvailabilityAttr *A,
   return AR_Available;
 }
 
-AvailabilityResult Decl::getAvailability(std::string *Message,
-                                         Optional<VersionTuple> Version) const {
+AvailabilityResult Decl::getAvailability(std::string *Message) const {
   AvailabilityResult Result = AR_Available;
   std::string ResultMessage;
 
@@ -493,8 +489,8 @@ AvailabilityResult Decl::getAvailability(std::string *Message,
     }
 
     if (const auto *Availability = dyn_cast<AvailabilityAttr>(A)) {
-      AvailabilityResult AR = checkAvailability(getASTContext(), Availability,
-                                                Version, Message);
+      AvailabilityResult AR = CheckAvailability(getASTContext(), Availability,
+                                                Message);
 
       if (AR == AR_Unavailable)
         return AR_Unavailable;
@@ -553,7 +549,7 @@ bool Decl::isWeakImported() const {
       return true;
 
     if (const auto *Availability = dyn_cast<AvailabilityAttr>(A)) {
-      if (checkAvailability(getASTContext(), Availability, None,
+      if (CheckAvailability(getASTContext(), Availability,
                             nullptr) == AR_NotYetIntroduced)
         return true;
     }

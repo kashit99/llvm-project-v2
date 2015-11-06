@@ -43,45 +43,45 @@ void memberFunctionsAndOperators() {
     Array[I].constMember(0);
   }
   // CHECK-MESSAGES: :[[@LINE-3]]:3: warning: use range-based for loop instead [modernize-loop-convert]
-  // CHECK-FIXES: for (auto I : Array)
-  // CHECK-FIXES-NEXT: I.constMember(0);
+  // CHECK-FIXES: for (auto Elem : Array)
+  // CHECK-FIXES-NEXT: Elem.constMember(0);
 
   for (int I = 0; I < N; ++I) {
     if (Array[I] < OtherStr)
       foo();
   }
   // CHECK-MESSAGES: :[[@LINE-4]]:3: warning: use range-based for loop
-  // CHECK-FIXES: for (auto I : Array)
-  // CHECK-FIXES-NEXT: if (I < OtherStr)
+  // CHECK-FIXES: for (auto Elem : Array)
+  // CHECK-FIXES-NEXT: if (Elem < OtherStr)
   for (int I = 0; I < N; ++I) {
     if (Right[I] < OtherRight)
       foo();
   }
   // CHECK-MESSAGES: :[[@LINE-4]]:3: warning: use range-based for loop
-  // CHECK-FIXES: for (const auto & I : Right)
-  // CHECK-FIXES-NEXT: if (I < OtherRight)
+  // CHECK-FIXES: for (const auto & Elem : Right)
+  // CHECK-FIXES-NEXT: if (Elem < OtherRight)
 
   // Calling non-const member functions is not.
   for (int I = 0; I < N; ++I) {
     Array[I].nonConstMember(0);
   }
   // CHECK-MESSAGES: :[[@LINE-3]]:3: warning: use range-based for loop
-  // CHECK-FIXES: for (auto & I : Array)
-  // CHECK-FIXES-NEXT: I.nonConstMember(0);
+  // CHECK-FIXES: for (auto & Elem : Array)
+  // CHECK-FIXES-NEXT: Elem.nonConstMember(0);
 
   for (int I = 0; I < N; ++I) {
     Array[I] = OtherStr;
   }
   // CHECK-MESSAGES: :[[@LINE-3]]:3: warning: use range-based for loop
-  // CHECK-FIXES: for (auto & I : Array)
-  // CHECK-FIXES-NEXT: I = OtherStr;
+  // CHECK-FIXES: for (auto & Elem : Array)
+  // CHECK-FIXES-NEXT: Elem = OtherStr;
 
   for (int I = 0; I < N; ++I) {
     Right[I] = OtherRight;
   }
   // CHECK-MESSAGES: :[[@LINE-3]]:3: warning: use range-based for loop
-  // CHECK-FIXES: for (auto & I : Right)
-  // CHECK-FIXES-NEXT: I = OtherRight;
+  // CHECK-FIXES: for (auto & Elem : Right)
+  // CHECK-FIXES-NEXT: Elem = OtherRight;
 }
 
 void usedAsParameterToFunctionOrOperator() {
@@ -90,59 +90,59 @@ void usedAsParameterToFunctionOrOperator() {
     copyArg(Array[I]);
   }
   // CHECK-MESSAGES: :[[@LINE-3]]:3: warning: use range-based for loop
-  // CHECK-FIXES: for (auto I : Array)
-  // CHECK-FIXES-NEXT: copyArg(I);
+  // CHECK-FIXES: for (auto Elem : Array)
+  // CHECK-FIXES-NEXT: copyArg(Elem);
 
   for (int I = 0; I < N; ++I) {
     copyArg(Right[I]);
   }
   // CHECK-MESSAGES: :[[@LINE-3]]:3: warning: use range-based for loop
-  // CHECK-FIXES: for (auto & I : Right)
-  // CHECK-FIXES-NEXT: copyArg(I);
+  // CHECK-FIXES: for (auto & Elem : Right)
+  // CHECK-FIXES-NEXT: copyArg(Elem);
 
   // Using as a const reference argument is allowed.
   for (int I = 0; I < N; ++I) {
     constRefArg(Array[I]);
   }
   // CHECK-MESSAGES: :[[@LINE-3]]:3: warning: use range-based for loop
-  // CHECK-FIXES: for (auto I : Array)
-  // CHECK-FIXES-NEXT: constRefArg(I);
+  // CHECK-FIXES: for (auto Elem : Array)
+  // CHECK-FIXES-NEXT: constRefArg(Elem);
 
   for (int I = 0; I < N; ++I) {
     if (OtherStr < Array[I])
       foo();
   }
   // CHECK-MESSAGES: :[[@LINE-4]]:3: warning: use range-based for loop
-  // CHECK-FIXES: for (auto I : Array)
-  // CHECK-FIXES-NEXT: if (OtherStr < I)
+  // CHECK-FIXES: for (auto Elem : Array)
+  // CHECK-FIXES-NEXT: if (OtherStr < Elem)
 
   for (int I = 0; I < N; ++I) {
     constRefArg(Right[I]);
   }
   // CHECK-MESSAGES: :[[@LINE-3]]:3: warning: use range-based for loop
-  // CHECK-FIXES: for (const auto & I : Right)
-  // CHECK-FIXES-NEXT: constRefArg(I);
+  // CHECK-FIXES: for (const auto & Elem : Right)
+  // CHECK-FIXES-NEXT: constRefArg(Elem);
 
   // Using as a non-const reference is not.
   for (int I = 0; I < N; ++I) {
     nonConstRefArg(Array[I]);
   }
   // CHECK-MESSAGES: :[[@LINE-3]]:3: warning: use range-based for loop
-  // CHECK-FIXES: for (auto & I : Array)
-  // CHECK-FIXES-NEXT: nonConstRefArg(I);
+  // CHECK-FIXES: for (auto & Elem : Array)
+  // CHECK-FIXES-NEXT: nonConstRefArg(Elem);
   for (int I = 0; I < N; ++I) {
     nonConstRefArg(Right[I]);
   }
   // CHECK-MESSAGES: :[[@LINE-3]]:3: warning: use range-based for loop
-  // CHECK-FIXES: for (auto & I : Right)
-  // CHECK-FIXES-NEXT: nonConstRefArg(I);
+  // CHECK-FIXES: for (auto & Elem : Right)
+  // CHECK-FIXES-NEXT: nonConstRefArg(Elem);
   for (int I = 0; I < N; ++I) {
     if (OtherRight < Right[I])
       foo();
   }
   // CHECK-MESSAGES: :[[@LINE-4]]:3: warning: use range-based for loop
-  // CHECK-FIXES: for (auto & I : Right)
-  // CHECK-FIXES-NEXT: if (OtherRight < I)
+  // CHECK-FIXES: for (auto & Elem : Right)
+  // CHECK-FIXES-NEXT: if (OtherRight < Elem)
 }
 
 void primitiveTypes() {
@@ -238,17 +238,17 @@ void takingReferences() {
     Str &K = Array[I];
   }
   // CHECK-MESSAGES: :[[@LINE-4]]:3: warning: use range-based for loop
-  // CHECK-FIXES: for (auto & I : Array)
-  // CHECK-FIXES-NEXT: Str &J = I;
-  // CHECK-FIXES-NEXT: Str &K = I;
+  // CHECK-FIXES: for (auto & Elem : Array)
+  // CHECK-FIXES-NEXT: Str &J = Elem;
+  // CHECK-FIXES-NEXT: Str &K = Elem;
   for (int I = 0; I < N; ++I) {
     const Str &J = Array[I];
     const Str &K = Array[I];
   }
   // CHECK-MESSAGES: :[[@LINE-4]]:3: warning: use range-based for loop
-  // CHECK-FIXES: for (auto I : Array)
-  // CHECK-FIXES-NEXT: const Str &J = I;
-  // CHECK-FIXES-NEXT: const Str &K = I;
+  // CHECK-FIXES: for (auto Elem : Array)
+  // CHECK-FIXES-NEXT: const Str &J = Elem;
+  // CHECK-FIXES-NEXT: const Str &K = Elem;
 
   // Primitive type.
   for (int I = 0; I < N; ++I) {
@@ -309,7 +309,7 @@ struct vector {
 };
 
 // If the elements are already constant, we won't do any ImplicitCast to const.
-void testContainerOfConstIents() {
+void testContainerOfConstElements() {
   const int Ints[N]{};
   for (int I = 0; I < N; ++I) {
     OtherInt -= Ints[I];
@@ -348,13 +348,14 @@ class TestInsideConstFunction {
       constRefArg(Array[I]);
     }
     // CHECK-MESSAGES: :[[@LINE-4]]:5: warning: use range-based for loop
-    // CHECK-FIXES: for (auto I : Array)
+    // CHECK-FIXES: for (auto Elem : Array)
 
     for (int I = 0; I < V.size(); ++I) {
       if (V[I])
         copyArg(V[I]);
     }
     // CHECK-MESSAGES: :[[@LINE-4]]:5: warning: use range-based for loop
-    // CHECK-FIXES: for (int I : V)
+    // CHECK-FIXES: for (int Elem : V)
+
   }
 };

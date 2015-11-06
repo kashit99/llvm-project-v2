@@ -999,11 +999,14 @@ class FrameEmitterImpl {
   int CFAOffset = 0;
   int InitialCFAOffset = 0;
   bool IsEH;
+  const MCSymbol *SectionStart = nullptr;
   MCObjectStreamer &Streamer;
 
 public:
   FrameEmitterImpl(bool IsEH, MCObjectStreamer &Streamer)
       : IsEH(IsEH), Streamer(Streamer) {}
+
+  void setSectionStart(const MCSymbol *Label) { SectionStart = Label; }
 
   /// Emit the unwind information in a compact way.
   void EmitCompactUnwind(const MCDwarfFrameInfo &frame);
@@ -1013,7 +1016,7 @@ public:
                           bool IsSignalFrame, unsigned lsdaEncoding,
                           bool IsSimple);
   void EmitFDE(const MCSymbol &cieStart, const MCDwarfFrameInfo &frame,
-               bool LastInSection, const MCSymbol &SectionStart);
+               bool LastInSection);
   void EmitCFIInstructions(ArrayRef<MCCFIInstruction> Instrs,
                            MCSymbol *BaseLabel);
   void EmitCFIInstruction(const MCCFIInstruction &Instr);
@@ -1368,8 +1371,7 @@ const MCSymbol &FrameEmitterImpl::EmitCIE(const MCSymbol *personality,
 
 void FrameEmitterImpl::EmitFDE(const MCSymbol &cieStart,
                                const MCDwarfFrameInfo &frame,
-                               bool LastInSection,
-                               const MCSymbol &SectionStart) {
+                               bool LastInSection) {
   MCContext &context = Streamer.getContext();
   MCSymbol *fdeStart = context.createTempSymbol();
   MCSymbol *fdeEnd = context.createTempSymbol();
@@ -1391,7 +1393,7 @@ void FrameEmitterImpl::EmitFDE(const MCSymbol &cieStart,
     emitAbsValue(Streamer, offset, 4);
   } else if (!asmInfo->doesDwarfUseRelocationsAcrossSections()) {
     const MCExpr *offset =
-        MakeStartMinusEndExpr(Streamer, SectionStart, cieStart, 0);
+        MakeStartMinusEndExpr(Streamer, *SectionStart, cieStart, 0);
     emitAbsValue(Streamer, offset, 4);
   } else {
     Streamer.EmitSymbolValue(&cieStart, 4);
@@ -1436,44 +1438,52 @@ void FrameEmitterImpl::EmitFDE(const MCSymbol &cieStart,
 }
 
 namespace {
-struct CIEKey {
-  static const CIEKey getEmptyKey() {
-    return CIEKey(nullptr, 0, -1, false, false);
-  }
-  static const CIEKey getTombstoneKey() {
-    return CIEKey(nullptr, -1, 0, false, false);
-  }
+  struct CIEKey {
+    static const CIEKey getEmptyKey() {
+      return CIEKey(nullptr, 0, -1, false, false);
+    }
+    static const CIEKey getTombstoneKey() {
+      return CIEKey(nullptr, -1, 0, false, false);
+    }
 
-  CIEKey(const MCSymbol *Personality, unsigned PersonalityEncoding,
-         unsigned LsdaEncoding, bool IsSignalFrame, bool IsSimple)
-      : Personality(Personality), PersonalityEncoding(PersonalityEncoding),
-        LsdaEncoding(LsdaEncoding), IsSignalFrame(IsSignalFrame),
-        IsSimple(IsSimple) {}
-  const MCSymbol *Personality;
-  unsigned PersonalityEncoding;
-  unsigned LsdaEncoding;
-  bool IsSignalFrame;
-  bool IsSimple;
-};
+    CIEKey(const MCSymbol *Personality_, unsigned PersonalityEncoding_,
+           unsigned LsdaEncoding_, bool IsSignalFrame_, bool IsSimple_)
+        : Personality(Personality_), PersonalityEncoding(PersonalityEncoding_),
+          LsdaEncoding(LsdaEncoding_), IsSignalFrame(IsSignalFrame_),
+          IsSimple(IsSimple_) {}
+    const MCSymbol *Personality;
+    unsigned PersonalityEncoding;
+    unsigned LsdaEncoding;
+    bool IsSignalFrame;
+    bool IsSimple;
+  };
 } // anonymous namespace
 
 namespace llvm {
-template <> struct DenseMapInfo<CIEKey> {
-  static CIEKey getEmptyKey() { return CIEKey::getEmptyKey(); }
-  static CIEKey getTombstoneKey() { return CIEKey::getTombstoneKey(); }
-  static unsigned getHashValue(const CIEKey &Key) {
-    return static_cast<unsigned>(
-        hash_combine(Key.Personality, Key.PersonalityEncoding, Key.LsdaEncoding,
-                     Key.IsSignalFrame, Key.IsSimple));
-  }
-  static bool isEqual(const CIEKey &LHS, const CIEKey &RHS) {
-    return LHS.Personality == RHS.Personality &&
-           LHS.PersonalityEncoding == RHS.PersonalityEncoding &&
-           LHS.LsdaEncoding == RHS.LsdaEncoding &&
-           LHS.IsSignalFrame == RHS.IsSignalFrame &&
-           LHS.IsSimple == RHS.IsSimple;
-  }
-};
+  template <>
+  struct DenseMapInfo<CIEKey> {
+    static CIEKey getEmptyKey() {
+      return CIEKey::getEmptyKey();
+    }
+    static CIEKey getTombstoneKey() {
+      return CIEKey::getTombstoneKey();
+    }
+    static unsigned getHashValue(const CIEKey &Key) {
+      return static_cast<unsigned>(hash_combine(Key.Personality,
+                                                Key.PersonalityEncoding,
+                                                Key.LsdaEncoding,
+                                                Key.IsSignalFrame,
+                                                Key.IsSimple));
+    }
+    static bool isEqual(const CIEKey &LHS,
+                        const CIEKey &RHS) {
+      return LHS.Personality == RHS.Personality &&
+        LHS.PersonalityEncoding == RHS.PersonalityEncoding &&
+        LHS.LsdaEncoding == RHS.LsdaEncoding &&
+        LHS.IsSignalFrame == RHS.IsSignalFrame &&
+        LHS.IsSimple == RHS.IsSimple;
+    }
+  };
 } // namespace llvm
 
 void MCDwarfFrameEmitter::Emit(MCObjectStreamer &Streamer, MCAsmBackend *MAB,
@@ -1513,6 +1523,7 @@ void MCDwarfFrameEmitter::Emit(MCObjectStreamer &Streamer, MCAsmBackend *MAB,
   Streamer.SwitchSection(&Section);
   MCSymbol *SectionStart = Context.createTempSymbol();
   Streamer.EmitLabel(SectionStart);
+  Emitter.setSectionStart(SectionStart);
 
   DenseMap<CIEKey, const MCSymbol *> CIEStarts;
 
@@ -1535,7 +1546,7 @@ void MCDwarfFrameEmitter::Emit(MCObjectStreamer &Streamer, MCAsmBackend *MAB,
                                   Frame.Lsda, Frame.IsSignalFrame,
                                   Frame.LsdaEncoding, Frame.IsSimple);
 
-    Emitter.EmitFDE(*CIEStart, Frame, I == E, *SectionStart);
+    Emitter.EmitFDE(*CIEStart, Frame, I == E);
   }
 }
 

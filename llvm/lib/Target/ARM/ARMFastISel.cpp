@@ -1062,17 +1062,6 @@ bool ARMFastISel::SelectLoad(const Instruction *I) {
   if (cast<LoadInst>(I)->isAtomic())
     return false;
 
-  const Value *SV = I->getOperand(0);
-  if (const Argument *Arg = dyn_cast<Argument>(SV)) {
-    if (Arg->hasSwiftErrorAttr() && TLI.supportSwiftError())
-      return false;
-  }
-
-  if (const AllocaInst *Alloca = dyn_cast<AllocaInst>(SV)) {
-    if (Alloca->isSwiftError() && TLI.supportSwiftError())
-      return false;
-  }
-
   // Verify we have a legal type before going any further.
   MVT VT;
   if (!isLoadTypeLegal(I->getType(), VT))
@@ -1187,17 +1176,6 @@ bool ARMFastISel::SelectStore(const Instruction *I) {
   // Atomic stores need special handling.
   if (cast<StoreInst>(I)->isAtomic())
     return false;
-
-  const Value *PtrV = I->getOperand(1);
-  if (const Argument *Arg = dyn_cast<Argument>(PtrV)) {
-    if (Arg->hasSwiftErrorAttr() && TLI.supportSwiftError())
-      return false;
-  }
-
-  if (const AllocaInst *Alloca = dyn_cast<AllocaInst>(PtrV)) {
-    if (Alloca->isSwiftError() && TLI.supportSwiftError())
-      return false;
-  }
 
   // Verify we have a legal type before going any further.
   MVT VT;
@@ -1861,7 +1839,6 @@ CCAssignFn *ARMFastISel::CCAssignFnForCall(CallingConv::ID CC,
   default:
     llvm_unreachable("Unsupported calling convention");
   case CallingConv::Fast:
-  case CallingConv::Swift:
     if (Subtarget->hasVFP2() && !isVarArg) {
       if (!Subtarget->isAAPCS_ABI())
         return (Return ? RetFastCC_ARM_APCS : FastCC_ARM_APCS);
@@ -2104,10 +2081,6 @@ bool ARMFastISel::SelectRet(const Instruction *I) {
   const Function &F = *I->getParent()->getParent();
 
   if (!FuncInfo.CanLowerReturn)
-    return false;
-
-  if (F.getAttributes().hasAttrSomewhere(Attribute::SwiftError) &&
-      TLI.supportSwiftError())
     return false;
 
   // Build a list of return value registers.
@@ -2369,8 +2342,6 @@ bool ARMFastISel::SelectCall(const Instruction *I,
     // FIXME: Only handle *easy* calls for now.
     if (CS.paramHasAttr(AttrInd, Attribute::InReg) ||
         CS.paramHasAttr(AttrInd, Attribute::StructRet) ||
-        CS.paramHasAttr(AttrInd, Attribute::SwiftSelf) ||
-        CS.paramHasAttr(AttrInd, Attribute::SwiftError) ||
         CS.paramHasAttr(AttrInd, Attribute::Nest) ||
         CS.paramHasAttr(AttrInd, Attribute::ByVal))
       return false;
@@ -3032,7 +3003,6 @@ bool ARMFastISel::fastLowerArguments() {
   case CallingConv::ARM_AAPCS_VFP:
   case CallingConv::ARM_AAPCS:
   case CallingConv::ARM_APCS:
-  case CallingConv::Swift:
     break;
   }
 
@@ -3046,8 +3016,6 @@ bool ARMFastISel::fastLowerArguments() {
 
     if (F->getAttributes().hasAttribute(Idx, Attribute::InReg) ||
         F->getAttributes().hasAttribute(Idx, Attribute::StructRet) ||
-        F->getAttributes().hasAttribute(Idx, Attribute::SwiftSelf) ||
-        F->getAttributes().hasAttribute(Idx, Attribute::SwiftError) ||
         F->getAttributes().hasAttribute(Idx, Attribute::ByVal))
       return false;
 

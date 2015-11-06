@@ -283,9 +283,6 @@ bool MCELFStreamer::EmitSymbolAttribute(MCSymbol *S, MCSymbolAttr Attribute) {
   case MCSA_Internal:
     Symbol->setVisibility(ELF::STV_INTERNAL);
     break;
-
-  case MCSA_AltEntry:
-    llvm_unreachable("ELF doesn't support this attribute");
   }
 
   return true;

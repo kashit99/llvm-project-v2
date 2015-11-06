@@ -87,10 +87,6 @@ ARMBaseRegisterInfo::getCalleeSavedRegs(const MachineFunction *MF) const {
     }
   }
 
-  if (STI.isTargetDarwin() &&
-      F->getAttributes().hasAttrSomewhere(Attribute::SwiftError))
-    return CSR_iOS_SwiftError_SaveList;
-
   return RegList;
 }
 
@@ -101,11 +97,6 @@ ARMBaseRegisterInfo::getCallPreservedMask(const MachineFunction &MF,
   if (CC == CallingConv::GHC)
     // This is academic becase all GHC calls are (supposed to be) tail calls
     return CSR_NoRegs_RegMask;
-
-  if (STI.isTargetDarwin() &&
-      MF.getFunction()->getAttributes().hasAttrSomewhere(Attribute::SwiftError))
-    return CSR_iOS_SwiftError_RegMask;
-
   return STI.isTargetDarwin() ? CSR_iOS_RegMask : CSR_AAPCS_RegMask;
 }
 

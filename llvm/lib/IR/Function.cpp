@@ -93,16 +93,6 @@ bool Argument::hasByValAttr() const {
     hasAttribute(getArgNo()+1, Attribute::ByVal);
 }
 
-bool Argument::hasSwiftSelfAttr() const {
-  return getParent()->getAttributes().
-    hasAttribute(getArgNo()+1, Attribute::SwiftSelf);
-}
-
-bool Argument::hasSwiftErrorAttr() const {
-  return getParent()->getAttributes().
-    hasAttribute(getArgNo()+1, Attribute::SwiftError);
-}
-
 /// \brief Return true if this argument has the inalloca attribute on it in
 /// its containing function.
 bool Argument::hasInAllocaAttr() const {

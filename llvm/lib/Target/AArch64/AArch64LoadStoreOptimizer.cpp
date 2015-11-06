@@ -78,12 +78,13 @@ typedef struct LdStPairFlags {
 
 struct AArch64LoadStoreOpt : public MachineFunctionPass {
   static char ID;
-  AArch64LoadStoreOpt() : MachineFunctionPass(ID) {
+  AArch64LoadStoreOpt() : MachineFunctionPass(ID), IsStrictAlign(false) {
     initializeAArch64LoadStoreOptPass(*PassRegistry::getPassRegistry());
   }
 
   const AArch64InstrInfo *TII;
   const TargetRegisterInfo *TRI;
+  bool IsStrictAlign;
 
   // Scan the instructions looking for a load/store that can be combined
   // with the current instruction into a load/store pair.
@@ -126,11 +127,7 @@ struct AArch64LoadStoreOpt : public MachineFunctionPass {
   // Find and merge foldable ldr/str instructions.
   bool tryToMergeLdStInst(MachineBasicBlock::iterator &MBBI);
 
-  // Check if converting two narrow loads into a single wider load with
-  // bitfield extracts could be enabled.
-  bool enableNarrowLdMerge(MachineFunction &Fn);
-
-  bool optimizeBlock(MachineBasicBlock &MBB, bool enableNarrowLdOpt);
+  bool optimizeBlock(MachineBasicBlock &MBB);
 
   bool runOnMachineFunction(MachineFunction &Fn) override;
 
@@ -1164,8 +1161,7 @@ bool AArch64LoadStoreOpt::tryToMergeLdStInst(
   return false;
 }
 
-bool AArch64LoadStoreOpt::optimizeBlock(MachineBasicBlock &MBB,
-                                        bool enableNarrowLdOpt) {
+bool AArch64LoadStoreOpt::optimizeBlock(MachineBasicBlock &MBB) {
   bool Modified = false;
   // Three tranformations to do here:
   // 1) Find halfword loads that can be merged into a single 32-bit word load
@@ -1193,7 +1189,7 @@ bool AArch64LoadStoreOpt::optimizeBlock(MachineBasicBlock &MBB,
   //        ldr x0, [x2], #4
 
   for (MachineBasicBlock::iterator MBBI = MBB.begin(), E = MBB.end();
-       enableNarrowLdOpt && MBBI != E;) {
+       !IsStrictAlign && MBBI != E;) {
     MachineInstr *MI = MBBI;
     switch (MI->getOpcode()) {
     default:
@@ -1376,25 +1372,15 @@ bool AArch64LoadStoreOpt::optimizeBlock(MachineBasicBlock &MBB,
   return Modified;
 }
 
-bool AArch64LoadStoreOpt::enableNarrowLdMerge(MachineFunction &Fn) {
-  const AArch64Subtarget *SubTarget =
-      &static_cast<const AArch64Subtarget &>(Fn.getSubtarget());
-  bool ProfitableArch = SubTarget->isCortexA57();
-  // FIXME: The benefit from converting narrow loads into a wider load could be
-  // microarchitectural as it assumes that a single load with two bitfield
-  // extracts is cheaper than two narrow loads. Currently, this conversion is
-  // enabled only in cortex-a57 on which performance benefits were verified.
-  return ProfitableArch & (!SubTarget->requiresStrictAlign());
-}
-
 bool AArch64LoadStoreOpt::runOnMachineFunction(MachineFunction &Fn) {
   TII = static_cast<const AArch64InstrInfo *>(Fn.getSubtarget().getInstrInfo());
   TRI = Fn.getSubtarget().getRegisterInfo();
+  IsStrictAlign = (static_cast<const AArch64Subtarget &>(Fn.getSubtarget()))
+                      .requiresStrictAlign();
 
   bool Modified = false;
-  bool enableNarrowLdOpt = enableNarrowLdMerge(Fn);
   for (auto &MBB : Fn)
-    Modified |= optimizeBlock(MBB, enableNarrowLdOpt);
+    Modified |= optimizeBlock(MBB);
 
   return Modified;
 }

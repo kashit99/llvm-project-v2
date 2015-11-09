@@ -150,7 +150,7 @@ static const ScopArrayInfo *identifyBasePtrOriginSAI(Scop *S, Value *BasePtr) {
   if (!OriginBaseSCEVUnknown)
     return nullptr;
 
-  return S->getScopArrayInfo(OriginBaseSCEVUnknown->getValue());
+  return S->getScopArrayInfo(OriginBaseSCEVUnknown->getValue(), false);
 }
 
 ScopArrayInfo::ScopArrayInfo(Value *BasePtr, Type *ElementType, isl_ctx *Ctx,
@@ -1663,8 +1663,18 @@ void Scop::realignParams() {
 static __isl_give isl_set *
 simplifyAssumptionContext(__isl_take isl_set *AssumptionContext,
                           const Scop &S) {
-  isl_set *DomainParameters = isl_union_set_params(S.getDomains());
-  AssumptionContext = isl_set_gist_params(AssumptionContext, DomainParameters);
+  // If we modelt all blocks in the SCoP that have side effects we can simplify
+  // the context with the constraints that are needed for anything to be
+  // executed at all. However, if we have error blocks in the SCoP we already
+  // assumed some parameter combinations cannot occure and removed them from the
+  // domains, thus we cannot use the remaining domain to simplify the
+  // assumptions.
+  if (!S.hasErrorBlock()) {
+    isl_set *DomainParameters = isl_union_set_params(S.getDomains());
+    AssumptionContext =
+        isl_set_gist_params(AssumptionContext, DomainParameters);
+  }
+
   AssumptionContext = isl_set_gist_params(AssumptionContext, S.getContext());
   return AssumptionContext;
 }
@@ -1918,8 +1928,10 @@ void Scop::buildDomainsWithBranchConstraints(Region *R) {
     // the predecessors and can therefor look at the domain of a error block.
     // That allows us to generate the assumptions needed for them not to be
     // executed at runtime.
-    if (containsErrorBlock(RN, getRegion(), LI, DT))
+    if (containsErrorBlock(RN, getRegion(), LI, DT)) {
+      HasErrorBlock = true;
       continue;
+    }
 
     BasicBlock *BB = getRegionNodeBasicBlock(RN);
     TerminatorInst *TI = BB->getTerminator();
@@ -2443,9 +2455,10 @@ Scop::Scop(Region &R, AccFuncMapType &AccFuncMap, ScopDetection &SD,
            isl_ctx *Context, unsigned MaxLoopDepth)
     : LI(LI), DT(DT), SE(&ScalarEvolution), SD(SD), R(R),
       AccFuncMap(AccFuncMap), IsOptimized(false),
-      HasSingleExitEdge(R.getExitingBlock()), MaxLoopDepth(MaxLoopDepth),
-      IslCtx(Context), Context(nullptr), Affinator(this),
-      AssumedContext(nullptr), BoundaryContext(nullptr), Schedule(nullptr) {}
+      HasSingleExitEdge(R.getExitingBlock()), HasErrorBlock(false),
+      MaxLoopDepth(MaxLoopDepth), IslCtx(Context), Context(nullptr),
+      Affinator(this), AssumedContext(nullptr), BoundaryContext(nullptr),
+      Schedule(nullptr) {}
 
 void Scop::init(AliasAnalysis &AA) {
   buildContext();
@@ -2752,7 +2765,9 @@ void Scop::hoistInvariantLoads() {
 const ScopArrayInfo *
 Scop::getOrCreateScopArrayInfo(Value *BasePtr, Type *AccessType,
                                ArrayRef<const SCEV *> Sizes, bool IsPHI) {
-  auto &SAI = ScopArrayInfoMap[std::make_pair(BasePtr, IsPHI)];
+  bool IsScalar = Sizes.empty();
+  auto ScalarTypePair = std::make_pair(IsScalar, IsPHI);
+  auto &SAI = ScopArrayInfoMap[std::make_pair(BasePtr, ScalarTypePair)];
   if (!SAI) {
     SAI.reset(new ScopArrayInfo(BasePtr, AccessType, getIslCtx(), Sizes, IsPHI,
                                 this));
@@ -2765,8 +2780,10 @@ Scop::getOrCreateScopArrayInfo(Value *BasePtr, Type *AccessType,
   return SAI.get();
 }
 
-const ScopArrayInfo *Scop::getScopArrayInfo(Value *BasePtr, bool IsPHI) {
-  auto *SAI = ScopArrayInfoMap[std::make_pair(BasePtr, IsPHI)].get();
+const ScopArrayInfo *Scop::getScopArrayInfo(Value *BasePtr, bool IsScalar,
+                                            bool IsPHI) {
+  auto ScalarTypePair = std::make_pair(IsScalar, IsPHI);
+  auto *SAI = ScopArrayInfoMap[std::make_pair(BasePtr, ScalarTypePair)].get();
   assert(SAI && "No ScopArrayInfo available for this base pointer");
   return SAI;
 }

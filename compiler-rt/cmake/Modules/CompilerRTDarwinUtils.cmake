@@ -161,8 +161,11 @@ macro(darwin_add_builtin_library name suffix)
     ${ARGN})
   set(libname "${name}.${suffix}_${LIB_ARCH}_${LIB_OS}")
   add_library(${libname} STATIC ${LIB_SOURCES})
+  if(DARWIN_${LIB_OS}_SYSROOT)
+    set(sysroot_flag -isysroot ${DARWIN_${LIB_OS}_SYSROOT})
+  endif()
   set_target_compile_flags(${libname}
-    -isysroot ${DARWIN_${LIB_OS}_SYSROOT}
+    ${sysroot_flag}
     ${DARWIN_${LIB_OS}_BUILTIN_MIN_VER_FLAG}
     ${LIB_CFLAGS})
   set_property(TARGET ${libname} APPEND PROPERTY
@@ -255,16 +258,7 @@ endfunction()
 macro(darwin_add_builtin_libraries)
   set(DARWIN_EXCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/Darwin-excludes)
 
-  if(CMAKE_CONFIGURATION_TYPES)
-    foreach(type ${CMAKE_CONFIGURATION_TYPES})
-      set(CMAKE_C_FLAGS_${type} -O3)
-      set(CMAKE_CXX_FLAGS_${type} -O3)
-    endforeach()
-  else()
-    set(CMAKE_CXX_FLAGS_${CMAKE_BUILD_TYPE} -O3)
-  endif()
-
-  set(CMAKE_C_FLAGS "-fvisibility=hidden -DVISIBILITY_HIDDEN -Wall -fomit-frame-pointer")
+  set(CMAKE_C_FLAGS "-O3 -fvisibility=hidden -DVISIBILITY_HIDDEN -Wall -fomit-frame-pointer")
   set(CMAKE_CXX_FLAGS ${CMAKE_C_FLAGS})
   set(CMAKE_ASM_FLAGS ${CMAKE_C_FLAGS})
 
@@ -343,7 +337,7 @@ macro(darwin_add_builtin_libraries)
   darwin_add_embedded_builtin_libraries()
 endmacro()
 
-function(darwin_add_embedded_builtin_libraries)
+macro(darwin_add_embedded_builtin_libraries)
   # this is a hacky opt-out. If you can't target both intel and arm
   # architectures we bail here.
   set(DARWIN_SOFT_FLOAT_ARCHS armv6m armv7m armv7em armv7)
@@ -363,16 +357,8 @@ function(darwin_add_embedded_builtin_libraries)
   endif()
 
   set(MACHO_SYM_DIR ${CMAKE_CURRENT_SOURCE_DIR}/macho_embedded)
-  if(CMAKE_CONFIGURATION_TYPES)
-    foreach(type ${CMAKE_CONFIGURATION_TYPES})
-      set(CMAKE_C_FLAGS_${type} -Oz)
-      set(CMAKE_CXX_FLAGS_${type} -Oz)
-    endforeach()
-  else()
-    set(CMAKE_CXX_FLAGS_${CMAKE_BUILD_TYPE} -Oz)
-  endif()
 
-  set(CMAKE_C_FLAGS "-Wall -fomit-frame-pointer -ffreestanding")
+  set(CMAKE_C_FLAGS "-Oz -Wall -fomit-frame-pointer -ffreestanding")
   set(CMAKE_CXX_FLAGS ${CMAKE_C_FLAGS})
   set(CMAKE_ASM_FLAGS ${CMAKE_C_FLAGS})
 
@@ -390,8 +376,6 @@ function(darwin_add_embedded_builtin_libraries)
     ${COMPILER_RT_INSTALL_PATH}/lib/macho_embedded)
     
   set(CFLAGS_armv7 "-target thumbv7-apple-darwin-eabi")
-  set(CFLAGS_armv7em "-target thumbv7-apple-darwin-eabi")
-  set(CFLAGS_armv7m "-target thumbv7-apple-darwin-eabi")
   set(CFLAGS_i386 "-march=pentium")
 
   darwin_read_list_from_file(common_FUNCTIONS ${MACHO_SYM_DIR}/common.txt)
@@ -428,6 +412,7 @@ function(darwin_add_embedded_builtin_libraries)
         set(float_flag)
         if(${arch} MATCHES "^arm")
           set(DARWIN_macho_embedded_SYSROOT ${DARWIN_ios_SYSROOT})
+          set(DARWIN_macho_embedded_BUILTIN_MIN_VER_FLAG ${DARWIN_ios_BUILTIN_MIN_VER_FLAG})
           # x86 targets are hard float by default, but the complain about the
           # float ABI flag, so don't pass it unless we're targeting arm.
           set(float_flag ${${float_type}_FLOAT_FLAG})
@@ -450,4 +435,4 @@ function(darwin_add_embedded_builtin_libraries)
                     INSTALL_DIR ${DARWIN_macho_embedded_LIBRARY_INSTALL_DIR})
     endforeach()
   endforeach()
-endfunction()
+endmacro()

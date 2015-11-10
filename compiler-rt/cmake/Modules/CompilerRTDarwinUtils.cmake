@@ -186,18 +186,22 @@ function(darwin_lipo_libs name)
     "PARENT_TARGET;OUTPUT_DIR;INSTALL_DIR"
     "LIPO_FLAGS;DEPENDS"
     ${ARGN})
-  add_custom_command(OUTPUT ${LIB_OUTPUT_DIR}/lib${name}.a
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${LIB_OUTPUT_DIR}
-    COMMAND lipo -output
-            ${LIB_OUTPUT_DIR}/lib${name}.a
-            -create ${LIB_LIPO_FLAGS}
-    DEPENDS ${LIB_DEPENDS}
-    )
-  add_custom_target(${name}
-    DEPENDS ${LIB_OUTPUT_DIR}/lib${name}.a)
-  add_dependencies(${LIB_PARENT_TARGET} ${name})
-  install(FILES ${LIB_OUTPUT_DIR}/lib${name}.a
-    DESTINATION ${LIB_INSTALL_DIR})
+  if(LIB_DEPENDS AND LIB_LIPO_FLAGS)
+    add_custom_command(OUTPUT ${LIB_OUTPUT_DIR}/lib${name}.a
+      COMMAND ${CMAKE_COMMAND} -E make_directory ${LIB_OUTPUT_DIR}
+      COMMAND lipo -output
+              ${LIB_OUTPUT_DIR}/lib${name}.a
+              -create ${LIB_LIPO_FLAGS}
+      DEPENDS ${LIB_DEPENDS}
+      )
+    add_custom_target(${name}
+      DEPENDS ${LIB_OUTPUT_DIR}/lib${name}.a)
+    add_dependencies(${LIB_PARENT_TARGET} ${name})
+    install(FILES ${LIB_OUTPUT_DIR}/lib${name}.a
+      DESTINATION ${LIB_INSTALL_DIR})
+  else()
+    message(WARNING "Not generating lipo target for ${name} because no input libraries exist.")
+  endif()
 endfunction()
 
 # Filter out generic versions of routines that are re-implemented in
@@ -260,7 +264,7 @@ macro(darwin_add_builtin_libraries)
     set(CMAKE_CXX_FLAGS_${CMAKE_BUILD_TYPE} -O3)
   endif()
 
-  set(CMAKE_C_FLAGS "-fPIC -fvisibility=hidden -DVISIBILITY_HIDDEN -Wall -fomit-frame-pointer")
+  set(CMAKE_C_FLAGS "-fvisibility=hidden -DVISIBILITY_HIDDEN -Wall -fomit-frame-pointer")
   set(CMAKE_CXX_FLAGS ${CMAKE_C_FLAGS})
   set(CMAKE_ASM_FLAGS ${CMAKE_C_FLAGS})
 
@@ -357,7 +361,7 @@ function(darwin_add_embedded_builtin_libraries)
   set(SOFT_FLOAT_FLAG -mfloat-abi=soft)
   set(HARD_FLOAT_FLAG -mfloat-abi=hard)
 
-  set(PIC_FLAG_ -fPIC)
+  set(PIC_FLAG -fPIC)
   set(STATIC_FLAG -static)
 
   set(DARWIN_macho_embedded_ARCHS armv6m armv7m armv7em armv7 i386 x86_64)

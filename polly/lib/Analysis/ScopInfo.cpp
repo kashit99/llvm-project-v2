@@ -91,6 +91,12 @@ static cl::opt<bool> DetectReductions("polly-detect-reductions",
                                       cl::Hidden, cl::ZeroOrMore,
                                       cl::init(true), cl::cat(PollyCategory));
 
+static cl::opt<int> MaxDisjunctsAssumed(
+    "polly-max-disjuncts-assumed",
+    cl::desc("The maximal number of disjuncts we allow in the assumption "
+             "context (this bounds compile time)"),
+    cl::Hidden, cl::ZeroOrMore, cl::init(150), cl::cat(PollyCategory));
+
 //===----------------------------------------------------------------------===//
 
 // Create a sequence of two schedules. Either argument may be null and is
@@ -1578,7 +1584,27 @@ isl_set *Scop::addNonEmptyDomainConstraints(isl_set *C) const {
 
 void Scop::buildBoundaryContext() {
   BoundaryContext = Affinator.getWrappingContext();
+
+  // The isl_set_complement operation used to create the boundary context
+  // can possibly become very expensive. We bound the compile time of
+  // this operation by setting a compute out.
+  //
+  // TODO: We can probably get around using isl_set_complement and directly
+  // AST generate BoundaryContext.
+  long MaxOpsOld = isl_ctx_get_max_operations(getIslCtx());
+  isl_ctx_set_max_operations(getIslCtx(), 300000);
+  isl_options_set_on_error(getIslCtx(), ISL_ON_ERROR_CONTINUE);
+
   BoundaryContext = isl_set_complement(BoundaryContext);
+
+  if (isl_ctx_last_error(getIslCtx()) == isl_error_quota) {
+    isl_set_free(BoundaryContext);
+    BoundaryContext = isl_set_empty(getParamSpace());
+  }
+
+  isl_options_set_on_error(getIslCtx(), ISL_ON_ERROR_ABORT);
+  isl_ctx_reset_operations(getIslCtx());
+  isl_ctx_set_max_operations(getIslCtx(), MaxOpsOld);
   BoundaryContext = isl_set_gist_params(BoundaryContext, getContext());
 }
 
@@ -2851,6 +2877,14 @@ bool Scop::hasFeasibleRuntimeContext() const {
 
 void Scop::addAssumption(__isl_take isl_set *Set) {
   AssumedContext = isl_set_intersect(AssumedContext, Set);
+
+  int NSets = isl_set_n_basic_set(AssumedContext);
+  if (NSets >= MaxDisjunctsAssumed) {
+    isl_space *Space = isl_set_get_space(AssumedContext);
+    isl_set_free(AssumedContext);
+    AssumedContext = isl_set_empty(Space);
+  }
+
   AssumedContext = isl_set_coalesce(AssumedContext);
 }
 
@@ -3199,20 +3233,18 @@ mapToDimension(__isl_take isl_union_set *Domain, int N) {
   return isl_multi_union_pw_aff_from_union_pw_multi_aff(Data.Res);
 }
 
-ScopStmt *Scop::addScopStmt(BasicBlock *BB, Region *R) {
-  ScopStmt *Stmt;
+void Scop::addScopStmt(BasicBlock *BB, Region *R) {
   if (BB) {
     Stmts.emplace_back(*this, *BB);
-    Stmt = &Stmts.back();
+    auto Stmt = &Stmts.back();
     StmtMap[BB] = Stmt;
   } else {
     assert(R && "Either basic block or a region expected.");
     Stmts.emplace_back(*this, *R);
-    Stmt = &Stmts.back();
+    auto Stmt = &Stmts.back();
     for (BasicBlock *BB : R->blocks())
       StmtMap[BB] = Stmt;
   }
-  return Stmt;
 }
 
 void Scop::buildSchedule(
@@ -3619,6 +3651,12 @@ void ScopInfo::buildStmts(Region &SR) {
 void ScopInfo::buildAccessFunctions(Region &R, BasicBlock &BB,
                                     Region *NonAffineSubRegion,
                                     bool IsExitBlock) {
+  // We do not build access functions for error blocks, as they may contain
+  // instructions we can not model.
+  DominatorTree &DT = getAnalysis<DominatorTreeWrapperPass>().getDomTree();
+  if (isErrorBlock(BB, R, *LI, DT) && !IsExitBlock)
+    return;
+
   Loop *L = LI->getLoopFor(&BB);
 
   // The set of loops contained in non-affine subregions that are part of R.

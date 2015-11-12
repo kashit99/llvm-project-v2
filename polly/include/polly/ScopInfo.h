@@ -34,6 +34,7 @@
 using namespace llvm;
 
 namespace llvm {
+class AssumptionCache;
 class Loop;
 class LoopInfo;
 class PHINode;
@@ -65,6 +66,17 @@ class ScopStmt;
 class ScopInfo;
 
 //===---------------------------------------------------------------------===//
+
+/// @brief Enumeration of assumptions Polly can take.
+enum AssumptionKind {
+  ALIASING,
+  INBOUNDS,
+  WRAPPING,
+  ERRORBLOCK,
+  INFINITELOOP,
+  INVARIANTLOAD,
+  DELINEARIZATION,
+};
 
 /// Maps from a loop to the affine function expressing its backedge taken count.
 /// The backedge taken count already enough to express iteration domain as we
@@ -1184,7 +1196,7 @@ private:
        unsigned MaxLoopDepth);
 
   /// @brief Initialize this ScopInfo .
-  void init(AliasAnalysis &AA);
+  void init(AliasAnalysis &AA, AssumptionCache &AC);
 
   /// @brief Add loop carried constraints to the header block of the loop @p L.
   ///
@@ -1269,7 +1281,10 @@ private:
   /// @brief Build the BoundaryContext based on the wrapping of expressions.
   void buildBoundaryContext();
 
-  /// @brief Add user provided parameter constraints to context.
+  /// @brief Add user provided parameter constraints to context (source code).
+  void addUserAssumptions(AssumptionCache &AC);
+
+  /// @brief Add user provided parameter constraints to context (command line).
   void addUserContext();
 
   /// @brief Add the bounds of the parameters to the context.
@@ -1453,6 +1468,17 @@ public:
   /// @returns True if the optimized SCoP can be executed.
   bool hasFeasibleRuntimeContext() const;
 
+  /// @brief Track and report an assumption.
+  ///
+  /// Use 'clang -Rpass-analysis=polly-scops' or 'opt -pass-remarks=polly-scops'
+  /// to output the assumptions.
+  ///
+  /// @param Kind The assumption kind describing the underlying cause.
+  /// @param Set  The relations between parameters that are assumed to hold.
+  /// @param Loc  The location in the source that caused this assumption.
+  void trackAssumption(AssumptionKind Kind, __isl_keep isl_set *Set,
+                       DebugLoc Loc);
+
   /// @brief Add assumptions to assumed context.
   ///
   /// The assumptions added will be assumed to hold during the execution of the
@@ -1464,9 +1490,11 @@ public:
   ///          that assumptions do not change the set of statement instances
   ///          executed.
   ///
-  /// @param Set A set describing relations between parameters that are assumed
-  ///            to hold.
-  void addAssumption(__isl_take isl_set *Set);
+  /// @param Kind The assumption kind describing the underlying cause.
+  /// @param Set  The relations between parameters that are assumed to hold.
+  /// @param Loc  The location in the source that caused this assumption.
+  void addAssumption(AssumptionKind Kind, __isl_take isl_set *Set,
+                     DebugLoc Loc);
 
   /// @brief Get the boundary context for this Scop.
   ///
@@ -1674,7 +1702,7 @@ class ScopInfo : public RegionPass {
   void clear();
 
   // Build the SCoP for Region @p R.
-  void buildScop(Region &R, DominatorTree &DT);
+  void buildScop(Region &R, DominatorTree &DT, AssumptionCache &AC);
 
   /// @brief Build an instance of MemoryAccess from the Load/Store instruction.
   ///

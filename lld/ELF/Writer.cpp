@@ -199,11 +199,11 @@ void Writer<ELFT>::scanRelocs(
     SymbolBody *Body = File.getSymbolBody(SymIndex);
     uint32_t Type = RI.getType(Config->Mips64EL);
 
-    if (Type == Target->getTlsLocalDynamicReloc()) {
+    if (Target->isTlsLocalDynamicReloc(Type)) {
       if (Out<ELFT>::LocalModuleTlsIndexOffset == uint32_t(-1)) {
         Out<ELFT>::LocalModuleTlsIndexOffset =
             Out<ELFT>::Got->addLocalModuleTlsIndex();
-        Out<ELFT>::RelaDyn->addReloc({C, RI});
+        Out<ELFT>::RelaDyn->addReloc({&C, &RI});
       }
       continue;
     }
@@ -215,6 +215,19 @@ void Writer<ELFT>::scanRelocs(
 
     if (Body)
       Body = Body->repl();
+
+    if (Body && Body->isTLS()) {
+      if (!Target->isTlsGlobalDynamicReloc(Type))
+        continue;
+      if (Body->isInGot())
+        continue;
+      Out<ELFT>::Got->addEntry(Body);
+      Out<ELFT>::RelaDyn->addReloc({&C, &RI});
+      Out<ELFT>::RelaDyn->addReloc({nullptr, nullptr});
+      Body->setUsedInDynamicReloc();
+      continue;
+    }
+
     bool NeedsGot = false;
     bool NeedsPlt = false;
     if (Body) {
@@ -257,9 +270,9 @@ void Writer<ELFT>::scanRelocs(
     if (CBP)
       Body->setUsedInDynamicReloc();
     if (NeedsPlt && Target->supportsLazyRelocations())
-      Out<ELFT>::RelaPlt->addReloc({C, RI});
+      Out<ELFT>::RelaPlt->addReloc({&C, &RI});
     else
-      Out<ELFT>::RelaDyn->addReloc({C, RI});
+      Out<ELFT>::RelaDyn->addReloc({&C, &RI});
   }
 }
 

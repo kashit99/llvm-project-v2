@@ -108,7 +108,7 @@ void InputSectionBase<ELFT>::relocate(
     uint8_t *BufLoc = Buf + Offset;
     uintX_t AddrLoc = OutSec->getVA() + Offset;
 
-    if (Type == Target->getTlsLocalDynamicReloc()) {
+    if (Target->isTlsLocalDynamicReloc(Type)) {
       Target->relocateOne(BufLoc, BufEnd, Type, AddrLoc,
                           Out<ELFT>::Got->getVA() +
                               Out<ELFT>::LocalModuleTlsIndexOffset +
@@ -126,6 +126,14 @@ void InputSectionBase<ELFT>::relocate(
     }
 
     SymbolBody &Body = *File->getSymbolBody(SymIndex)->repl();
+
+    if (Target->isTlsGlobalDynamicReloc(Type)) {
+      Target->relocateOne(BufLoc, BufEnd, Type, AddrLoc,
+                          Out<ELFT>::Got->getEntryAddr(Body) +
+                              getAddend<ELFT>(RI));
+      continue;
+    }
+
     uintX_t SymVA = getSymVA<ELFT>(Body);
     if (Target->relocNeedsPlt(Type, Body)) {
       SymVA = Out<ELFT>::Plt->getEntryAddr(Body);

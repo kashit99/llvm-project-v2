@@ -94,6 +94,7 @@ public:
 class AArch64TargetInfo final : public TargetInfo {
 public:
   AArch64TargetInfo();
+  unsigned getGotRefReloc(unsigned Type) const override;
   unsigned getPltRefReloc(unsigned Type) const override;
   void writeGotPltEntry(uint8_t *Buf, uint64_t Plt) const override;
   void writePltZeroEntry(uint8_t *Buf, uint64_t GotEntryAddr,
@@ -152,6 +153,8 @@ uint64_t TargetInfo::getVAStart() const { return Config->Shared ? 0 : VAStart; }
 bool TargetInfo::relocNeedsCopy(uint32_t Type, const SymbolBody &S) const {
   return false;
 }
+
+unsigned TargetInfo::getGotRefReloc(unsigned Type) const { return GotRefReloc; }
 
 unsigned TargetInfo::getPltRefReloc(unsigned Type) const { return PCRelReloc; }
 
@@ -608,11 +611,14 @@ void PPC64TargetInfo::relocateOne(uint8_t *Loc, uint8_t *BufEnd, uint32_t Type,
 }
 
 AArch64TargetInfo::AArch64TargetInfo() {
+  GotReloc = R_AARCH64_GLOB_DAT;
   PltReloc = R_AARCH64_JUMP_SLOT;
   LazyRelocations = true;
   PltEntrySize = 16;
   PltZeroEntrySize = 32;
 }
+
+unsigned AArch64TargetInfo::getGotRefReloc(unsigned Type) const { return Type; }
 
 unsigned AArch64TargetInfo::getPltRefReloc(unsigned Type) const { return Type; }
 
@@ -663,7 +669,8 @@ void AArch64TargetInfo::writePltEntry(uint8_t *Buf, uint64_t GotEntryAddr,
 
 bool AArch64TargetInfo::relocNeedsGot(uint32_t Type,
                                       const SymbolBody &S) const {
-  return relocNeedsPlt(Type, S);
+  return Type == R_AARCH64_ADR_GOT_PAGE || Type == R_AARCH64_LD64_GOT_LO12_NC ||
+         relocNeedsPlt(Type, S);
 }
 
 bool AArch64TargetInfo::relocNeedsPlt(uint32_t Type,
@@ -691,18 +698,23 @@ static uint64_t getAArch64Page(uint64_t Expr) {
   return Expr & (~static_cast<uint64_t>(0xFFF));
 }
 
+template <unsigned N>
+static void checkAArch64OutOfRange(int64_t X, uint32_t Type) {
+  if (!isInt<N>(X))
+    error("Relocation " + getELFRelocationTypeName(EM_AARCH64, Type) +
+          " out of range");
+}
+
 void AArch64TargetInfo::relocateOne(uint8_t *Loc, uint8_t *BufEnd,
                                     uint32_t Type, uint64_t P,
                                     uint64_t SA) const {
   switch (Type) {
   case R_AARCH64_ABS16:
-    if (!isInt<16>(SA))
-      error("Relocation R_AARCH64_ABS16 out of range");
+    checkAArch64OutOfRange<16>(SA, Type);
     write16le(Loc, SA);
     break;
   case R_AARCH64_ABS32:
-    if (!isInt<32>(SA))
-      error("Relocation R_AARCH64_ABS32 out of range");
+    checkAArch64OutOfRange<32>(SA, Type);
     write32le(Loc, SA);
     break;
   case R_AARCH64_ABS64:
@@ -719,32 +731,33 @@ void AArch64TargetInfo::relocateOne(uint8_t *Loc, uint8_t *BufEnd,
     break;
   case R_AARCH64_ADR_PREL_LO21: {
     uint64_t X = SA - P;
-    if (!isInt<21>(X))
-      error("Relocation R_AARCH64_ADR_PREL_LO21 out of range");
+    checkAArch64OutOfRange<21>(X, Type);
     updateAArch64Adr(Loc, X & 0x1FFFFF);
     break;
   }
+  case R_AARCH64_ADR_GOT_PAGE:
   case R_AARCH64_ADR_PREL_PG_HI21: {
     uint64_t X = getAArch64Page(SA) - getAArch64Page(P);
-    if (!isInt<33>(X))
-      error("Relocation R_AARCH64_ADR_PREL_PG_HI21 out of range");
+    checkAArch64OutOfRange<33>(X, Type);
     updateAArch64Adr(Loc, (X >> 12) & 0x1FFFFF); // X[32:12]
     break;
   }
   case R_AARCH64_JUMP26:
   case R_AARCH64_CALL26: {
     uint64_t X = SA - P;
-    if (!isInt<28>(X)) {
-      if (Type == R_AARCH64_JUMP26)
-        error("Relocation R_AARCH64_JUMP26 out of range");
-      error("Relocation R_AARCH64_CALL26 out of range");
-    }
+    checkAArch64OutOfRange<28>(X, Type);
     or32le(Loc, (X & 0x0FFFFFFC) >> 2);
     break;
   }
   case R_AARCH64_LDST32_ABS_LO12_NC:
     // No overflow check needed.
     or32le(Loc, (SA & 0xFFC) << 8);
+    break;
+  case R_AARCH64_LD64_GOT_LO12_NC:
+    if (SA & 0x7)
+      error("Relocation R_AARCH64_LD64_GOT_LO12_NC not aligned");
+    // No overflow check needed.
+    or32le(Loc, (SA & 0xFF8) << 7);
     break;
   case R_AARCH64_LDST64_ABS_LO12_NC:
     // No overflow check needed.
@@ -755,13 +768,11 @@ void AArch64TargetInfo::relocateOne(uint8_t *Loc, uint8_t *BufEnd,
     or32le(Loc, (SA & 0xFFF) << 10);
     break;
   case R_AARCH64_PREL16:
-    if (!isInt<16>(SA))
-      error("Relocation R_AARCH64_PREL16 out of range");
+    checkAArch64OutOfRange<16>(SA - P, Type);
     write16le(Loc, SA - P);
     break;
   case R_AARCH64_PREL32:
-    if (!isInt<32>(SA))
-      error("Relocation R_AARCH64_PREL32 out of range");
+    checkAArch64OutOfRange<32>(SA - P, Type);
     write32le(Loc, SA - P);
     break;
   case R_AARCH64_PREL64:

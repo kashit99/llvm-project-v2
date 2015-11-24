@@ -12,25 +12,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-typedef struct ValueProfNode {
-  __llvm_profile_value_data VData;
-  struct ValueProfNode *Next;
-} ValueProfNode;
-
 LLVM_LIBRARY_VISIBILITY uint64_t __llvm_profile_get_magic(void) {
-  /* Magic number to detect file format and endianness.
-   *
-   * Use 255 at one end, since no UTF-8 file can use that character.  Avoid 0,
-   * so that utilities, like strings, don't grab it as a string.  129 is also
-   * invalid UTF-8, and high enough to be interesting.
-   *
-   * Use "lprofr" in the centre to stand for "LLVM Profile Raw", or "lprofR"
-   * for 32-bit platforms.
-   */
-  unsigned char R = sizeof(void *) == sizeof(uint64_t) ? 'r' : 'R';
-  return (uint64_t)255 << 56 | (uint64_t)'l' << 48 | (uint64_t)'p' << 40 |
-         (uint64_t)'r' << 32 | (uint64_t)'o' << 24 | (uint64_t)'f' << 16 |
-         (uint64_t)R << 8 | (uint64_t)129;
+  return sizeof(void *) == sizeof(uint64_t) ? (INSTR_PROF_RAW_MAGIC_64)
+                                            : (INSTR_PROF_RAW_MAGIC_32);
 }
 
 /* Return the number of bytes needed to add to SizeInBytes to make it
@@ -42,8 +26,7 @@ __llvm_profile_get_num_padding_bytes(uint64_t SizeInBytes) {
 }
 
 LLVM_LIBRARY_VISIBILITY uint64_t __llvm_profile_get_version(void) {
-  /* This should be bumped any time the output format changes. */
-  return 2;
+  return INSTR_PROF_RAW_VERSION;
 }
 
 LLVM_LIBRARY_VISIBILITY void __llvm_profile_reset_counters(void) {
@@ -70,7 +53,7 @@ LLVM_LIBRARY_VISIBILITY void __llvm_profile_reset_counters(void) {
       ValueProfNode *CurrentVNode = ValueCounters[i];
 
       while (CurrentVNode) {
-        CurrentVNode->VData.NumTaken = 0;
+        CurrentVNode->VData.Count = 0;
         CurrentVNode = CurrentVNode->Next;
       }
     }
@@ -121,23 +104,23 @@ LLVM_LIBRARY_VISIBILITY void
 __llvm_profile_instrument_target(uint64_t TargetValue, void *Data,
                                  uint32_t CounterIndex) {
 
-  __llvm_profile_data *VData = (__llvm_profile_data *)Data;
-  if (!VData)
+  __llvm_profile_data *PData = (__llvm_profile_data *)Data;
+  if (!PData)
     return;
 
-  if (!VData->Values) {
-    if (!allocateValueProfileCounters(VData))
+  if (!PData->Values) {
+    if (!allocateValueProfileCounters(PData))
       return;
   }
 
-  ValueProfNode **ValueCounters = (ValueProfNode **)VData->Values;
+  ValueProfNode **ValueCounters = (ValueProfNode **)PData->Values;
   ValueProfNode *PrevVNode = NULL;
   ValueProfNode *CurrentVNode = ValueCounters[CounterIndex];
 
   uint8_t VDataCount = 0;
   while (CurrentVNode) {
-    if (TargetValue == CurrentVNode->VData.TargetValue) {
-      CurrentVNode->VData.NumTaken++;
+    if (TargetValue == CurrentVNode->VData.Value) {
+      CurrentVNode->VData.Count++;
       return;
     }
     PrevVNode = CurrentVNode;
@@ -152,8 +135,8 @@ __llvm_profile_instrument_target(uint64_t TargetValue, void *Data,
   if (!CurrentVNode)
     return;
 
-  CurrentVNode->VData.TargetValue = TargetValue;
-  CurrentVNode->VData.NumTaken++;
+  CurrentVNode->VData.Value = TargetValue;
+  CurrentVNode->VData.Count++;
 
   uint32_t Success = 0;
   if (!ValueCounters[CounterIndex])
@@ -201,8 +184,8 @@ __llvm_profile_gather_value_data(uint8_t **VDataArray) {
     uint8_t Padding = __llvm_profile_get_num_padding_bytes(NumVSites);
 
     uint8_t *PerSiteCountPtr = PerSiteCountsHead;
-    __llvm_profile_value_data *VDataPtr =
-        (__llvm_profile_value_data *)(PerSiteCountPtr + NumVSites + Padding);
+    InstrProfValueData *VDataPtr =
+        (InstrProfValueData *)(PerSiteCountPtr + NumVSites + Padding);
 
     for (i = 0; i < NumVSites; ++i) {
 

@@ -80,23 +80,35 @@ template <class ELFT> void GotSection<ELFT>::addEntry(SymbolBody *Sym) {
   Entries.push_back(Sym);
 }
 
-template <class ELFT> void GotSection<ELFT>::addDynTlsEntry(SymbolBody *Sym) {
-  Sym->GotIndex = Target->getGotHeaderEntriesNum() + Entries.size();
+template <class ELFT> bool GotSection<ELFT>::addDynTlsEntry(SymbolBody *Sym) {
+  if (Sym->hasGlobalDynIndex())
+    return false;
+  Sym->GlobalDynIndex = Target->getGotHeaderEntriesNum() + Entries.size();
   // Global Dynamic TLS entries take two GOT slots.
   Entries.push_back(Sym);
   Entries.push_back(nullptr);
+  return true;
 }
 
-template <class ELFT> uint32_t GotSection<ELFT>::addLocalModuleTlsIndex() {
+template <class ELFT> bool GotSection<ELFT>::addLocalModelTlsIndex() {
+  if (LocalTlsIndexOff != uint32_t(-1))
+    return false;
   Entries.push_back(nullptr);
   Entries.push_back(nullptr);
-  return (Entries.size() - 2) * sizeof(uintX_t);
+  LocalTlsIndexOff = (Entries.size() - 2) * sizeof(uintX_t);
+  return true;
 }
 
 template <class ELFT>
 typename GotSection<ELFT>::uintX_t
 GotSection<ELFT>::getEntryAddr(const SymbolBody &B) const {
   return this->getVA() + B.GotIndex * sizeof(uintX_t);
+}
+
+template <class ELFT>
+typename GotSection<ELFT>::uintX_t
+GotSection<ELFT>::getGlobalDynAddr(const SymbolBody &B) const {
+  return this->getVA() + B.GlobalDynIndex * sizeof(uintX_t);
 }
 
 template <class ELFT>
@@ -201,18 +213,17 @@ bool RelocationSection<ELFT>::applyTlsDynamicReloc(SymbolBody *Body,
                                                    Elf_Rel *N) {
   if (Target->isTlsLocalDynamicReloc(Type)) {
     P->setSymbolAndType(0, Target->getTlsModuleIndexReloc(), Config->Mips64EL);
-    P->r_offset =
-        Out<ELFT>::Got->getVA() + Out<ELFT>::LocalModuleTlsIndexOffset;
+    P->r_offset = Out<ELFT>::Got->getLocalTlsIndexVA();
     return true;
   }
 
   if (Body && Target->isTlsGlobalDynamicReloc(Type)) {
     P->setSymbolAndType(Body->getDynamicSymbolTableIndex(),
                         Target->getTlsModuleIndexReloc(), Config->Mips64EL);
-    P->r_offset = Out<ELFT>::Got->getEntryAddr(*Body);
+    P->r_offset = Out<ELFT>::Got->getGlobalDynAddr(*Body);
     N->setSymbolAndType(Body->getDynamicSymbolTableIndex(),
                         Target->getTlsOffsetReloc(), Config->Mips64EL);
-    N->r_offset = Out<ELFT>::Got->getEntryAddr(*Body) + sizeof(uintX_t);
+    N->r_offset = Out<ELFT>::Got->getGlobalDynAddr(*Body) + sizeof(uintX_t);
     return true;
   }
   return false;

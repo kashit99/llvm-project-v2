@@ -205,11 +205,8 @@ void Writer<ELFT>::scanRelocs(
     if (Target->isTlsLocalDynamicReloc(Type)) {
       if (Target->isTlsOptimized(Type, nullptr))
         continue;
-      if (Out<ELFT>::LocalModuleTlsIndexOffset == uint32_t(-1)) {
-        Out<ELFT>::LocalModuleTlsIndexOffset =
-            Out<ELFT>::Got->addLocalModuleTlsIndex();
+      if (Out<ELFT>::Got->addLocalModelTlsIndex())
         Out<ELFT>::RelaDyn->addReloc({&C, &RI});
-      }
       continue;
     }
 
@@ -224,12 +221,11 @@ void Writer<ELFT>::scanRelocs(
     if (Body && Body->isTLS() && Target->isTlsGlobalDynamicReloc(Type)) {
       if (Target->isTlsOptimized(Type, Body))
         continue;
-      if (Body->isInGot())
-        continue;
-      Out<ELFT>::Got->addDynTlsEntry(Body);
-      Out<ELFT>::RelaDyn->addReloc({&C, &RI});
-      Out<ELFT>::RelaDyn->addReloc({nullptr, nullptr});
-      Body->setUsedInDynamicReloc();
+      if (Out<ELFT>::Got->addDynTlsEntry(Body)) {
+        Out<ELFT>::RelaDyn->addReloc({&C, &RI});
+        Out<ELFT>::RelaDyn->addReloc({nullptr, nullptr});
+        Body->setUsedInDynamicReloc();
+      }
       continue;
     }
 

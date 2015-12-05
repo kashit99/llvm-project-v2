@@ -8,6 +8,13 @@ set(TSAN_CFLAGS ${SANITIZER_COMMON_CFLAGS})
 append_list_if(COMPILER_RT_HAS_FPIE_FLAG -fPIE TSAN_CFLAGS)
 append_no_rtti_flag(TSAN_CFLAGS)
 
+if(COMPILER_RT_TSAN_DEBUG_OUTPUT)
+  # Add extra debug information to TSan runtime. This configuration is rarely
+  # used, but we need to support it so that debug output will not bitrot.
+  list(APPEND TSAN_CFLAGS -DTSAN_COLLECT_STATS=1
+                          -DTSAN_DEBUG_OUTPUT=2)
+endif()
+
 set(TSAN_RTL_CFLAGS ${TSAN_CFLAGS})
 append_list_if(COMPILER_RT_HAS_MSSE3_FLAG -msse3 TSAN_RTL_CFLAGS)
 append_list_if(SANITIZER_LIMIT_FRAME_SIZE -Wframe-larger-than=512
@@ -114,6 +121,16 @@ if(APPLE)
     ARCHS ${TSAN_SUPPORTED_ARCH}
     SOURCES ${TSAN_SOURCES} ${TSAN_CXX_SOURCES} ${TSAN_ASM_SOURCES}
     CFLAGS ${TSAN_RTL_CFLAGS})
+
+  # Build and check Go runtime.
+  set(BUILDGO_SCRIPT ${CMAKE_CURRENT_SOURCE_DIR}/go/buildgo.sh)
+  add_custom_target(GotsanRuntimeCheck
+    COMMAND env "CC=${CMAKE_C_COMPILER} ${OSX_SYSROOT_FLAG}"
+            IN_TMPDIR=1 SILENT=1 ${BUILDGO_SCRIPT}
+    DEPENDS tsan ${BUILDGO_SCRIPT}
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/go
+    COMMENT "Checking TSan Go runtime..."
+    VERBATIM)
 else()
   foreach(arch ${TSAN_SUPPORTED_ARCH})
     if(arch STREQUAL "x86_64")

@@ -79,9 +79,11 @@ struct ucontext_t {
 };
 #endif
 
-#if defined(__x86_64__) || defined(__mips__)
+#if defined(__x86_64__) || defined(__mips__) \
+  || (defined(__powerpc64__) && defined(__BIG_ENDIAN__))
 #define PTHREAD_ABI_BASE  "GLIBC_2.3.2"
-#elif defined(__aarch64__)
+#elif defined(__aarch64__) || (defined(__powerpc64__) \
+  && defined(__LITTLE_ENDIAN__))
 #define PTHREAD_ABI_BASE  "GLIBC_2.17"
 #endif
 
@@ -443,7 +445,9 @@ static void SetJmp(ThreadState *thr, uptr sp, uptr mangled_sp) {
 }
 
 static void LongJmp(ThreadState *thr, uptr *env) {
-#if SANITIZER_FREEBSD || SANITIZER_MAC
+#ifdef __powerpc__
+  uptr mangled_sp = env[0];
+#elif SANITIZER_FREEBSD || SANITIZER_MAC
   uptr mangled_sp = env[2];
 #elif defined(SANITIZER_LINUX)
 # ifdef __aarch64__
@@ -451,7 +455,7 @@ static void LongJmp(ThreadState *thr, uptr *env) {
 # else
   uptr mangled_sp = env[6];
 # endif
-#endif  // SANITIZER_FREEBSD
+#endif
   // Find the saved buf by mangled_sp.
   for (uptr i = 0; i < thr->jmp_bufs.Size(); i++) {
     JmpBuf *buf = &thr->jmp_bufs[i];
@@ -2683,3 +2687,39 @@ void InitializeInterceptors() {
 }
 
 }  // namespace __tsan
+
+// Invisible barrier for tests.
+// There were several unsuccessful iterations for this functionality:
+// 1. Initially it was implemented in user code using
+//    REAL(pthread_barrier_wait). But pthread_barrier_wait is not supported on
+//    MacOS. Futexes are linux-specific for this matter.
+// 2. Then we switched to atomics+usleep(10). But usleep produced parasitic
+//    "as-if synchronized via sleep" messages in reports which failed some
+//    output tests.
+// 3. Then we switched to atomics+sched_yield. But this produced tons of tsan-
+//    visible events, which lead to "failed to restore stack trace" failures.
+// Note that no_sanitize_thread attribute does not turn off atomic interception
+// so attaching it to the function defined in user code does not help.
+// That's why we now have what we have.
+extern "C" SANITIZER_INTERFACE_ATTRIBUTE
+void __tsan_testonly_barrier_init(u64 *barrier, u32 count) {
+  if (count >= (1 << 8)) {
+      Printf("barrier_init: count is too large (%d)\n", count);
+      Die();
+  }
+  // 8 lsb is thread count, the remaining are count of entered threads.
+  *barrier = count;
+}
+
+extern "C" SANITIZER_INTERFACE_ATTRIBUTE
+void __tsan_testonly_barrier_wait(u64 *barrier) {
+  unsigned old = __atomic_fetch_add(barrier, 1 << 8, __ATOMIC_RELAXED);
+  unsigned old_epoch = (old >> 8) / (old & 0xff);
+  for (;;) {
+    unsigned cur = __atomic_load_n(barrier, __ATOMIC_RELAXED);
+    unsigned cur_epoch = (cur >> 8) / (cur & 0xff);
+    if (cur_epoch != old_epoch)
+      return;
+    internal_sched_yield();
+  }
+}

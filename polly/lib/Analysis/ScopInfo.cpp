@@ -62,6 +62,11 @@ using namespace polly;
 STATISTIC(ScopFound, "Number of valid Scops");
 STATISTIC(RichScopFound, "Number of Scops containing a loop");
 
+// The maximal number of basic sets we allow during domain construction to
+// be created. More complex scops will result in very high compile time and
+// are also unlikely to result in good code
+static int const MaxConjunctsInDomain = 20;
+
 static cl::opt<bool> ModelReadOnlyScalars(
     "polly-analyze-read-only-scalars",
     cl::desc("Model read-only scalar values in the scop description"),
@@ -2176,6 +2181,12 @@ void Scop::buildDomainsWithBranchConstraints(Region *R) {
         SuccDomain = isl_set_union(SuccDomain, CondSet);
 
       SuccDomain = isl_set_coalesce(SuccDomain);
+      if (isl_set_n_basic_set(SuccDomain) > MaxConjunctsInDomain) {
+        auto *Empty = isl_set_empty(isl_set_get_space(SuccDomain));
+        isl_set_free(SuccDomain);
+        SuccDomain = Empty;
+        invalidate(ERROR_DOMAINCONJUNCTS, DebugLoc());
+      }
       DEBUG(dbgs() << "\tSet SuccBB: " << SuccBB->getName() << " : "
                    << SuccDomain << "\n");
     }
@@ -2917,7 +2928,7 @@ void Scop::verifyInvariantLoads() {
   for (LoadInst *LI : RIL) {
     assert(LI && getRegion().contains(LI));
     ScopStmt *Stmt = getStmtForBasicBlock(LI->getParent());
-    if (Stmt && Stmt->getNumberOfArrayAccessesFor(LI) > 0) {
+    if (Stmt && Stmt->getArrayAccessOrNULLFor(LI)) {
       invalidate(INVARIANTLOAD, LI->getDebugLoc());
       return;
     }
@@ -3043,6 +3054,8 @@ static std::string toString(AssumptionKind Kind) {
     return "Invariant load";
   case DELINEARIZATION:
     return "Delinearization";
+  case ERROR_DOMAINCONJUNCTS:
+    return "Low number of domain conjuncts";
   }
   llvm_unreachable("Unknown AssumptionKind!");
 }
@@ -3449,12 +3462,12 @@ void Scop::buildSchedule(
           combineInSequence(LSchedulePair.first, StmtSchedule);
     }
 
+    isl_schedule *LSchedule = LSchedulePair.first;
     unsigned NumVisited = LSchedulePair.second;
     while (L && NumVisited == L->getNumBlocks()) {
-      auto *LDomain = isl_schedule_get_domain(LSchedulePair.first);
+      auto *LDomain = isl_schedule_get_domain(LSchedule);
       if (auto *MUPA = mapToDimension(LDomain, LD + 1))
-        LSchedulePair.first =
-            isl_schedule_insert_partial_schedule(LSchedulePair.first, MUPA);
+        LSchedule = isl_schedule_insert_partial_schedule(LSchedule, MUPA);
 
       auto *PL = L->getParentLoop();
 
@@ -3463,17 +3476,18 @@ void Scop::buildSchedule(
       // parent loop. In the former case this conditional will be skipped, in
       // the latter case however we will break here as we do not build a domain
       // nor a schedule for a infinite loop.
-      assert(LoopSchedules.count(PL) || LSchedulePair.first == nullptr);
+      assert(LoopSchedules.count(PL) || LSchedule == nullptr);
       if (!LoopSchedules.count(PL))
         break;
 
       auto &PSchedulePair = LoopSchedules[PL];
-      PSchedulePair.first =
-          combineInSequence(PSchedulePair.first, LSchedulePair.first);
+      PSchedulePair.first = combineInSequence(PSchedulePair.first, LSchedule);
       PSchedulePair.second += NumVisited;
 
       L = PL;
+      LD--;
       NumVisited = PSchedulePair.second;
+      LSchedule = PSchedulePair.first;
     }
   }
 }

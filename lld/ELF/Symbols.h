@@ -153,11 +153,9 @@ public:
 
 // The base class for any defined symbols, including absolute symbols, etc.
 template <class ELFT> class Defined : public ELFSymbolBody<ELFT> {
-  typedef ELFSymbolBody<ELFT> Base;
-
 protected:
-  typedef typename Base::Kind Kind;
-  typedef typename Base::Elf_Sym Elf_Sym;
+  typedef typename SymbolBody::Kind Kind;
+  typedef typename llvm::object::ELFFile<ELFT>::Elf_Sym Elf_Sym;
 
 public:
   Defined(Kind K, StringRef N, const Elf_Sym &Sym)
@@ -167,8 +165,7 @@ public:
 };
 
 template <class ELFT> class DefinedAbsolute : public Defined<ELFT> {
-  typedef ELFSymbolBody<ELFT> Base;
-  typedef typename Base::Elf_Sym Elf_Sym;
+  typedef typename llvm::object::ELFFile<ELFT>::Elf_Sym Elf_Sym;
 
 public:
   static Elf_Sym IgnoreUndef;
@@ -189,10 +186,10 @@ public:
   static Elf_Sym RelaIpltEnd;
 
   DefinedAbsolute(StringRef N, const Elf_Sym &Sym)
-      : Defined<ELFT>(Base::DefinedAbsoluteKind, N, Sym) {}
+      : Defined<ELFT>(SymbolBody::DefinedAbsoluteKind, N, Sym) {}
 
   static bool classof(const SymbolBody *S) {
-    return S->kind() == Base::DefinedAbsoluteKind;
+    return S->kind() == SymbolBody::DefinedAbsoluteKind;
   }
 };
 
@@ -212,18 +209,17 @@ template <class ELFT>
 typename DefinedAbsolute<ELFT>::Elf_Sym DefinedAbsolute<ELFT>::RelaIpltEnd;
 
 template <class ELFT> class DefinedCommon : public Defined<ELFT> {
-  typedef ELFSymbolBody<ELFT> Base;
-  typedef typename Base::Elf_Sym Elf_Sym;
+  typedef typename llvm::object::ELFFile<ELFT>::Elf_Sym Elf_Sym;
 
 public:
   typedef typename llvm::object::ELFFile<ELFT>::uintX_t uintX_t;
   DefinedCommon(StringRef N, const Elf_Sym &Sym)
-      : Defined<ELFT>(Base::DefinedCommonKind, N, Sym) {
+      : Defined<ELFT>(SymbolBody::DefinedCommonKind, N, Sym) {
     MaxAlignment = Sym.st_value;
   }
 
   static bool classof(const SymbolBody *S) {
-    return S->kind() == Base::DefinedCommonKind;
+    return S->kind() == SymbolBody::DefinedCommonKind;
   }
 
   // The output offset of this common symbol in the output bss. Computed by the
@@ -236,16 +232,16 @@ public:
 
 // Regular defined symbols read from object file symbol tables.
 template <class ELFT> class DefinedRegular : public Defined<ELFT> {
-  typedef Defined<ELFT> Base;
-  typedef typename Base::Elf_Sym Elf_Sym;
+  typedef typename llvm::object::ELFFile<ELFT>::Elf_Sym Elf_Sym;
 
 public:
   DefinedRegular(StringRef N, const Elf_Sym &Sym,
                  InputSectionBase<ELFT> &Section)
-      : Defined<ELFT>(Base::DefinedRegularKind, N, Sym), Section(Section) {}
+      : Defined<ELFT>(SymbolBody::DefinedRegularKind, N, Sym),
+        Section(Section) {}
 
   static bool classof(const SymbolBody *S) {
-    return S->kind() == Base::DefinedRegularKind;
+    return S->kind() == SymbolBody::DefinedRegularKind;
   }
 
   InputSectionBase<ELFT> &Section;
@@ -256,16 +252,15 @@ public:
 // don't belong to any input files or sections. Thus, its constructor
 // takes an output section to calculate output VA, etc.
 template <class ELFT> class DefinedSynthetic : public Defined<ELFT> {
-  typedef Defined<ELFT> Base;
-
 public:
-  typedef typename Base::Elf_Sym Elf_Sym;
+  typedef typename llvm::object::ELFFile<ELFT>::Elf_Sym Elf_Sym;
   DefinedSynthetic(StringRef N, const Elf_Sym &Sym,
                    OutputSectionBase<ELFT> &Section)
-      : Defined<ELFT>(Base::DefinedSyntheticKind, N, Sym), Section(Section) {}
+      : Defined<ELFT>(SymbolBody::DefinedSyntheticKind, N, Sym),
+        Section(Section) {}
 
   static bool classof(const SymbolBody *S) {
-    return S->kind() == Base::DefinedSyntheticKind;
+    return S->kind() == SymbolBody::DefinedSyntheticKind;
   }
 
   const OutputSectionBase<ELFT> &Section;
@@ -273,18 +268,17 @@ public:
 
 // Undefined symbol.
 template <class ELFT> class Undefined : public ELFSymbolBody<ELFT> {
-  typedef ELFSymbolBody<ELFT> Base;
-  typedef typename Base::Elf_Sym Elf_Sym;
+  typedef typename llvm::object::ELFFile<ELFT>::Elf_Sym Elf_Sym;
 
 public:
   static Elf_Sym Required;
   static Elf_Sym Optional;
 
   Undefined(StringRef N, const Elf_Sym &Sym)
-      : ELFSymbolBody<ELFT>(Base::UndefinedKind, N, Sym) {}
+      : ELFSymbolBody<ELFT>(SymbolBody::UndefinedKind, N, Sym) {}
 
   static bool classof(const SymbolBody *S) {
-    return S->kind() == Base::UndefinedKind;
+    return S->kind() == SymbolBody::UndefinedKind;
   }
 
   bool canKeepUndefined() const { return &this->Sym == &Optional; }
@@ -296,17 +290,16 @@ template <class ELFT>
 typename Undefined<ELFT>::Elf_Sym Undefined<ELFT>::Optional;
 
 template <class ELFT> class SharedSymbol : public Defined<ELFT> {
-  typedef Defined<ELFT> Base;
-  typedef typename Base::Elf_Sym Elf_Sym;
+  typedef typename llvm::object::ELFFile<ELFT>::Elf_Sym Elf_Sym;
   typedef typename llvm::object::ELFFile<ELFT>::uintX_t uintX_t;
 
 public:
   static bool classof(const SymbolBody *S) {
-    return S->kind() == Base::SharedKind;
+    return S->kind() == SymbolBody::SharedKind;
   }
 
   SharedSymbol(SharedFile<ELFT> *F, StringRef Name, const Elf_Sym &Sym)
-      : Defined<ELFT>(Base::SharedKind, Name, Sym), File(F) {}
+      : Defined<ELFT>(SymbolBody::SharedKind, Name, Sym), File(F) {}
 
   SharedFile<ELFT> *File;
 

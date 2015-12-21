@@ -327,21 +327,10 @@ void Writer<ELFT>::scanRelocs(InputSectionBase<ELFT> &S,
 
 template <class ELFT>
 static void reportUndefined(const SymbolTable<ELFT> &S, const SymbolBody &Sym) {
-  typedef typename ELFFile<ELFT>::Elf_Sym Elf_Sym;
-  typedef typename ELFFile<ELFT>::Elf_Sym_Range Elf_Sym_Range;
-
   if (Config->Shared && !Config->NoUndefined)
     return;
 
-  const Elf_Sym &SymE = cast<ELFSymbolBody<ELFT>>(Sym).Sym;
-  ELFFileBase<ELFT> *SymFile = nullptr;
-
-  for (const std::unique_ptr<ObjectFile<ELFT>> &File : S.getObjectFiles()) {
-    Elf_Sym_Range Syms = File->getObj().symbols(File->getSymbolTable());
-    if (&SymE > Syms.begin() && &SymE < Syms.end())
-      SymFile = File.get();
-  }
-
+  ELFFileBase<ELFT> *SymFile = findFile<ELFT>(S.getObjectFiles(), &Sym);
   std::string Message = "undefined symbol: " + Sym.getName().str();
   if (SymFile)
     Message += " in " + SymFile->getName().str();

@@ -21,6 +21,8 @@ using namespace llvm::ELF;
 using namespace lld;
 using namespace lld::elf2;
 
+bool lld::elf2::HasGotOffRel = false;
+
 template <class ELFT>
 OutputSectionBase<ELFT>::OutputSectionBase(StringRef Name, uint32_t sh_type,
                                            uintX_t sh_flags)
@@ -267,7 +269,9 @@ template <class ELFT> void RelocationSection<ELFT>::writeTo(uint8_t *Buf) {
 
     unsigned Sym = CanBePreempted ? Body->DynamicSymbolTableIndex : 0;
     unsigned Reloc;
-    if (!CanBePreempted || IsDynRelative)
+    if (!CanBePreempted && Body && isGnuIFunc<ELFT>(*Body))
+      Reloc = Target->getIRelativeReloc();
+    else if (!CanBePreempted || IsDynRelative)
       Reloc = Target->getRelativeReloc();
     else if (LazyReloc)
       Reloc = Target->getPltReloc();
@@ -303,9 +307,11 @@ template <class ELFT> void RelocationSection<ELFT>::writeTo(uint8_t *Buf) {
     else if (Body)
       Addend = getSymVA<ELFT>(cast<ELFSymbolBody<ELFT>>(*Body)) + OrigAddend;
     else if (IsRela)
-      Addend = getLocalRelTarget(File, static_cast<const Elf_Rela &>(RI));
+      Addend =
+          getLocalRelTarget(File, static_cast<const Elf_Rela &>(RI),
+                            getAddend<ELFT>(static_cast<const Elf_Rela &>(RI)));
     else
-      Addend = getLocalRelTarget(File, RI);
+      Addend = getLocalRelTarget(File, RI, 0);
 
     if (IsRela)
       static_cast<Elf_Rela *>(P)->r_addend = Addend;
@@ -318,7 +324,8 @@ template <class ELFT> unsigned RelocationSection<ELFT>::getRelocOffset() {
 }
 
 template <class ELFT> void RelocationSection<ELFT>::finalize() {
-  this->Header.sh_link = Out<ELFT>::DynSymTab->SectionIndex;
+  this->Header.sh_link = Static ? Out<ELFT>::SymTab->SectionIndex
+                                : Out<ELFT>::DynSymTab->SectionIndex;
   this->Header.sh_size = Relocs.size() * this->Header.sh_entsize;
 }
 
@@ -814,11 +821,10 @@ typename ELFFile<ELFT>::uintX_t lld::elf2::getSymVA(const SymbolBody &S) {
 template <class ELFT, bool IsRela>
 typename ELFFile<ELFT>::uintX_t
 lld::elf2::getLocalRelTarget(const ObjectFile<ELFT> &File,
-                             const Elf_Rel_Impl<ELFT, IsRela> &RI) {
+                             const Elf_Rel_Impl<ELFT, IsRela> &RI,
+                             typename ELFFile<ELFT>::uintX_t Addend) {
   typedef typename ELFFile<ELFT>::Elf_Sym Elf_Sym;
   typedef typename ELFFile<ELFT>::uintX_t uintX_t;
-
-  uintX_t Addend = getAddend<ELFT>(RI);
 
   // PPC64 has a special relocation representing the TOC base pointer
   // that does not have a corresponding symbol.
@@ -971,7 +977,7 @@ void EHOutputSection<ELFT>::addSectionAux(
       auto P = CieMap.insert(std::make_pair(CieInfo, Cies.size()));
       if (P.second) {
         Cies.push_back(C);
-        this->Header.sh_size += Length;
+        this->Header.sh_size += RoundUpToAlignment(Length, sizeof(uintX_t));
       }
       OffsetToIndex[Offset] = P.first->second;
     } else {
@@ -984,7 +990,7 @@ void EHOutputSection<ELFT>::addSectionAux(
         if (I == OffsetToIndex.end())
           error("Invalid CIE reference");
         Cies[I->second].Fdes.push_back(EHRegion<ELFT>(S, Index));
-        this->Header.sh_size += Length;
+        this->Header.sh_size += RoundUpToAlignment(Length, sizeof(uintX_t));
       }
     }
 
@@ -1040,15 +1046,16 @@ template <class ELFT> void EHOutputSection<ELFT>::writeTo(uint8_t *Buf) {
     StringRef CieData = C.data();
     memcpy(Buf + Offset, CieData.data(), CieData.size());
     C.S->Offsets[C.Index].second = Offset;
-    Offset += CieData.size();
+    Offset += RoundUpToAlignment(CieData.size(), sizeof(uintX_t));
 
     for (const EHRegion<ELFT> &F : C.Fdes) {
       StringRef FdeData = F.data();
-      memcpy(Buf + Offset, FdeData.data(), 4);              // Length
+      uintX_t Len = RoundUpToAlignment(FdeData.size(), sizeof(uintX_t));
+      write32<E>(Buf + Offset, Len - 4);                    // Length
       write32<E>(Buf + Offset + 4, Offset + 4 - CieOffset); // Pointer
       memcpy(Buf + Offset + 8, FdeData.data() + 8, FdeData.size() - 8);
       F.S->Offsets[F.Index].second = Offset;
-      Offset += FdeData.size();
+      Offset += Len;
     }
   }
 
@@ -1494,29 +1501,20 @@ template ELFFile<ELF64BE>::uintX_t getSymVA<ELF64BE>(const SymbolBody &);
 
 template ELFFile<ELF32LE>::uintX_t
 getLocalRelTarget(const ObjectFile<ELF32LE> &,
-                  const ELFFile<ELF32LE>::Elf_Rel &);
+                  const ELFFile<ELF32LE>::Elf_Rel &,
+                  ELFFile<ELF32LE>::uintX_t Addend);
 template ELFFile<ELF32BE>::uintX_t
 getLocalRelTarget(const ObjectFile<ELF32BE> &,
-                  const ELFFile<ELF32BE>::Elf_Rel &);
+                  const ELFFile<ELF32BE>::Elf_Rel &,
+                  ELFFile<ELF32BE>::uintX_t Addend);
 template ELFFile<ELF64LE>::uintX_t
 getLocalRelTarget(const ObjectFile<ELF64LE> &,
-                  const ELFFile<ELF64LE>::Elf_Rel &);
+                  const ELFFile<ELF64LE>::Elf_Rel &,
+                  ELFFile<ELF64LE>::uintX_t Addend);
 template ELFFile<ELF64BE>::uintX_t
 getLocalRelTarget(const ObjectFile<ELF64BE> &,
-                  const ELFFile<ELF64BE>::Elf_Rel &);
-
-template ELFFile<ELF32LE>::uintX_t
-getLocalRelTarget(const ObjectFile<ELF32LE> &,
-                  const ELFFile<ELF32LE>::Elf_Rela &);
-template ELFFile<ELF32BE>::uintX_t
-getLocalRelTarget(const ObjectFile<ELF32BE> &,
-                  const ELFFile<ELF32BE>::Elf_Rela &);
-template ELFFile<ELF64LE>::uintX_t
-getLocalRelTarget(const ObjectFile<ELF64LE> &,
-                  const ELFFile<ELF64LE>::Elf_Rela &);
-template ELFFile<ELF64BE>::uintX_t
-getLocalRelTarget(const ObjectFile<ELF64BE> &,
-                  const ELFFile<ELF64BE>::Elf_Rela &);
+                  const ELFFile<ELF64BE>::Elf_Rel &,
+                  ELFFile<ELF64BE>::uintX_t Addend);
 
 template bool includeInSymtab<ELF32LE>(const SymbolBody &);
 template bool includeInSymtab<ELF32BE>(const SymbolBody &);

@@ -209,6 +209,9 @@ void Writer<ELFT>::scanRelocs(
     SymbolBody *Body = File.getSymbolBody(SymIndex);
     uint32_t Type = RI.getType(Config->Mips64EL);
 
+    if (Target->isGotRelative(Type))
+      HasGotOffRel = true;
+
     if (Target->isTlsLocalDynamicReloc(Type)) {
       if (Target->isTlsOptimized(Type, nullptr))
         continue;
@@ -272,6 +275,15 @@ void Writer<ELFT>::scanRelocs(
           Out<ELFT>::Got->addEntry(Body);
         }
       }
+    }
+
+    // An STT_GNU_IFUNC symbol always uses a PLT entry, and all references
+    // to the symbol go through the PLT. This is true even for a local
+    // symbol, although local symbols normally do not require PLT entries.
+    if (Body && isGnuIFunc<ELFT>(*Body)) {
+      Body->setUsedInDynamicReloc();
+      Out<ELFT>::RelaPlt->addReloc({&C, &RI});
+      continue;
     }
 
     if (Config->EMachine == EM_MIPS && NeedsGot) {
@@ -575,6 +587,27 @@ static bool compareSections(OutputSectionBase<ELFT> *A,
   return std::distance(ItA, ItB) > 0;
 }
 
+// A statically linked executable will have rel[a].plt section
+// to hold R_[*]_IRELATIVE relocations.
+// The multi-arch libc will use these symbols to locate
+// these relocations at program startup time.
+// If RelaPlt is empty then there is no reason to create this symbols.
+template <class ELFT>
+static void addIRelocMarkers(SymbolTable<ELFT> &Symtab, bool IsDynamic) {
+  if (IsDynamic || !Out<ELFT>::RelaPlt || !Out<ELFT>::RelaPlt->hasRelocs())
+    return;
+  bool IsRela = shouldUseRela<ELFT>();
+  auto AddMarker = [&](StringRef Name, typename Writer<ELFT>::Elf_Sym &Sym) {
+    if (SymbolBody *B = Symtab.find(Name))
+      if (B->isUndefined())
+        Symtab.addAbsolute(Name, Sym);
+  };
+  AddMarker(IsRela ? "__rela_iplt_start" : "__rel_iplt_start",
+            DefinedAbsolute<ELFT>::RelaIpltStart);
+  AddMarker(IsRela ? "__rela_iplt_end" : "__rel_iplt_end",
+            DefinedAbsolute<ELFT>::RelaIpltEnd);
+}
+
 // Create output section objects and add them to OutputSections.
 template <class ELFT> void Writer<ELFT>::createSections() {
   // .interp needs to be on the first page in the output file.
@@ -717,6 +750,8 @@ template <class ELFT> void Writer<ELFT>::createSections() {
     }
   }
 
+  addIRelocMarkers<ELFT>(Symtab, isOutputDynamic());
+
   std::vector<DefinedCommon<ELFT> *> CommonSymbols;
   std::vector<SharedSymbol<ELFT> *> SharedCopySymbols;
   for (auto &P : Symtab.getSymbols()) {
@@ -759,8 +794,6 @@ template <class ELFT> void Writer<ELFT>::createSections() {
     OutputSections.push_back(Out<ELFT>::DynStrTab);
     if (Out<ELFT>::RelaDyn->hasRelocs())
       OutputSections.push_back(Out<ELFT>::RelaDyn);
-    if (Out<ELFT>::RelaPlt && Out<ELFT>::RelaPlt->hasRelocs())
-      OutputSections.push_back(Out<ELFT>::RelaPlt);
     // This is a MIPS specific section to hold a space within the data segment
     // of executable file which is pointed to by the DT_MIPS_RLD_MAP entry.
     // See "Dynamic section" in Chapter 5 in the following document:
@@ -774,10 +807,24 @@ template <class ELFT> void Writer<ELFT>::createSections() {
     }
   }
 
+  // We always need to add rel[a].plt to output if it has entries.
+  // Even during static linking it can contain R_[*]_IRELATIVE relocations.
+  if (Out<ELFT>::RelaPlt && Out<ELFT>::RelaPlt->hasRelocs()) {
+    OutputSections.push_back(Out<ELFT>::RelaPlt);
+    Out<ELFT>::RelaPlt->Static = !isOutputDynamic();
+  }
+
+  bool needsGot = !Out<ELFT>::Got->empty();
   // We add the .got section to the result for dynamic MIPS target because
   // its address and properties are mentioned in the .dynamic section.
-  if (!Out<ELFT>::Got->empty() ||
-      (isOutputDynamic() && Config->EMachine == EM_MIPS))
+  if (Config->EMachine == EM_MIPS)
+    needsGot |= isOutputDynamic();
+  // If we have a relocation that is relative to GOT (such as GOTOFFREL),
+  // we need to emit a GOT even if it's empty.
+  if (HasGotOffRel)
+    needsGot = true;
+
+  if (needsGot)
     OutputSections.push_back(Out<ELFT>::Got);
   if (Out<ELFT>::GotPlt && !Out<ELFT>::GotPlt->empty())
     OutputSections.push_back(Out<ELFT>::GotPlt);
@@ -986,6 +1033,15 @@ template <class ELFT> void Writer<ELFT>::assignAddresses() {
   // Update "_end" and "end" symbols so that they
   // point to the end of the data segment.
   DefinedAbsolute<ELFT>::End.st_value = VA;
+
+  // Update __rel_iplt_start/__rel_iplt_end to wrap the
+  // rela.plt section.
+  if (Out<ELFT>::RelaPlt) {
+    uintX_t Start = Out<ELFT>::RelaPlt->getVA();
+    DefinedAbsolute<ELFT>::RelaIpltStart.st_value = Start;
+    DefinedAbsolute<ELFT>::RelaIpltEnd.st_value =
+        Start + Out<ELFT>::RelaPlt->getSize();
+  }
 
   // Update MIPS _gp absolute symbol so that it points to the static data.
   if (Config->EMachine == EM_MIPS)

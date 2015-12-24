@@ -70,11 +70,15 @@ template <class ELFT> static bool isReserved(InputSectionBase<ELFT> *Sec) {
     return true;
   default:
     StringRef S = Sec->getSectionName();
-    return S.startswith(".init") || S.startswith(".fini") ||
+    return S.startswith(".ctors") || S.startswith(".dtors") ||
+           S.startswith(".init") || S.startswith(".fini") ||
            S.startswith(".jcr");
   }
 }
 
+// This is the main function of the garbage collector.
+// Starting from GC-root sections, this function visits all reachable
+// sections to set their "Live" bits.
 template <class ELFT> void lld::elf2::markLive(SymbolTable<ELFT> *Symtab) {
   SmallVector<InputSection<ELFT> *, 256> Q;
 

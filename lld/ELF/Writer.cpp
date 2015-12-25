@@ -43,9 +43,15 @@ public:
 private:
   void copyLocalSymbols();
   void createSections();
+
+  OutputSectionBase<ELFT> *createOutputSection(InputSectionBase<ELFT> *C,
+                                               StringRef Name, uintX_t Type,
+                                               uintX_t Flags);
+
   template <bool isRela>
   void scanRelocs(InputSectionBase<ELFT> &C,
                   iterator_range<const Elf_Rel_Impl<ELFT, isRela> *> Rels);
+
   void scanRelocs(InputSection<ELFT> &C);
   void scanRelocs(InputSectionBase<ELFT> &S, const Elf_Shdr &RelSec);
   void updateRelro(Elf_Phdr *Cur, Elf_Phdr *GnuRelroPhdr, uintX_t VA);
@@ -65,7 +71,7 @@ private:
   int getPhdrsNum() const;
 
   OutputSection<ELFT> *getBSS();
-  void addCommonSymbols(std::vector<DefinedCommon<ELFT> *> &Syms);
+  void addCommonSymbols(std::vector<DefinedCommon *> &Syms);
   void addSharedCopySymbols(std::vector<SharedSymbol<ELFT> *> &Syms);
 
   std::unique_ptr<llvm::FileOutputBuffer> Buffer;
@@ -472,27 +478,24 @@ template <class ELFT> OutputSection<ELFT> *Writer<ELFT>::getBSS() {
 // Until this function is called, common symbols do not belong to any section.
 // This function adds them to end of BSS section.
 template <class ELFT>
-void Writer<ELFT>::addCommonSymbols(std::vector<DefinedCommon<ELFT> *> &Syms) {
+void Writer<ELFT>::addCommonSymbols(std::vector<DefinedCommon *> &Syms) {
   typedef typename ELFFile<ELFT>::uintX_t uintX_t;
-  typedef typename ELFFile<ELFT>::Elf_Sym Elf_Sym;
 
   if (Syms.empty())
     return;
 
   // Sort the common symbols by alignment as an heuristic to pack them better.
-  std::stable_sort(
-    Syms.begin(), Syms.end(),
-    [](const DefinedCommon<ELFT> *A, const DefinedCommon<ELFT> *B) {
-      return A->MaxAlignment > B->MaxAlignment;
-    });
+  std::stable_sort(Syms.begin(), Syms.end(),
+                   [](const DefinedCommon *A, const DefinedCommon *B) {
+                     return A->MaxAlignment > B->MaxAlignment;
+                   });
 
   uintX_t Off = getBSS()->getSize();
-  for (DefinedCommon<ELFT> *C : Syms) {
-    const Elf_Sym &Sym = C->Sym;
+  for (DefinedCommon *C : Syms) {
     uintX_t Align = C->MaxAlignment;
     Off = RoundUpToAlignment(Off, Align);
     C->OffsetInBSS = Off;
-    Off += Sym.st_size;
+    Off += C->Size;
   }
 
   Out<ELFT>::Bss->setSize(Off);
@@ -590,9 +593,9 @@ static void addIRelocMarkers(SymbolTable<ELFT> &Symtab, bool IsDynamic) {
         Symtab.addAbsolute(Name, Sym);
   };
   AddMarker(IsRela ? "__rela_iplt_start" : "__rel_iplt_start",
-            DefinedAbsolute<ELFT>::RelaIpltStart);
+            ElfSym<ELFT>::RelaIpltStart);
   AddMarker(IsRela ? "__rela_iplt_end" : "__rel_iplt_end",
-            DefinedAbsolute<ELFT>::RelaIpltEnd);
+            ElfSym<ELFT>::RelaIpltEnd);
 }
 
 template <class ELFT> static bool includeInSymtab(const SymbolBody &B) {
@@ -600,11 +603,37 @@ template <class ELFT> static bool includeInSymtab(const SymbolBody &B) {
     return false;
 
   // Don't include synthetic symbols like __init_array_start in every output.
-  if (auto *U = dyn_cast<DefinedAbsolute<ELFT>>(&B))
-    if (&U->Sym == &DefinedAbsolute<ELFT>::IgnoreUndef)
+  if (auto *U = dyn_cast<DefinedRegular<ELFT>>(&B))
+    if (&U->Sym == &ElfSym<ELFT>::IgnoreUndef)
       return false;
 
   return true;
+}
+
+static bool includeInDynamicSymtab(const SymbolBody &B) {
+  uint8_t V = B.getVisibility();
+  if (V != STV_DEFAULT && V != STV_PROTECTED)
+    return false;
+  if (Config->ExportDynamic || Config->Shared)
+    return true;
+  return B.isUsedInDynamicReloc();
+}
+
+template <class ELFT>
+OutputSectionBase<ELFT> *
+Writer<ELFT>::createOutputSection(InputSectionBase<ELFT> *C, StringRef Name,
+                                  uintX_t Type, uintX_t Flags) {
+  switch (C->SectionKind) {
+  case InputSectionBase<ELFT>::Regular:
+    return new (SecAlloc.Allocate()) OutputSection<ELFT>(Name, Type, Flags);
+  case InputSectionBase<ELFT>::EHFrame:
+    return new (EHSecAlloc.Allocate()) EHOutputSection<ELFT>(Name, Type, Flags);
+  case InputSectionBase<ELFT>::Merge:
+    return new (MSecAlloc.Allocate())
+        MergeOutputSection<ELFT>(Name, Type, Flags);
+  case InputSectionBase<ELFT>::MipsReginfo:
+    return new (MReginfoSecAlloc.Allocate()) MipsReginfoOutputSection<ELFT>();
+  }
 }
 
 // Create output section objects and add them to OutputSections.
@@ -628,8 +657,7 @@ template <class ELFT> void Writer<ELFT>::createSections() {
       // For SHF_MERGE we create different output sections for each sh_entsize.
       // This makes each output section simple and keeps a single level
       // mapping from input to output.
-      typename InputSectionBase<ELFT>::Kind K = C->SectionKind;
-      uintX_t EntSize = K != InputSectionBase<ELFT>::Merge ? 0 : H->sh_entsize;
+      uintX_t EntSize = isa<MergeInputSection<ELFT>>(C) ? H->sh_entsize : 0;
       uint32_t OutType = H->sh_type;
       if (OutType == SHT_PROGBITS && C->getSectionName() == ".eh_frame" &&
           Config->EMachine == EM_X86_64)
@@ -638,28 +666,11 @@ template <class ELFT> void Writer<ELFT>::createSections() {
                                      OutType, OutFlags, EntSize};
       OutputSectionBase<ELFT> *&Sec = Map[Key];
       if (!Sec) {
-        switch (K) {
-        case InputSectionBase<ELFT>::Regular:
-          Sec = new (SecAlloc.Allocate())
-              OutputSection<ELFT>(Key.Name, Key.Type, Key.Flags);
-          break;
-        case InputSectionBase<ELFT>::EHFrame:
-          Sec = new (EHSecAlloc.Allocate())
-              EHOutputSection<ELFT>(Key.Name, Key.Type, Key.Flags);
-          break;
-        case InputSectionBase<ELFT>::Merge:
-          Sec = new (MSecAlloc.Allocate())
-              MergeOutputSection<ELFT>(Key.Name, Key.Type, Key.Flags);
-          break;
-        case InputSectionBase<ELFT>::MipsReginfo:
-          Sec = new (MReginfoSecAlloc.Allocate())
-              MipsReginfoOutputSection<ELFT>();
-          break;
-        }
+        Sec = createOutputSection(C, Key.Name, Key.Type, Key.Flags);
         OutputSections.push_back(Sec);
         RegularSections.push_back(Sec);
       }
-      switch (K) {
+      switch (C->SectionKind) {
       case InputSectionBase<ELFT>::Regular:
         static_cast<OutputSection<ELFT> *>(Sec)
             ->addSection(cast<InputSection<ELFT>>(C));
@@ -726,14 +737,14 @@ template <class ELFT> void Writer<ELFT>::createSections() {
   // So, if this symbol is referenced, we just add the placeholder here
   // and update its value later.
   if (Symtab.find("_end"))
-    Symtab.addAbsolute("_end", DefinedAbsolute<ELFT>::End);
+    Symtab.addAbsolute("_end", ElfSym<ELFT>::End);
 
   // If there is an undefined symbol "end", we should initialize it
   // with the same value as "_end". In any other case it should stay intact,
   // because it is an allowable name for a user symbol.
   if (SymbolBody *B = Symtab.find("end"))
     if (B->isUndefined())
-      Symtab.addAbsolute("end", DefinedAbsolute<ELFT>::End);
+      Symtab.addAbsolute("end", ElfSym<ELFT>::End);
 
   // Scan relocations. This must be done after every symbol is declared so that
   // we can correctly decide if a dynamic relocation is needed.
@@ -751,7 +762,7 @@ template <class ELFT> void Writer<ELFT>::createSections() {
 
   addIRelocMarkers<ELFT>(Symtab, isOutputDynamic());
 
-  std::vector<DefinedCommon<ELFT> *> CommonSymbols;
+  std::vector<DefinedCommon *> CommonSymbols;
   std::vector<SharedSymbol<ELFT> *> SharedCopySymbols;
   for (auto &P : Symtab.getSymbols()) {
     SymbolBody *Body = P.second->Body;
@@ -759,7 +770,7 @@ template <class ELFT> void Writer<ELFT>::createSections() {
       if (!U->isWeak() && !U->canKeepUndefined())
         reportUndefined<ELFT>(Symtab, *Body);
 
-    if (auto *C = dyn_cast<DefinedCommon<ELFT>>(Body))
+    if (auto *C = dyn_cast<DefinedCommon>(Body))
       CommonSymbols.push_back(C);
     if (auto *SC = dyn_cast<SharedSymbol<ELFT>>(Body))
       if (SC->NeedsCopy)
@@ -1038,20 +1049,19 @@ template <class ELFT> void Writer<ELFT>::assignAddresses() {
 
   // Update "_end" and "end" symbols so that they
   // point to the end of the data segment.
-  DefinedAbsolute<ELFT>::End.st_value = VA;
+  ElfSym<ELFT>::End.st_value = VA;
 
   // Update __rel_iplt_start/__rel_iplt_end to wrap the
   // rela.plt section.
   if (Out<ELFT>::RelaPlt) {
     uintX_t Start = Out<ELFT>::RelaPlt->getVA();
-    DefinedAbsolute<ELFT>::RelaIpltStart.st_value = Start;
-    DefinedAbsolute<ELFT>::RelaIpltEnd.st_value =
-        Start + Out<ELFT>::RelaPlt->getSize();
+    ElfSym<ELFT>::RelaIpltStart.st_value = Start;
+    ElfSym<ELFT>::RelaIpltEnd.st_value = Start + Out<ELFT>::RelaPlt->getSize();
   }
 
   // Update MIPS _gp absolute symbol so that it points to the static data.
   if (Config->EMachine == EM_MIPS)
-    DefinedAbsolute<ELFT>::MipsGp.st_value = getMipsGpAddr<ELFT>();
+    ElfSym<ELFT>::MipsGp.st_value = getMipsGpAddr<ELFT>();
 }
 
 // Returns the number of PHDR entries.

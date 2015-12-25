@@ -58,10 +58,10 @@ template <class ELFT> int SymbolBody::compare(SymbolBody *Other) {
   if (isCommon()) {
     if (!Other->isCommon())
       return -1;
-    auto *ThisC = cast<DefinedCommon<ELFT>>(this);
-    auto *OtherC = cast<DefinedCommon<ELFT>>(Other);
+    auto *ThisC = cast<DefinedCommon>(this);
+    auto *OtherC = cast<DefinedCommon>(Other);
     uintX_t Align = std::max(ThisC->MaxAlignment, OtherC->MaxAlignment);
-    if (ThisC->Sym.st_size >= OtherC->Sym.st_size) {
+    if (ThisC->Size >= OtherC->Size) {
       ThisC->MaxAlignment = Align;
       return 1;
     }
@@ -101,6 +101,13 @@ DefinedSynthetic<ELFT>::DefinedSynthetic(StringRef N, uintX_t Value,
     : Defined(SymbolBody::DefinedSyntheticKind, N, false, STV_DEFAULT, false),
       Value(Value), Section(Section) {}
 
+DefinedCommon::DefinedCommon(StringRef N, uint64_t Size, uint64_t Alignment,
+                             bool IsWeak, uint8_t Visibility)
+    : Defined(SymbolBody::DefinedCommonKind, N, IsWeak, Visibility, false) {
+  MaxAlignment = Alignment;
+  this->Size = Size;
+}
+
 std::unique_ptr<InputFile> Lazy::getMember() {
   MemoryBufferRef MBRef = File->getMember(&Sym);
 
@@ -113,9 +120,9 @@ std::unique_ptr<InputFile> Lazy::getMember() {
 }
 
 template <class ELFT> static void doInitSymbols() {
-  DefinedAbsolute<ELFT>::End.setBinding(STB_GLOBAL);
-  DefinedAbsolute<ELFT>::IgnoreUndef.setBinding(STB_WEAK);
-  DefinedAbsolute<ELFT>::IgnoreUndef.setVisibility(STV_HIDDEN);
+  ElfSym<ELFT>::End.setBinding(STB_GLOBAL);
+  ElfSym<ELFT>::IgnoreUndef.setBinding(STB_WEAK);
+  ElfSym<ELFT>::IgnoreUndef.setVisibility(STV_HIDDEN);
 }
 
 void lld::elf2::initSymbols() {

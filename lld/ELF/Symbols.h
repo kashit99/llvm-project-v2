@@ -57,10 +57,9 @@ public:
   enum Kind {
     DefinedFirst,
     DefinedRegularKind = DefinedFirst,
-    DefinedAbsoluteKind,
-    DefinedCommonKind,
     SharedKind,
     DefinedElfLast = SharedKind,
+    DefinedCommonKind,
     DefinedSyntheticKind,
     DefinedLast = DefinedSyntheticKind,
     UndefinedElfKind,
@@ -124,14 +123,22 @@ protected:
   const unsigned SymbolKind : 8;
   unsigned IsWeak : 1;
   unsigned Visibility : 2;
+
+  // True if the symbol was used for linking and thus need to be
+  // added to the output file's symbol table. It is usually true,
+  // but if it is a shared symbol that were not referenced by anyone,
+  // it can be false.
   unsigned IsUsedInRegularObj : 1;
+
+  // If true, the symbol is added to .dynsym symbol table.
   unsigned IsUsedInDynamicReloc : 1;
+
   unsigned IsTls : 1;
   StringRef Name;
   Symbol *Backref = nullptr;
 };
 
-// The base class for any defined symbols, including absolute symbols, etc.
+// The base class for any defined symbols.
 class Defined : public SymbolBody {
 public:
   Defined(Kind K, StringRef Name, bool IsWeak, uint8_t Visibility, bool IsTls);
@@ -155,59 +162,10 @@ public:
   }
 };
 
-template <class ELFT> class DefinedAbsolute : public DefinedElf<ELFT> {
-  typedef typename llvm::object::ELFFile<ELFT>::Elf_Sym Elf_Sym;
-
+class DefinedCommon : public Defined {
 public:
-  static Elf_Sym IgnoreUndef;
-
-  // The following symbols must be added early to reserve their places
-  // in symbol tables. The value of the symbols are set when all sections
-  // are finalized and their addresses are determined.
-
-  // The content for _end and end symbols.
-  static Elf_Sym End;
-
-  // The content for _gp symbol for MIPS target.
-  static Elf_Sym MipsGp;
-
-  // __rel_iplt_start/__rel_iplt_end for signaling
-  // where R_[*]_IRELATIVE relocations do live.
-  static Elf_Sym RelaIpltStart;
-  static Elf_Sym RelaIpltEnd;
-
-  DefinedAbsolute(StringRef N, const Elf_Sym &Sym)
-      : DefinedElf<ELFT>(SymbolBody::DefinedAbsoluteKind, N, Sym) {}
-
-  static bool classof(const SymbolBody *S) {
-    return S->kind() == SymbolBody::DefinedAbsoluteKind;
-  }
-};
-
-template <class ELFT>
-typename DefinedAbsolute<ELFT>::Elf_Sym DefinedAbsolute<ELFT>::IgnoreUndef;
-
-template <class ELFT>
-typename DefinedAbsolute<ELFT>::Elf_Sym DefinedAbsolute<ELFT>::End;
-
-template <class ELFT>
-typename DefinedAbsolute<ELFT>::Elf_Sym DefinedAbsolute<ELFT>::MipsGp;
-
-template <class ELFT>
-typename DefinedAbsolute<ELFT>::Elf_Sym DefinedAbsolute<ELFT>::RelaIpltStart;
-
-template <class ELFT>
-typename DefinedAbsolute<ELFT>::Elf_Sym DefinedAbsolute<ELFT>::RelaIpltEnd;
-
-template <class ELFT> class DefinedCommon : public DefinedElf<ELFT> {
-  typedef typename llvm::object::ELFFile<ELFT>::Elf_Sym Elf_Sym;
-
-public:
-  typedef typename llvm::object::ELFFile<ELFT>::uintX_t uintX_t;
-  DefinedCommon(StringRef N, const Elf_Sym &Sym)
-      : DefinedElf<ELFT>(SymbolBody::DefinedCommonKind, N, Sym) {
-    MaxAlignment = Sym.st_value;
-  }
+  DefinedCommon(StringRef N, uint64_t Size, uint64_t Alignment, bool IsWeak,
+                uint8_t Visibility);
 
   static bool classof(const SymbolBody *S) {
     return S->kind() == SymbolBody::DefinedCommonKind;
@@ -215,10 +173,12 @@ public:
 
   // The output offset of this common symbol in the output bss. Computed by the
   // writer.
-  uintX_t OffsetInBSS;
+  uint64_t OffsetInBSS;
 
   // The maximum alignment we have seen for this symbol.
-  uintX_t MaxAlignment;
+  uint64_t MaxAlignment;
+
+  uint64_t Size;
 };
 
 // Regular defined symbols read from object file symbol tables.
@@ -227,7 +187,7 @@ template <class ELFT> class DefinedRegular : public DefinedElf<ELFT> {
 
 public:
   DefinedRegular(StringRef N, const Elf_Sym &Sym,
-                 InputSectionBase<ELFT> &Section)
+                 InputSectionBase<ELFT> *Section)
       : DefinedElf<ELFT>(SymbolBody::DefinedRegularKind, N, Sym),
         Section(Section) {}
 
@@ -235,7 +195,8 @@ public:
     return S->kind() == SymbolBody::DefinedRegularKind;
   }
 
-  InputSectionBase<ELFT> &Section;
+  // If this is null, the symbol is absolute.
+  InputSectionBase<ELFT> *Section;
 };
 
 // DefinedSynthetic is a class to represent linker-generated ELF symbols.
@@ -330,6 +291,35 @@ private:
   ArchiveFile *File;
   const llvm::object::Archive::Symbol Sym;
 };
+
+// Some linker-generated symbols need to be created as
+// DefinedRegular symbols, so they need Elf_Sym symbols.
+// Here we allocate such Elf_Sym symbols statically.
+template <class ELFT> struct ElfSym {
+  typedef typename llvm::object::ELFFile<ELFT>::Elf_Sym Elf_Sym;
+
+  // Used to represent an undefined symbol which we don't want
+  // to add to the output file's symbol table.
+  static Elf_Sym IgnoreUndef;
+
+  // The content for _end and end symbols.
+  static Elf_Sym End;
+
+  // The content for _gp symbol for MIPS target.
+  static Elf_Sym MipsGp;
+
+  // __rel_iplt_start/__rel_iplt_end for signaling
+  // where R_[*]_IRELATIVE relocations do live.
+  static Elf_Sym RelaIpltStart;
+  static Elf_Sym RelaIpltEnd;
+};
+
+template <class ELFT> typename ElfSym<ELFT>::Elf_Sym ElfSym<ELFT>::IgnoreUndef;
+template <class ELFT> typename ElfSym<ELFT>::Elf_Sym ElfSym<ELFT>::End;
+template <class ELFT> typename ElfSym<ELFT>::Elf_Sym ElfSym<ELFT>::MipsGp;
+template <class ELFT>
+typename ElfSym<ELFT>::Elf_Sym ElfSym<ELFT>::RelaIpltStart;
+template <class ELFT> typename ElfSym<ELFT>::Elf_Sym ElfSym<ELFT>::RelaIpltEnd;
 
 } // namespace elf2
 } // namespace lld

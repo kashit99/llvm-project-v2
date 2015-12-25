@@ -78,6 +78,7 @@ void SymbolTable<ELFT>::addFile(std::unique_ptr<InputFile> File) {
     resolve(B);
 }
 
+// Add an undefined symbol.
 template <class ELFT>
 SymbolBody *SymbolTable<ELFT>::addUndefined(StringRef Name) {
   auto *Sym = new (Alloc) Undefined(Name, false, STV_DEFAULT, false);
@@ -85,6 +86,8 @@ SymbolBody *SymbolTable<ELFT>::addUndefined(StringRef Name) {
   return Sym;
 }
 
+// Add an undefined symbol. Unlike addUndefined, that symbol
+// doesn't have to be resolved, thus "opt" (optional).
 template <class ELFT>
 SymbolBody *SymbolTable<ELFT>::addUndefinedOpt(StringRef Name) {
   auto *Sym = new (Alloc) Undefined(Name, false, STV_HIDDEN, true);
@@ -95,7 +98,7 @@ SymbolBody *SymbolTable<ELFT>::addUndefinedOpt(StringRef Name) {
 template <class ELFT>
 void SymbolTable<ELFT>::addAbsolute(StringRef Name,
                                     typename ELFFile<ELFT>::Elf_Sym &ESym) {
-  resolve(new (Alloc) DefinedAbsolute<ELFT>(Name, ESym));
+  resolve(new (Alloc) DefinedRegular<ELFT>(Name, ESym, nullptr));
 }
 
 template <class ELFT>
@@ -109,7 +112,7 @@ void SymbolTable<ELFT>::addSynthetic(StringRef Name,
 template <class ELFT>
 SymbolBody *SymbolTable<ELFT>::addIgnored(StringRef Name) {
   auto *Sym = new (Alloc)
-      DefinedAbsolute<ELFT>(Name, DefinedAbsolute<ELFT>::IgnoreUndef);
+      DefinedRegular<ELFT>(Name, ElfSym<ELFT>::IgnoreUndef, nullptr);
   resolve(Sym);
   return Sym;
 }

@@ -93,7 +93,7 @@ template <class ELFT> void lld::elf2::markLive(SymbolTable<ELFT> *Symtab) {
   auto MarkSymbol = [&](SymbolBody *Sym) {
     if (Sym)
       if (auto *D = dyn_cast<DefinedRegular<ELFT>>(Sym->repl()))
-        Enqueue(&D->Section);
+        Enqueue(D->Section);
   };
 
   // Add GC root symbols.
@@ -114,18 +114,11 @@ template <class ELFT> void lld::elf2::markLive(SymbolTable<ELFT> *Symtab) {
   }
 
   // Preserve special sections.
-  for (const std::unique_ptr<ObjectFile<ELFT>> &F : Symtab->getObjectFiles()) {
-    for (InputSectionBase<ELFT> *Sec : F->getSections()) {
-      if (!Sec || Sec == &InputSection<ELFT>::Discarded)
-        continue;
-      if (isReserved(Sec))
-        Enqueue(Sec);
-      else if (Sec->getSectionName() == ".eh_frame")
-        // .eh_frame is special. It should be marked live so that we don't
-        // drop it, but it should not keep any section alive.
-        Sec->Live = true;
-    }
-  }
+  for (const std::unique_ptr<ObjectFile<ELFT>> &F : Symtab->getObjectFiles())
+    for (InputSectionBase<ELFT> *Sec : F->getSections())
+      if (Sec && Sec != &InputSection<ELFT>::Discarded)
+        if (isReserved(Sec))
+          Enqueue(Sec);
 
   // Mark all reachable sections.
   while (!Q.empty())

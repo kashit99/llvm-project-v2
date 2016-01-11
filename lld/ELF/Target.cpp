@@ -122,7 +122,6 @@ private:
 class X86_64TargetInfo final : public TargetInfo {
 public:
   X86_64TargetInfo();
-  unsigned getPltRefReloc(unsigned Type) const override;
   bool isTlsDynReloc(unsigned Type, const SymbolBody &S) const override;
   void writeGotPltHeaderEntries(uint8_t *Buf) const override;
   void writeGotPltEntry(uint8_t *Buf, uint64_t Plt) const override;
@@ -139,7 +138,7 @@ public:
                    uint8_t *PairedLoc = nullptr) const override;
   bool isRelRelative(uint32_t Type) const override;
   bool isTlsOptimized(unsigned Type, const SymbolBody *S) const override;
-  bool isSizeDynReloc(uint32_t Type, const SymbolBody &S) const override;
+  bool isSizeReloc(uint32_t Type) const override;
   unsigned relocateTlsOptimize(uint8_t *Loc, uint8_t *BufEnd, uint32_t Type,
                                uint64_t P, uint64_t SA,
                                const SymbolBody &S) const override;
@@ -176,7 +175,6 @@ class AArch64TargetInfo final : public TargetInfo {
 public:
   AArch64TargetInfo();
   unsigned getDynReloc(unsigned Type) const override;
-  unsigned getPltRefReloc(unsigned Type) const override;
   void writeGotPltEntry(uint8_t *Buf, uint64_t Plt) const override;
   void writePltZeroEntry(uint8_t *Buf, uint64_t GotEntryAddr,
                          uint64_t PltEntryAddr) const override;
@@ -265,13 +263,9 @@ bool TargetInfo::needsCopyRel(uint32_t Type, const SymbolBody &S) const {
 
 bool TargetInfo::isGotRelative(uint32_t Type) const { return false; }
 
-unsigned TargetInfo::getPltRefReloc(unsigned Type) const { return PCRelReloc; }
-
 bool TargetInfo::isRelRelative(uint32_t Type) const { return true; }
 
-bool TargetInfo::isSizeDynReloc(uint32_t Type, const SymbolBody &S) const {
-  return false;
-}
+bool TargetInfo::isSizeReloc(uint32_t Type) const { return false; }
 
 unsigned TargetInfo::relocateTlsOptimize(uint8_t *Loc, uint8_t *BufEnd,
                                          uint32_t Type, uint64_t P, uint64_t SA,
@@ -657,12 +651,6 @@ bool X86_64TargetInfo::isTlsDynReloc(unsigned Type, const SymbolBody &S) const {
   return Type == R_X86_64_GOTTPOFF || Type == R_X86_64_TLSGD;
 }
 
-unsigned X86_64TargetInfo::getPltRefReloc(unsigned Type) const {
-  if (Type == R_X86_64_PLT32)
-    return R_X86_64_PC32;
-  return Type;
-}
-
 bool X86_64TargetInfo::relocNeedsPlt(uint32_t Type, const SymbolBody &S) const {
   if (needsCopyRel(Type, S))
     return false;
@@ -716,16 +704,12 @@ bool X86_64TargetInfo::isRelRelative(uint32_t Type) const {
   case R_X86_64_PC32:
   case R_X86_64_PC64:
   case R_X86_64_PLT32:
-  case R_X86_64_SIZE32:
-  case R_X86_64_SIZE64:
     return true;
   }
 }
 
-bool X86_64TargetInfo::isSizeDynReloc(uint32_t Type,
-                                      const SymbolBody &S) const {
-  return (Type == R_X86_64_SIZE32 || Type == R_X86_64_SIZE64) &&
-         canBePreempted(&S, false);
+bool X86_64TargetInfo::isSizeReloc(uint32_t Type) const {
+  return Type == R_X86_64_SIZE32 || Type == R_X86_64_SIZE64;
 }
 
 bool X86_64TargetInfo::isTlsOptimized(unsigned Type,
@@ -1142,6 +1126,7 @@ void PPC64TargetInfo::relocateOne(uint8_t *Loc, uint8_t *BufEnd, uint32_t Type,
 
 AArch64TargetInfo::AArch64TargetInfo() {
   CopyReloc = R_AARCH64_COPY;
+  IRelativeReloc = R_AARCH64_IRELATIVE;
   GotReloc = R_AARCH64_GLOB_DAT;
   PltReloc = R_AARCH64_JUMP_SLOT;
   LazyRelocations = true;
@@ -1156,8 +1141,6 @@ unsigned AArch64TargetInfo::getDynReloc(unsigned Type) const {
   error("Relocation " + S + " cannot be used when making a shared object; "
                             "recompile with -fPIC.");
 }
-
-unsigned AArch64TargetInfo::getPltRefReloc(unsigned Type) const { return Type; }
 
 void AArch64TargetInfo::writeGotPltEntry(uint8_t *Buf, uint64_t Plt) const {
   write64le(Buf, Out<ELF64LE>::Plt->getVA());
@@ -1234,11 +1217,15 @@ bool AArch64TargetInfo::relocNeedsGot(uint32_t Type,
 
 bool AArch64TargetInfo::relocNeedsPlt(uint32_t Type,
                                       const SymbolBody &S) const {
+  if (isGnuIFunc<ELF64LE>(S))
+    return true;
   switch (Type) {
   default:
     return false;
   case R_AARCH64_CALL26:
+  case R_AARCH64_CONDBR19:
   case R_AARCH64_JUMP26:
+  case R_AARCH64_TSTBR14:
     return canBePreempted(&S, true);
   }
 }
@@ -1304,6 +1291,12 @@ void AArch64TargetInfo::relocateOne(uint8_t *Loc, uint8_t *BufEnd,
     or32le(Loc, (X & 0x0FFFFFFC) >> 2);
     break;
   }
+  case R_AARCH64_CONDBR19: {
+    uint64_t X = SA - P;
+    checkInt<21>(X, Type);
+    or32le(Loc, (X & 0x1FFFFC) << 3);
+    break;
+  }
   case R_AARCH64_LD64_GOT_LO12_NC:
     checkAlignment<8>(SA, Type);
     or32le(Loc, (SA & 0xFF8) << 7);
@@ -1328,6 +1321,12 @@ void AArch64TargetInfo::relocateOne(uint8_t *Loc, uint8_t *BufEnd,
   case R_AARCH64_PREL64:
     write64le(Loc, SA - P);
     break;
+  case R_AARCH64_TSTBR14: {
+    uint64_t X = SA - P;
+    checkInt<16>(X, Type);
+    or32le(Loc, (X & 0xFFFC) << 3);
+    break;
+  }
   default:
     error("unrecognized reloc " + Twine(Type));
   }

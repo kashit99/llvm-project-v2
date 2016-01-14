@@ -121,8 +121,13 @@ extern "C" int dirfd(void *dirp);
 extern "C" int mallopt(int param, int value);
 #endif
 extern __sanitizer_FILE *stdout, *stderr;
+#if !SANITIZER_FREEBSD && !SANITIZER_MAC
 const int PTHREAD_MUTEX_RECURSIVE = 1;
 const int PTHREAD_MUTEX_RECURSIVE_NP = 1;
+#else
+const int PTHREAD_MUTEX_RECURSIVE = 2;
+const int PTHREAD_MUTEX_RECURSIVE_NP = 2;
+#endif
 const int EINVAL = 22;
 const int EBUSY = 16;
 const int EOWNERDEAD = 130;
@@ -281,9 +286,11 @@ ScopedInterceptor::ScopedInterceptor(ThreadState *thr, const char *fname,
     thr_->in_ignored_lib = true;
     ThreadIgnoreBegin(thr_, pc_);
   }
+  if (flags()->ignore_interceptors_accesses) ThreadIgnoreBegin(thr_, pc_);
 }
 
 ScopedInterceptor::~ScopedInterceptor() {
+  if (flags()->ignore_interceptors_accesses) ThreadIgnoreEnd(thr_, pc_);
   if (in_ignored_lib_) {
     thr_->in_ignored_lib = false;
     ThreadIgnoreEnd(thr_, pc_);
@@ -296,6 +303,7 @@ ScopedInterceptor::~ScopedInterceptor() {
 }
 
 void ScopedInterceptor::UserCallbackStart() {
+  if (flags()->ignore_interceptors_accesses) ThreadIgnoreEnd(thr_, pc_);
   if (in_ignored_lib_) {
     thr_->in_ignored_lib = false;
     ThreadIgnoreEnd(thr_, pc_);
@@ -307,6 +315,7 @@ void ScopedInterceptor::UserCallbackEnd() {
     thr_->in_ignored_lib = true;
     ThreadIgnoreBegin(thr_, pc_);
   }
+  if (flags()->ignore_interceptors_accesses) ThreadIgnoreBegin(thr_, pc_);
 }
 
 #define TSAN_INTERCEPT(func) INTERCEPT_FUNCTION(func)
@@ -2407,6 +2416,12 @@ static void HandleRecvmsg(ThreadState *thr, uptr pc,
   } else {                                                                     \
     *begin = *end = 0;                                                         \
   }
+
+#define COMMON_INTERCEPTOR_USER_CALLBACK_START() \
+  SCOPED_TSAN_INTERCEPTOR_USER_CALLBACK_START()
+
+#define COMMON_INTERCEPTOR_USER_CALLBACK_END() \
+  SCOPED_TSAN_INTERCEPTOR_USER_CALLBACK_END()
 
 #include "sanitizer_common/sanitizer_common_interceptors.inc"
 

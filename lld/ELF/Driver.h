@@ -14,6 +14,7 @@
 #include "lld/Core/LLVM.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Option/ArgList.h"
+#include "llvm/Support/raw_ostream.h"
 
 namespace lld {
 namespace elf2 {
@@ -21,12 +22,13 @@ namespace elf2 {
 extern class LinkerDriver *Driver;
 
 // Entry point of the ELF linker. Returns true on success.
-bool link(ArrayRef<const char *> Args);
+bool link(ArrayRef<const char *> Args, llvm::raw_ostream &Error = llvm::errs());
 
 class LinkerDriver {
 public:
   void main(ArrayRef<const char *> Args);
   void addFile(StringRef Path);
+  void addLibrary(StringRef Name);
 
 private:
   void readConfigs(llvm::opt::InputArgList &Args);

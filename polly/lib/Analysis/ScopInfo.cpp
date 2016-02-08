@@ -552,6 +552,7 @@ MemoryAccess::createBasicAccessMap(ScopStmt *Statement) {
 // constraints is the set of constraints that needs to be assumed to ensure such
 // statement instances are never executed.
 void MemoryAccess::assumeNoOutOfBound() {
+  auto *SAI = getScopArrayInfo();
   isl_space *Space = isl_space_range(getOriginalAccessRelationSpace());
   isl_set *Outside = isl_set_empty(isl_space_copy(Space));
   for (int i = 1, Size = isl_space_dim(Space, isl_dim_set); i < Size; ++i) {
@@ -563,7 +564,7 @@ void MemoryAccess::assumeNoOutOfBound() {
     isl_set *DimOutside;
 
     DimOutside = isl_pw_aff_lt_set(isl_pw_aff_copy(Var), Zero);
-    isl_pw_aff *SizeE = getScopArrayInfo()->getDimensionSizePw(i);
+    isl_pw_aff *SizeE = SAI->getDimensionSizePw(i);
     SizeE = isl_pw_aff_add_dims(SizeE, isl_dim_in,
                                 isl_space_dim(Space, isl_dim_set));
     SizeE = isl_pw_aff_set_tuple_id(SizeE, isl_dim_in,
@@ -611,11 +612,12 @@ void MemoryAccess::computeBoundsOnAccessRelation(unsigned ElementSize) {
 
   bool isWrapping = Range.isSignWrappedSet();
   unsigned BW = Range.getBitWidth();
+  const auto One = APInt(BW, 1);
   const auto LB = isWrapping ? Range.getLower() : Range.getSignedMin();
-  const auto UB = isWrapping ? Range.getUpper() : Range.getSignedMax();
+  const auto UB = isWrapping ? (Range.getUpper() - One) : Range.getSignedMax();
 
   auto Min = LB.sdiv(APInt(BW, ElementSize));
-  auto Max = (UB - APInt(BW, 1)).sdiv(APInt(BW, ElementSize));
+  auto Max = UB.sdiv(APInt(BW, ElementSize)) + One;
 
   isl_set *AccessRange = isl_map_range(isl_map_copy(AccessRelation));
   AccessRange =
@@ -940,6 +942,7 @@ void ScopStmt::restrictDomain(__isl_take isl_set *NewDomain) {
 }
 
 void ScopStmt::buildAccessRelations() {
+  Scop &S = *getParent();
   for (MemoryAccess *Access : MemAccs) {
     Type *ElementType = Access->getAccessValue()->getType();
 
@@ -953,9 +956,8 @@ void ScopStmt::buildAccessRelations() {
     else
       Ty = ScopArrayInfo::MK_Array;
 
-    const ScopArrayInfo *SAI = getParent()->getOrCreateScopArrayInfo(
-        Access->getBaseAddr(), ElementType, Access->Sizes, Ty);
-
+    auto *SAI = S.getOrCreateScopArrayInfo(Access->getBaseAddr(), ElementType,
+                                           Access->Sizes, Ty);
     Access->buildAccessRelation(SAI);
   }
 }
@@ -1825,21 +1827,22 @@ void Scop::addUserContext() {
 }
 
 void Scop::buildInvariantEquivalenceClasses() {
-  DenseMap<const SCEV *, LoadInst *> EquivClasses;
+  DenseMap<std::pair<const SCEV *, Type *>, LoadInst *> EquivClasses;
 
   const InvariantLoadsSetTy &RIL = *SD.getRequiredInvariantLoads(&getRegion());
   for (LoadInst *LInst : RIL) {
     const SCEV *PointerSCEV = SE->getSCEV(LInst->getPointerOperand());
 
-    LoadInst *&ClassRep = EquivClasses[PointerSCEV];
+    Type *Ty = LInst->getType();
+    LoadInst *&ClassRep = EquivClasses[std::make_pair(PointerSCEV, Ty)];
     if (ClassRep) {
       InvEquivClassVMap[LInst] = ClassRep;
       continue;
     }
 
     ClassRep = LInst;
-    InvariantEquivClasses.emplace_back(PointerSCEV, MemoryAccessList(),
-                                       nullptr);
+    InvariantEquivClasses.emplace_back(PointerSCEV, MemoryAccessList(), nullptr,
+                                       Ty);
   }
 }
 
@@ -2850,9 +2853,10 @@ const InvariantEquivClassTy *Scop::lookupInvariantEquivClass(Value *Val) const {
   if (Value *Rep = InvEquivClassVMap.lookup(LInst))
     LInst = cast<LoadInst>(Rep);
 
+  Type *Ty = LInst->getType();
   const SCEV *PointerSCEV = SE->getSCEV(LInst->getPointerOperand());
   for (auto &IAClass : InvariantEquivClasses)
-    if (PointerSCEV == std::get<0>(IAClass))
+    if (PointerSCEV == std::get<0>(IAClass) && Ty == std::get<3>(IAClass))
       return &IAClass;
 
   return nullptr;
@@ -2895,11 +2899,12 @@ void Scop::addInvariantLoads(ScopStmt &Stmt, MemoryAccessList &InvMAs) {
     // MA and if found consolidate them. Otherwise create a new equivalence
     // class at the end of InvariantEquivClasses.
     LoadInst *LInst = cast<LoadInst>(MA->getAccessInstruction());
+    Type *Ty = LInst->getType();
     const SCEV *PointerSCEV = SE->getSCEV(LInst->getPointerOperand());
 
     bool Consolidated = false;
     for (auto &IAClass : InvariantEquivClasses) {
-      if (PointerSCEV != std::get<0>(IAClass))
+      if (PointerSCEV != std::get<0>(IAClass) || Ty != std::get<3>(IAClass))
         continue;
 
       Consolidated = true;
@@ -2924,7 +2929,7 @@ void Scop::addInvariantLoads(ScopStmt &Stmt, MemoryAccessList &InvMAs) {
     // If we did not consolidate MA, thus did not find an equivalence class
     // for it, we create a new one.
     InvariantEquivClasses.emplace_back(PointerSCEV, MemoryAccessList{MA},
-                                       isl_set_copy(DomainCtx));
+                                       isl_set_copy(DomainCtx), Ty);
   }
 
   isl_set_free(DomainCtx);
@@ -2968,15 +2973,6 @@ bool Scop::isHoistableAccess(MemoryAccess *Access,
     return false;
 
   isl_map *AccessRelation = Access->getAccessRelation();
-
-  // Invariant load hoisting of memory accesses with non-canonical element
-  // types lacks support for equivalence classes that contain elements of
-  // different width/size. Hence, do not yet consider loads with non-canonical
-  // element size for load hoisting.
-  if (!isl_map_is_single_valued(AccessRelation)) {
-    isl_map_free(AccessRelation);
-    return false;
-  }
 
   // Skip accesses that have an empty access relation. These can be caused
   // by multiple offsets with a type cast in-between that cause the overall

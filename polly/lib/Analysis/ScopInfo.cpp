@@ -617,6 +617,7 @@ void MemoryAccess::assumeNoOutOfBound() {
 
 void MemoryAccess::buildMemIntrinsicAccessRelation() {
   auto MAI = MemAccInst(getAccessInstruction());
+  (void)MAI;
   assert(MAI.isMemIntrinsic());
   assert(Subscripts.size() == 2 && Sizes.size() == 0);
 
@@ -3925,7 +3926,7 @@ bool ScopInfo::buildAccessMultiDimParam(
         cast<SCEVConstant>(Sizes.back())->getAPInt().getSExtValue();
     Sizes.pop_back();
     if (ElementSize != DelinearizedSize)
-      scop->invalidate(DELINEARIZATION, Inst.getDebugLoc());
+      scop->invalidate(DELINEARIZATION, Inst->getDebugLoc());
 
     addArrayAccess(Inst, Type, BasePointer->getValue(), ElementType, true,
                    AccItr->second.DelinearizedSubscripts, Sizes, Val);
@@ -4217,7 +4218,7 @@ void ScopInfo::addArrayAccess(MemAccInst MemAccInst,
                               ArrayRef<const SCEV *> Sizes,
                               Value *AccessValue) {
   ArrayBasePointers.insert(BaseAddress);
-  addMemoryAccess(MemAccInst.getParent(), MemAccInst, AccType, BaseAddress,
+  addMemoryAccess(MemAccInst->getParent(), MemAccInst, AccType, BaseAddress,
                   ElementType, IsAffine, AccessValue, Subscripts, Sizes,
                   ScopArrayInfo::MK_Array);
 }

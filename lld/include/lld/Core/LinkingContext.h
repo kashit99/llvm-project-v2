@@ -15,7 +15,6 @@
 #include "lld/Core/Node.h"
 #include "lld/Core/Parallel.h"
 #include "lld/Core/Reference.h"
-#include "lld/Core/range.h"
 #include "lld/Core/Reader.h"
 #include "llvm/Support/ErrorOr.h"
 #include "llvm/Support/raw_ostream.h"
@@ -33,8 +32,7 @@ class SharedLibraryFile;
 ///
 /// The base class LinkingContext contains the options needed by core linking.
 /// Subclasses of LinkingContext have additional options needed by specific
-/// Writers. For example, ELFLinkingContext has methods that supplies
-/// options to the ELF Writer and ELF Passes.
+/// Writers.
 class LinkingContext {
 public:
   /// \brief The types of output file that the linker creates.
@@ -242,7 +240,7 @@ public:
 
   /// Return the list of undefined symbols that are specified in the
   /// linker command line, using the -u option.
-  range<const StringRef *> initialUndefinedSymbols() const {
+  ArrayRef<StringRef> initialUndefinedSymbols() const {
     return _initialUndefinedSymbols;
   }
 

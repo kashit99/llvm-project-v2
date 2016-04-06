@@ -21,13 +21,14 @@
 #include "clang/Basic/TargetCXXABI.h"
 #include "clang/Basic/TargetOptions.h"
 #include "clang/Basic/VersionTuple.h"
-#include "llvm/ADT/IntrusiveRefCntPtr.h"
 #include "llvm/ADT/APInt.h"
+#include "llvm/ADT/IntrusiveRefCntPtr.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/ADT/Triple.h"
+#include "llvm/IR/DataLayout.h"
 #include "llvm/Support/DataTypes.h"
 #include <cassert>
 #include <string>
@@ -74,8 +75,7 @@ protected:
   unsigned short MaxVectorAlign;
   unsigned short MaxTLSAlign;
   unsigned short SimdDefaultAlign;
-  const char *DataLayoutString;
-  const char *UserLabelPrefix;
+  std::unique_ptr<llvm::DataLayout> DataLayout;
   const char *MCountName;
   const llvm::fltSemantics *HalfFormat, *FloatFormat, *DoubleFormat,
     *LongDoubleFormat;
@@ -94,6 +94,10 @@ protected:
 
   // TargetInfo Constructor.  Default initializes all fields.
   TargetInfo(const llvm::Triple &T);
+
+  void resetDataLayout(StringRef DL) {
+    DataLayout.reset(new llvm::DataLayout(DL));
+  }
 
 public:
   /// \brief Construct a target for the given options.
@@ -201,6 +205,9 @@ protected:
   /// that follows it, `bar', `bar' will be aligned as the type of the
   /// zero-length bitfield.
   unsigned UseZeroLengthBitfieldAlignment : 1;
+
+  /// \brief  Whether explicit bit field alignment attributes are honored.
+  unsigned UseExplicitBitFieldAlignment : 1;
 
   /// If non-zero, specifies a fixed alignment value for bitfields that follow
   /// zero length bitfield, regardless of the zero length bitfield type.
@@ -407,28 +414,35 @@ public:
   /// types for the given target.
   unsigned getSimdDefaultAlign() const { return SimdDefaultAlign; }
 
+  /// Return the alignment (in bits) of the thrown exception object. This is
+  /// only meaningful for targets that allocate C++ exceptions in a system
+  /// runtime, such as those using the Itanium C++ ABI.
+  virtual unsigned getExnObjectAlignment() const {
+    // Itanium says that an _Unwind_Exception has to be "double-word"
+    // aligned (and thus the end of it is also so-aligned), meaning 16
+    // bytes.  Of course, that was written for the actual Itanium,
+    // which is a 64-bit platform.  Classically, the ABI doesn't really
+    // specify the alignment on other platforms, but in practice
+    // libUnwind declares the struct with __attribute__((aligned)), so
+    // we assume that alignment here.  (It's generally 16 bytes, but
+    // some targets overwrite it.)
+    return getDefaultAlignForAttributeAligned();
+  }
+
   /// \brief Return the size of intmax_t and uintmax_t for this target, in bits.
   unsigned getIntMaxTWidth() const {
     return getTypeWidth(IntMaxType);
   }
 
   // Return the size of unwind_word for this target.
-  unsigned getUnwindWordWidth() const { return getPointerWidth(0); }
+  virtual unsigned getUnwindWordWidth() const { return getPointerWidth(0); }
 
   /// \brief Return the "preferred" register width on this target.
-  unsigned getRegisterWidth() const {
+  virtual unsigned getRegisterWidth() const {
     // Currently we assume the register width on the target matches the pointer
     // width, we can introduce a new variable for this if/when some target wants
     // it.
     return PointerWidth;
-  }
-
-  /// \brief Returns the default value of the __USER_LABEL_PREFIX__ macro,
-  /// which is the prefix given to user symbols by default.
-  ///
-  /// On most platforms this is "_", but it is "" on some, and "." on others.
-  const char *getUserLabelPrefix() const {
-    return UserLabelPrefix;
   }
 
   /// \brief Returns the name of the mcount instrumentation function.
@@ -464,6 +478,12 @@ public:
   /// a zero length bitfield.
   unsigned getZeroLengthBitfieldBoundary() const {
     return ZeroLengthBitfieldBoundary;
+  }
+
+  /// \brief Check whether explicit bitfield alignment attributes should be
+  //  honored, as in "__attribute__((aligned(2))) int b : 1;".
+  bool useExplicitBitFieldAlignment() const {
+    return UseExplicitBitFieldAlignment;
   }
 
   /// \brief Check whether this target support '\#pragma options align=mac68k'.
@@ -644,6 +664,19 @@ public:
     }
   };
 
+  /// \brief Validate register name used for global register variables.
+  ///
+  /// This function returns true if the register passed in RegName can be used
+  /// for global register variables on this target. In addition, it returns
+  /// true in HasSizeMismatch if the size of the register doesn't match the
+  /// variable size passed in RegSize.
+  virtual bool validateGlobalRegisterVariable(StringRef RegName,
+                                              unsigned RegSize,
+                                              bool &HasSizeMismatch) const {
+    HasSizeMismatch = false;
+    return true;
+  }
+
   // validateOutputConstraint, validateInputConstraint - Checks that
   // a constraint is valid and provides information about it.
   // FIXME: These should return a real error instead of just true/false.
@@ -699,9 +732,9 @@ public:
     return Triple;
   }
 
-  const char *getDataLayoutString() const {
-    assert(DataLayoutString && "Uninitialized DataLayoutString!");
-    return DataLayoutString;
+  const llvm::DataLayout &getDataLayout() const {
+    assert(DataLayout && "Uninitialized DataLayout!");
+    return *DataLayout;
   }
 
   struct GCCRegAlias {
@@ -855,6 +888,8 @@ public:
 
   /// \brief Return the register number that __builtin_eh_return_regno would
   /// return with the specified argument.
+  /// This corresponds with TargetLowering's getExceptionPointerRegister
+  /// and getExceptionSelectorRegister in the backend.
   virtual int getEHDataRegisterNumber(unsigned RegNo) const {
     return -1;
   }
@@ -917,6 +952,9 @@ public:
   virtual bool hasSjLjLowering() const {
     return false;
   }
+
+  /// \brief Whether target allows to overalign ABI-specified prefered alignment
+  virtual bool allowsLargerPreferedTypeAlignment() const { return true; }
 
 protected:
   virtual uint64_t getPointerWidthV(unsigned AddrSpace) const {

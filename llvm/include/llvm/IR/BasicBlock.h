@@ -50,7 +50,7 @@ struct SymbolTableListSentinelTraits<BasicBlock>
 /// modifying a program. However, the verifier will ensure that basic blocks
 /// are "well formed".
 class BasicBlock : public Value, // Basic blocks are data objects also
-                   public ilist_node<BasicBlock> {
+                   public ilist_node_with_parent<BasicBlock, Function> {
   friend class BlockAddress;
 public:
   typedef SymbolTableList<Instruction> InstListType;
@@ -110,6 +110,14 @@ public:
   /// null if the block is not well formed.
   TerminatorInst *getTerminator();
   const TerminatorInst *getTerminator() const;
+
+  /// \brief Returns the call instruction calling @llvm.experimental.deoptimize
+  /// prior to the terminating return instruction of this basic block, if such a
+  /// call is present.  Otherwise, returns null.
+  CallInst *getTerminatingDeoptimizeCall();
+  const CallInst *getTerminatingDeoptimizeCall() const {
+    return const_cast<BasicBlock *>(this)->getTerminatingDeoptimizeCall();
+  }
 
   /// \brief Returns the call instruction marked 'musttail' prior to the
   /// terminating return instruction of this basic block, if such a call is

@@ -25,15 +25,19 @@
 ; CHECK: debug_info contents
 ; 0x74 is DW_OP_breg4, showing that the parameter is accessed indirectly
 ; (with a zero offset) from the register parameter
-; CHECK: DW_AT_location{{.*}}(<0x0{{.}}> 74 00
+; CHECK: DW_AT_location [DW_FORM_data4]	([[F_LOC:0x[0-9]*]])
 ; CHECK-NOT: DW_TAG
 ; CHECK: DW_AT_name{{.*}} = "f"
-
+;
 ; CHECK: DW_AT_location{{.*}}([[G_LOC:0x[0-9]*]])
 ; CHECK-NOT: DW_TAG
 ; CHECK: DW_AT_name{{.*}} = "g"
+;
 ; CHECK: debug_loc contents
-; CHECK-NEXT: [[G_LOC]]: Beginning
+; CHECK:         [[F_LOC]]: Beginning
+; CHECK-NEXT:               Ending
+; CHECK-NEXT: Location description: 74 00
+; CHECK:         [[G_LOC]]: Beginning
 ; CHECK-NEXT:               Ending
 ; CHECK-NEXT: Location description: 74 00
 
@@ -82,7 +86,7 @@ attributes #2 = { "less-precise-fpmad"="false" "no-frame-pointer-elim"="true" "n
 !llvm.dbg.cu = !{!0}
 !llvm.module.flags = !{!21, !33}
 
-!0 = distinct !DICompileUnit(language: DW_LANG_C_plus_plus, producer: "clang version 3.4 ", isOptimized: false, emissionKind: 1, file: !1, enums: !2, retainedTypes: !2, subprograms: !3, globals: !2, imports: !2)
+!0 = distinct !DICompileUnit(language: DW_LANG_C_plus_plus, producer: "clang version 3.4 ", isOptimized: false, emissionKind: FullDebug, file: !1, enums: !2, retainedTypes: !2, subprograms: !3, globals: !2, imports: !2)
 !1 = !DIFile(filename: "pass.cpp", directory: "/tmp")
 !2 = !{}
 !3 = !{!4, !17}

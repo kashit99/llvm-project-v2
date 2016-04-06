@@ -35,7 +35,7 @@ attributes #1 = { nounwind readnone }
 !llvm.module.flags = !{!10, !11}
 !llvm.ident = !{!12}
 
-!0 = distinct !DICompileUnit(language: DW_LANG_C_plus_plus, producer: "clang version 3.5.0 ", isOptimized: false, emissionKind: 1, file: !1, enums: !2, retainedTypes: !2, subprograms: !3, globals: !2, imports: !2)
+!0 = distinct !DICompileUnit(language: DW_LANG_C_plus_plus, producer: "clang version 3.5.0 ", isOptimized: false, emissionKind: FullDebug, file: !1, enums: !2, retainedTypes: !2, subprograms: !3, globals: !2, imports: !2)
 !1 = !DIFile(filename: "restrict.c", directory: "/tmp/dbginfo")
 !2 = !{}
 !3 = !{!4}
@@ -44,7 +44,7 @@ attributes #1 = { nounwind readnone }
 !6 = !DISubroutineType(types: !7)
 !7 = !{null, !8}
 !8 = !DIDerivedType(tag: DW_TAG_restrict_type, baseType: !9)
-!9 = !DIDerivedType(tag: DW_TAG_pointer_type, size: 64, align: 64, baseType: null)
+!9 = !DIDerivedType(tag: DW_TAG_pointer_type, baseType: null)
 !10 = !{i32 2, !"Dwarf Version", i32 4}
 !11 = !{i32 1, !"Debug Info Version", i32 3}
 !12 = !{!"clang version 3.5.0 "}

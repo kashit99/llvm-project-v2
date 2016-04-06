@@ -28,7 +28,7 @@ entry:
   call void @llvm.dbg.value(metadata !6, i64 0, metadata !15, metadata !DIExpression()) nounwind, !dbg !DILocation(scope: !16)
   call void @llvm.dbg.value(metadata i32 0, i64 0, metadata !19, metadata !DIExpression()) nounwind, !dbg !DILocation(scope: !16)
   call void @llvm.dbg.declare(metadata !6, metadata !23, metadata !DIExpression()) nounwind, !dbg !DILocation(scope: !24)
-  call void @llvm.dbg.value(metadata i64* %data_addr.i17, i64 0, metadata !34, metadata !DIExpression()) nounwind, !dbg !DILocation(scope: !24)
+  call void @llvm.dbg.value(metadata i64* %data_addr.i17, i64 0, metadata !34, metadata !DIExpression(DW_OP_deref)) nounwind, !dbg !DILocation(scope: !24)
   %a13 = load volatile i64, i64* %data_addr.i17, align 8 ; <i64> [#uses=1]
   %a14 = call i64 @llvm.bswap.i64(i64 %a13) nounwind ; <i64> [#uses=2]
   %a15 = add i64 %a10, %a14, !dbg !7              ; <i64> [#uses=1]
@@ -54,7 +54,7 @@ declare void @uuid_LtoB(i8*, i8*)
 !1 = distinct !DILexicalBlock(line: 807, column: 0, file: !39, scope: !2)
 !2 = distinct !DISubprogram(name: "gpt2gpm", linkageName: "gpt2gpm", line: 807, isLocal: true, isDefinition: true, virtualIndex: 6, isOptimized: false, file: !39, scope: null, type: !5)
 !3 = !DIFile(filename: "G.c", directory: "/tmp")
-!4 = distinct !DICompileUnit(language: DW_LANG_C89, producer: "llvm-gcc", isOptimized: true, emissionKind: 0, file: !39, enums: !18, retainedTypes: !18, subprograms: !40)
+!4 = distinct !DICompileUnit(language: DW_LANG_C89, producer: "llvm-gcc", isOptimized: true, emissionKind: FullDebug, file: !39, enums: !18, retainedTypes: !18, subprograms: !40)
 !5 = !DISubroutineType(types: !6)
 !6 = !{null}
 !7 = !DILocation(line: 810, scope: !1)

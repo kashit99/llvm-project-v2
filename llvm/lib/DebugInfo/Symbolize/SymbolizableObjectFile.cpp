@@ -14,6 +14,7 @@
 #include "SymbolizableObjectFile.h"
 #include "llvm/Object/SymbolSize.h"
 #include "llvm/Support/DataExtractor.h"
+#include "llvm/DebugInfo/DWARF/DWARFContext.h"
 
 namespace llvm {
 namespace symbolize {
@@ -118,7 +119,10 @@ std::error_code SymbolizableObjectFile::addSymbol(const SymbolRef &Symbol,
                                                   uint64_t SymbolSize,
                                                   DataExtractor *OpdExtractor,
                                                   uint64_t OpdAddress) {
-  SymbolRef::Type SymbolType = Symbol.getType();
+  ErrorOr<SymbolRef::Type> SymbolTypeOrErr = Symbol.getType();
+  if (auto EC = SymbolTypeOrErr.getError())
+    return EC;
+  SymbolRef::Type SymbolType = *SymbolTypeOrErr;
   if (SymbolType != SymbolRef::ST_Function && SymbolType != SymbolRef::ST_Data)
     return std::error_code();
   ErrorOr<uint64_t> SymbolAddressOrErr = Symbol.getAddress();
@@ -186,6 +190,16 @@ bool SymbolizableObjectFile::getNameFromSymbolTable(SymbolRef::Type Type,
   return true;
 }
 
+bool SymbolizableObjectFile::shouldOverrideWithSymbolTable(
+    FunctionNameKind FNKind, bool UseSymbolTable) const {
+  // When DWARF is used with -gline-tables-only / -gmlt, the symbol table gives
+  // better answers for linkage names than the DIContext. Otherwise, we are
+  // probably using PEs and PDBs, and we shouldn't do the override. PE files
+  // generally only contain the names of exported symbols.
+  return FNKind == FunctionNameKind::LinkageName && UseSymbolTable &&
+         isa<DWARFContext>(DebugInfoContext.get());
+}
+
 DILineInfo SymbolizableObjectFile::symbolizeCode(uint64_t ModuleOffset,
                                                  FunctionNameKind FNKind,
                                                  bool UseSymbolTable) const {
@@ -195,7 +209,7 @@ DILineInfo SymbolizableObjectFile::symbolizeCode(uint64_t ModuleOffset,
         ModuleOffset, getDILineInfoSpecifier(FNKind));
   }
   // Override function name from symbol table if necessary.
-  if (FNKind == FunctionNameKind::LinkageName && UseSymbolTable) {
+  if (shouldOverrideWithSymbolTable(FNKind, UseSymbolTable)) {
     std::string FunctionName;
     uint64_t Start, Size;
     if (getNameFromSymbolTable(SymbolRef::ST_Function, ModuleOffset,
@@ -218,7 +232,7 @@ DIInliningInfo SymbolizableObjectFile::symbolizeInlinedCode(
     InlinedContext.addFrame(DILineInfo());
 
   // Override the function name in lower frame with name from symbol table.
-  if (FNKind == FunctionNameKind::LinkageName && UseSymbolTable) {
+  if (shouldOverrideWithSymbolTable(FNKind, UseSymbolTable)) {
     std::string FunctionName;
     uint64_t Start, Size;
     if (getNameFromSymbolTable(SymbolRef::ST_Function, ModuleOffset,

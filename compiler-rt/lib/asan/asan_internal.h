@@ -36,9 +36,9 @@
 // If set, values like allocator chunk size, as well as defaults for some flags
 // will be changed towards less memory overhead.
 #ifndef ASAN_LOW_MEMORY
-#if SANITIZER_WORDSIZE == 32
+# if SANITIZER_IOS || (SANITIZER_WORDSIZE == 32)
 #  define ASAN_LOW_MEMORY 1
-#else
+# else
 #  define ASAN_LOW_MEMORY 0
 # endif
 #endif
@@ -73,10 +73,15 @@ void *AsanDoesNotSupportStaticLinkage();
 void AsanCheckDynamicRTPrereqs();
 void AsanCheckIncompatibleRT();
 
+// Support function for __asan_(un)register_image_globals. Searches for the
+// loaded image containing `needle' and then enumerates all global metadata
+// structures declared in that image, applying `op' (e.g.,
+// __asan_(un)register_globals) to them.
+typedef void (*globals_op_fptr)(__asan_global *, uptr);
+void AsanApplyToGlobals(globals_op_fptr op, const void *needle);
+
 void AsanOnDeadlySignal(int, void *siginfo, void *context);
 
-void DisableReexec();
-void MaybeReexec();
 void ReadContextStack(void *context, uptr *stack, uptr *ssize);
 void StopInitOrderChecking();
 

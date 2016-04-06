@@ -81,16 +81,10 @@ static void LowerLargeShift(MCInst& Inst) {
   }
 }
 
-// Pick a DEXT or DINS instruction variant based on the pos and size operands
-static void LowerDextDins(MCInst& InstIn) {
-  int Opcode = InstIn.getOpcode();
-
-  if (Opcode == Mips::DEXT)
-    assert(InstIn.getNumOperands() == 4 &&
-           "Invalid no. of machine operands for DEXT!");
-  else // Only DEXT and DINS are possible
-    assert(InstIn.getNumOperands() == 5 &&
-           "Invalid no. of machine operands for DINS!");
+// Pick a DINS instruction variant based on the pos and size operands
+static void LowerDins(MCInst& InstIn) {
+  assert(InstIn.getNumOperands() == 5 &&
+         "Invalid no. of machine operands for DINS!");
 
   assert(InstIn.getOperand(2).isImm());
   int64_t pos = InstIn.getOperand(2).getImm();
@@ -98,17 +92,17 @@ static void LowerDextDins(MCInst& InstIn) {
   int64_t size = InstIn.getOperand(3).getImm();
 
   if (size <= 32) {
-    if (pos < 32)  // DEXT/DINS, do nothing
+    if (pos < 32)  // DINS, do nothing
       return;
-    // DEXTU/DINSU
+    // DINSU
     InstIn.getOperand(2).setImm(pos - 32);
-    InstIn.setOpcode((Opcode == Mips::DEXT) ? Mips::DEXTU : Mips::DINSU);
+    InstIn.setOpcode(Mips::DINSU);
     return;
   }
-  // DEXTM/DINSM
-  assert(pos < 32 && "DEXT/DINS cannot have both size and pos > 32");
+  // DINSM
+  assert(pos < 32 && "DINS cannot have both size and pos > 32");
   InstIn.getOperand(3).setImm(size - 32);
-  InstIn.setOpcode((Opcode == Mips::DEXT) ? Mips::DEXTM : Mips::DINSM);
+  InstIn.setOpcode(Mips::DINSM);
   return;
 }
 
@@ -164,9 +158,8 @@ encodeInstruction(const MCInst &MI, raw_ostream &OS,
     LowerLargeShift(TmpInst);
     break;
     // Double extract instruction is chosen by pos and size operands
-  case Mips::DEXT:
   case Mips::DINS:
-    LowerDextDins(TmpInst);
+    LowerDins(TmpInst);
   }
 
   unsigned long N = Fixups.size();
@@ -347,6 +340,23 @@ getBranchTarget26OpValue(const MCInst &MI, unsigned OpNo,
       MO.getExpr(), MCConstantExpr::create(-4, Ctx), Ctx);
   Fixups.push_back(MCFixup::create(0, FixupExpression,
                                    MCFixupKind(Mips::fixup_MIPS_PC26_S2)));
+  return 0;
+}
+
+/// getBranchTarget26OpValueMM - Return binary encoding of the branch
+/// target operand. If the machine operand requires relocation,
+/// record the relocation and return zero.
+unsigned MipsMCCodeEmitter::getBranchTarget26OpValueMM(
+    const MCInst &MI, unsigned OpNo, SmallVectorImpl<MCFixup> &Fixups,
+    const MCSubtargetInfo &STI) const {
+
+  const MCOperand &MO = MI.getOperand(OpNo);
+
+  // If the destination is an immediate, divide by 2.
+  if (MO.isImm())
+    return MO.getImm() >> 1;
+
+  // TODO: Push 26 PC fixup.
   return 0;
 }
 
@@ -643,60 +653,19 @@ getMachineOpValue(const MCInst &MI, const MCOperand &MO,
   return getExprOpValue(MO.getExpr(),Fixups, STI);
 }
 
-/// getMSAMemEncoding - Return binary encoding of memory operand for LD/ST
-/// instructions.
-unsigned
-MipsMCCodeEmitter::getMSAMemEncoding(const MCInst &MI, unsigned OpNo,
-                                     SmallVectorImpl<MCFixup> &Fixups,
-                                     const MCSubtargetInfo &STI) const {
-  // Base register is encoded in bits 20-16, offset is encoded in bits 15-0.
-  assert(MI.getOperand(OpNo).isReg());
-  unsigned RegBits = getMachineOpValue(MI, MI.getOperand(OpNo),Fixups, STI) << 16;
-  unsigned OffBits = getMachineOpValue(MI, MI.getOperand(OpNo+1), Fixups, STI);
-
-  // The immediate field of an LD/ST instruction is scaled which means it must
-  // be divided (when encoding) by the size (in bytes) of the instructions'
-  // data format.
-  // .b - 1 byte
-  // .h - 2 bytes
-  // .w - 4 bytes
-  // .d - 8 bytes
-  switch(MI.getOpcode())
-  {
-  default:
-    assert (0 && "Unexpected instruction");
-    break;
-  case Mips::LD_B:
-  case Mips::ST_B:
-    // We don't need to scale the offset in this case
-    break;
-  case Mips::LD_H:
-  case Mips::ST_H:
-    OffBits >>= 1;
-    break;
-  case Mips::LD_W:
-  case Mips::ST_W:
-    OffBits >>= 2;
-    break;
-  case Mips::LD_D:
-  case Mips::ST_D:
-    OffBits >>= 3;
-    break;
-  }
-
-  return (OffBits & 0xFFFF) | RegBits;
-}
-
-/// getMemEncoding - Return binary encoding of memory related operand.
+/// Return binary encoding of memory related operand.
 /// If the offset operand requires relocation, record the relocation.
-unsigned
-MipsMCCodeEmitter::getMemEncoding(const MCInst &MI, unsigned OpNo,
-                                  SmallVectorImpl<MCFixup> &Fixups,
-                                  const MCSubtargetInfo &STI) const {
+template <unsigned ShiftAmount>
+unsigned MipsMCCodeEmitter::getMemEncoding(const MCInst &MI, unsigned OpNo,
+                                           SmallVectorImpl<MCFixup> &Fixups,
+                                           const MCSubtargetInfo &STI) const {
   // Base register is encoded in bits 20-16, offset is encoded in bits 15-0.
   assert(MI.getOperand(OpNo).isReg());
   unsigned RegBits = getMachineOpValue(MI, MI.getOperand(OpNo),Fixups, STI) << 16;
   unsigned OffBits = getMachineOpValue(MI, MI.getOperand(OpNo+1), Fixups, STI);
+
+  // Apply the scale factor if there is one.
+  OffBits >>= ShiftAmount;
 
   return (OffBits & 0xFFFF) | RegBits;
 }
@@ -832,7 +801,9 @@ getMemEncodingMMImm4sp(const MCInst &MI, unsigned OpNo,
   default:
     break;
   case Mips::SWM16_MM:
+  case Mips::SWM16_MMR6:
   case Mips::LWM16_MM:
+  case Mips::LWM16_MMR6:
     OpNo = MI.getNumOperands() - 2;
     break;
   }
@@ -844,15 +815,6 @@ getMemEncodingMMImm4sp(const MCInst &MI, unsigned OpNo,
   unsigned OffBits = getMachineOpValue(MI, MI.getOperand(OpNo+1), Fixups, STI);
 
   return ((OffBits >> 2) & 0x0F);
-}
-
-unsigned
-MipsMCCodeEmitter::getSizeExtEncoding(const MCInst &MI, unsigned OpNo,
-                                      SmallVectorImpl<MCFixup> &Fixups,
-                                      const MCSubtargetInfo &STI) const {
-  assert(MI.getOperand(OpNo).isImm());
-  unsigned SizeEncoding = getMachineOpValue(MI, MI.getOperand(OpNo), Fixups, STI);
-  return SizeEncoding - 1;
 }
 
 // FIXME: should be called getMSBEncoding

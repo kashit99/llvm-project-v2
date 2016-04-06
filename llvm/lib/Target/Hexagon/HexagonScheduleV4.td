@@ -35,7 +35,7 @@ def SLOT_ENDLOOP: FuncUnit;
 
 // Itinerary classes.
 def PSEUDO      : InstrItinClass;
-def PSEUDOM   : InstrItinClass;
+def PSEUDOM     : InstrItinClass;
 // ALU64/M/S Instruction classes of V2 are collectively knownn as XTYPE in V4.
 def DUPLEX      : InstrItinClass;
 def PREFIX      : InstrItinClass;
@@ -199,6 +199,7 @@ def HexagonModelV4 : SchedMachineModel {
   let IssueWidth = 4;
   let Itineraries = HexagonItinerariesV4;
   let LoadLatency = 1;
+  let CompleteModel = 0;
 }
 
 //===----------------------------------------------------------------------===//

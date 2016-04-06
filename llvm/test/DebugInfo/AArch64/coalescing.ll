@@ -44,7 +44,7 @@ attributes #3 = { nounwind optsize }
 !llvm.module.flags = !{!12, !13}
 !llvm.ident = !{!14}
 
-!0 = distinct !DICompileUnit(language: DW_LANG_C_plus_plus, producer: "clang version 3.6.0 (trunk 223149) (llvm/trunk 223115)", isOptimized: true, emissionKind: 1, file: !1, enums: !2, retainedTypes: !2, subprograms: !3, globals: !2, imports: !2)
+!0 = distinct !DICompileUnit(language: DW_LANG_C_plus_plus, producer: "clang version 3.6.0 (trunk 223149) (llvm/trunk 223115)", isOptimized: true, emissionKind: FullDebug, file: !1, enums: !2, retainedTypes: !2, subprograms: !3, globals: !2, imports: !2)
 !1 = !DIFile(filename: "<stdin>", directory: "")
 !2 = !{}
 !3 = !{!4}
@@ -60,6 +60,6 @@ attributes #3 = { nounwind optsize }
 !13 = !{i32 2, !"Debug Info Version", i32 3}
 !14 = !{!"clang version 3.6.0 (trunk 223149) (llvm/trunk 223115)"}
 !15 = !DILocation(line: 5, column: 3, scope: !4)
-!16 = !DIExpression()
+!16 = !DIExpression(DW_OP_deref)
 !17 = !DILocation(line: 4, column: 12, scope: !4)
 !18 = !DILocation(line: 8, column: 1, scope: !4)

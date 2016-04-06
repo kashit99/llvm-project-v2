@@ -1,6 +1,6 @@
-; RUN: llc -march=amdgcn -mcpu=SI -show-mc-encoding -verify-machineinstrs < %s | FileCheck %s
+; RUN: llc -march=amdgcn -show-mc-encoding -verify-machineinstrs < %s | FileCheck %s
 
-declare i32 @llvm.r600.read.tidig.x() readnone
+declare i32 @llvm.amdgcn.workitem.id.x() readnone
 
 ;;;==========================================================================;;;
 ;;; MUBUF LOAD TESTS
@@ -8,7 +8,7 @@ declare i32 @llvm.r600.read.tidig.x() readnone
 
 ; MUBUF load with an immediate byte offset that fits into 12-bits
 ; CHECK-LABEL: {{^}}mubuf_load0:
-; CHECK: buffer_load_dword v{{[0-9]}}, s[{{[0-9]:[0-9]}}], 0 offset:4 ; encoding: [0x04,0x00,0x30,0xe0
+; CHECK: buffer_load_dword v{{[0-9]}}, s[{{[0-9]+:[0-9]+}}], 0 offset:4 ; encoding: [0x04,0x00,0x30,0xe0
 define void @mubuf_load0(i32 addrspace(1)* %out, i32 addrspace(1)* %in) {
 entry:
   %0 = getelementptr i32, i32 addrspace(1)* %in, i64 1
@@ -19,7 +19,7 @@ entry:
 
 ; MUBUF load with the largest possible immediate offset
 ; CHECK-LABEL: {{^}}mubuf_load1:
-; CHECK: buffer_load_ubyte v{{[0-9]}}, s[{{[0-9]:[0-9]}}], 0 offset:4095 ; encoding: [0xff,0x0f,0x20,0xe0
+; CHECK: buffer_load_ubyte v{{[0-9]}}, s[{{[0-9]+:[0-9]+}}], 0 offset:4095 ; encoding: [0xff,0x0f,0x20,0xe0
 define void @mubuf_load1(i8 addrspace(1)* %out, i8 addrspace(1)* %in) {
 entry:
   %0 = getelementptr i8, i8 addrspace(1)* %in, i64 4095
@@ -170,7 +170,7 @@ define void @store_sgpr_ptr_large_offset_atomic(i32 addrspace(1)* %out) #0 {
 ; CHECK-LABEL: {{^}}store_vgpr_ptr:
 ; CHECK: buffer_store_dword v{{[0-9]+}}, v{{\[[0-9]+:[0-9]+\]}}, s{{\[[0-9]+:[0-9]+\]}}, 0 addr64
 define void @store_vgpr_ptr(i32 addrspace(1)* %out) #0 {
-  %tid = call i32 @llvm.r600.read.tidig.x() readnone
+  %tid = call i32 @llvm.amdgcn.workitem.id.x() readnone
   %out.gep = getelementptr i32, i32 addrspace(1)* %out, i32 %tid
   store i32 99, i32 addrspace(1)* %out.gep, align 4
   ret void

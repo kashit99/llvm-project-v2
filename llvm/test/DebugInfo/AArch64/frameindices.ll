@@ -1,4 +1,4 @@
-; RUN: llc -O0 -filetype=obj < %s | llvm-dwarfdump - | FileCheck %s
+; RUN: llc -disable-fp-elim -O0 -filetype=obj < %s | llvm-dwarfdump - | FileCheck %s
 ; Test that a variable with multiple entries in the MMI table makes it into the
 ; debug info.
 ;
@@ -160,7 +160,7 @@ attributes #5 = { builtin }
 !llvm.module.flags = !{!43, !44}
 !llvm.ident = !{!45}
 
-!0 = distinct !DICompileUnit(language: DW_LANG_C_plus_plus, producer: "clang version 3.7.0 ", isOptimized: true, emissionKind: 1, file: !1, enums: !2, retainedTypes: !3, subprograms: !24, globals: !40, imports: !2)
+!0 = distinct !DICompileUnit(language: DW_LANG_C_plus_plus, producer: "clang version 3.7.0 ", isOptimized: true, emissionKind: FullDebug, file: !1, enums: !2, retainedTypes: !3, subprograms: !24, globals: !40, imports: !2)
 !1 = !DIFile(filename: "<stdin>", directory: "")
 !2 = !{}
 !3 = !{!4, !12, !14}
@@ -239,7 +239,7 @@ attributes #5 = { builtin }
 !76 = !DIExpression(DW_OP_bit_piece, 8, 120)
 !77 = !DILocation(line: 17, column: 12, scope: !31, inlinedAt: !75)
 !78 = !DIExpression(DW_OP_bit_piece, 136, 56)
-!79 = !DIExpression()
+!79 = !DIExpression(DW_OP_deref)
 !80 = !DILocation(line: 19, column: 5, scope: !34)
 !81 = !DILocation(line: 20, column: 7, scope: !34)
 !82 = !DILocation(line: 20, column: 5, scope: !34)

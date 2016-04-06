@@ -112,6 +112,7 @@ namespace {
     const DataLayout *DL;
     DominatorTree *DT;
     const TargetLibraryInfo *LibInfo;
+    bool PreserveLCSSA;
   };
 
   char PPCCTRLoops::ID = 0;
@@ -174,6 +175,7 @@ bool PPCCTRLoops::runOnFunction(Function &F) {
   DL = &F.getParent()->getDataLayout();
   auto *TLIP = getAnalysisIfAvailable<TargetLibraryInfoWrapperPass>();
   LibInfo = TLIP ? &TLIP->getTLI() : nullptr;
+  PreserveLCSSA = mustPreserveAnalysisID(LCSSAID);
 
   bool MadeChange = false;
 
@@ -243,7 +245,7 @@ bool PPCCTRLoops::mightUseCTR(const Triple &TT, BasicBlock *BB) {
       if (Function *F = CI->getCalledFunction()) {
         // Most intrinsics don't become function calls, but some might.
         // sin, cos, exp and log are always calls.
-        unsigned Opcode;
+        unsigned Opcode = 0;
         if (F->getIntrinsicID() != Intrinsic::not_intrinsic) {
           switch (F->getIntrinsicID()) {
           default: continue;
@@ -303,6 +305,8 @@ bool PPCCTRLoops::mightUseCTR(const Triple &TT, BasicBlock *BB) {
           case Intrinsic::rint:      Opcode = ISD::FRINT;      break;
           case Intrinsic::nearbyint: Opcode = ISD::FNEARBYINT; break;
           case Intrinsic::round:     Opcode = ISD::FROUND;     break;
+          case Intrinsic::minnum:    Opcode = ISD::FMINNUM;    break;
+          case Intrinsic::maxnum:    Opcode = ISD::FMAXNUM;    break;
           }
         }
 
@@ -362,8 +366,18 @@ bool PPCCTRLoops::mightUseCTR(const Triple &TT, BasicBlock *BB) {
           case LibFunc::truncf:
           case LibFunc::truncl:
             Opcode = ISD::FTRUNC; break;
+          case LibFunc::fmin:
+          case LibFunc::fminf:
+          case LibFunc::fminl:
+            Opcode = ISD::FMINNUM; break;
+          case LibFunc::fmax:
+          case LibFunc::fmaxf:
+          case LibFunc::fmaxl:
+            Opcode = ISD::FMAXNUM; break;
           }
+        }
 
+        if (Opcode) {
           auto &DL = CI->getModule()->getDataLayout();
           MVT VTy = TLI->getSimpleValueType(DL, CI->getArgOperand(0)->getType(),
                                             true);
@@ -420,6 +434,25 @@ bool PPCCTRLoops::mightUseCTR(const Triple &TT, BasicBlock *BB) {
       if (SI->getNumCases() + 1 >= (unsigned)TLI->getMinimumJumpTableEntries())
         return true;
     }
+
+    if (TM->getSubtargetImpl(*BB->getParent())->getTargetLowering()->useSoftFloat()) {
+      switch(J->getOpcode()) {
+      case Instruction::FAdd:
+      case Instruction::FSub:
+      case Instruction::FMul:
+      case Instruction::FDiv:
+      case Instruction::FRem:
+      case Instruction::FPTrunc:
+      case Instruction::FPExt:
+      case Instruction::FPToUI:
+      case Instruction::FPToSI:
+      case Instruction::UIToFP:
+      case Instruction::SIToFP:
+      case Instruction::FCmp:
+        return true;
+      }
+    }
+
     for (Value *Operand : J->operands())
       if (memAddrUsesCTR(TM, Operand))
         return true;
@@ -537,7 +570,7 @@ bool PPCCTRLoops::convertToCTRLoop(Loop *L) {
   // the CTR register because some such uses might be reordered by the
   // selection DAG after the mtctr instruction).
   if (!Preheader || mightUseCTR(TT, Preheader))
-    Preheader = InsertPreheaderForLoop(L, this);
+    Preheader = InsertPreheaderForLoop(L, DT, LI, PreserveLCSSA);
   if (!Preheader)
     return MadeChange;
 

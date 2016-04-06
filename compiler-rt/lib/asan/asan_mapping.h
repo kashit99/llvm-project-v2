@@ -17,7 +17,7 @@
 #include "asan_internal.h"
 
 // The full explanation of the memory mapping could be found here:
-// http://code.google.com/p/address-sanitizer/wiki/AddressSanitizerAlgorithm
+// https://github.com/google/sanitizers/wiki/AddressSanitizerAlgorithm
 //
 // Typical shadow mapping on Linux/x86_64 with SHADOW_OFFSET == 0x00007fff8000:
 // || `[0x10007fff8000, 0x7fffffffffff]` || HighMem    ||
@@ -115,14 +115,10 @@ static const u64 kDefaultShadowOffset32 = 1ULL << 29;  // 0x20000000
 static const u64 kDefaultShadowOffset64 = 1ULL << 44;
 static const u64 kDefaultShort64bitShadowOffset = 0x7FFF8000;  // < 2G.
 static const u64 kIosShadowOffset32 = 1ULL << 30;  // 0x40000000
-static const u64 kIosShadowOffset64 = 0x130000000;
+static const u64 kIosShadowOffset64 = 0x120200000;
 static const u64 kIosSimShadowOffset32 = 1ULL << 30;
 static const u64 kIosSimShadowOffset64 = kDefaultShadowOffset64;
-#if SANITIZER_AARCH64_VMA == 39
 static const u64 kAArch64_ShadowOffset64 = 1ULL << 36;
-#elif SANITIZER_AARCH64_VMA == 42
-static const u64 kAArch64_ShadowOffset64 = 1ULL << 39;
-#endif
 static const u64 kMIPS32_ShadowOffset32 = 0x0aaa0000;
 static const u64 kMIPS64_ShadowOffset64 = 1ULL << 37;
 static const u64 kPPC64_ShadowOffset64 = 1ULL << 41;
@@ -142,15 +138,23 @@ static const u64 kWindowsShadowOffset32 = 3ULL << 28;  // 0x30000000
 #    define SHADOW_OFFSET kFreeBSD_ShadowOffset32
 #  elif SANITIZER_WINDOWS
 #    define SHADOW_OFFSET kWindowsShadowOffset32
-#  elif SANITIZER_IOSSIM
-#    define SHADOW_OFFSET kIosSimShadowOffset32
 #  elif SANITIZER_IOS
-#    define SHADOW_OFFSET kIosShadowOffset32
+#    if SANITIZER_IOSSIM
+#      define SHADOW_OFFSET kIosSimShadowOffset32
+#    else
+#      define SHADOW_OFFSET kIosShadowOffset32
+#    endif
 #  else
 #    define SHADOW_OFFSET kDefaultShadowOffset32
 #  endif
 #else
-#  if defined(__aarch64__)
+#  if SANITIZER_IOS
+#    if SANITIZER_IOSSIM
+#      define SHADOW_OFFSET kIosSimShadowOffset64
+#    else
+#      define SHADOW_OFFSET kIosShadowOffset64
+#    endif
+#  elif defined(__aarch64__)
 #    define SHADOW_OFFSET kAArch64_ShadowOffset64
 #  elif defined(__powerpc64__)
 #    define SHADOW_OFFSET kPPC64_ShadowOffset64
@@ -160,10 +164,6 @@ static const u64 kWindowsShadowOffset32 = 3ULL << 28;  // 0x30000000
 #   define SHADOW_OFFSET kDefaultShadowOffset64
 #  elif defined(__mips64)
 #   define SHADOW_OFFSET kMIPS64_ShadowOffset64
-#  elif SANITIZER_IOSSIM
-#    define SHADOW_OFFSET kIosSimShadowOffset64
-#  elif SANITIZER_IOS
-#    define SHADOW_OFFSET kIosShadowOffset64
 #  else
 #   define SHADOW_OFFSET kDefaultShort64bitShadowOffset
 #  endif

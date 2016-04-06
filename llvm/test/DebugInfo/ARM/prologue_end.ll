@@ -1,5 +1,5 @@
 ; RUN: llc -disable-fp-elim -O0 %s -mtriple armv7-apple-darwin -o - | FileCheck %s
-; RUN: llc -disable-fp-elim -O0 %s -mtriple thumbv1-apple-darwin -o - | FileCheck %s
+; RUN: llc -disable-fp-elim -O0 %s -mtriple thumbv7-apple-darwin -o - | FileCheck %s
 
 ; int func(void);
 ; void prologue_end_test() {
@@ -28,7 +28,7 @@ declare i32 @func()
 !llvm.module.flags = !{!7, !8, !9, !10, !11}
 !llvm.ident = !{!12}
 
-!0 = distinct !DICompileUnit(language: DW_LANG_C99, file: !1, producer: "clang version 3.7.0 (trunk 242129)", isOptimized: false, runtimeVersion: 0, emissionKind: 1, enums: !2, subprograms: !3)
+!0 = distinct !DICompileUnit(language: DW_LANG_C99, file: !1, producer: "clang version 3.7.0 (trunk 242129)", isOptimized: false, runtimeVersion: 0, emissionKind: FullDebug, enums: !2, subprograms: !3)
 !1 = !DIFile(filename: "foo.c", directory: "/tmp")
 !2 = !{}
 !3 = !{!4}

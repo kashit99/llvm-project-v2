@@ -11,9 +11,10 @@ include(CheckFunctionExists)
 include(CheckCXXSourceCompiles)
 include(TestBigEndian)
 
+include(CheckCompilerVersion)
 include(HandleLLVMStdlib)
 
-if( UNIX AND NOT BEOS )
+if( UNIX AND NOT (BEOS OR HAIKU) )
   # Used by check_symbol_exists:
   set(CMAKE_REQUIRED_LIBRARIES m)
 endif()
@@ -105,6 +106,16 @@ if( NOT PURE_WINDOWS )
   endif()
   check_library_exists(dl dlopen "" HAVE_LIBDL)
   check_library_exists(rt clock_gettime "" HAVE_LIBRT)
+endif()
+
+if(HAVE_LIBPTHREAD)
+  set(PTHREAD_LIB pthread)
+endif()
+
+# Don't look for these libraries on Windows. Also don't look for them if we're
+# using MSan, since uninstrmented third party code may call MSan interceptors
+# like strlen, leading to false positives.
+if( NOT PURE_WINDOWS AND NOT LLVM_USE_SANITIZER MATCHES "Memory.*")
   if (LLVM_ENABLE_ZLIB)
     check_library_exists(z compress2 "" HAVE_LIBZ)
   else()
@@ -293,6 +304,10 @@ if( LLVM_ENABLE_PIC )
   set(ENABLE_PIC 1)
 else()
   set(ENABLE_PIC 0)
+  check_cxx_compiler_flag("-fno-pie" SUPPORTS_NO_PIE_FLAG)
+  if(SUPPORTS_NO_PIE_FLAG)
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fno-pie")
+  endif()
 endif()
 
 check_cxx_compiler_flag("-Wno-variadic-macros" SUPPORTS_NO_VARIADIC_MACROS_FLAG)
@@ -435,21 +450,6 @@ if( MSVC )
 else()
   set(HAVE_DIA_SDK 0)
 endif( MSVC )
-
-if( PURE_WINDOWS )
-  CHECK_CXX_SOURCE_COMPILES("
-    #include <windows.h>
-    #include <imagehlp.h>
-    extern \"C\" void foo(PENUMLOADED_MODULES_CALLBACK);
-    extern \"C\" void foo(BOOL(CALLBACK*)(PCSTR,ULONG_PTR,ULONG,PVOID));
-    int main(){return 0;}"
-    HAVE_ELMCB_PCSTR)
-  if( HAVE_ELMCB_PCSTR )
-    set(WIN32_ELMCB_PCSTR "PCSTR")
-  else()
-    set(WIN32_ELMCB_PCSTR "PSTR")
-  endif()
-endif( PURE_WINDOWS )
 
 # FIXME: Signal handler return type, currently hardcoded to 'void'
 set(RETSIGTYPE void)

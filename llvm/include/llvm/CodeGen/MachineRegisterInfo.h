@@ -40,12 +40,8 @@ public:
   };
 
 private:
-  const MachineFunction *MF;
+  MachineFunction *MF;
   Delegate *TheDelegate;
-
-  /// IsSSA - True when the machine function is in SSA form and virtual
-  /// registers have a single def.
-  bool IsSSA;
 
   /// TracksLiveness - True while register liveness is being tracked accurately.
   /// Basic block live-in lists, kill flags, and implicit defs may not be
@@ -73,7 +69,7 @@ private:
 
   /// PhysRegUseDefLists - This is an array of the head of the use/def list for
   /// physical registers.
-  std::vector<MachineOperand *> PhysRegUseDefLists;
+  std::unique_ptr<MachineOperand *[]> PhysRegUseDefLists;
 
   /// getRegUseDefListHead - Return the head pointer for the register use/def
   /// list for the specified virtual or physical register.
@@ -105,6 +101,18 @@ private:
   /// started.
   BitVector ReservedRegs;
 
+  typedef DenseMap<unsigned, unsigned> VRegToSizeMap;
+  /// Map generic virtual registers to their actual size.
+  mutable std::unique_ptr<VRegToSizeMap> VRegToSize;
+
+  /// Accessor for VRegToSize. This accessor should only be used
+  /// by global-isel related work.
+  VRegToSizeMap &getVRegToSize() const {
+    if (!VRegToSize)
+      VRegToSize.reset(new VRegToSizeMap);
+    return *VRegToSize.get();
+  }
+
   /// Keep track of the physical registers that are live in to the function.
   /// Live in values are typically arguments in registers.  LiveIn values are
   /// allowed to have virtual registers associated with them, stored in the
@@ -114,7 +122,7 @@ private:
   MachineRegisterInfo(const MachineRegisterInfo&) = delete;
   void operator=(const MachineRegisterInfo&) = delete;
 public:
-  explicit MachineRegisterInfo(const MachineFunction *MF);
+  explicit MachineRegisterInfo(MachineFunction *MF);
 
   const TargetRegisterInfo *getTargetRegisterInfo() const {
     return MF->getSubtarget().getRegisterInfo();
@@ -148,10 +156,15 @@ public:
   // The TwoAddressInstructionPass and PHIElimination passes take the machine
   // function out of SSA form when they introduce multiple defs per virtual
   // register.
-  bool isSSA() const { return IsSSA; }
+  bool isSSA() const {
+    return MF->getProperties().hasProperty(
+        MachineFunctionProperties::Property::IsSSA);
+  }
 
   // leaveSSA - Indicates that the machine function is no longer in SSA form.
-  void leaveSSA() { IsSSA = false; }
+  void leaveSSA() {
+    MF->getProperties().clear(MachineFunctionProperties::Property::IsSSA);
+  }
 
   /// tracksLiveness - Returns true when tracking register liveness accurately.
   ///
@@ -234,7 +247,7 @@ public:
   static reg_iterator reg_end() { return reg_iterator(nullptr); }
 
   inline iterator_range<reg_iterator>  reg_operands(unsigned Reg) const {
-    return iterator_range<reg_iterator>(reg_begin(Reg), reg_end());
+    return make_range(reg_begin(Reg), reg_end());
   }
 
   /// reg_instr_iterator/reg_instr_begin/reg_instr_end - Walk all defs and uses
@@ -250,8 +263,7 @@ public:
 
   inline iterator_range<reg_instr_iterator>
   reg_instructions(unsigned Reg) const {
-    return iterator_range<reg_instr_iterator>(reg_instr_begin(Reg),
-                                              reg_instr_end());
+    return make_range(reg_instr_begin(Reg), reg_instr_end());
   }
 
   /// reg_bundle_iterator/reg_bundle_begin/reg_bundle_end - Walk all defs and uses
@@ -266,8 +278,7 @@ public:
   }
 
   inline iterator_range<reg_bundle_iterator> reg_bundles(unsigned Reg) const {
-    return iterator_range<reg_bundle_iterator>(reg_bundle_begin(Reg),
-                                               reg_bundle_end());
+    return make_range(reg_bundle_begin(Reg), reg_bundle_end());
   }
 
   /// reg_empty - Return true if there are no instructions using or defining the
@@ -287,8 +298,7 @@ public:
 
   inline iterator_range<reg_nodbg_iterator>
   reg_nodbg_operands(unsigned Reg) const {
-    return iterator_range<reg_nodbg_iterator>(reg_nodbg_begin(Reg),
-                                              reg_nodbg_end());
+    return make_range(reg_nodbg_begin(Reg), reg_nodbg_end());
   }
 
   /// reg_instr_nodbg_iterator/reg_instr_nodbg_begin/reg_instr_nodbg_end - Walk
@@ -305,8 +315,7 @@ public:
 
   inline iterator_range<reg_instr_nodbg_iterator>
   reg_nodbg_instructions(unsigned Reg) const {
-    return iterator_range<reg_instr_nodbg_iterator>(reg_instr_nodbg_begin(Reg),
-                                                    reg_instr_nodbg_end());
+    return make_range(reg_instr_nodbg_begin(Reg), reg_instr_nodbg_end());
   }
 
   /// reg_bundle_nodbg_iterator/reg_bundle_nodbg_begin/reg_bundle_nodbg_end - Walk
@@ -323,8 +332,7 @@ public:
 
   inline iterator_range<reg_bundle_nodbg_iterator>
   reg_nodbg_bundles(unsigned Reg) const {
-    return iterator_range<reg_bundle_nodbg_iterator>(reg_bundle_nodbg_begin(Reg),
-                                                     reg_bundle_nodbg_end());
+    return make_range(reg_bundle_nodbg_begin(Reg), reg_bundle_nodbg_end());
   }
 
   /// reg_nodbg_empty - Return true if the only instructions using or defining
@@ -342,7 +350,7 @@ public:
   static def_iterator def_end() { return def_iterator(nullptr); }
 
   inline iterator_range<def_iterator> def_operands(unsigned Reg) const {
-    return iterator_range<def_iterator>(def_begin(Reg), def_end());
+    return make_range(def_begin(Reg), def_end());
   }
 
   /// def_instr_iterator/def_instr_begin/def_instr_end - Walk all defs of the
@@ -358,8 +366,7 @@ public:
 
   inline iterator_range<def_instr_iterator>
   def_instructions(unsigned Reg) const {
-    return iterator_range<def_instr_iterator>(def_instr_begin(Reg),
-                                              def_instr_end());
+    return make_range(def_instr_begin(Reg), def_instr_end());
   }
 
   /// def_bundle_iterator/def_bundle_begin/def_bundle_end - Walk all defs of the
@@ -374,16 +381,15 @@ public:
   }
 
   inline iterator_range<def_bundle_iterator> def_bundles(unsigned Reg) const {
-    return iterator_range<def_bundle_iterator>(def_bundle_begin(Reg),
-                                               def_bundle_end());
+    return make_range(def_bundle_begin(Reg), def_bundle_end());
   }
 
   /// def_empty - Return true if there are no instructions defining the
   /// specified register (it may be live-in).
   bool def_empty(unsigned RegNo) const { return def_begin(RegNo) == def_end(); }
 
-  /// hasOneDef - Return true if there is exactly one instruction defining the
-  /// specified register.
+  /// Return true if there is exactly one operand defining the specified
+  /// register.
   bool hasOneDef(unsigned RegNo) const {
     def_iterator DI = def_begin(RegNo);
     if (DI == def_end())
@@ -400,7 +406,7 @@ public:
   static use_iterator use_end() { return use_iterator(nullptr); }
 
   inline iterator_range<use_iterator> use_operands(unsigned Reg) const {
-    return iterator_range<use_iterator>(use_begin(Reg), use_end());
+    return make_range(use_begin(Reg), use_end());
   }
 
   /// use_instr_iterator/use_instr_begin/use_instr_end - Walk all uses of the
@@ -416,8 +422,7 @@ public:
 
   inline iterator_range<use_instr_iterator>
   use_instructions(unsigned Reg) const {
-    return iterator_range<use_instr_iterator>(use_instr_begin(Reg),
-                                              use_instr_end());
+    return make_range(use_instr_begin(Reg), use_instr_end());
   }
 
   /// use_bundle_iterator/use_bundle_begin/use_bundle_end - Walk all uses of the
@@ -432,8 +437,7 @@ public:
   }
 
   inline iterator_range<use_bundle_iterator> use_bundles(unsigned Reg) const {
-    return iterator_range<use_bundle_iterator>(use_bundle_begin(Reg),
-                                               use_bundle_end());
+    return make_range(use_bundle_begin(Reg), use_bundle_end());
   }
 
   /// use_empty - Return true if there are no instructions using the specified
@@ -462,8 +466,7 @@ public:
 
   inline iterator_range<use_nodbg_iterator>
   use_nodbg_operands(unsigned Reg) const {
-    return iterator_range<use_nodbg_iterator>(use_nodbg_begin(Reg),
-                                              use_nodbg_end());
+    return make_range(use_nodbg_begin(Reg), use_nodbg_end());
   }
 
   /// use_instr_nodbg_iterator/use_instr_nodbg_begin/use_instr_nodbg_end - Walk
@@ -480,8 +483,7 @@ public:
 
   inline iterator_range<use_instr_nodbg_iterator>
   use_nodbg_instructions(unsigned Reg) const {
-    return iterator_range<use_instr_nodbg_iterator>(use_instr_nodbg_begin(Reg),
-                                                    use_instr_nodbg_end());
+    return make_range(use_instr_nodbg_begin(Reg), use_instr_nodbg_end());
   }
 
   /// use_bundle_nodbg_iterator/use_bundle_nodbg_begin/use_bundle_nodbg_end - Walk
@@ -498,8 +500,7 @@ public:
 
   inline iterator_range<use_bundle_nodbg_iterator>
   use_nodbg_bundles(unsigned Reg) const {
-    return iterator_range<use_bundle_nodbg_iterator>(use_bundle_nodbg_begin(Reg),
-                                                     use_bundle_nodbg_end());
+    return make_range(use_bundle_nodbg_begin(Reg), use_bundle_nodbg_end());
   }
 
   /// use_nodbg_empty - Return true if there are no non-Debug instructions
@@ -598,6 +599,19 @@ public:
   /// function with the specified register class.
   ///
   unsigned createVirtualRegister(const TargetRegisterClass *RegClass);
+
+  /// Get the size of \p VReg or 0 if VReg is not a generic
+  /// (target independent) virtual register.
+  unsigned getSize(unsigned VReg) const;
+
+  /// Set the size of \p VReg to \p Size.
+  /// Although the size should be set at build time, mir infrastructure
+  /// is not yet able to do it.
+  void setSize(unsigned VReg, unsigned Size);
+
+  /// Create and return a new generic virtual register with a size of \p Size.
+  /// \pre Size > 0.
+  unsigned createGenericVirtualRegister(unsigned Size);
 
   /// getNumVirtRegs - Return the number of virtual registers created.
   ///
@@ -832,10 +846,10 @@ public:
           advance();
         } while (Op && Op->getParent() == P);
       } else if (ByBundle) {
-        MachineInstr *P = getBundleStart(Op->getParent());
+        MachineInstr &P = getBundleStart(*Op->getParent());
         do {
           advance();
-        } while (Op && getBundleStart(Op->getParent()) == P);
+        } while (Op && &getBundleStart(*Op->getParent()) == &P);
       }
 
       return *this;
@@ -934,10 +948,10 @@ public:
           advance();
         } while (Op && Op->getParent() == P);
       } else if (ByBundle) {
-        MachineInstr *P = getBundleStart(Op->getParent());
+        MachineInstr &P = getBundleStart(*Op->getParent());
         do {
           advance();
-        } while (Op && getBundleStart(Op->getParent()) == P);
+        } while (Op && &getBundleStart(*Op->getParent()) == &P);
       }
 
       return *this;
@@ -949,15 +963,12 @@ public:
     // Retrieve a reference to the current operand.
     MachineInstr &operator*() const {
       assert(Op && "Cannot dereference end iterator!");
-      if (ByBundle) return *(getBundleStart(Op->getParent()));
+      if (ByBundle)
+        return getBundleStart(*Op->getParent());
       return *Op->getParent();
     }
 
-    MachineInstr *operator->() const {
-      assert(Op && "Cannot dereference end iterator!");
-      if (ByBundle) return getBundleStart(Op->getParent());
-      return Op->getParent();
-    }
+    MachineInstr *operator->() const { return &operator*(); }
   };
 };
 

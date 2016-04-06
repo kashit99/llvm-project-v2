@@ -1,10 +1,10 @@
 ; RUN: llc -generate-arange-section -relocation-model=pic < %s | FileCheck %s
 
-; CHECK:   .section        .data.rel,"aw",@progbits
+; CHECK:   .data
 ; CHECK-NOT: .section
 ; CHECK: .L_ZTId.DW.stub:
 
-; CHECK:  .section        .data.rel,"aw",@progbits
+; CHECK:  .data
 ; CHECK-NEXT: .Lsec_end0:
 
 target triple = "x86_64-linux-gnu"
@@ -32,7 +32,7 @@ lpad:                                             ; preds = %0
 !llvm.dbg.cu = !{!0}
 !llvm.module.flags = !{!17, !18}
 
-!0 = distinct !DICompileUnit(language: DW_LANG_C_plus_plus, file: !1, producer: "clang version 3.7.0 (trunk 234308) (llvm/trunk 234310)", isOptimized: false, runtimeVersion: 0, emissionKind: 1, enums: !2, retainedTypes: !2, subprograms: !3, globals: !10, imports: !2)
+!0 = distinct !DICompileUnit(language: DW_LANG_C_plus_plus, file: !1, producer: "clang version 3.7.0 (trunk 234308) (llvm/trunk 234310)", isOptimized: false, runtimeVersion: 0, emissionKind: FullDebug, enums: !2, retainedTypes: !2, subprograms: !3, globals: !10, imports: !2)
 !1 = !DIFile(filename: "/Users/espindola/llvm/<stdin>", directory: "/Users/espindola/llvm/build")
 !2 = !{}
 !3 = !{!4, !9}

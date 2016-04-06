@@ -204,7 +204,7 @@ define void @f34()
 ; CHECK: define void @f34()
 {
         call void @nobuiltin() nobuiltin
-; CHECK: call void @nobuiltin() #28
+; CHECK: call void @nobuiltin() #30
         ret void;
 }
 
@@ -277,6 +277,47 @@ define void @f47() norecurse {
   ret void
 }
 
+; CHECK: define void @f48() #28
+define void @f48() inaccessiblememonly {
+  ret void
+}
+
+; CHECK: define void @f49() #29
+define void @f49() inaccessiblemem_or_argmemonly {
+  ret void
+}
+
+; CHECK: define void @f50(i8* swiftself)
+define void @f50(i8* swiftself)
+{
+  ret void;
+}
+
+; CHECK: define i32 @f51(i8** swifterror)
+define i32 @f51(i8** swifterror)
+{
+  ret i32 0
+}
+
+; CHECK: define i32 @f52(i32, i8** swifterror)
+define i32 @f52(i32, i8** swifterror)
+{
+  ret i32 0
+}
+
+%swift_error = type {i64, i8}
+declare float @foo(%swift_error** swifterror %error_ptr_ref)
+
+; CHECK: define float @f53
+; CHECK: alloca swifterror
+define float @f53(i8* %error_ref) {
+entry:
+  %error_ptr_ref = alloca swifterror %swift_error*
+  store %swift_error* null, %swift_error** %error_ptr_ref
+  %call = call float @foo(%swift_error** swifterror %error_ptr_ref)
+  ret float 1.0
+}
+
 ; CHECK: attributes #0 = { noreturn }
 ; CHECK: attributes #1 = { nounwind }
 ; CHECK: attributes #2 = { readnone }
@@ -305,4 +346,6 @@ define void @f47() norecurse {
 ; CHECK: attributes #25 = { convergent }
 ; CHECK: attributes #26 = { argmemonly }
 ; CHECK: attributes #27 = { norecurse }
-; CHECK: attributes #28 = { nobuiltin }
+; CHECK: attributes #28 = { inaccessiblememonly }
+; CHECK: attributes #29 = { inaccessiblemem_or_argmemonly }
+; CHECK: attributes #30 = { nobuiltin }

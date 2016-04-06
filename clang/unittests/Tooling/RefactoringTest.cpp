@@ -18,6 +18,7 @@
 #include "clang/Basic/FileManager.h"
 #include "clang/Basic/LangOptions.h"
 #include "clang/Basic/SourceManager.h"
+#include "clang/Format/Format.h"
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/Frontend/FrontendAction.h"
 #include "clang/Frontend/TextDiagnosticPrinter.h"
@@ -166,6 +167,39 @@ TEST_F(ReplacementTest, ApplyAllFailsIfOneApplyFails) {
   EXPECT_EQ("z", Context.getRewrittenText(IDz));
 }
 
+TEST_F(ReplacementTest, MultipleFilesReplaceAndFormat) {
+  // Column limit is 20.
+  std::string Code1 = "Long *a =\n"
+                      "    new Long();\n"
+                      "long x = 1;";
+  std::string Expected1 = "auto a = new Long();\n"
+                          "long x =\n"
+                          "    12345678901;";
+  std::string Code2 = "int x = 123;\n"
+                      "int y = 0;";
+  std::string Expected2 = "int x =\n"
+                          "    1234567890123;\n"
+                          "int y = 10;";
+  FileID ID1 = Context.createInMemoryFile("format_1.cpp", Code1);
+  FileID ID2 = Context.createInMemoryFile("format_2.cpp", Code2);
+
+  tooling::Replacements Replaces;
+  // Scrambled the order of replacements.
+  Replaces.insert(tooling::Replacement(
+      Context.Sources, Context.getLocation(ID2, 1, 12), 0, "4567890123"));
+  Replaces.insert(tooling::Replacement(
+      Context.Sources, Context.getLocation(ID1, 1, 1), 6, "auto "));
+  Replaces.insert(tooling::Replacement(
+      Context.Sources, Context.getLocation(ID2, 2, 9), 1, "10"));
+  Replaces.insert(tooling::Replacement(
+      Context.Sources, Context.getLocation(ID1, 3, 10), 1, "12345678901"));
+
+  EXPECT_TRUE(formatAndApplyAllReplacements(
+      Replaces, Context.Rewrite, "{BasedOnStyle: LLVM, ColumnLimit: 20}"));
+  EXPECT_EQ(Expected1, Context.getRewrittenText(ID1));
+  EXPECT_EQ(Expected2, Context.getRewrittenText(ID2));
+}
+
 TEST(ShiftedCodePositionTest, FindsNewCodePosition) {
   Replacements Replaces;
   Replaces.insert(Replacement("", 0, 1, ""));
@@ -176,8 +210,8 @@ TEST(ShiftedCodePositionTest, FindsNewCodePosition) {
   EXPECT_EQ(1u, shiftedCodePosition(Replaces, 2)); //  i|t   i;
   EXPECT_EQ(2u, shiftedCodePosition(Replaces, 3)); //  in|   i;
   EXPECT_EQ(3u, shiftedCodePosition(Replaces, 4)); //  int|  i;
-  EXPECT_EQ(4u, shiftedCodePosition(Replaces, 5)); //  int | i;
-  EXPECT_EQ(4u, shiftedCodePosition(Replaces, 6)); //  int  |i;
+  EXPECT_EQ(3u, shiftedCodePosition(Replaces, 5)); //  int | i;
+  EXPECT_EQ(3u, shiftedCodePosition(Replaces, 6)); //  int  |i;
   EXPECT_EQ(4u, shiftedCodePosition(Replaces, 7)); //  int   |;
   EXPECT_EQ(5u, shiftedCodePosition(Replaces, 8)); //  int   i|
 }
@@ -195,8 +229,8 @@ TEST(ShiftedCodePositionTest, VectorFindsNewCodePositionWithInserts) {
   EXPECT_EQ(1u, shiftedCodePosition(Replaces, 2)); //  i|t   i;
   EXPECT_EQ(2u, shiftedCodePosition(Replaces, 3)); //  in|   i;
   EXPECT_EQ(3u, shiftedCodePosition(Replaces, 4)); //  int|  i;
-  EXPECT_EQ(4u, shiftedCodePosition(Replaces, 5)); //  int | i;
-  EXPECT_EQ(4u, shiftedCodePosition(Replaces, 6)); //  int  |i;
+  EXPECT_EQ(3u, shiftedCodePosition(Replaces, 5)); //  int | i;
+  EXPECT_EQ(3u, shiftedCodePosition(Replaces, 6)); //  int  |i;
   EXPECT_EQ(4u, shiftedCodePosition(Replaces, 7)); //  int   |;
   EXPECT_EQ(5u, shiftedCodePosition(Replaces, 8)); //  int   i|
 }
@@ -205,8 +239,17 @@ TEST(ShiftedCodePositionTest, FindsNewCodePositionWithInserts) {
   Replacements Replaces;
   Replaces.insert(Replacement("", 4, 0, "\"\n\""));
   // Assume '"12345678"' is turned into '"1234"\n"5678"'.
-  EXPECT_EQ(4u, shiftedCodePosition(Replaces, 4)); // "123|5678"
-  EXPECT_EQ(8u, shiftedCodePosition(Replaces, 5)); // "1234|678"
+  EXPECT_EQ(3u, shiftedCodePosition(Replaces, 3)); // "123|5678"
+  EXPECT_EQ(7u, shiftedCodePosition(Replaces, 4)); // "1234|678"
+  EXPECT_EQ(8u, shiftedCodePosition(Replaces, 5)); // "12345|78"
+}
+
+TEST(ShiftedCodePositionTest, FindsNewCodePositionInReplacedText) {
+  Replacements Replaces;
+  // Replace the first four characters with "abcd".
+  Replaces.insert(Replacement("", 0, 4, "abcd"));
+  for (unsigned i = 0; i < 3; ++i)
+    EXPECT_EQ(i, shiftedCodePosition(Replaces, i));
 }
 
 class FlushRewrittenFilesTest : public ::testing::Test {
@@ -407,6 +450,25 @@ TEST(Range, contains) {
   EXPECT_TRUE(Range(0, 10).contains(Range(2, 6)));
   EXPECT_FALSE(Range(2, 6).contains(Range(0, 10)));
   EXPECT_FALSE(Range(0, 10).contains(Range(0, 11)));
+}
+
+TEST(Range, CalculateRangesOfReplacements) {
+  // Before: aaaabbbbbbz
+  // After : bbbbbbzzzzzzoooooooooooooooo
+  Replacements Replaces;
+  Replaces.insert(Replacement("foo", 0, 4, ""));
+  Replaces.insert(Replacement("foo", 10, 1, "zzzzzz"));
+  Replaces.insert(Replacement("foo", 11, 0, "oooooooooooooooo"));
+
+  std::vector<Range> Ranges = calculateChangedRanges(Replaces);
+
+  EXPECT_EQ(3ul, Ranges.size());
+  EXPECT_TRUE(Ranges[0].getOffset() == 0);
+  EXPECT_TRUE(Ranges[0].getLength() == 0);
+  EXPECT_TRUE(Ranges[1].getOffset() == 6);
+  EXPECT_TRUE(Ranges[1].getLength() == 6);
+  EXPECT_TRUE(Ranges[2].getOffset() == 12);
+  EXPECT_TRUE(Ranges[2].getLength() == 16);
 }
 
 TEST(DeduplicateTest, removesDuplicates) {

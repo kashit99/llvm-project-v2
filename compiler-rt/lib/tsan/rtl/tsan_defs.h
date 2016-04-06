@@ -29,7 +29,11 @@
 #endif
 
 #ifndef TSAN_CONTAINS_UBSAN
-# define TSAN_CONTAINS_UBSAN (CAN_SANITIZE_UB && !defined(SANITIZER_GO))
+# if CAN_SANITIZE_UB && !defined(SANITIZER_GO)
+#  define TSAN_CONTAINS_UBSAN 1
+# else
+#  define TSAN_CONTAINS_UBSAN 0
+# endif
 #endif
 
 namespace __tsan {
@@ -38,13 +42,10 @@ namespace __tsan {
 const bool kGoMode = true;
 const bool kCppMode = false;
 const char *const kTsanOptionsEnv = "GORACE";
-// Go linker does not support weak symbols.
-#define CPP_WEAK
 #else
 const bool kGoMode = false;
 const bool kCppMode = true;
 const char *const kTsanOptionsEnv = "TSAN_OPTIONS";
-#define CPP_WEAK WEAK
 #endif
 
 const int kTidBits = 13;

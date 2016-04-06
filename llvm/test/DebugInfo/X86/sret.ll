@@ -263,7 +263,7 @@ attributes #7 = { builtin nounwind }
 !llvm.module.flags = !{!64, !65}
 !llvm.ident = !{!66}
 
-!0 = distinct !DICompileUnit(language: DW_LANG_C_plus_plus, producer: "clang version 3.5.0 (trunk 203283) (llvm/trunk 203307)", isOptimized: false, splitDebugFilename: "sret.dwo", emissionKind: 1, file: !1, enums: !2, retainedTypes: !3, subprograms: !48, globals: !2, imports: !2)
+!0 = distinct !DICompileUnit(language: DW_LANG_C_plus_plus, producer: "clang version 3.5.0 (trunk 203283) (llvm/trunk 203307)", isOptimized: false, splitDebugFilename: "sret.dwo", emissionKind: FullDebug, file: !1, enums: !2, retainedTypes: !3, subprograms: !48, globals: !2, imports: !2)
 !1 = !DIFile(filename: "sret.cpp", directory: "/usr/local/google/home/echristo/tmp")
 !2 = !{}
 !3 = !{!4, !37}
@@ -284,7 +284,7 @@ attributes #7 = { builtin nounwind }
 !19 = !DISubprogram(name: "A", line: 5, isLocal: false, isDefinition: false, virtualIndex: 6, flags: DIFlagPrototyped, isOptimized: false, scopeLine: 5, file: !1, scope: !"_ZTS1A", type: !20)
 !20 = !DISubroutineType(types: !21)
 !21 = !{null, !17, !22}
-!22 = !DIDerivedType(tag: DW_TAG_reference_type, baseType: !23)
+!22 = !DIDerivedType(tag: DW_TAG_reference_type, size: 64, align: 64, baseType: !23)
 !23 = !DIDerivedType(tag: DW_TAG_const_type, baseType: !"_ZTS1A")
 !25 = !DISubprogram(name: "operator=", linkageName: "_ZN1AaSERKS_", line: 7, isLocal: false, isDefinition: false, virtualIndex: 6, flags: DIFlagPrototyped, isOptimized: false, scopeLine: 7, file: !1, scope: !"_ZTS1A", type: !26)
 !26 = !DISubroutineType(types: !27)

@@ -333,24 +333,20 @@ static bool CreatePrologue(Function *F, Module *M, ReturnInst *RI,
                            AllocaInst *&AI, Value *&StackGuardVar) {
   bool SupportsSelectionDAGSP = false;
   PointerType *PtrTy = Type::getInt8PtrTy(RI->getContext());
-  unsigned AddressSpace, Offset;
-  if (TLI->getStackCookieLocation(AddressSpace, Offset)) {
-    Constant *OffsetVal =
-        ConstantInt::get(Type::getInt32Ty(RI->getContext()), Offset);
+  IRBuilder<> B(&F->getEntryBlock().front());
 
-    StackGuardVar =
-        ConstantExpr::getIntToPtr(OffsetVal, PointerType::get(PtrTy,
-                                                              AddressSpace));
-  } else if (TT.isOSOpenBSD()) {
-    StackGuardVar = M->getOrInsertGlobal("__guard_local", PtrTy);
-    cast<GlobalValue>(StackGuardVar)
-        ->setVisibility(GlobalValue::HiddenVisibility);
-  } else {
-    SupportsSelectionDAGSP = true;
-    StackGuardVar = M->getOrInsertGlobal("__stack_chk_guard", PtrTy);
+  StackGuardVar = TLI->getStackCookieLocation(B);
+  if (!StackGuardVar) {
+    if (TT.isOSOpenBSD()) {
+      StackGuardVar = M->getOrInsertGlobal("__guard_local", PtrTy);
+      cast<GlobalValue>(StackGuardVar)
+          ->setVisibility(GlobalValue::HiddenVisibility);
+    } else {
+      SupportsSelectionDAGSP = true;
+      StackGuardVar = M->getOrInsertGlobal("__stack_chk_guard", PtrTy);
+    }
   }
 
-  IRBuilder<> B(&F->getEntryBlock().front());
   AI = B.CreateAlloca(PtrTy, nullptr, "StackGuardSlot");
   LoadInst *LI = B.CreateLoad(StackGuardVar, "StackGuard");
   B.CreateCall(Intrinsic::getDeclaration(M, Intrinsic::stackprotector),
@@ -453,12 +449,13 @@ bool StackProtector::InsertStackProtectors() {
       LoadInst *LI1 = B.CreateLoad(StackGuardVar);
       LoadInst *LI2 = B.CreateLoad(AI);
       Value *Cmp = B.CreateICmpEQ(LI1, LI2);
-      unsigned SuccessWeight =
-          BranchProbabilityInfo::getBranchWeightStackProtector(true);
-      unsigned FailureWeight =
-          BranchProbabilityInfo::getBranchWeightStackProtector(false);
+      auto SuccessProb =
+          BranchProbabilityInfo::getBranchProbStackProtector(true);
+      auto FailureProb =
+          BranchProbabilityInfo::getBranchProbStackProtector(false);
       MDNode *Weights = MDBuilder(F->getContext())
-                            .createBranchWeights(SuccessWeight, FailureWeight);
+                            .createBranchWeights(SuccessProb.getNumerator(),
+                                                 FailureProb.getNumerator());
       B.CreateCondBr(Cmp, NewBB, FailBB, Weights);
     }
   }

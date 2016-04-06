@@ -49,6 +49,18 @@
 # define SANITIZER_IOSSIM  0
 #endif
 
+#if defined(__APPLE__) && TARGET_OS_IPHONE && TARGET_OS_WATCH
+# define SANITIZER_WATCHOS 1
+#else
+# define SANITIZER_WATCHOS 0
+#endif
+
+#if defined(__APPLE__) && TARGET_OS_IPHONE && TARGET_OS_TV
+# define SANITIZER_TVOS 1
+#else
+# define SANITIZER_TVOS 0
+#endif
+
 #if defined(_WIN32)
 # define SANITIZER_WINDOWS 1
 #else
@@ -81,14 +93,19 @@
 # define SANITIZER_X32 0
 #endif
 
-// VMA size definition for architecture that support multiple sizes.
-// AArch64 has 3 VMA sizes: 39, 42 and 48.
-#if !defined(SANITIZER_AARCH64_VMA)
-# define SANITIZER_AARCH64_VMA 39
-#else
-# if SANITIZER_AARCH64_VMA != 39 && SANITIZER_AARCH64_VMA != 42
-#  error "invalid SANITIZER_AARCH64_VMA size"
+#if defined(__mips__)
+# define SANITIZER_MIPS 1
+# if defined(__mips64)
+#  define SANITIZER_MIPS32 0
+#  define SANITIZER_MIPS64 1
+# else
+#  define SANITIZER_MIPS32 1
+#  define SANITIZER_MIPS64 0
 # endif
+#else
+# define SANITIZER_MIPS 0
+# define SANITIZER_MIPS32 0
+# define SANITIZER_MIPS64 0
 #endif
 
 // By default we allow to use SizeClassAllocator64 on 64-bit platform.
@@ -97,7 +114,7 @@
 // For such platforms build this code with -DSANITIZER_CAN_USE_ALLOCATOR64=0 or
 // change the definition of SANITIZER_CAN_USE_ALLOCATOR64 here.
 #ifndef SANITIZER_CAN_USE_ALLOCATOR64
-# if defined(__mips64) || (defined(__aarch64__) && SANITIZER_AARCH64_VMA == 39)
+# if defined(__mips64) || defined(__aarch64__)
 #  define SANITIZER_CAN_USE_ALLOCATOR64 0
 # else
 #  define SANITIZER_CAN_USE_ALLOCATOR64 (SANITIZER_WORDSIZE == 64)
@@ -105,16 +122,9 @@
 #endif
 
 // The range of addresses which can be returned my mmap.
-// FIXME: this value should be different on different platforms,
-// e.g. on AArch64 it is most likely (1ULL << 39). Larger values will still work
-// but will consume more memory for TwoLevelByteMap.
-#if defined(__aarch64__)
-# if SANITIZER_AARCH64_VMA == 39
-#  define SANITIZER_MMAP_RANGE_SIZE FIRST_32_SECOND_64(1ULL << 32, 1ULL << 39)
-# elif SANITIZER_AARCH64_VMA == 42
-#  define SANITIZER_MMAP_RANGE_SIZE FIRST_32_SECOND_64(1ULL << 32, 1ULL << 42)
-# endif
-#elif defined(__mips__)
+// FIXME: this value should be different on different platforms.  Larger values
+// will still work but will consume more memory for TwoLevelByteMap.
+#if defined(__mips__)
 # define SANITIZER_MMAP_RANGE_SIZE FIRST_32_SECOND_64(1ULL << 32, 1ULL << 40)
 #else
 # define SANITIZER_MMAP_RANGE_SIZE FIRST_32_SECOND_64(1ULL << 32, 1ULL << 47)
@@ -144,10 +154,8 @@
 #define SANITIZER_USES_UID16_SYSCALLS 0
 #endif
 
-#if defined(__mips__) || (defined(__aarch64__) && SANITIZER_AARCH64_VMA == 39)
+#if defined(__mips__)
 # define SANITIZER_POINTER_FORMAT_LENGTH FIRST_32_SECOND_64(8, 10)
-#elif defined(__aarch64__) && SANITIZER_AARCH64_VMA == 42
-# define SANITIZER_POINTER_FORMAT_LENGTH FIRST_32_SECOND_64(8, 11)
 #else
 # define SANITIZER_POINTER_FORMAT_LENGTH FIRST_32_SECOND_64(8, 12)
 #endif
@@ -167,6 +175,12 @@
 # define MSC_PREREQ(version) (_MSC_VER >= (version))
 #else
 # define MSC_PREREQ(version) 0
+#endif
+
+#if defined(__arm64__) && SANITIZER_IOS
+# define SANITIZER_NON_UNIQUE_TYPEINFO 1
+#else
+# define SANITIZER_NON_UNIQUE_TYPEINFO 0
 #endif
 
 #endif // SANITIZER_PLATFORM_H

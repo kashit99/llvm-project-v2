@@ -610,7 +610,7 @@ NOINLINE void BuiltinLongJmpFunc1(jmp_buf buf) {
 }
 
 // Does not work on Power and ARM:
-// https://code.google.com/p/address-sanitizer/issues/detail?id=185
+// https://github.com/google/sanitizers/issues/185
 TEST(AddressSanitizer, BuiltinLongJmpTest) {
   static jmp_buf buf;
   if (!__builtin_setjmp((void**)buf)) {
@@ -808,9 +808,6 @@ TEST(AddressSanitizer, DISABLED_MemIntrinsicUnalignedAccessTest) {
   EXPECT_DEATH(memset(s + size - 1, 0, 2), RightOOBWriteMessage(0));
   free(s);
 }
-
-// TODO(samsonov): Add a test with malloc(0)
-// TODO(samsonov): Add tests for str* and mem* functions.
 
 NOINLINE static int LargeFunction(bool do_bad_access) {
   int *x = new int[100];
@@ -1156,9 +1153,9 @@ TEST(AddressSanitizer, AttributeNoSanitizeAddressTest) {
 // The new/delete/etc mismatch checks don't work on Android,
 //   as calls to new/delete go through malloc/free.
 // OS X support is tracked here:
-//   https://code.google.com/p/address-sanitizer/issues/detail?id=131
+//   https://github.com/google/sanitizers/issues/131
 // Windows support is tracked here:
-//   https://code.google.com/p/address-sanitizer/issues/detail?id=309
+//   https://github.com/google/sanitizers/issues/309
 #if !defined(__ANDROID__) && \
     !defined(__APPLE__) && \
     !defined(_WIN32)
@@ -1166,15 +1163,21 @@ static string MismatchStr(const string &str) {
   return string("AddressSanitizer: alloc-dealloc-mismatch \\(") + str;
 }
 
+static string MismatchOrNewDeleteTypeStr(const string &mismatch_str) {
+  return "(" + MismatchStr(mismatch_str) +
+         ")|(AddressSanitizer: new-delete-type-mismatch)";
+}
+
 TEST(AddressSanitizer, AllocDeallocMismatch) {
   EXPECT_DEATH(free(Ident(new int)),
                MismatchStr("operator new vs free"));
   EXPECT_DEATH(free(Ident(new int[2])),
                MismatchStr("operator new \\[\\] vs free"));
-  EXPECT_DEATH(delete (Ident(new int[2])),
-               MismatchStr("operator new \\[\\] vs operator delete"));
-  EXPECT_DEATH(delete (Ident((int*)malloc(2 * sizeof(int)))),
-               MismatchStr("malloc vs operator delete"));
+  EXPECT_DEATH(
+      delete (Ident(new int[2])),
+      MismatchOrNewDeleteTypeStr("operator new \\[\\] vs operator delete"));
+  EXPECT_DEATH(delete (Ident((int *)malloc(2 * sizeof(int)))),
+               MismatchOrNewDeleteTypeStr("malloc vs operator delete"));
   EXPECT_DEATH(delete [] (Ident(new int)),
                MismatchStr("operator new vs operator delete \\[\\]"));
   EXPECT_DEATH(delete [] (Ident((int*)malloc(2 * sizeof(int)))),
@@ -1255,7 +1258,7 @@ TEST(AddressSanitizer, DISABLED_DemoTooMuchMemoryTest) {
   }
 }
 
-// http://code.google.com/p/address-sanitizer/issues/detail?id=66
+// https://github.com/google/sanitizers/issues/66
 TEST(AddressSanitizer, BufferOverflowAfterManyFrees) {
   for (int i = 0; i < 1000000; i++) {
     delete [] (Ident(new char [8644]));

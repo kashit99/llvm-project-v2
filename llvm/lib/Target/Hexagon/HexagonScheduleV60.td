@@ -20,6 +20,15 @@ def CVI_XLSHF  : FuncUnit;
 def CVI_MPY01  : FuncUnit;
 def CVI_ALL    : FuncUnit;
 
+// Combined functional unit data.
+def HexagonComboFuncsV60 :
+    ComboFuncUnits<[
+      ComboFuncData<CVI_XLSHF    , [CVI_XLANE, CVI_SHIFT]>,
+      ComboFuncData<CVI_MPY01    , [CVI_MPY0, CVI_MPY1]>,
+      ComboFuncData<CVI_ALL      , [CVI_ST, CVI_XLANE, CVI_SHIFT,
+                                    CVI_MPY0, CVI_MPY1, CVI_LD]>
+    ]>;
+
 // Note: When adding additional vector scheduling classes, add the
 // corresponding methods to the class HexagonInstrInfo.
 def CVI_VA           : InstrItinClass;
@@ -294,6 +303,7 @@ def HexagonModelV60 : SchedMachineModel {
   let IssueWidth = 4;
   let Itineraries = HexagonItinerariesV60;
   let LoadLatency = 1;
+  let CompleteModel = 0;
 }
 
 //===----------------------------------------------------------------------===//

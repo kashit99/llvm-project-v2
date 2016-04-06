@@ -152,10 +152,10 @@ operator+=(SmallVectorImpl<char> &Includes, StringRef RHS) {
   return Includes;
 }
 
-static std::error_code addHeaderInclude(StringRef HeaderName,
-                                        SmallVectorImpl<char> &Includes,
-                                        const LangOptions &LangOpts,
-                                        bool IsExternC) {
+static void addHeaderInclude(StringRef HeaderName,
+                             SmallVectorImpl<char> &Includes,
+                             const LangOptions &LangOpts,
+                             bool IsExternC) {
   if (IsExternC && LangOpts.CPlusPlus)
     Includes += "extern \"C\" {\n";
   if (LangOpts.ObjC1)
@@ -168,7 +168,6 @@ static std::error_code addHeaderInclude(StringRef HeaderName,
   Includes += "\"\n";
   if (IsExternC && LangOpts.CPlusPlus)
     Includes += "}\n";
-  return std::error_code();
 }
 
 /// \brief Collect the set of header includes needed to construct the given 
@@ -187,27 +186,24 @@ collectModuleHeaderIncludes(const LangOptions &LangOpts, FileManager &FileMgr,
     return std::error_code();
 
   // Add includes for each of these headers.
-  for (Module::Header &H : Module->Headers[Module::HK_Normal]) {
-    Module->addTopHeader(H.Entry);
-    // Use the path as specified in the module map file. We'll look for this
-    // file relative to the module build directory (the directory containing
-    // the module map file) so this will find the same file that we found
-    // while parsing the module map.
-    if (std::error_code Err = addHeaderInclude(H.NameAsWritten, Includes,
-                                               LangOpts, Module->IsExternC))
-      return Err;
+  for (auto HK : {Module::HK_Normal, Module::HK_Private}) {
+    for (Module::Header &H : Module->Headers[HK]) {
+      Module->addTopHeader(H.Entry);
+      // Use the path as specified in the module map file. We'll look for this
+      // file relative to the module build directory (the directory containing
+      // the module map file) so this will find the same file that we found
+      // while parsing the module map.
+      addHeaderInclude(H.NameAsWritten, Includes, LangOpts, Module->IsExternC);
+    }
   }
   // Note that Module->PrivateHeaders will not be a TopHeader.
 
   if (Module::Header UmbrellaHeader = Module->getUmbrellaHeader()) {
     Module->addTopHeader(UmbrellaHeader.Entry);
-    if (Module->Parent) {
+    if (Module->Parent)
       // Include the umbrella header for submodules.
-      if (std::error_code Err = addHeaderInclude(UmbrellaHeader.NameAsWritten,
-                                                 Includes, LangOpts,
-                                                 Module->IsExternC))
-        return Err;
-    }
+      addHeaderInclude(UmbrellaHeader.NameAsWritten, Includes, LangOpts,
+                       Module->IsExternC);
   } else if (Module::DirectoryName UmbrellaDir = Module->getUmbrellaDir()) {
     // Add all of the headers we find in this subdirectory.
     std::error_code EC;
@@ -246,9 +242,7 @@ collectModuleHeaderIncludes(const LangOptions &LangOpts, FileManager &FileMgr,
 
       // Include this header as part of the umbrella directory.
       Module->addTopHeader(Header);
-      if (std::error_code Err = addHeaderInclude(RelativeHeader, Includes,
-                                                 LangOpts, Module->IsExternC))
-        return Err;
+      addHeaderInclude(RelativeHeader, Includes, LangOpts, Module->IsExternC);
     }
 
     if (EC)
@@ -268,6 +262,8 @@ collectModuleHeaderIncludes(const LangOptions &LangOpts, FileManager &FileMgr,
 
 bool GenerateModuleAction::BeginSourceFileAction(CompilerInstance &CI, 
                                                  StringRef Filename) {
+  CI.getLangOpts().CompilingModule = true;
+
   // Find the module map file.
   const FileEntry *ModuleMap =
       CI.getFileManager().getFile(Filename, /*openFile*/true);
@@ -277,6 +273,17 @@ bool GenerateModuleAction::BeginSourceFileAction(CompilerInstance &CI,
     return false;
   }
   
+  // Set up embedding for any specified files. Do this before we load any
+  // source files, including the primary module map for the compilation.
+  for (const auto &F : CI.getFrontendOpts().ModulesEmbedFiles) {
+    if (const auto *FE = CI.getFileManager().getFile(F, /*openFile*/true))
+      CI.getSourceManager().setFileIsTransient(FE);
+    else
+      CI.getDiagnostics().Report(diag::err_modules_embed_file_not_found) << F;
+  }
+  if (CI.getFrontendOpts().ModulesEmbedAllFiles)
+    CI.getSourceManager().setAllFilesAreTransient(true);
+
   // Parse the module map file.
   HeaderSearch &HS = CI.getPreprocessor().getHeaderSearchInfo();
   if (HS.loadModuleMapFile(ModuleMap, IsSystem))
@@ -290,14 +297,6 @@ bool GenerateModuleAction::BeginSourceFileAction(CompilerInstance &CI,
     // default. Then it would be fairly trivial to just "compile" a module
     // map with a single module (the common case).
     return false;
-  }
-
-  // Set up embedding for any specified files.
-  for (const auto &F : CI.getFrontendOpts().ModulesEmbedFiles) {
-    if (const auto *FE = CI.getFileManager().getFile(F, /*openFile*/true))
-      CI.getSourceManager().embedFileContentsInModule(FE);
-    else
-      CI.getDiagnostics().Report(diag::err_modules_embed_file_not_found) << F;
   }
 
   // If we're being run from the command-line, the module build stack will not
@@ -349,10 +348,9 @@ bool GenerateModuleAction::BeginSourceFileAction(CompilerInstance &CI,
   SmallString<256> HeaderContents;
   std::error_code Err = std::error_code();
   if (Module::Header UmbrellaHeader = Module->getUmbrellaHeader())
-    Err = addHeaderInclude(UmbrellaHeader.NameAsWritten, HeaderContents,
-                           CI.getLangOpts(), Module->IsExternC);
-  if (!Err)
-    Err = collectModuleHeaderIncludes(
+    addHeaderInclude(UmbrellaHeader.NameAsWritten, HeaderContents,
+                     CI.getLangOpts(), Module->IsExternC);
+  Err = collectModuleHeaderIncludes(
         CI.getLangOpts(), FileMgr,
         CI.getPreprocessor().getHeaderSearchInfo().getModuleMap(), Module,
         HeaderContents);
@@ -702,7 +700,8 @@ void PrintPreprocessedAction::ExecuteAction() {
       } else if (*cur == 0x0A)  // LF
         break;
 
-      ++cur, ++next;
+      ++cur;
+      ++next;
     }
   }
 

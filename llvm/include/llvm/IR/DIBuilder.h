@@ -68,7 +68,6 @@ namespace llvm {
     /// If \c AllowUnresolved, collect unresolved nodes attached to the module
     /// in order to resolve cycles during \a finalize().
     explicit DIBuilder(Module &M, bool AllowUnresolved = true);
-    enum DebugEmissionKind { FullDebug=1, LineTablesOnly };
 
     /// Construct any deferred debug info descriptors.
     void finalize();
@@ -107,8 +106,9 @@ namespace llvm {
     createCompileUnit(unsigned Lang, StringRef File, StringRef Dir,
                       StringRef Producer, bool isOptimized, StringRef Flags,
                       unsigned RV, StringRef SplitName = StringRef(),
-                      DebugEmissionKind Kind = FullDebug, uint64_t DWOId = 0,
-                      bool EmitDebugInfo = true);
+                      DICompileUnit::DebugEmissionKind Kind =
+                          DICompileUnit::DebugEmissionKind::FullDebug,
+                      uint64_t DWOId = 0, bool EmitDebugInfo = true);
 
     /// Create a file descriptor to hold debugging information
     /// for a file.
@@ -158,7 +158,9 @@ namespace llvm {
 
     /// Create debugging information entry for a c++
     /// style reference or rvalue reference type.
-    DIDerivedType *createReferenceType(unsigned Tag, DIType *RTy);
+    DIDerivedType *createReferenceType(unsigned Tag, DIType *RTy,
+                                       uint64_t SizeInBits = 0,
+                                       uint64_t AlignInBits = 0);
 
     /// Create debugging information entry for a typedef.
     /// \param Ty          Original type.
@@ -556,7 +558,8 @@ namespace llvm {
     /// \param isDefinition  True if this is a function definition.
     /// \param Virtuality    Attributes describing virtualness. e.g. pure
     ///                      virtual function.
-    /// \param VTableIndex   Index no of this method in virtual table.
+    /// \param VTableIndex   Index no of this method in virtual table, or -1u if
+    ///                      unrepresentable.
     /// \param VTableHolder  Type that holds vtable.
     /// \param Flags         e.g. is this function prototyped or not.
     ///                      This flags are used to emit dwarf attributes.

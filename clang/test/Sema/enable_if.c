@@ -136,4 +136,17 @@ void test7() {
   void *p3 = (void*)&f3; // expected-error{{address of overloaded function 'f3' does not match required type 'void'}} expected-note@131{{candidate function made ineligible by enable_if}} expected-note@132{{candidate function made ineligible by enable_if}}
   void *p4 = (void*)f3; // expected-error{{address of overloaded function 'f3' does not match required type 'void'}} expected-note@131{{candidate function made ineligible by enable_if}} expected-note@132{{candidate function made ineligible by enable_if}}
 }
+
+void f4(int m) __attribute__((enable_if(0, "")));
+void test8() {
+  void (*p1)(int) = &f4; // expected-error{{cannot take address of function 'f4' becuase it has one or more non-tautological enable_if conditions}}
+  void (*p2)(int) = f4; // expected-error{{cannot take address of function 'f4' becuase it has one or more non-tautological enable_if conditions}}
+}
+
+void regular_enable_if(int a) __attribute__((enable_if(a, ""))); // expected-note 3{{declared here}}
+void PR27122_ext() {
+  regular_enable_if(0, 2); // expected-error{{too many arguments}}
+  regular_enable_if(1, 2); // expected-error{{too many arguments}}
+  regular_enable_if(); // expected-error{{too few arguments}}
+}
 #endif

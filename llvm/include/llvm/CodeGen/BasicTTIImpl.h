@@ -143,10 +143,6 @@ public:
     return getTLI()->isTruncateFree(Ty1, Ty2);
   }
 
-  bool isZExtFree(Type *Ty1, Type *Ty2) const {
-    return getTLI()->isZExtFree(Ty1, Ty2);
-  }
-
   bool isProfitableToHoist(Instruction *I) {
     return getTLI()->isProfitableToHoist(I);
   }
@@ -170,7 +166,7 @@ public:
     }
 
     if (IID == Intrinsic::ctlz) {
-       if (getTLI()->isCheapToSpeculateCtlz())
+      if (getTLI()->isCheapToSpeculateCtlz())
         return TargetTransformInfo::TCC_Basic;
       return TargetTransformInfo::TCC_Expensive;
     }
@@ -306,17 +302,13 @@ public:
 
     if (TLI->isOperationLegalOrPromote(ISD, LT.second)) {
       // The operation is legal. Assume it costs 1.
-      // If the type is split to multiple registers, assume that there is some
-      // overhead to this.
       // TODO: Once we have extract/insert subvector cost we need to use them.
-      if (LT.first > 1)
-        return LT.first * 2 * OpCost;
-      return LT.first * 1 * OpCost;
+      return LT.first * OpCost;
     }
 
     if (!TLI->isOperationExpand(ISD, LT.second)) {
-      // If the operation is custom lowered then assume
-      // thare the code is twice as expensive.
+      // If the operation is custom lowered, then assume that the code is twice
+      // as expensive.
       return LT.first * 2 * OpCost;
     }
 
@@ -365,6 +357,11 @@ public:
 
     if (Opcode == Instruction::ZExt &&
         TLI->isZExtFree(SrcLT.second, DstLT.second))
+      return 0;
+
+    if (Opcode == Instruction::AddrSpaceCast &&
+        TLI->isNoopAddrSpaceCast(Src->getPointerAddressSpace(),
+                                 Dst->getPointerAddressSpace()))
       return 0;
 
     // If the cast is marked as legal (or promote) then assume low cost.
@@ -500,13 +497,11 @@ public:
       // itself. Unless the corresponding extending load or truncating store is
       // legal, then this will scalarize.
       TargetLowering::LegalizeAction LA = TargetLowering::Expand;
-      EVT MemVT = getTLI()->getValueType(DL, Src, true);
-      if (MemVT.isSimple() && MemVT != MVT::Other) {
-        if (Opcode == Instruction::Store)
-          LA = getTLI()->getTruncStoreAction(LT.second, MemVT.getSimpleVT());
-        else
-          LA = getTLI()->getLoadExtAction(ISD::EXTLOAD, LT.second, MemVT);
-      }
+      EVT MemVT = getTLI()->getValueType(DL, Src);
+      if (Opcode == Instruction::Store)
+        LA = getTLI()->getTruncStoreAction(LT.second, MemVT);
+      else
+        LA = getTLI()->getLoadExtAction(ISD::EXTLOAD, LT.second, MemVT);
 
       if (LA != TargetLowering::Legal && LA != TargetLowering::Custom) {
         // This is a vector load/store for some illegal type that is scalarized.
@@ -590,9 +585,43 @@ public:
     return Cost;
   }
 
+  /// Get intrinsic cost based on arguments  
+  unsigned getIntrinsicInstrCost(Intrinsic::ID IID, Type *RetTy,
+                                 ArrayRef<Value *> Args) {
+    switch (IID) {
+    default: {
+      SmallVector<Type *, 4> Types;
+      for (Value *Op : Args)
+        Types.push_back(Op->getType());
+      return static_cast<T *>(this)->getIntrinsicInstrCost(IID, RetTy, Types);
+    }
+    case Intrinsic::masked_scatter: {
+      Value *Mask = Args[3];
+      bool VarMask = !isa<Constant>(Mask);
+      unsigned Alignment = cast<ConstantInt>(Args[2])->getZExtValue();
+      return
+        static_cast<T *>(this)->getGatherScatterOpCost(Instruction::Store,
+                                                       Args[0]->getType(),
+                                                       Args[1], VarMask,
+                                                       Alignment);
+    }
+    case Intrinsic::masked_gather: {
+      Value *Mask = Args[2];
+      bool VarMask = !isa<Constant>(Mask);
+      unsigned Alignment = cast<ConstantInt>(Args[1])->getZExtValue();
+      return
+        static_cast<T *>(this)->getGatherScatterOpCost(Instruction::Load,
+                                                       RetTy, Args[0], VarMask,
+                                                       Alignment);
+    }
+    }
+  }
+  
+  /// Get intrinsic cost based on argument types
   unsigned getIntrinsicInstrCost(Intrinsic::ID IID, Type *RetTy,
                                  ArrayRef<Type *> Tys) {
     unsigned ISD = 0;
+    unsigned SingleCallCost = 10; // Library call cost. Make it expensive.
     switch (IID) {
     default: {
       // Assume that we need to scalarize this intrinsic.
@@ -697,12 +726,24 @@ public:
     case Intrinsic::masked_load:
       return static_cast<T *>(this)
           ->getMaskedMemoryOpCost(Instruction::Load, RetTy, 0, 0);
+    case Intrinsic::ctpop:
+      ISD = ISD::CTPOP;
+      // In case of legalization use TCC_Expensive. This is cheaper than a
+      // library call but still not a cheap instruction.
+      SingleCallCost = TargetTransformInfo::TCC_Expensive;
+      break;
+    // FIXME: ctlz, cttz, ...
     }
 
     const TargetLoweringBase *TLI = getTLI();
     std::pair<unsigned, MVT> LT = TLI->getTypeLegalizationCost(DL, RetTy);
 
     if (TLI->isOperationLegalOrPromote(ISD, LT.second)) {
+      if (IID == Intrinsic::fabs &&
+          TLI->isFAbsFree(LT.second)) {
+        return 0;
+      }
+
       // The operation is legal. Assume it costs 1.
       // If the type is split to multiple registers, assume that there is some
       // overhead to this.
@@ -752,7 +793,7 @@ public:
     }
 
     // This is going to be turned into a library call, make it expensive.
-    return 10;
+    return SingleCallCost;
   }
 
   /// \brief Compute a cost of the given call instruction.

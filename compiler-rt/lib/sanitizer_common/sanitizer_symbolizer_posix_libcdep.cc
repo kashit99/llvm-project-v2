@@ -75,7 +75,7 @@ bool SymbolizerProcess::StartSymbolizerSubprocess() {
 #if SANITIZER_MAC
     fd_t fd = kInvalidFd;
     // Use forkpty to disable buffering in the new terminal.
-    pid = forkpty(&fd, 0, 0, 0);
+    pid = internal_forkpty(&fd);
     if (pid == -1) {
       // forkpty() failed.
       Report("WARNING: failed to fork external symbolizer (errno: %d)\n",
@@ -137,47 +137,23 @@ bool SymbolizerProcess::StartSymbolizerSubprocess() {
     CHECK(infd);
     CHECK(outfd);
 
-    // Real fork() may call user callbacks registered with pthread_atfork().
-    pid = internal_fork();
-    if (pid == -1) {
-      // Fork() failed.
+    const char *argv[kArgVMax];
+    GetArgV(path_, argv);
+    pid = StartSubprocess(path_, argv, /* stdin */ outfd[0],
+                          /* stdout */ infd[1]);
+    if (pid < 0) {
       internal_close(infd[0]);
-      internal_close(infd[1]);
-      internal_close(outfd[0]);
       internal_close(outfd[1]);
-      Report("WARNING: failed to fork external symbolizer "
-             " (errno: %d)\n", errno);
       return false;
-    } else if (pid == 0) {
-      // Child subprocess.
-      internal_close(STDOUT_FILENO);
-      internal_close(STDIN_FILENO);
-      internal_dup2(outfd[0], STDIN_FILENO);
-      internal_dup2(infd[1], STDOUT_FILENO);
-      internal_close(outfd[0]);
-      internal_close(outfd[1]);
-      internal_close(infd[0]);
-      internal_close(infd[1]);
-      for (int fd = sysconf(_SC_OPEN_MAX); fd > 2; fd--)
-        internal_close(fd);
-      const char *argv[kArgVMax];
-      GetArgV(path_, argv);
-      execv(path_, const_cast<char **>(&argv[0]));
-      internal__exit(1);
     }
 
-    // Continue execution in parent process.
-    internal_close(outfd[0]);
-    internal_close(infd[1]);
     input_fd_ = infd[0];
     output_fd_ = outfd[1];
   }
 
   // Check that symbolizer subprocess started successfully.
-  int pid_status;
   SleepForMillis(kSymbolizerStartupTimeMillis);
-  int exited_pid = waitpid(pid, &pid_status, WNOHANG);
-  if (exited_pid != 0) {
+  if (!IsProcessRunning(pid)) {
     // Either waitpid failed, or child has already exited.
     Report("WARNING: external symbolizer didn't start up correctly!\n");
     return false;
@@ -452,10 +428,6 @@ static void ChooseSymbolizerTools(IntrusiveList<SymbolizerTool> *list,
   VReport(2, "Using dladdr symbolizer.\n");
   list->push_back(new(*allocator) DlAddrSymbolizer());
 #endif  // SANITIZER_MAC
-
-  if (list->size() == 0) {
-    Report("WARNING: no internal or external symbolizer found.\n");
-  }
 }
 
 Symbolizer *Symbolizer::PlatformInit() {

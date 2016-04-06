@@ -6,8 +6,13 @@
 ;
 ; rdar://problem/16015314
 ;
-; CHECK:  DW_AT_location [DW_FORM_block1]       (<0x03> 54 93 04 )
-; CHECK:  DW_AT_name [DW_FORM_strp]{{.*}} "a"
+; CHECK:  .debug_info contents:
+; CHECK:  DW_TAG_variable
+; CHECK-NEXT:  DW_AT_location [DW_FORM_data4]	(0x00000000)
+; CHECK-NEXT:  DW_AT_name [DW_FORM_strp]{{.*}} "a"
+; CHECK: .debug_loc contents:
+;                                    rsi, piece 0x00000004
+; CHECK:       Location description: 54 93 04 
 ;
 ; struct bar {
 ;   int a;
@@ -78,7 +83,7 @@ attributes #4 = { nounwind }
 !llvm.module.flags = !{!22, !23}
 !llvm.ident = !{!24}
 
-!0 = distinct !DICompileUnit(language: DW_LANG_C99, producer: "clang version 3.5 ", isOptimized: true, emissionKind: 1, file: !1, enums: !2, retainedTypes: !2, subprograms: !3, globals: !2, imports: !2)
+!0 = distinct !DICompileUnit(language: DW_LANG_C99, producer: "clang version 3.5 ", isOptimized: true, emissionKind: FullDebug, file: !1, enums: !2, retainedTypes: !2, subprograms: !3, globals: !2, imports: !2)
 !1 = !DIFile(filename: "subregisters.c", directory: "")
 !2 = !{}
 !3 = !{!4, !17}

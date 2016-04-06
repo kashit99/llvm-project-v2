@@ -1,4 +1,5 @@
 // RUN: %clang_cc1 -std=c++11 -emit-llvm %s -o - -triple=i386-pc-win32 -mconstructor-aliases -fexceptions -fcxx-exceptions -fno-rtti | FileCheck -check-prefix WIN32 %s
+// RUN: %clang_cc1 -std=c++11 -emit-llvm -O3 -disable-llvm-optzns %s -o - -triple=i386-pc-win32 -mconstructor-aliases -fexceptions -fcxx-exceptions -fno-rtti | FileCheck -check-prefix WIN32 -check-prefix WIN32-LIFETIME %s
 
 struct A {
   A();
@@ -27,7 +28,7 @@ void HasEHCleanup() {
 //
 //    There should be one dtor call for unwinding from the second getA.
 // WIN32:   cleanuppad
-// WIN32:   call x86_thiscallcc void @"\01??1A@@QAE@XZ"({{.*}}) #[[noinline:[0-9]+]]
+// WIN32:   call x86_thiscallcc void @"\01??1A@@QAE@XZ"({{.*}})
 // WIN32-NOT: @"\01??1A@@QAE@XZ"
 // WIN32: }
 
@@ -62,7 +63,7 @@ int HasDeactivatedCleanups() {
 //        Conditionally destroy arg1.
 // WIN32:   %[[cond:.*]] = load i1, i1* %[[isactive]]
 // WIN32:   br i1 %[[cond]]
-// WIN32:   call x86_thiscallcc void @"\01??1A@@QAE@XZ"(%struct.A* %[[arg1]]) #[[noinline]]
+// WIN32:   call x86_thiscallcc void @"\01??1A@@QAE@XZ"(%struct.A* %[[arg1]])
 // WIN32: }
 
 // Test putting the cleanups inside a conditional.
@@ -85,7 +86,7 @@ int HasConditionalCleanup(bool cond) {
 // WIN32:   call i32 @"\01?CouldThrow@@YAHXZ"()
 //
 //        Only one dtor in the invoke for arg1
-// WIN32:   call x86_thiscallcc void @"\01??1A@@QAE@XZ"({{.*}}) #[[noinline]]
+// WIN32:   call x86_thiscallcc void @"\01??1A@@QAE@XZ"({{.*}})
 // WIN32-NOT: invoke x86_thiscallcc void @"\01??1A@@QAE@XZ"
 // WIN32: }
 
@@ -126,7 +127,7 @@ int HasConditionalDeactivatedCleanups(bool cond) {
 //        Somewhere in the landing pad soup, we conditionally destroy arg1.
 // WIN32:   %[[isactive:.*]] = load i1, i1* %[[arg1_cond]]
 // WIN32:   br i1 %[[isactive]]
-// WIN32:   call x86_thiscallcc void @"\01??1A@@QAE@XZ"({{.*}}) #[[noinline]]
+// WIN32:   call x86_thiscallcc void @"\01??1A@@QAE@XZ"({{.*}})
 // WIN32: }
 
 namespace crash_on_partial_destroy {
@@ -164,7 +165,7 @@ C::C() { foo(); }
 // WIN32:      getelementptr inbounds i8, i8* %{{.*}}, i32 4
 // WIN32-NOT:  load
 // WIN32:      bitcast i8* %{{.*}} to %"struct.crash_on_partial_destroy::A"*
-// WIN32:      call x86_thiscallcc void @"\01??1A@crash_on_partial_destroy@@UAE@XZ"({{.*}}) #[[noinline]]
+// WIN32:      call x86_thiscallcc void @"\01??1A@crash_on_partial_destroy@@UAE@XZ"({{.*}})
 // WIN32: }
 }
 
@@ -187,7 +188,7 @@ void f() {
 //
 // WIN32: [[lpad]]
 // WIN32-NEXT: cleanuppad
-// WIN32: call x86_thiscallcc void @"\01??1C@dont_call_terminate@@QAE@XZ"({{.*}}) #[[noinline]]
+// WIN32: call x86_thiscallcc void @"\01??1C@dont_call_terminate@@QAE@XZ"({{.*}})
 }
 
 namespace noexcept_false_dtor {
@@ -204,9 +205,38 @@ void f() {
 // WIN32: invoke i32 @"\01?CouldThrow@@YAHXZ"()
 // WIN32: call x86_thiscallcc void @"\01??1D@noexcept_false_dtor@@QAE@XZ"(%"struct.noexcept_false_dtor::D"* %{{.*}})
 // WIN32: cleanuppad
-// WIN32: invoke x86_thiscallcc void @"\01??1D@noexcept_false_dtor@@QAE@XZ"(%"struct.noexcept_false_dtor::D"* %{{.*}}) #[[invoke_noinline:[0-9]+]]
+// WIN32: call x86_thiscallcc void @"\01??1D@noexcept_false_dtor@@QAE@XZ"(%"struct.noexcept_false_dtor::D"* %{{.*}})
 // WIN32: cleanupret
-// WIN32: cleanupendpad
 
-// WIN32: attributes #[[noinline]] = { noinline nounwind }
-// WIN32: attributes #[[invoke_noinline]] = { noinline }
+namespace lifetime_marker {
+struct C {
+  ~C();
+};
+void g();
+void f() {
+  C c;
+  g();
+}
+
+// WIN32-LIFETIME-LABEL: define void @"\01?f@lifetime_marker@@YAXXZ"()
+// WIN32-LIFETIME: %[[c:.*]] = alloca %"struct.lifetime_marker::C"
+// WIN32-LIFETIME: %[[bc0:.*]] = bitcast %"struct.lifetime_marker::C"* %c to i8*
+// WIN32-LIFETIME: call void @llvm.lifetime.start(i64 1, i8* %[[bc0]])
+// WIN32-LIFETIME: invoke void @"\01?g@lifetime_marker@@YAXXZ"()
+// WIN32-LIFETIME-NEXT: to label %[[cont:[^ ]*]] unwind label %[[lpad0:[^ ]*]]
+//
+// WIN32-LIFETIME: [[cont]]
+// WIN32-LIFETIME: call x86_thiscallcc void @"\01??1C@lifetime_marker@@QAE@XZ"({{.*}})
+// WIN32-LIFETIME: %[[bc1:.*]] = bitcast %"struct.lifetime_marker::C"* %[[c]] to i8*
+// WIN32-LIFETIME: call void @llvm.lifetime.end(i64 1, i8* %[[bc1]])
+//
+// WIN32-LIFETIME: [[lpad0]]
+// WIN32-LIFETIME-NEXT: cleanuppad
+// WIN32-LIFETIME: call x86_thiscallcc void @"\01??1C@lifetime_marker@@QAE@XZ"({{.*}})
+// WIN32-LIFETIME: cleanupret {{.*}} unwind label %[[lpad1:[^ ]*]]
+//
+// WIN32-LIFETIME: [[lpad1]]
+// WIN32-LIFETIME-NEXT: cleanuppad
+// WIN32-LIFETIME: %[[bc2:.*]] = bitcast %"struct.lifetime_marker::C"* %[[c]] to i8*
+// WIN32-LIFETIME: call void @llvm.lifetime.end(i64 1, i8* %[[bc2]])
+}

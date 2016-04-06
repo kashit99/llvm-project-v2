@@ -1317,7 +1317,8 @@ public:
     Instruction *NewI = New;
 
     assert(OldI != NewI && "Disallowed at construction?!");
-    assert(!IsDeoptimize || !New && "Deoptimize instrinsics are not replaced!");
+    assert((!IsDeoptimize || !New) &&
+           "Deoptimize instrinsics are not replaced!");
 
     Old = nullptr;
     New = nullptr;
@@ -1366,6 +1367,10 @@ makeStatepointExplicitImpl(const CallSite CS, /* to replace */
     Flags |= uint32_t(StatepointFlags::GCTransition);
     TransitionArgs = TransitionBundle->Inputs;
   }
+
+  // Instead of lowering calls to @llvm.experimental.deoptimize as normal calls
+  // with a return value, we lower then as never returning calls to
+  // __llvm_deoptimize that are followed by unreachable to get better codegen.
   bool IsDeoptimize = false;
 
   StatepointDirectives SD =

@@ -296,10 +296,22 @@ TEST_F(FormatTest, FormatIfWithoutCompoundStatement) {
   verifyFormat("if (a)\n  if (b) {\n    f();\n  }\ng();");
 
   FormatStyle AllowsMergedIf = getLLVMStyle();
+  AllowsMergedIf.AlignEscapedNewlinesLeft = true;
   AllowsMergedIf.AllowShortIfStatementsOnASingleLine = true;
   verifyFormat("if (a)\n"
                "  // comment\n"
                "  f();",
+               AllowsMergedIf);
+  verifyFormat("{\n"
+               "  if (a)\n"
+               "  label:\n"
+               "    f();\n"
+               "}",
+               AllowsMergedIf);
+  verifyFormat("#define A \\\n"
+               "  if (a)  \\\n"
+               "  label:  \\\n"
+               "    f()",
                AllowsMergedIf);
   verifyFormat("if (a)\n"
                "  ;",
@@ -3997,6 +4009,12 @@ TEST_F(FormatTest, FunctionAnnotations) {
                "                << bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
   verifyFormat("TEST_F(ThisIsATestFixtureeeeeeeeeeeee,\n"
                "       ThisIsATestWithAReallyReallyReallyReallyLongName) {}");
+  verifyFormat("MACRO(abc).function() // wrap\n"
+               "    << abc;");
+  verifyFormat("MACRO(abc)->function() // wrap\n"
+               "    << abc;");
+  verifyFormat("MACRO(abc)::function() // wrap\n"
+               "    << abc;");
 }
 
 TEST_F(FormatTest, BreaksDesireably) {

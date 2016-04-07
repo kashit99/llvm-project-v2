@@ -393,7 +393,7 @@ static Instruction *createMalloc(Instruction *InsertBefore,
   // malloc(type) becomes: 
   //       bitcast (i8* malloc(typeSize)) to type*
   // malloc(type, arraySize) becomes:
-  //       bitcast (i8* malloc(typeSize*arraySize)) to type*
+  //       bitcast (i8 *malloc(typeSize*arraySize)) to type*
   if (!ArraySize)
     ArraySize = ConstantInt::get(IntPtrTy, 1);
   else if (ArraySize->getType() != IntPtrTy) {
@@ -426,8 +426,8 @@ static Instruction *createMalloc(Instruction *InsertBefore,
 
   assert(AllocSize->getType() == IntPtrTy && "malloc arg is wrong size");
   // Create the call to Malloc.
-  BasicBlock *BB = InsertBefore ? InsertBefore->getParent() : InsertAtEnd;
-  Module *M = BB->getParent()->getParent();
+  BasicBlock* BB = InsertBefore ? InsertBefore->getParent() : InsertAtEnd;
+  Module* M = BB->getParent()->getParent();
   Type *BPTy = Type::getInt8PtrTy(BB->getContext());
   Value *MallocFunc = MallocF;
   if (!MallocFunc)
@@ -470,7 +470,7 @@ static Instruction *createMalloc(Instruction *InsertBefore,
 Instruction *CallInst::CreateMalloc(Instruction *InsertBefore,
                                     Type *IntPtrTy, Type *AllocTy,
                                     Value *AllocSize, Value *ArraySize,
-                                    Function *MallocF,
+                                    Function * MallocF,
                                     const Twine &Name) {
   return createMalloc(InsertBefore, nullptr, IntPtrTy, AllocTy, AllocSize,
                       ArraySize, MallocF, Name);
@@ -492,21 +492,21 @@ Instruction *CallInst::CreateMalloc(BasicBlock *InsertAtEnd,
                       ArraySize, MallocF, Name);
 }
 
-static Instruction *createFree(Value *Source, Instruction *InsertBefore,
+static Instruction* createFree(Value* Source, Instruction *InsertBefore,
                                BasicBlock *InsertAtEnd) {
   assert(((!InsertBefore && InsertAtEnd) || (InsertBefore && !InsertAtEnd)) &&
          "createFree needs either InsertBefore or InsertAtEnd");
   assert(Source->getType()->isPointerTy() &&
          "Can not free something of nonpointer type!");
 
-  BasicBlock *BB = InsertBefore ? InsertBefore->getParent() : InsertAtEnd;
-  Module *M = BB->getParent()->getParent();
+  BasicBlock* BB = InsertBefore ? InsertBefore->getParent() : InsertAtEnd;
+  Module* M = BB->getParent()->getParent();
 
   Type *VoidTy = Type::getVoidTy(M->getContext());
   Type *IntPtrTy = Type::getInt8PtrTy(M->getContext());
   // prototype free as "void free(void*)"
   Value *FreeFunc = M->getOrInsertFunction("free", VoidTy, IntPtrTy, nullptr);
-  CallInst *Result = nullptr;
+  CallInst* Result = nullptr;
   Value *PtrCast = Source;
   if (InsertBefore) {
     if (Source->getType() != IntPtrTy)
@@ -525,15 +525,15 @@ static Instruction *createFree(Value *Source, Instruction *InsertBefore,
 }
 
 /// CreateFree - Generate the IR for a call to the builtin free function.
-Instruction *CallInst::CreateFree(Value *Source, Instruction *InsertBefore) {
+Instruction * CallInst::CreateFree(Value* Source, Instruction *InsertBefore) {
   return createFree(Source, InsertBefore, nullptr);
 }
 
 /// CreateFree - Generate the IR for a call to the builtin free function.
 /// Note: This function does not add the call to the basic block, that is the
 /// responsibility of the caller.
-Instruction *CallInst::CreateFree(Value *Source, BasicBlock *InsertAtEnd) {
-  Instruction *FreeCall = createFree(Source, nullptr, InsertAtEnd);
+Instruction* CallInst::CreateFree(Value* Source, BasicBlock *InsertAtEnd) {
+  Instruction* FreeCall = createFree(Source, nullptr, InsertAtEnd);
   assert(FreeCall && "CreateFree did not create a CallInst");
   return FreeCall;
 }
@@ -1209,13 +1209,13 @@ LoadInst::LoadInst(Value *Ptr, const Twine &Name, bool isVolatile,
 
 LoadInst::LoadInst(Type *Ty, Value *Ptr, const Twine &Name, bool isVolatile,
                    unsigned Align, Instruction *InsertBef)
-    : LoadInst(Ty, Ptr, Name, isVolatile, Align, AtomicOrdering::NotAtomic,
-               CrossThread, InsertBef) {}
+    : LoadInst(Ty, Ptr, Name, isVolatile, Align, NotAtomic, CrossThread,
+               InsertBef) {}
 
 LoadInst::LoadInst(Value *Ptr, const Twine &Name, bool isVolatile,
                    unsigned Align, BasicBlock *InsertAE)
-    : LoadInst(Ptr, Name, isVolatile, Align, AtomicOrdering::NotAtomic,
-               CrossThread, InsertAE) {}
+    : LoadInst(Ptr, Name, isVolatile, Align, NotAtomic, CrossThread, InsertAE) {
+}
 
 LoadInst::LoadInst(Type *Ty, Value *Ptr, const Twine &Name, bool isVolatile,
                    unsigned Align, AtomicOrdering Order,
@@ -1247,7 +1247,7 @@ LoadInst::LoadInst(Value *Ptr, const char *Name, Instruction *InsertBef)
                      Load, Ptr, InsertBef) {
   setVolatile(false);
   setAlignment(0);
-  setAtomic(AtomicOrdering::NotAtomic);
+  setAtomic(NotAtomic);
   AssertOK();
   if (Name && Name[0]) setName(Name);
 }
@@ -1257,7 +1257,7 @@ LoadInst::LoadInst(Value *Ptr, const char *Name, BasicBlock *InsertAE)
                      Load, Ptr, InsertAE) {
   setVolatile(false);
   setAlignment(0);
-  setAtomic(AtomicOrdering::NotAtomic);
+  setAtomic(NotAtomic);
   AssertOK();
   if (Name && Name[0]) setName(Name);
 }
@@ -1268,7 +1268,7 @@ LoadInst::LoadInst(Type *Ty, Value *Ptr, const char *Name, bool isVolatile,
   assert(Ty == cast<PointerType>(Ptr->getType())->getElementType());
   setVolatile(isVolatile);
   setAlignment(0);
-  setAtomic(AtomicOrdering::NotAtomic);
+  setAtomic(NotAtomic);
   AssertOK();
   if (Name && Name[0]) setName(Name);
 }
@@ -1279,7 +1279,7 @@ LoadInst::LoadInst(Value *Ptr, const char *Name, bool isVolatile,
                      Load, Ptr, InsertAE) {
   setVolatile(isVolatile);
   setAlignment(0);
-  setAtomic(AtomicOrdering::NotAtomic);
+  setAtomic(NotAtomic);
   AssertOK();
   if (Name && Name[0]) setName(Name);
 }
@@ -1324,13 +1324,13 @@ StoreInst::StoreInst(Value *val, Value *addr, bool isVolatile,
 
 StoreInst::StoreInst(Value *val, Value *addr, bool isVolatile, unsigned Align,
                      Instruction *InsertBefore)
-    : StoreInst(val, addr, isVolatile, Align, AtomicOrdering::NotAtomic,
-                CrossThread, InsertBefore) {}
+    : StoreInst(val, addr, isVolatile, Align, NotAtomic, CrossThread,
+                InsertBefore) {}
 
 StoreInst::StoreInst(Value *val, Value *addr, bool isVolatile, unsigned Align,
                      BasicBlock *InsertAtEnd)
-    : StoreInst(val, addr, isVolatile, Align, AtomicOrdering::NotAtomic,
-                CrossThread, InsertAtEnd) {}
+    : StoreInst(val, addr, isVolatile, Align, NotAtomic, CrossThread,
+                InsertAtEnd) {}
 
 StoreInst::StoreInst(Value *val, Value *addr, bool isVolatile,
                      unsigned Align, AtomicOrdering Order,
@@ -1398,15 +1398,13 @@ void AtomicCmpXchgInst::Init(Value *Ptr, Value *Cmp, Value *NewVal,
   assert(getOperand(2)->getType() ==
                  cast<PointerType>(getOperand(0)->getType())->getElementType()
          && "Ptr must be a pointer to NewVal type!");
-  assert(SuccessOrdering != AtomicOrdering::NotAtomic &&
+  assert(SuccessOrdering != NotAtomic &&
          "AtomicCmpXchg instructions must be atomic!");
-  assert(FailureOrdering != AtomicOrdering::NotAtomic &&
+  assert(FailureOrdering != NotAtomic &&
          "AtomicCmpXchg instructions must be atomic!");
-  assert(!isStrongerThan(FailureOrdering, SuccessOrdering) &&
-         "AtomicCmpXchg failure argument shall be no stronger than the success "
-         "argument");
-  assert(FailureOrdering != AtomicOrdering::Release &&
-         FailureOrdering != AtomicOrdering::AcquireRelease &&
+  assert(SuccessOrdering >= FailureOrdering &&
+         "AtomicCmpXchg success ordering must be at least as strong as fail");
+  assert(FailureOrdering != Release && FailureOrdering != AcquireRelease &&
          "AtomicCmpXchg failure ordering cannot include release semantics");
 }
 
@@ -1456,7 +1454,7 @@ void AtomicRMWInst::Init(BinOp Operation, Value *Ptr, Value *Val,
   assert(getOperand(1)->getType() ==
          cast<PointerType>(getOperand(0)->getType())->getElementType()
          && "Ptr must be a pointer to Val type!");
-  assert(Ordering != AtomicOrdering::NotAtomic &&
+  assert(Ordering != NotAtomic &&
          "AtomicRMW instructions must be atomic!");
 }
 
@@ -2103,7 +2101,7 @@ static inline bool isConstantAllOnes(const Value *V) {
 bool BinaryOperator::isNeg(const Value *V) {
   if (const BinaryOperator *Bop = dyn_cast<BinaryOperator>(V))
     if (Bop->getOpcode() == Instruction::Sub)
-      if (Constant *C = dyn_cast<Constant>(Bop->getOperand(0)))
+      if (Constant* C = dyn_cast<Constant>(Bop->getOperand(0)))
         return C->isNegativeZeroValue();
   return false;
 }
@@ -2111,7 +2109,7 @@ bool BinaryOperator::isNeg(const Value *V) {
 bool BinaryOperator::isFNeg(const Value *V, bool IgnoreZeroSign) {
   if (const BinaryOperator *Bop = dyn_cast<BinaryOperator>(V))
     if (Bop->getOpcode() == Instruction::FSub)
-      if (Constant *C = dyn_cast<Constant>(Bop->getOperand(0))) {
+      if (Constant* C = dyn_cast<Constant>(Bop->getOperand(0))) {
         if (!IgnoreZeroSign)
           IgnoreZeroSign = cast<Instruction>(V)->hasNoSignedZeros();
         return !IgnoreZeroSign ? C->isNegativeZeroValue() : C->isZeroValue();
@@ -2271,8 +2269,8 @@ bool CastInst::isLosslessCast() const {
     return false;
 
   // Identity cast is always lossless
-  Type *SrcTy = getOperand(0)->getType();
-  Type *DstTy = getType();
+  Type* SrcTy = getOperand(0)->getType();
+  Type* DstTy = getType();
   if (SrcTy == DstTy)
     return true;
   

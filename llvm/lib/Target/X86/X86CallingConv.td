@@ -196,19 +196,15 @@ def RetCC_X86_64_WebKit_JS : CallingConv<[
 ]>;
 
 def RetCC_X86_64_Swift : CallingConv<[
-  // For integers, ECX, R8D can be used as extra return registers.
-  CCIfType<[i1],  CCPromoteToType<i8>>,
   CCIfType<[i8] , CCAssignToReg<[AL, DL, CL, R8B]>>,
   CCIfType<[i16], CCAssignToReg<[AX, DX, CX, R8W]>>,
   CCIfType<[i32], CCAssignToReg<[EAX, EDX, ECX, R8D]>>,
   CCIfType<[i64], CCAssignToReg<[RAX, RDX, RCX, R8]>>,
 
-  // XMM0, XMM1, XMM2 and XMM3 can be used to return FP values.
   CCIfType<[f32], CCAssignToReg<[XMM0, XMM1, XMM2, XMM3]>>,
   CCIfType<[f64], CCAssignToReg<[XMM0, XMM1, XMM2, XMM3]>>,
-  CCIfType<[f128], CCAssignToReg<[XMM0, XMM1, XMM2, XMM3]>>,
 
-  // MMX vector types are returned in XMM0, XMM1, XMM2 and XMM3.
+  // MMX vector types are always returned in XMM0.
   CCIfType<[x86mmx], CCAssignToReg<[XMM0, XMM1, XMM2, XMM3]>>,
   CCDelegateTo<RetCC_X86Common>
 ]>;
@@ -297,7 +293,7 @@ def CC_X86_64_C : CallingConv<[
   CCIfNest<CCIfSubtarget<"isTarget64BitILP32()", CCAssignToReg<[R10D]>>>,
   CCIfNest<CCAssignToReg<[R10]>>,
 
-  // A SwiftSelf is passed in R10.
+  // An SwiftSelf is passed in R10.
   CCIfSwiftSelf<CCIfType<[i64], CCAssignToReg<[R10]>>>,
 
   // An SwiftError is passed in R12.
@@ -800,9 +796,6 @@ def CC_X86_64_Intr : CallingConv<[
 
 // This is the root argument convention for the X86-32 backend.
 def CC_X86_32 : CallingConv<[
-  // X86_INTR calling convention is valid in MCU target and should override the
-  // MCU calling convention. Thus, this should be checked before isTargetMCU().
-  CCIfCC<"CallingConv::X86_INTR", CCDelegateTo<CC_X86_32_Intr>>,
   CCIfSubtarget<"isTargetMCU()", CCDelegateTo<CC_X86_32_MCU>>,
   CCIfCC<"CallingConv::X86_FastCall", CCDelegateTo<CC_X86_32_FastCall>>,
   CCIfCC<"CallingConv::X86_VectorCall", CCDelegateTo<CC_X86_32_VectorCall>>,
@@ -810,6 +803,7 @@ def CC_X86_32 : CallingConv<[
   CCIfCC<"CallingConv::Fast", CCDelegateTo<CC_X86_32_FastCC>>,
   CCIfCC<"CallingConv::GHC", CCDelegateTo<CC_X86_32_GHC>>,
   CCIfCC<"CallingConv::HiPE", CCDelegateTo<CC_X86_32_HiPE>>,
+  CCIfCC<"CallingConv::X86_INTR", CCDelegateTo<CC_X86_32_Intr>>,
 
   // Otherwise, drop to normal X86-32 CC
   CCDelegateTo<CC_X86_32_C>

@@ -41,7 +41,6 @@ using namespace llvm;
 template class llvm::SymbolTableListTraits<Function>;
 template class llvm::SymbolTableListTraits<GlobalVariable>;
 template class llvm::SymbolTableListTraits<GlobalAlias>;
-template class llvm::SymbolTableListTraits<GlobalIFunc>;
 
 //===----------------------------------------------------------------------===//
 // Primitive Module methods.
@@ -60,7 +59,6 @@ Module::~Module() {
   GlobalList.clear();
   FunctionList.clear();
   AliasList.clear();
-  IFuncList.clear();
   NamedMDList.clear();
   delete ValSymTab;
   delete static_cast<StringMap<NamedMDNode *> *>(NamedMDSymTab);
@@ -252,10 +250,6 @@ GlobalAlias *Module::getNamedAlias(StringRef Name) const {
   return dyn_cast_or_null<GlobalAlias>(getNamedValue(Name));
 }
 
-GlobalIFunc *Module::getNamedIFunc(StringRef Name) const {
-  return dyn_cast_or_null<GlobalIFunc>(getNamedValue(Name));
-}
-
 /// getNamedMetadata - Return the first NamedMDNode in the module with the
 /// specified name. This method returns null if a NamedMDNode with the
 /// specified name is not found.
@@ -444,9 +438,6 @@ void Module::dropAllReferences() {
 
   for (GlobalAlias &GA : aliases())
     GA.dropAllReferences();
-
-  for (GlobalIFunc &GIF : ifuncs())
-    GIF.dropAllReferences();
 }
 
 unsigned Module::getDwarfVersion() const {
@@ -493,12 +484,4 @@ Optional<uint64_t> Module::getMaximumFunctionCount() {
   if (!Val)
     return None;
   return cast<ConstantInt>(Val->getValue())->getZExtValue();
-}
-
-void Module::setProfileSummary(Metadata *M) {
-  addModuleFlag(ModFlagBehavior::Error, "ProfileSummary", M);
-}
-
-Metadata *Module::getProfileSummary() {
-  return getModuleFlag("ProfileSummary");
 }

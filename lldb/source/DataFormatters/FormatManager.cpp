@@ -20,6 +20,7 @@
 #include "lldb/Core/Log.h"
 #include "lldb/DataFormatters/FormattersHelpers.h"
 #include "lldb/DataFormatters/LanguageCategory.h"
+#include "Plugins/ScriptInterpreter/Python/lldb-python.h"
 #include "lldb/Target/ExecutionContext.h"
 #include "lldb/Target/Language.h"
 
@@ -297,7 +298,7 @@ FormatManager::GetPossibleMatches (ValueObject& valobj,
             }
         }
     }
-        
+
     // try to strip typedef chains
     if (compiler_type.IsTypedefType())
     {
@@ -695,6 +696,10 @@ FormatManager::GetCandidateLanguages (lldb::LanguageType lang_type)
 {
     switch (lang_type)
     {
+        case lldb::eLanguageTypeSwift:
+            return {lldb::eLanguageTypeSwift, lldb::eLanguageTypeObjC};
+        case lldb::eLanguageTypeObjC:
+            return {lldb::eLanguageTypeObjC, lldb::eLanguageTypeSwift};
         case lldb::eLanguageTypeC:
         case lldb::eLanguageTypeC89:
         case lldb::eLanguageTypeC99:
@@ -1064,12 +1069,16 @@ FormatManager::FormatManager() :
     m_categories_map(this),
     m_default_category_name(ConstString("default")),
     m_system_category_name(ConstString("system")), 
-    m_vectortypes_category_name(ConstString("VectorTypes"))
+    m_vectortypes_category_name(ConstString("VectorTypes")),
+    m_runtime_synths_category_name(ConstString("runtime-synthetics"))
 {
     LoadSystemFormatters();
     LoadVectorFormatters();
     
+    GetCategory(m_runtime_synths_category_name); // EnableCategory() won't enable a non-existant category, so create this one first even if empty
+    
     EnableCategory(m_vectortypes_category_name,TypeCategoryMap::Last, lldb::eLanguageTypeObjC_plus_plus);
+    EnableCategory(m_runtime_synths_category_name,TypeCategoryMap::Last, {lldb::eLanguageTypeObjC_plus_plus,lldb::eLanguageTypeSwift});
     EnableCategory(m_system_category_name,TypeCategoryMap::Last, lldb::eLanguageTypeObjC_plus_plus);
 }
 

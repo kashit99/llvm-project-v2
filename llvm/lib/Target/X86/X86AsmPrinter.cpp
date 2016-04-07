@@ -568,9 +568,8 @@ MCSymbol *X86AsmPrinter::GetCPISymbol(unsigned CPID) const {
       const DataLayout &DL = MF->getDataLayout();
       SectionKind Kind = CPE.getSectionKind(&DL);
       const Constant *C = CPE.Val.ConstVal;
-      unsigned Align = CPE.Alignment;
       if (const MCSectionCOFF *S = dyn_cast<MCSectionCOFF>(
-              getObjFileLowering().getSectionForConstant(DL, Kind, C, Align))) {
+              getObjFileLowering().getSectionForConstant(DL, Kind, C))) {
         if (MCSymbol *Sym = S->getCOMDATSymbol()) {
           if (Sym->isUndefined())
             OutStreamer->EmitSymbolAttribute(Sym, MCSA_Global);

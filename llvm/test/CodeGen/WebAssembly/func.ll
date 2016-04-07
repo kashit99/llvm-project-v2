@@ -44,8 +44,7 @@ define void @f3(i32 %p1, float %p2) {
 ; CHECK-LABEL: f4:
 ; CHECK-NEXT: .param i32{{$}}
 ; CHECK-NEXT: .result i32{{$}}
-; CHECK-NOT: local
-; CHECK: .size f4,
+; CHECK-NEXT: local
 define i32 @f4(i32 %x) {
 entry:
    %c = trunc i32 %x to i1

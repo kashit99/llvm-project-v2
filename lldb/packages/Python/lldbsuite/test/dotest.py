@@ -80,9 +80,7 @@ class _WritelnDecorator(object):
             self.write(arg)
         self.write('\n') # text-mode streams translate to \r\n if needed
 
-#
-# Global variables:
-#
+
 def usage(parser):
     parser.print_help()
     if configuration.verbose > 0:
@@ -277,6 +275,12 @@ def parseOptionsAndInitTestdirs():
     if args.skipCategories:
         configuration.skipCategories = test_categories.validate(args.skipCategories, False)
 
+    if args.swiftcompiler:
+        configuration.swiftCompiler = args.swiftcompiler
+
+    if args.swiftlibrary:
+        configuration.swiftLibrary = args.swiftlibrary
+
     if args.E:
         cflags_extras = args.E
         os.environ['CFLAGS_EXTRAS'] = cflags_extras
@@ -429,7 +433,7 @@ def getXcodeOutputPaths(lldbRootDirectory):
     xcode3_build_dir = ['build']
     xcode4_build_dir = ['build', 'lldb', 'Build', 'Products']
 
-    configurations = [['Debug'], ['DebugClang'], ['Release'], ['BuildAndIntegration']]
+    configurations = [['DebugPresubmission'], ['Debug'], ['DebugClang'], ['Release'], ['BuildAndIntegration'], ['CustomSwift-Debug'], ['CustomSwift-Release']]
     xcode_build_dirs = [xcode3_build_dir, xcode4_build_dir]
     for configuration in configurations:
         for xcode_build_dir in xcode_build_dirs:
@@ -509,6 +513,16 @@ def getOutputPaths(lldbRootDirectory):
     result.append(os.path.join(lldbParentDir, 'build', 'bin'))
     result.append(os.path.join(lldbParentDir, 'build', 'host', 'bin'))
 
+    # linux swiftie build
+    configurations = ['Ninja-DebugAssert','Ninja-RelWithDebInfoAssert'] # TODO: add more configurations
+    for configuration in configurations:
+        result.append(os.path.join(lldbParentDir, 'build', configuration, 'lldb-linux-x86_64', 'bin'))
+
+    # osx swiftie build
+    configurations = [['Ninja-DebugAssert','CustomSwift-Debug'], ['Ninja-RelWithDebInfoAssert','CustomSwift-Release']] # TODO: add more configurations
+    for configuration in configurations:
+        result.append(os.path.join(lldbParentDir, 'build', configuration[0], 'lldb-macosx-x86_64', configuration[1]))
+
     return result
 
 def setupSysPath():
@@ -546,7 +560,11 @@ def setupSysPath():
     # This is the root of the lldb git/svn checkout
     # When this changes over to a package instead of a standalone script, this
     # will be `lldbsuite.lldb_root`
-    lldbRootDirectory = lldbsuite.lldb_root
+    lldbRootDirectory = os.path.abspath(os.path.join(scriptPath, os.pardir))
+    # if we are in packages/Python/lldbsuite, we are too deep and not really at our root
+    # so go up a few more times
+    if os.path.basename(lldbRootDirectory) == 'lldbsuite':
+        lldbRootDirectory = os.path.abspath(os.path.join(lldbRootDirectory, os.pardir, os.pardir, os.pardir))
 
     # Some of the tests can invoke the 'lldb' command directly.
     # We'll try to locate the appropriate executable right here.
@@ -903,6 +921,7 @@ def run_suite():
     if configuration.lldb_platform_name:
         print("Setting up remote platform '%s'" % (configuration.lldb_platform_name))
         lldb.remote_platform = lldb.SBPlatform(configuration.lldb_platform_name)
+        lldb.remote_platform_name = configuration.lldb_platform_name
         if not lldb.remote_platform.IsValid():
             print("error: unable to create the LLDB platform named '%s'." % (configuration.lldb_platform_name))
             exitTestSuite(1)
@@ -930,6 +949,7 @@ def run_suite():
     if configuration.lldb_platform_working_dir:
         print("Setting remote platform working directory to '%s'..." % (configuration.lldb_platform_working_dir))
         lldb.remote_platform.SetWorkingDirectory(configuration.lldb_platform_working_dir)
+        lldb.remote_platform_working_directory = configuration.lldb_platform_working_dir
         lldb.DBG.SetSelectedPlatform(lldb.remote_platform)
     else:
         lldb.remote_platform = None
@@ -999,6 +1019,9 @@ def run_suite():
     if isinstance(configuration.archs, list) and len(configuration.archs) >= 1:
         iterArchs = True
 
+    if configuration.compilers is None and "compilers" in config:
+        configuration.compilers = config["compilers"]
+
     #
     # Add some intervention here to sanity check that the compilers requested are sane.
     # If found not to be an executable program, the invalid one is dropped from the list.
@@ -1044,10 +1067,21 @@ def run_suite():
         for ic in range(len(configuration.compilers) if iterCompilers else 1):
             if iterCompilers:
                 os.environ["CC"] = configuration.compilers[ic]
+                if configuration.swiftCompiler:
+                    os.environ["SWIFTCC"] = configuration.swiftCompiler
+                if configuration.swiftLibrary:
+                    os.environ["USERSWIFTLIBRARY"] = configuration.swiftLibrary
                 configString = "%s compiler=%s" % (archConfig, configuration.compilers[ic])
-            else:
-                configString = archConfig
-
+            elif sys.platform.startswith("darwin"):
+                pipe = subprocess.Popen(['xcrun', '-find', c], stdout = subprocess.PIPE, stderr = subprocess.STDOUT)
+                cmd_output = pipe.stdout.read()
+                if cmd_output:
+                    if "not found" in cmd_output:
+                        print("dropping %s from the compilers used" % c)
+                        compilers.remove(i)
+                    else:
+                        compilers[i] = cmd_output.split('\n')[0]
+                        print("'xcrun -find %s' returning %s" % (c, compilers[i]))
             if iterArchs or iterCompilers:
                 # Translate ' ' to '-' for pathname component.
                 if six.PY2:

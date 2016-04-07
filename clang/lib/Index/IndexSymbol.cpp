@@ -30,11 +30,11 @@ SymbolInfo index::getSymbolInfo(const Decl *D) {
     case TTK_Union:
       Info.Kind = SymbolKind::Union; break;
     case TTK_Class:
-      Info.Kind = SymbolKind::Class;
+      Info.Kind = SymbolKind::CXXClass;
       Info.Lang = SymbolLanguage::CXX;
       break;
     case TTK_Interface:
-      Info.Kind = SymbolKind::Protocol;
+      Info.Kind = SymbolKind::CXXInterface;
       Info.Lang = SymbolLanguage::CXX;
       break;
     case TTK_Enum:
@@ -57,7 +57,7 @@ SymbolInfo index::getSymbolInfo(const Decl *D) {
       Info.Kind = SymbolKind::Module;
       break;
     case Decl::Typedef:
-      Info.Kind = SymbolKind::TypeAlias; break; // Lang = C
+      Info.Kind = SymbolKind::Typedef; break;
     case Decl::Function:
       Info.Kind = SymbolKind::Function;
       break;
@@ -67,7 +67,7 @@ SymbolInfo index::getSymbolInfo(const Decl *D) {
     case Decl::Var:
       Info.Kind = SymbolKind::Variable;
       if (isa<CXXRecordDecl>(D->getDeclContext())) {
-        Info.Kind = SymbolKind::StaticProperty;
+        Info.Kind = SymbolKind::CXXStaticVariable;
         Info.Lang = SymbolLanguage::CXX;
       }
       break;
@@ -83,94 +83,91 @@ SymbolInfo index::getSymbolInfo(const Decl *D) {
       Info.Kind = SymbolKind::EnumConstant; break;
     case Decl::ObjCInterface:
     case Decl::ObjCImplementation:
-      Info.Kind = SymbolKind::Class;
+      Info.Kind = SymbolKind::ObjCClass;
       Info.Lang = SymbolLanguage::ObjC;
       break;
     case Decl::ObjCProtocol:
-      Info.Kind = SymbolKind::Protocol;
+      Info.Kind = SymbolKind::ObjCProtocol;
       Info.Lang = SymbolLanguage::ObjC;
       break;
     case Decl::ObjCCategory:
     case Decl::ObjCCategoryImpl:
-      Info.Kind = SymbolKind::Extension;
+      Info.Kind = SymbolKind::ObjCCategory;
       Info.Lang = SymbolLanguage::ObjC;
       break;
     case Decl::ObjCMethod:
       if (cast<ObjCMethodDecl>(D)->isInstanceMethod())
-        Info.Kind = SymbolKind::InstanceMethod;
+        Info.Kind = SymbolKind::ObjCInstanceMethod;
       else
-        Info.Kind = SymbolKind::ClassMethod;
+        Info.Kind = SymbolKind::ObjCClassMethod;
       Info.Lang = SymbolLanguage::ObjC;
       break;
     case Decl::ObjCProperty:
-      Info.Kind = SymbolKind::InstanceProperty;
+      Info.Kind = SymbolKind::ObjCProperty;
       Info.Lang = SymbolLanguage::ObjC;
       break;
     case Decl::ObjCIvar:
-      Info.Kind = SymbolKind::Field;
+      Info.Kind = SymbolKind::ObjCIvar;
       Info.Lang = SymbolLanguage::ObjC;
       break;
     case Decl::Namespace:
-      Info.Kind = SymbolKind::Namespace;
+      Info.Kind = SymbolKind::CXXNamespace;
       Info.Lang = SymbolLanguage::CXX;
       break;
     case Decl::NamespaceAlias:
-      Info.Kind = SymbolKind::NamespaceAlias;
+      Info.Kind = SymbolKind::CXXNamespaceAlias;
       Info.Lang = SymbolLanguage::CXX;
       break;
     case Decl::CXXConstructor:
-      Info.Kind = SymbolKind::Constructor;
+      Info.Kind = SymbolKind::CXXConstructor;
       Info.Lang = SymbolLanguage::CXX;
       break;
     case Decl::CXXDestructor:
-      Info.Kind = SymbolKind::Destructor;
+      Info.Kind = SymbolKind::CXXDestructor;
       Info.Lang = SymbolLanguage::CXX;
       break;
     case Decl::CXXConversion:
-      Info.Kind = SymbolKind::ConversionFunction;
+      Info.Kind = SymbolKind::CXXConversionFunction;
       Info.Lang = SymbolLanguage::CXX;
       break;
     case Decl::CXXMethod: {
       const CXXMethodDecl *MD = cast<CXXMethodDecl>(D);
       if (MD->isStatic())
-        Info.Kind = SymbolKind::StaticMethod;
+        Info.Kind = SymbolKind::CXXStaticMethod;
       else
-        Info.Kind = SymbolKind::InstanceMethod;
+        Info.Kind = SymbolKind::CXXInstanceMethod;
       Info.Lang = SymbolLanguage::CXX;
       break;
     }
     case Decl::ClassTemplate:
-      Info.Kind = SymbolKind::Class;
+      Info.Kind = SymbolKind::CXXClass;
       Info.TemplateKind = SymbolCXXTemplateKind::Template;
-      Info.Lang = SymbolLanguage::CXX;
       break;
     case Decl::FunctionTemplate:
       Info.Kind = SymbolKind::Function;
       Info.TemplateKind = SymbolCXXTemplateKind::Template;
-      Info.Lang = SymbolLanguage::CXX;
       if (const CXXMethodDecl *MD = dyn_cast_or_null<CXXMethodDecl>(
                            cast<FunctionTemplateDecl>(D)->getTemplatedDecl())) {
         if (isa<CXXConstructorDecl>(MD))
-          Info.Kind = SymbolKind::Constructor;
+          Info.Kind = SymbolKind::CXXConstructor;
         else if (isa<CXXDestructorDecl>(MD))
-          Info.Kind = SymbolKind::Destructor;
+          Info.Kind = SymbolKind::CXXDestructor;
         else if (isa<CXXConversionDecl>(MD))
-          Info.Kind = SymbolKind::ConversionFunction;
+          Info.Kind = SymbolKind::CXXConversionFunction;
         else {
           if (MD->isStatic())
-            Info.Kind = SymbolKind::StaticMethod;
+            Info.Kind = SymbolKind::CXXStaticMethod;
           else
-            Info.Kind = SymbolKind::InstanceMethod;
+            Info.Kind = SymbolKind::CXXInstanceMethod;
         }
       }
       break;
     case Decl::TypeAliasTemplate:
-      Info.Kind = SymbolKind::TypeAlias;
-      Info.Lang = SymbolLanguage::CXX;
+      Info.Kind = SymbolKind::CXXTypeAlias;
       Info.TemplateKind = SymbolCXXTemplateKind::Template;
       break;
     case Decl::TypeAlias:
-      Info.Kind = SymbolKind::TypeAlias;
+      Info.Kind = SymbolKind::CXXTypeAlias;
       Info.Lang = SymbolLanguage::CXX;
       break;
     default:
@@ -265,29 +262,33 @@ StringRef index::getSymbolKindString(SymbolKind K) {
   switch (K) {
   case SymbolKind::Unknown: return "<unknown>";
   case SymbolKind::Module: return "module";
-  case SymbolKind::Namespace: return "namespace";
-  case SymbolKind::NamespaceAlias: return "namespace-alias";
   case SymbolKind::Macro: return "macro";
   case SymbolKind::Enum: return "enum";
   case SymbolKind::Struct: return "struct";
-  case SymbolKind::Class: return "class";
-  case SymbolKind::Protocol: return "protocol";
-  case SymbolKind::Extension: return "extension";
   case SymbolKind::Union: return "union";
-  case SymbolKind::TypeAlias: return "type-alias";
+  case SymbolKind::Typedef: return "typedef";
   case SymbolKind::Function: return "function";
   case SymbolKind::Variable: return "variable";
   case SymbolKind::Field: return "field";
   case SymbolKind::EnumConstant: return "enumerator";
-  case SymbolKind::InstanceMethod: return "instance-method";
-  case SymbolKind::ClassMethod: return "class-method";
-  case SymbolKind::StaticMethod: return "static-method";
-  case SymbolKind::InstanceProperty: return "instance-property";
-  case SymbolKind::ClassProperty: return "class-property";
-  case SymbolKind::StaticProperty: return "static-property";
-  case SymbolKind::Constructor: return "constructor";
-  case SymbolKind::Destructor: return "destructor";
-  case SymbolKind::ConversionFunction: return "coversion-func";
+  case SymbolKind::ObjCClass: return "objc-class";
+  case SymbolKind::ObjCProtocol: return "objc-protocol";
+  case SymbolKind::ObjCCategory: return "objc-category";
+  case SymbolKind::ObjCInstanceMethod: return "objc-instance-method";
+  case SymbolKind::ObjCClassMethod: return "objc-class-method";
+  case SymbolKind::ObjCProperty: return "objc-property";
+  case SymbolKind::ObjCIvar: return "objc-ivar";
+  case SymbolKind::CXXClass: return "c++-class";
+  case SymbolKind::CXXNamespace: return "namespace";
+  case SymbolKind::CXXNamespaceAlias: return "namespace-alias";
+  case SymbolKind::CXXStaticVariable: return "c++-static-var";
+  case SymbolKind::CXXStaticMethod: return "c++-static-method";
+  case SymbolKind::CXXInstanceMethod: return "c++-instance-method";
+  case SymbolKind::CXXConstructor: return "constructor";
+  case SymbolKind::CXXDestructor: return "destructor";
+  case SymbolKind::CXXConversionFunction: return "coversion-func";
+  case SymbolKind::CXXTypeAlias: return "type-alias";
+  case SymbolKind::CXXInterface: return "c++-__interface";
   }
   llvm_unreachable("invalid symbol kind");
 }

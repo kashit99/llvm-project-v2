@@ -118,8 +118,6 @@ CommonOptionsParser::CommonOptionsParser(
 
   Compilations.reset(FixedCompilationDatabase::loadFromCommandLine(argc, argv));
   cl::ParseCommandLineOptions(argc, argv, Overview);
-  cl::PrintOptionValues();
-
   SourcePathList = SourcePaths;
   if ((OccurrencesFlag == cl::ZeroOrMore || OccurrencesFlag == cl::Optional) &&
       SourcePathList.empty())

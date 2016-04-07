@@ -205,9 +205,7 @@ CoverageMapping::load(CoverageMappingReader &CoverageReader,
     assert(!Record.MappingRegions.empty() && "Function has no regions");
 
     StringRef OrigFuncName = Record.FunctionName;
-    if (Record.Filenames.empty())
-      OrigFuncName = getFuncNameWithoutPrefix(OrigFuncName);
-    else
+    if (!Record.Filenames.empty())
       OrigFuncName =
           getFuncNameWithoutPrefix(OrigFuncName, Record.Filenames[0]);
     FunctionRecord Function(OrigFuncName, Record.Filenames);

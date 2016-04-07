@@ -241,7 +241,7 @@ struct FindModuleData {
 };
 }
 
-static BOOL CALLBACK findModuleCallback(PCSTR ModuleName,
+static BOOL CALLBACK findModuleCallback(WIN32_ELMCB_PCSTR ModuleName,
                                         DWORD64 ModuleBase, ULONG ModuleSize,
                                         void *VoidData) {
   FindModuleData *Data = (FindModuleData*)VoidData;

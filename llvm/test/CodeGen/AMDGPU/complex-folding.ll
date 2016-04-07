@@ -2,7 +2,7 @@
 
 ; CHECK: {{^}}main:
 ; CHECK-NOT: MOV
-define amdgpu_ps void @main(<4 x float> inreg %reg0) {
+define void @main(<4 x float> inreg %reg0) #0 {
 entry:
   %0 = extractelement <4 x float> %reg0, i32 0
   %1 = call float @fabs(float %0)
@@ -15,3 +15,5 @@ entry:
 
 declare float @fabs(float ) readnone
 declare void @llvm.R600.store.swizzle(<4 x float>, i32, i32)
+
+attributes #0 = { "ShaderType"="0" }

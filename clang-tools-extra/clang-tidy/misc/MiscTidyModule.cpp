@@ -31,7 +31,6 @@
 #include "SizeofContainerCheck.h"
 #include "StaticAssertCheck.h"
 #include "StringIntegerAssignmentCheck.h"
-#include "StringLiteralWithEmbeddedNulCheck.h"
 #include "SuspiciousMissingCommaCheck.h"
 #include "SuspiciousSemicolonCheck.h"
 #include "SwappedArgumentsCheck.h"
@@ -90,8 +89,6 @@ public:
         "misc-static-assert");
     CheckFactories.registerCheck<StringIntegerAssignmentCheck>(
         "misc-string-integer-assignment");
-    CheckFactories.registerCheck<StringLiteralWithEmbeddedNulCheck>(
-        "misc-string-literal-with-embedded-nul");
     CheckFactories.registerCheck<SuspiciousMissingCommaCheck>(
         "misc-suspicious-missing-comma");
     CheckFactories.registerCheck<SuspiciousSemicolonCheck>(

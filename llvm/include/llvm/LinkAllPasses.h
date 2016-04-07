@@ -17,7 +17,6 @@
 
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/AliasSetTracker.h"
-#include "llvm/Analysis/AliasAnalysisEvaluator.h"
 #include "llvm/Analysis/BasicAliasAnalysis.h"
 #include "llvm/Analysis/CFLAliasAnalysis.h"
 #include "llvm/Analysis/CallPrinter.h"
@@ -32,17 +31,14 @@
 #include "llvm/Analysis/ScalarEvolution.h"
 #include "llvm/Analysis/ScalarEvolutionAliasAnalysis.h"
 #include "llvm/Analysis/ScopedNoAliasAA.h"
-#include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/Analysis/TypeBasedAliasAnalysis.h"
 #include "llvm/CodeGen/Passes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRPrintingPasses.h"
 #include "llvm/Transforms/IPO.h"
-#include "llvm/Transforms/IPO/FunctionAttrs.h"
 #include "llvm/Transforms/Instrumentation.h"
 #include "llvm/Transforms/ObjCARC.h"
 #include "llvm/Transforms/Scalar.h"
-#include "llvm/Transforms/Scalar/GVN.h"
 #include "llvm/Transforms/Utils/SymbolRewriter.h"
 #include "llvm/Transforms/Utils/UnifyFunctionExitNodes.h"
 #include "llvm/Transforms/Vectorize.h"
@@ -70,7 +66,7 @@ namespace {
       (void) llvm::createScopedNoAliasAAWrapperPass();
       (void) llvm::createBoundsCheckingPass();
       (void) llvm::createBreakCriticalEdgesPass();
-      (void) llvm::createCallGraphDOTPrinterPass();
+      (void) llvm::createCallGraphPrinterPass();
       (void) llvm::createCallGraphViewerPass();
       (void) llvm::createCFGSimplificationPass();
       (void) llvm::createCFLAAWrapperPass();
@@ -110,12 +106,10 @@ namespace {
       (void) llvm::createLoopExtractorPass();
       (void) llvm::createLoopInterchangePass();
       (void) llvm::createLoopSimplifyPass();
-      (void) llvm::createLoopSimplifyCFGPass();
       (void) llvm::createLoopStrengthReducePass();
       (void) llvm::createLoopRerollPass();
       (void) llvm::createLoopUnrollPass();
       (void) llvm::createLoopUnswitchPass();
-      (void) llvm::createLoopVersioningLICMPass();
       (void) llvm::createLoopIdiomPass();
       (void) llvm::createLoopRotatePass();
       (void) llvm::createLowerExpectIntrinsicPass();
@@ -163,7 +157,7 @@ namespace {
       (void) llvm::createPostDomTree();
       (void) llvm::createInstructionNamerPass();
       (void) llvm::createMetaRenamerPass();
-      (void) llvm::createPostOrderFunctionAttrsLegacyPass();
+      (void) llvm::createPostOrderFunctionAttrsPass();
       (void) llvm::createReversePostOrderFunctionAttrsPass();
       (void) llvm::createMergeFunctionsPass();
       std::string buf;
@@ -196,9 +190,7 @@ namespace {
       (void)new llvm::ScalarEvolutionWrapperPass();
       llvm::Function::Create(nullptr, llvm::GlobalValue::ExternalLinkage)->viewCFGOnly();
       llvm::RGPassManager RGM;
-      llvm::TargetLibraryInfoImpl TLII;
-      llvm::TargetLibraryInfo TLI(TLII);
-      llvm::AliasAnalysis AA(TLI);
+      llvm::AliasAnalysis AA;
       llvm::AliasSetTracker X(AA);
       X.add(nullptr, 0, llvm::AAMDNodes()); // for -print-alias-sets
       (void) llvm::AreStatisticsEnabled();

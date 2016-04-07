@@ -56,7 +56,6 @@
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/DebugInfo.h"
 #include "llvm/IR/Function.h"
-#include "llvm/IR/GetElementPtrTypeIterator.h"
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/IntrinsicInst.h"
@@ -495,11 +494,13 @@ bool FastISel::selectGetElementPtr(const User *I) {
   uint64_t TotalOffs = 0;
   // FIXME: What's a good SWAG number for MaxOffs?
   uint64_t MaxOffs = 2048;
+  Type *Ty = I->getOperand(0)->getType();
   MVT VT = TLI.getPointerTy(DL);
-  for (gep_type_iterator GTI = gep_type_begin(I), E = gep_type_end(I);
-       GTI != E; ++GTI) {
-    const Value *Idx = GTI.getOperand();
-    if (auto *StTy = dyn_cast<StructType>(*GTI)) {
+  for (GetElementPtrInst::const_op_iterator OI = I->op_begin() + 1,
+                                            E = I->op_end();
+       OI != E; ++OI) {
+    const Value *Idx = *OI;
+    if (auto *StTy = dyn_cast<StructType>(Ty)) {
       uint64_t Field = cast<ConstantInt>(Idx)->getZExtValue();
       if (Field) {
         // N = N + Offset
@@ -512,8 +513,9 @@ bool FastISel::selectGetElementPtr(const User *I) {
           TotalOffs = 0;
         }
       }
+      Ty = StTy->getElementType(Field);
     } else {
-      Type *Ty = GTI.getIndexedType();
+      Ty = cast<SequentialType>(Ty)->getElementType();
 
       // If this is a constant subscript, handle it quickly.
       if (const auto *CI = dyn_cast<ConstantInt>(Idx)) {
@@ -1357,8 +1359,6 @@ bool FastISel::selectInstruction(const Instruction *I) {
   // Just before the terminator instruction, insert instructions to
   // feed PHI nodes in successor blocks.
   if (isa<TerminatorInst>(I)) {
-    // If we need to materialize any vreg from worklist, we bail out of
-    // FastISel.
     if (shouldCopySwiftErrorsToFinalVRegs(TLI, FuncInfo))
       return false;
     if (!handlePHINodesInSuccessorBlocks(I->getParent())) {
@@ -1370,12 +1370,6 @@ bool FastISel::selectInstruction(const Instruction *I) {
       return false;
     }
   }
-
-  // FastISel does not handle any operand bundles except OB_funclet.
-  if (ImmutableCallSite CS = ImmutableCallSite(I))
-    for (unsigned i = 0, e = CS.getNumOperandBundles(); i != e; ++i)
-      if (CS.getOperandBundleAt(i).getTagID() != LLVMContext::OB_funclet)
-        return false;
 
   DbgLoc = I->getDebugLoc();
 

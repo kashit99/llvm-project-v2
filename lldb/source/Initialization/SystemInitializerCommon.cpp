@@ -13,8 +13,13 @@
 #include "lldb/Host/HostInfo.h"
 #include "lldb/Core/Log.h"
 #include "lldb/Core/Timer.h"
-#include "lldb/Symbol/GoASTContext.h"
 #include "lldb/Symbol/ClangASTContext.h"
+#include "lldb/Symbol/GoASTContext.h"
+#include "lldb/Symbol/SwiftASTContext.h"
+#include "Plugins/DynamicLoader/MacOSX-DYLD/DynamicLoaderMacOSXDYLD.h"
+#include "Plugins/DynamicLoader/POSIX-DYLD/DynamicLoaderPOSIXDYLD.h"
+#include "Plugins/DynamicLoader/Windows-DYLD/DynamicLoaderWindowsDYLD.h"
+#include "Plugins/ExpressionParser/Swift/SwiftREPL.h"
 #include "Plugins/Instruction/ARM/EmulateInstructionARM.h"
 #include "Plugins/Instruction/MIPS/EmulateInstructionMIPS.h"
 #include "Plugins/Instruction/MIPS64/EmulateInstructionMIPS64.h"
@@ -100,6 +105,9 @@ SystemInitializerCommon::Initialize()
     // Initialize plug-ins
     ClangASTContext::Initialize();
     GoASTContext::Initialize();
+    SwiftASTContext::Initialize();
+    
+    SwiftREPL::Initialize();
 
     ObjectContainerBSDArchive::Initialize();
     ObjectFileELF::Initialize();
@@ -156,6 +164,9 @@ SystemInitializerCommon::Terminate()
 
     ClangASTContext::Terminate();
     GoASTContext::Terminate();
+    SwiftASTContext::Terminate();
+    
+    SwiftREPL::Terminate();
 
     EmulateInstructionARM::Terminate();
     EmulateInstructionMIPS::Terminate();

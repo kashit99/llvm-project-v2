@@ -1,13 +1,13 @@
-//===------- SemaTemplate.cpp - Semantic Analysis for C++ Templates -------===//
+//===------- SemaTemplate.cpp - Semantic Analysis for C++ Templates -------===/
 //
 //                     The LLVM Compiler Infrastructure
 //
 // This file is distributed under the University of Illinois Open Source
 // License. See LICENSE.TXT for details.
-//===----------------------------------------------------------------------===//
+//===----------------------------------------------------------------------===/
 //
 //  This file implements semantic analysis for C++ templates.
-//===----------------------------------------------------------------------===//
+//===----------------------------------------------------------------------===/
 
 #include "TreeTransform.h"
 #include "clang/AST/ASTConsumer.h"
@@ -32,7 +32,6 @@
 #include "llvm/ADT/SmallBitVector.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringExtras.h"
-
 using namespace clang;
 using namespace sema;
 
@@ -414,22 +413,9 @@ Sema::ActOnDependentIdExpression(const CXXScopeSpec &SS,
                            const TemplateArgumentListInfo *TemplateArgs) {
   DeclContext *DC = getFunctionLevelDeclContext();
 
-  // C++11 [expr.prim.general]p12:
-  //   An id-expression that denotes a non-static data member or non-static
-  //   member function of a class can only be used:
-  //   (...)
-  //   - if that id-expression denotes a non-static data member and it
-  //     appears in an unevaluated operand.
-  //
-  // If this might be the case, form a DependentScopeDeclRefExpr instead of a
-  // CXXDependentScopeMemberExpr. The former can instantiate to either
-  // DeclRefExpr or MemberExpr depending on lookup results, while the latter is
-  // always a MemberExpr.
-  bool MightBeCxx11UnevalField =
-      getLangOpts().CPlusPlus11 && isUnevaluatedContext();
-
-  if (!MightBeCxx11UnevalField && !isAddressOfOperand &&
-      isa<CXXMethodDecl>(DC) && cast<CXXMethodDecl>(DC)->isInstance()) {
+  if (!isAddressOfOperand &&
+      isa<CXXMethodDecl>(DC) &&
+      cast<CXXMethodDecl>(DC)->isInstance()) {
     QualType ThisType = cast<CXXMethodDecl>(DC)->getThisType(Context);
 
     // Since the 'this' expression is synthesized, we don't need to
@@ -472,6 +458,7 @@ void Sema::DiagnoseTemplateParameterShadow(SourceLocation Loc, Decl *PrevDecl) {
   Diag(Loc, diag::err_template_param_shadow)
     << cast<NamedDecl>(PrevDecl)->getDeclName();
   Diag(PrevDecl->getLocation(), diag::note_template_param_here);
+  return;
 }
 
 /// AdjustDeclIfTemplate - If the given decl happens to be a template, reset
@@ -568,6 +555,7 @@ Decl *Sema::ActOnTypeParameter(Scope *S, bool Typename,
                                ParsedType DefaultArg) {
   assert(S->isTemplateParamScope() &&
          "Template type parameter not in template parameter scope!");
+  bool Invalid = false;
 
   SourceLocation Loc = ParamNameLoc;
   if (!ParamName)
@@ -579,6 +567,8 @@ Decl *Sema::ActOnTypeParameter(Scope *S, bool Typename,
                                    KeyLoc, Loc, Depth, Position, ParamName,
                                    Typename, IsParameterPack);
   Param->setAccess(AS_public);
+  if (Invalid)
+    Param->setInvalidDecl();
 
   if (ParamName) {
     maybeDiagnoseTemplateParameterShadow(*this, S, ParamNameLoc, ParamName);
@@ -800,7 +790,7 @@ Decl *Sema::ActOnTemplateTemplateParameter(Scope* S,
     // However, it isn't worth doing.
     TemplateArgumentLoc DefaultArg = translateTemplateArgument(*this, Default);
     if (DefaultArg.getArgument().getAsTemplate().isNull()) {
-      Diag(DefaultArg.getLocation(), diag::err_template_arg_not_valid_template)
+      Diag(DefaultArg.getLocation(), diag::err_template_arg_not_class_template)
         << DefaultArg.getSourceRange();
       return Param;
     }
@@ -1588,7 +1578,7 @@ struct DependencyChecker : RecursiveASTVisitor<DependencyChecker> {
     return TraverseType(T->getInjectedSpecializationType());
   }
 };
-} // end anonymous namespace
+}
 
 /// Determines whether a given type depends on the given parameter
 /// list.
@@ -2724,7 +2714,7 @@ struct PartialSpecMatchResult {
   VarTemplatePartialSpecializationDecl *Partial;
   TemplateArgumentList *Args;
 };
-} // end anonymous namespace
+}
 
 DeclResult
 Sema::CheckVarTemplateId(VarTemplateDecl *Template, SourceLocation TemplateLoc,
@@ -4025,7 +4015,7 @@ namespace {
     bool VisitTagDecl(const TagDecl *Tag);
     bool VisitNestedNameSpecifier(NestedNameSpecifier *NNS);
   };
-} // end anonymous namespace
+}
 
 bool UnnamedLocalNoLinkageFinder::VisitBuiltinType(const BuiltinType*) {
   return false;
@@ -4239,6 +4229,7 @@ bool UnnamedLocalNoLinkageFinder::VisitNestedNameSpecifier(
   }
   llvm_unreachable("Invalid NestedNameSpecifier::Kind!");
 }
+
 
 /// \brief Check a template argument against its corresponding
 /// template type parameter.
@@ -5353,7 +5344,7 @@ bool Sema::CheckTemplateArgument(TemplateTemplateParmDecl *Param,
       !isa<TypeAliasTemplateDecl>(Template)) {
     assert(isa<FunctionTemplateDecl>(Template) &&
            "Only function templates are possible here");
-    Diag(Arg.getLocation(), diag::err_template_arg_not_valid_template);
+    Diag(Arg.getLocation(), diag::err_template_arg_not_class_template);
     Diag(Template->getLocation(), diag::note_template_arg_refers_here_func)
       << Template;
   }
@@ -7279,20 +7270,14 @@ Sema::ActOnExplicitInstantiation(Scope *S,
   assert(Kind != TTK_Enum &&
          "Invalid enum tag in class template explicit instantiation!");
 
-  ClassTemplateDecl *ClassTemplate = dyn_cast<ClassTemplateDecl>(TD);
-
-  if (!ClassTemplate) {
-    unsigned ErrorKind = 0;
-    if (isa<TypeAliasTemplateDecl>(TD)) {
-      ErrorKind = 4;
-    } else if (isa<TemplateTemplateParmDecl>(TD)) {
-      ErrorKind = 5;
-    }
-
-    Diag(TemplateNameLoc, diag::err_tag_reference_non_tag) << ErrorKind;
-    Diag(TD->getLocation(), diag::note_previous_use);
+  if (isa<TypeAliasTemplateDecl>(TD)) {
+      Diag(KWLoc, diag::err_tag_reference_non_tag) << Kind;
+      Diag(TD->getTemplatedDecl()->getLocation(),
+           diag::note_previous_use);
     return true;
   }
+
+  ClassTemplateDecl *ClassTemplate = cast<ClassTemplateDecl>(TD);
 
   if (!isAcceptableTagRedeclaration(ClassTemplate->getTemplatedDecl(),
                                     Kind, /*isDefinition*/false, KWLoc,
@@ -7480,13 +7465,7 @@ Sema::ActOnExplicitInstantiation(Scope *S,
             getDLLAttr(Specialization)->clone(getASTContext()));
         A->setInherited(true);
         Def->addAttr(A);
-
-        // We reject explicit instantiations in class scope, so there should
-        // never be any delayed exported classes to worry about.
-        assert(DelayedDllExportClasses.empty() &&
-               "delayed exports present at explicit instantiation");
         checkClassLevelDLLAttribute(Def);
-        referenceDLLExportedClassMethods();
 
         // Propagate attribute to base class templates.
         for (auto &B : Def->bases()) {
@@ -7696,15 +7675,6 @@ DeclResult Sema::ActOnExplicitInstantiation(Scope *S,
     // not already specified.
     Diag(D.getDeclSpec().getConstexprSpecLoc(),
          diag::err_explicit_instantiation_constexpr);
-
-  // C++ Concepts TS [dcl.spec.concept]p1: The concept specifier shall be
-  // applied only to the definition of a function template or variable template,
-  // declared in namespace scope.
-  if (D.getDeclSpec().isConceptSpecified()) {
-    Diag(D.getDeclSpec().getConceptSpecLoc(),
-         diag::err_concept_specified_specialization) << 0;
-    return true;
-  }
 
   // C++0x [temp.explicit]p2:
   //   There are two forms of explicit instantiation: an explicit instantiation
@@ -8329,7 +8299,7 @@ namespace {
       return E;
     }
   };
-} // end anonymous namespace
+}
 
 /// \brief Rebuilds a type within the context of the current instantiation.
 ///

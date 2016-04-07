@@ -146,14 +146,9 @@ ErrorOr<StringRef> Archive::Child::getBuffer() const {
   ErrorOr<StringRef> Name = getName();
   if (std::error_code EC = Name.getError())
     return EC;
-  SmallString<128> FullName;
-  if (sys::path::is_absolute(*Name))
-    FullName = *Name;
-  else {
-    FullName = sys::path::parent_path(
-        Parent->getMemoryBufferRef().getBufferIdentifier());
-    sys::path::append(FullName, *Name);
-  }
+  SmallString<128> FullName = sys::path::parent_path(
+      Parent->getMemoryBufferRef().getBufferIdentifier());
+  sys::path::append(FullName, *Name);
   ErrorOr<std::unique_ptr<MemoryBuffer>> Buf = MemoryBuffer::getFile(FullName);
   if (std::error_code EC = Buf.getError())
     return EC;
@@ -245,10 +240,7 @@ Archive::Child::getAsBinary(LLVMContext *Context) const {
   if (std::error_code EC = BuffOrErr.getError())
     return EC;
 
-  auto BinaryOrErr = createBinary(BuffOrErr.get(), Context);
-  if (BinaryOrErr)
-    return std::move(*BinaryOrErr);
-  return errorToErrorCode(BinaryOrErr.takeError());
+  return createBinary(BuffOrErr.get(), Context);
 }
 
 ErrorOr<std::unique_ptr<Archive>> Archive::create(MemoryBufferRef Source) {

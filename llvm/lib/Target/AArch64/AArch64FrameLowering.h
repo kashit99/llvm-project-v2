@@ -25,11 +25,12 @@ public:
                             true /*StackRealignable*/) {}
 
   void emitCalleeSavedFrameMoves(MachineBasicBlock &MBB,
-                                 MachineBasicBlock::iterator MBBI) const;
+                                 MachineBasicBlock::iterator MBBI,
+                                 unsigned FramePtr) const;
 
-  MachineBasicBlock::iterator
-  eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
-                                MachineBasicBlock::iterator I) const override;
+  void eliminateCallFramePseudoInstr(MachineFunction &MF,
+                                  MachineBasicBlock &MBB,
+                                  MachineBasicBlock::iterator I) const override;
 
   /// emitProlog/emitEpilog - These methods insert prolog and epilog code into
   /// the function.
@@ -61,6 +62,12 @@ public:
 
   void determineCalleeSaves(MachineFunction &MF, BitVector &SavedRegs,
                             RegScavenger *RS) const override;
+
+  bool assignCalleeSavedSpillSlots(MachineFunction &MF,
+                                   const TargetRegisterInfo *TRI,
+                                   std::vector<CalleeSavedInfo> &CSI,
+                                   unsigned &MinCSFrameIndex,
+                                   unsigned &MaxCSFrameIndex) const override;
 
   /// Returns true if the target will correctly handle shrink wrapping.
   bool enableShrinkWrapping(const MachineFunction &MF) const override {

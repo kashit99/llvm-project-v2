@@ -1836,13 +1836,6 @@ Decl *Sema::ActOnStartCategoryImplementation(
   if (IDecl)
     DiagnoseUseOfDecl(IDecl, ClassLoc);
 
-  // If the interface has the objc_runtime_visible attribute, we
-  // cannot implement a category for it.
-  if (IDecl && IDecl->hasAttr<ObjCRuntimeVisibleAttr>()) {
-    Diag(ClassLoc, diag::err_objc_runtime_visible_category)
-      << IDecl->getDeclName();
-  }
-
   /// Check that CatName, category name, is not used in another implementation.
   if (CatIDecl) {
     if (CatIDecl->getImplementation()) {
@@ -1980,16 +1973,6 @@ Decl *Sema::ActOnStartClassImplementation(
                                         dyn_cast<NamedDecl>(IDecl), 
                                         IMPDecl->getLocation(), 1);
   }
-
-  // If the superclass has the objc_runtime_visible attribute, we
-  // cannot implement a subclass of it.
-  if (IDecl->getSuperClass() &&
-      IDecl->getSuperClass()->hasAttr<ObjCRuntimeVisibleAttr>()) {
-    Diag(ClassLoc, diag::err_objc_runtime_visible_subclass)
-      << IDecl->getDeclName()
-      << IDecl->getSuperClass()->getDeclName();
-  }
-
   return ActOnObjCContainerStartDefinition(IMPDecl);
 }
 
@@ -3194,7 +3177,7 @@ void Sema::addMethodToGlobalList(ObjCMethodList *List,
   ObjCMethodList *Previous = List;
   for (; List; Previous = List, List = List->getNext()) {
     // If we are building a module, keep all of the methods.
-    if (getLangOpts().CompilingModule)
+    if (getLangOpts().Modules && !getLangOpts().CurrentModule.empty())
       continue;
 
     if (!MatchTwoMethodDeclarations(Method, List->getMethod())) {

@@ -256,10 +256,6 @@ public:
     return ToolChain::RLT_Libgcc;
   }
 
-  virtual CXXStdlibType GetDefaultCXXStdlibType() const {
-    return ToolChain::CST_Libstdcxx;
-  }
-
   virtual std::string getCompilerRT(const llvm::opt::ArgList &Args,
                                     StringRef Component,
                                     bool Shared = false) const;
@@ -316,11 +312,6 @@ public:
 
   /// UseSjLjExceptions - Does this tool chain use SjLj exceptions.
   virtual bool UseSjLjExceptions(const llvm::opt::ArgList &Args) const {
-    return false;
-  }
-
-  /// SupportsEmbeddedBitcode - Does this tool chain support embedded bitcode.
-  virtual bool SupportsEmbeddedBitcode() const {
     return false;
   }
 
@@ -419,9 +410,6 @@ public:
 
   /// \brief Return sanitizers which are available in this toolchain.
   virtual SanitizerMask getSupportedSanitizers() const;
-
-  /// \brief Return sanitizers which are enabled by default.
-  virtual SanitizerMask getDefaultSanitizers() const { return 0; }
 };
 
 } // end namespace driver

@@ -15,11 +15,8 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Analysis/InstructionSimplify.h"
-#include "llvm/Analysis/ValueTracking.h"
-#include "llvm/IR/PatternMatch.h"
 #include "llvm/Transforms/Utils/Local.h"
 using namespace llvm;
-using namespace llvm::PatternMatch;
 
 #define DEBUG_TYPE "instcombine"
 
@@ -644,16 +641,6 @@ static bool PHIsEqualValue(PHINode *PN, Value *NonPhiInVal,
   return true;
 }
 
-/// Return an existing non-zero constant if this phi node has one, otherwise
-/// return constant 1.
-static ConstantInt *GetAnyNonZeroConstInt(PHINode &PN) {
-  assert(isa<IntegerType>(PN.getType()) && "Expect only intger type phi");
-  for (Value *V : PN.operands())
-    if (auto *ConstVA = dyn_cast<ConstantInt>(V))
-      if (!ConstVA->isZeroValue())
-        return ConstVA;
-  return ConstantInt::get(cast<IntegerType>(PN.getType()), 1);
-}
 
 namespace {
 struct PHIUsageRecord {
@@ -781,7 +768,7 @@ Instruction *InstCombiner::SliceUpIllegalIntegerPHI(PHINode &FirstPhi) {
 
   // If we have no users, they must be all self uses, just nuke the PHI.
   if (PHIUsers.empty())
-    return replaceInstUsesWith(FirstPhi, UndefValue::get(FirstPhi.getType()));
+    return ReplaceInstUsesWith(FirstPhi, UndefValue::get(FirstPhi.getType()));
 
   // If this phi node is transformable, create new PHIs for all the pieces
   // extracted out of it.  First, sort the users by their offset and size.
@@ -877,22 +864,22 @@ Instruction *InstCombiner::SliceUpIllegalIntegerPHI(PHINode &FirstPhi) {
     }
 
     // Replace the use of this piece with the PHI node.
-    replaceInstUsesWith(*PHIUsers[UserI].Inst, EltPHI);
+    ReplaceInstUsesWith(*PHIUsers[UserI].Inst, EltPHI);
   }
 
   // Replace all the remaining uses of the PHI nodes (self uses and the lshrs)
   // with undefs.
   Value *Undef = UndefValue::get(FirstPhi.getType());
   for (unsigned i = 1, e = PHIsToSlice.size(); i != e; ++i)
-    replaceInstUsesWith(*PHIsToSlice[i], Undef);
-  return replaceInstUsesWith(FirstPhi, Undef);
+    ReplaceInstUsesWith(*PHIsToSlice[i], Undef);
+  return ReplaceInstUsesWith(FirstPhi, Undef);
 }
 
 // PHINode simplification
 //
 Instruction *InstCombiner::visitPHINode(PHINode &PN) {
   if (Value *V = SimplifyInstruction(&PN, DL, TLI, DT, AC))
-    return replaceInstUsesWith(PN, V);
+    return ReplaceInstUsesWith(PN, V);
 
   if (Instruction *Result = FoldPHIArgZextsIntoPHI(PN))
     return Result;
@@ -918,7 +905,7 @@ Instruction *InstCombiner::visitPHINode(PHINode &PN) {
       SmallPtrSet<PHINode*, 16> PotentiallyDeadPHIs;
       PotentiallyDeadPHIs.insert(&PN);
       if (DeadPHICycle(PU, PotentiallyDeadPHIs))
-        return replaceInstUsesWith(PN, UndefValue::get(PN.getType()));
+        return ReplaceInstUsesWith(PN, UndefValue::get(PN.getType()));
     }
 
     // If this phi has a single use, and if that use just computes a value for
@@ -930,30 +917,7 @@ Instruction *InstCombiner::visitPHINode(PHINode &PN) {
     if (PHIUser->hasOneUse() &&
         (isa<BinaryOperator>(PHIUser) || isa<GetElementPtrInst>(PHIUser)) &&
         PHIUser->user_back() == &PN) {
-      return replaceInstUsesWith(PN, UndefValue::get(PN.getType()));
-    }
-    // When a PHI is used only to be compared with zero, it is safe to replace
-    // an incoming value proved as known nonzero with any non-zero constant.
-    // For example, in the code below, the incoming value %v can be replaced
-    // with any non-zero constant based on the fact that the PHI is only used to
-    // be compared with zero and %v is a known non-zero value:
-    // %v = select %cond, 1, 2
-    // %p = phi [%v, BB] ...
-    //      icmp eq, %p, 0
-    auto *CmpInst = dyn_cast<ICmpInst>(PHIUser);
-    // FIXME: To be simple, handle only integer type for now.
-    if (CmpInst && isa<IntegerType>(PN.getType()) && CmpInst->isEquality() &&
-        match(CmpInst->getOperand(1), m_Zero())) {
-      ConstantInt *NonZeroConst = nullptr;
-      for (unsigned i = 0, e = PN.getNumIncomingValues(); i != e; ++i) {
-        Instruction *CtxI = PN.getIncomingBlock(i)->getTerminator();
-        Value *VA = PN.getIncomingValue(i);
-        if (isKnownNonZero(VA, DL, 0, AC, CtxI, DT)) {
-          if (!NonZeroConst)
-            NonZeroConst = GetAnyNonZeroConstInt(PN);
-          PN.setIncomingValue(i, NonZeroConst);
-        }
-      }
+      return ReplaceInstUsesWith(PN, UndefValue::get(PN.getType()));
     }
   }
 
@@ -987,7 +951,7 @@ Instruction *InstCombiner::visitPHINode(PHINode &PN) {
       if (InValNo == NumIncomingVals) {
         SmallPtrSet<PHINode*, 16> ValueEqualPHIs;
         if (PHIsEqualValue(&PN, NonPhiInVal, ValueEqualPHIs))
-          return replaceInstUsesWith(PN, NonPhiInVal);
+          return ReplaceInstUsesWith(PN, NonPhiInVal);
       }
     }
   }

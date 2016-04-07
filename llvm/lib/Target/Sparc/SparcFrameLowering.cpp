@@ -183,7 +183,7 @@ void SparcFrameLowering::emitPrologue(MachineFunction &MF,
   }
 }
 
-MachineBasicBlock::iterator SparcFrameLowering::
+void SparcFrameLowering::
 eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
                               MachineBasicBlock::iterator I) const {
   if (!hasReservedCallFrame(MF)) {
@@ -195,7 +195,7 @@ eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
     if (Size)
       emitSPAdjustment(MF, MBB, I, Size, SP::ADDrr, SP::ADDri);
   }
-  return MBB.erase(I);
+  MBB.erase(I);
 }
 
 

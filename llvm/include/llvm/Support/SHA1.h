@@ -16,7 +16,6 @@
 #ifndef LLVM_SUPPORT_SHA1_H
 #define LLVM_SUPPORT_SHA1_H
 
-#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 
 #include <cstdint>
@@ -32,25 +31,15 @@ public:
   void init();
 
   /// Digest more data.
-  void update(ArrayRef<uint8_t> Data);
+  void write(const char *data, size_t len);
 
-  /// Return a reference to the current raw 160-bits SHA1 for the digested data
-  /// since the last call to init(). This call will add data to the internal
-  /// state and as such is not suited for getting an intermediate result
-  /// (see result()).
-  StringRef final();
-
-  /// Return a reference to the current raw 160-bits SHA1 for the digested data
-  /// since the last call to init(). This is suitable for getting the SHA1 at
-  /// any time without invalidating the internal state so that more calls can be
-  /// made into update.
+  /// Return a reference to the current SHA1 for the digested data since the
+  /// last call to init()
   StringRef result();
 
 private:
-  /// Define some constants.
-  /// "static constexpr" would be cleaner but MSVC does not support it yet.
-  enum { BLOCK_LENGTH = 64 };
-  enum { HASH_LENGTH = 20 };
+  static constexpr int BLOCK_LENGTH = 64;
+  static constexpr int HASH_LENGTH = 20;
 
   // Internal State
   struct {

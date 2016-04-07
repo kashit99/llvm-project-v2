@@ -28,9 +28,9 @@
 #include "clang/AST/Type.h"
 #include "clang/Basic/ABI.h"
 #include "clang/Basic/CapturedStmt.h"
-#include "clang/Basic/CodeGenOptions.h"
 #include "clang/Basic/OpenMPKinds.h"
 #include "clang/Basic/TargetInfo.h"
+#include "clang/Frontend/CodeGenOptions.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
@@ -68,6 +68,7 @@ class ObjCMethodDecl;
 class ObjCImplementationDecl;
 class ObjCPropertyImplDecl;
 class TargetInfo;
+class TargetCodeGenInfo;
 class VarDecl;
 class ObjCForCollectionStmt;
 class ObjCAtTryStmt;
@@ -85,7 +86,6 @@ class BlockByrefHelpers;
 class BlockByrefInfo;
 class BlockFlags;
 class BlockFieldFlags;
-class TargetCodeGenInfo;
 
 /// The kind of evaluation to perform on values of a particular
 /// type.  Basically, is the code in CGExprScalar, CGExprComplex, or
@@ -275,8 +275,6 @@ public:
   /// Whether we processed a Microsoft-style asm block during CodeGen. These can
   /// potentially set the return value.
   bool SawAsmBlock;
-
-  const FunctionDecl *CurSEHParent = nullptr;
 
   /// True if the current function is an outlined SEH helper. This can be a
   /// finally block or filter expression.
@@ -954,7 +952,7 @@ private:
 public:
   /// Increment the profiler's counter for the given statement.
   void incrementProfileCounter(const Stmt *S) {
-    if (CGM.getCodeGenOpts().hasProfileClangInstr())
+    if (CGM.getCodeGenOpts().ProfileInstrGenerate)
       PGO.emitCounterIncrement(Builder, S);
     PGO.setCurrentStmt(S);
   }
@@ -1152,7 +1150,10 @@ public:
     return getInvokeDestImpl();
   }
 
-  bool currentFunctionUsesSEHTry() const { return CurSEHParent != nullptr; }
+  bool currentFunctionUsesSEHTry() const {
+    const auto *FD = dyn_cast_or_null<FunctionDecl>(CurCodeDecl);
+    return FD && FD->usesSEHTry();
+  }
 
   const TargetInfo &getTarget() const { return Target; }
   llvm::LLVMContext &getLLVMContext() { return CGM.getLLVMContext(); }
@@ -1388,7 +1389,6 @@ public:
     CFITCK_NVCall,
     CFITCK_DerivedCast,
     CFITCK_UnrelatedCast,
-    CFITCK_ICall,
   };
 
   /// \brief Derived is the presumed address of an object of type T after a
@@ -1400,19 +1400,13 @@ public:
 
   /// EmitVTablePtrCheckForCall - Virtual method MD is being called via VTable.
   /// If vptr CFI is enabled, emit a check that VTable is valid.
-  void EmitVTablePtrCheckForCall(const CXXRecordDecl *RD, llvm::Value *VTable,
+  void EmitVTablePtrCheckForCall(const CXXMethodDecl *MD, llvm::Value *VTable,
                                  CFITypeCheckKind TCK, SourceLocation Loc);
 
   /// EmitVTablePtrCheck - Emit a check that VTable is a valid virtual table for
   /// RD using llvm.bitset.test.
   void EmitVTablePtrCheck(const CXXRecordDecl *RD, llvm::Value *VTable,
                           CFITypeCheckKind TCK, SourceLocation Loc);
-
-  /// If whole-program virtual table optimization is enabled, emit an assumption
-  /// that VTable is a member of the type's bitset. Or, if vptr CFI is enabled,
-  /// emit a check that VTable is a member of the type's bitset.
-  void EmitBitSetCodeForVCall(const CXXRecordDecl *RD, llvm::Value *VTable,
-                              SourceLocation Loc);
 
   /// CanDevirtualizeMemberFunctionCalls - Checks whether virtual calls on given
   /// expr can be devirtualized.
@@ -1578,10 +1572,6 @@ public:
   Address EmitLoadOfReference(Address Ref, const ReferenceType *RefTy,
                               AlignmentSource *Source = nullptr);
   LValue EmitLoadOfReferenceLValue(Address Ref, const ReferenceType *RefTy);
-
-  Address EmitLoadOfPointer(Address Ptr, const PointerType *PtrTy,
-                            AlignmentSource *Source = nullptr);
-  LValue EmitLoadOfPointerLValue(Address Ptr, const PointerType *PtrTy);
 
   /// CreateTempAlloca - This creates a alloca and inserts it into the entry
   /// block. The caller is responsible for setting an appropriate alignment on
@@ -2215,19 +2205,13 @@ public:
   void EmitCXXForRangeStmt(const CXXForRangeStmt &S,
                            ArrayRef<const Attr *> Attrs = None);
 
-  /// Returns calculated size of the specified type.
-  llvm::Value *getTypeSize(QualType Ty);
   LValue InitCapturedStruct(const CapturedStmt &S);
   llvm::Function *EmitCapturedStmt(const CapturedStmt &S, CapturedRegionKind K);
   llvm::Function *GenerateCapturedStmtFunction(const CapturedStmt &S);
   Address GenerateCapturedStmtArgument(const CapturedStmt &S);
-  llvm::Function *GenerateOpenMPCapturedStmtFunction(const CapturedStmt &S,
-                                                     QualType ReturnQTy);
   llvm::Function *GenerateOpenMPCapturedStmtFunction(const CapturedStmt &S);
   void GenerateOpenMPCapturedVars(const CapturedStmt &S,
                                   SmallVectorImpl<llvm::Value *> &CapturedVars);
-  void emitOMPSimpleStore(LValue LVal, RValue RVal, QualType RValTy,
-                          SourceLocation Loc);
   /// \brief Perform element by element copying of arrays with type \a
   /// OriginalType from \a SrcAddr to \a DestAddr using copying procedure
   /// generated by \a CopyGen.
@@ -2352,11 +2336,6 @@ public:
   void EmitOMPAtomicDirective(const OMPAtomicDirective &S);
   void EmitOMPTargetDirective(const OMPTargetDirective &S);
   void EmitOMPTargetDataDirective(const OMPTargetDataDirective &S);
-  void EmitOMPTargetEnterDataDirective(const OMPTargetEnterDataDirective &S);
-  void EmitOMPTargetExitDataDirective(const OMPTargetExitDataDirective &S);
-  void EmitOMPTargetParallelDirective(const OMPTargetParallelDirective &S);
-  void
-  EmitOMPTargetParallelForDirective(const OMPTargetParallelForDirective &S);
   void EmitOMPTeamsDirective(const OMPTeamsDirective &S);
   void
   EmitOMPCancellationPointDirective(const OMPCancellationPointDirective &S);
@@ -2364,15 +2343,7 @@ public:
   void EmitOMPTaskLoopDirective(const OMPTaskLoopDirective &S);
   void EmitOMPTaskLoopSimdDirective(const OMPTaskLoopSimdDirective &S);
   void EmitOMPDistributeDirective(const OMPDistributeDirective &S);
-  void EmitOMPDistributeLoop(const OMPDistributeDirective &S);
 
-  /// Emit outlined function for the target directive.
-  static std::pair<llvm::Function * /*OutlinedFn*/,
-                   llvm::Constant * /*OutlinedFnID*/>
-  EmitOMPTargetDirectiveOutlinedFunction(CodeGenModule &CGM,
-                                         const OMPTargetDirective &S,
-                                         StringRef ParentName,
-                                         bool IsOffloadEntry);
   /// \brief Emit inner loop of the worksharing/simd construct.
   ///
   /// \param S Directive, for which the inner loop must be emitted.
@@ -2396,27 +2367,18 @@ private:
   /// Helpers for the OpenMP loop directives.
   void EmitOMPLoopBody(const OMPLoopDirective &D, JumpDest LoopExit);
   void EmitOMPSimdInit(const OMPLoopDirective &D, bool IsMonotonic = false);
-  void EmitOMPSimdFinal(
-      const OMPLoopDirective &D,
-      const llvm::function_ref<llvm::Value *(CodeGenFunction &)> &CondGen);
+  void EmitOMPSimdFinal(const OMPLoopDirective &D);
   /// \brief Emit code for the worksharing loop-based directive.
   /// \return true, if this construct has any lastprivate clause, false -
   /// otherwise.
   bool EmitOMPWorksharingLoop(const OMPLoopDirective &S);
-  void EmitOMPOuterLoop(bool IsMonotonic, bool DynamicOrOrdered,
-      const OMPLoopDirective &S, OMPPrivateScope &LoopScope, bool Ordered,
-      Address LB, Address UB, Address ST, Address IL, llvm::Value *Chunk);
   void EmitOMPForOuterLoop(OpenMPScheduleClauseKind ScheduleKind,
                            bool IsMonotonic, const OMPLoopDirective &S,
                            OMPPrivateScope &LoopScope, bool Ordered, Address LB,
                            Address UB, Address ST, Address IL,
                            llvm::Value *Chunk);
-  void EmitOMPDistributeOuterLoop(
-      OpenMPDistScheduleClauseKind ScheduleKind,
-      const OMPDistributeDirective &S, OMPPrivateScope &LoopScope,
-      Address LB, Address UB, Address ST, Address IL, llvm::Value *Chunk);
   /// \brief Emit code for sections directive.
-  void EmitSections(const OMPExecutableDirective &S);
+  OpenMPDirectiveKind EmitSections(const OMPExecutableDirective &S);
 
 public:
 
@@ -2483,10 +2445,8 @@ public:
 
   std::pair<RValue, llvm::Value *> EmitAtomicCompareExchange(
       LValue Obj, RValue Expected, RValue Desired, SourceLocation Loc,
-      llvm::AtomicOrdering Success =
-          llvm::AtomicOrdering::SequentiallyConsistent,
-      llvm::AtomicOrdering Failure =
-          llvm::AtomicOrdering::SequentiallyConsistent,
+      llvm::AtomicOrdering Success = llvm::SequentiallyConsistent,
+      llvm::AtomicOrdering Failure = llvm::SequentiallyConsistent,
       bool IsWeak = false, AggValueSlot Slot = AggValueSlot::ignored());
 
   void EmitAtomicUpdate(LValue LVal, llvm::AtomicOrdering AO,
@@ -2719,10 +2679,11 @@ public:
                               ReturnValueSlot ReturnValue, llvm::Value *This,
                               llvm::Value *ImplicitParam,
                               QualType ImplicitParamTy, const CallExpr *E);
-  RValue EmitCXXDestructorCall(const CXXDestructorDecl *DD, llvm::Value *Callee,
-                               llvm::Value *This, llvm::Value *ImplicitParam,
-                               QualType ImplicitParamTy, const CallExpr *E,
-                               StructorType Type);
+  RValue EmitCXXStructorCall(const CXXMethodDecl *MD, llvm::Value *Callee,
+                             ReturnValueSlot ReturnValue, llvm::Value *This,
+                             llvm::Value *ImplicitParam,
+                             QualType ImplicitParamTy, const CallExpr *E,
+                             StructorType Type);
   RValue EmitCXXMemberCallExpr(const CXXMemberCallExpr *E,
                                ReturnValueSlot ReturnValue);
   RValue EmitCXXMemberOrOperatorMemberCallExpr(const CallExpr *CE,
@@ -2746,8 +2707,6 @@ public:
   RValue EmitCUDAKernelCallExpr(const CUDAKernelCallExpr *E,
                                 ReturnValueSlot ReturnValue);
 
-  RValue EmitCUDADevicePrintfCallExpr(const CallExpr *E,
-                                      ReturnValueSlot ReturnValue);
 
   RValue EmitBuiltinExpr(const FunctionDecl *FD,
                          unsigned BuiltinID, const CallExpr *E,
@@ -3059,9 +3018,8 @@ public:
 
   /// \brief Emit a slow path cross-DSO CFI check which calls __cfi_slowpath
   /// if Cond if false.
-  void EmitCfiSlowPathCheck(SanitizerMask Kind, llvm::Value *Cond,
-                            llvm::ConstantInt *TypeId, llvm::Value *Ptr,
-                            ArrayRef<llvm::Constant *> StaticArgs);
+  void EmitCfiSlowPathCheck(llvm::Value *Cond, llvm::ConstantInt *TypeId,
+                            llvm::Value *Ptr);
 
   /// \brief Create a basic block that will call the trap intrinsic, and emit a
   /// conditional branch to it, for the -ftrapv checks.
@@ -3070,9 +3028,6 @@ public:
   /// \brief Emit a call to trap or debugtrap and attach function attribute
   /// "trap-func-name" if specified.
   llvm::CallInst *EmitTrapCall(llvm::Intrinsic::ID IntrID);
-
-  /// \brief Emit a cross-DSO CFI failure handling function.
-  void EmitCfiCheckFail();
 
   /// \brief Create a check for a function parameter that may potentially be
   /// declared as non-null.
@@ -3112,7 +3067,7 @@ private:
   ///
   /// \param AI - The first function argument of the expansion.
   void ExpandTypeFromArgs(QualType Ty, LValue Dst,
-                          SmallVectorImpl<llvm::Value *>::iterator &AI);
+                          SmallVectorImpl<llvm::Argument *>::iterator &AI);
 
   /// ExpandTypeToArgs - Expand an RValue \arg RV, with the LLVM type for \arg
   /// Ty, into individual arguments on the provided vector \arg IRCallArgs,

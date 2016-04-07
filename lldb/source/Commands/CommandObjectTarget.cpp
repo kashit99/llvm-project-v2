@@ -1574,7 +1574,7 @@ DumpModuleObjfileHeaders(Stream &strm, ModuleList &module_list)
 }
 
 static void
-DumpModuleSymtab (CommandInterpreter &interpreter, Stream &strm, Module *module, SortOrder sort_order)
+DumpModuleSymtab (CommandInterpreter &interpreter, Stream &strm, Module *module, SortOrder sort_order, Mangled::NamePreference name_preference)
 {
     if (module)
     {
@@ -1583,7 +1583,7 @@ DumpModuleSymtab (CommandInterpreter &interpreter, Stream &strm, Module *module,
         {
             Symtab *symtab = sym_vendor->GetSymtab();
             if (symtab)
-                symtab->Dump(&strm, interpreter.GetExecutionContext().GetTargetPtr(), sort_order);
+                symtab->Dump(&strm, interpreter.GetExecutionContext().GetTargetPtr(), sort_order, name_preference);
         }
     }
 }
@@ -2234,7 +2234,8 @@ public:
     public:
         CommandOptions (CommandInterpreter &interpreter) :
         Options(interpreter),
-        m_sort_order (eSortOrderNone)
+        m_sort_order (eSortOrderNone),
+        m_prefer_mangled(false,false)
         {
         }
 
@@ -2248,6 +2249,11 @@ public:
 
             switch (short_option)
             {
+                case 'm':
+                    m_prefer_mangled.SetCurrentValue(true);
+                    m_prefer_mangled.SetOptionWasSet();
+                    break;
+                    
                 case 's':
                     m_sort_order = (SortOrder) Args::StringToOptionEnum (option_arg, 
                                                                          g_option_table[option_idx].enum_values, 
@@ -2266,6 +2272,7 @@ public:
         OptionParsingStarting () override
         {
             m_sort_order = eSortOrderNone;
+            m_prefer_mangled.Clear();
         }
 
         const OptionDefinition*
@@ -2278,6 +2285,7 @@ public:
         static OptionDefinition g_option_table[];
 
         SortOrder m_sort_order;
+        OptionValueBoolean m_prefer_mangled;
     };
 
 protected:
@@ -2294,7 +2302,9 @@ protected:
         else
         {
             uint32_t num_dumped = 0;
-
+            
+            Mangled::NamePreference preference = (m_options.m_prefer_mangled ? Mangled::ePreferMangled : Mangled::ePreferDemangled);
+            
             uint32_t addr_byte_size = target->GetArchitecture().GetAddressByteSize();
             result.GetOutputStream().SetAddressByteSize(addr_byte_size);
             result.GetErrorStream().SetAddressByteSize(addr_byte_size);
@@ -2318,7 +2328,8 @@ protected:
                         DumpModuleSymtab (m_interpreter,
                                           result.GetOutputStream(),
                                           target->GetImages().GetModulePointerAtIndexUnlocked(image_idx),
-                                          m_options.m_sort_order);
+                                          m_options.m_sort_order,
+                                          preference);
                     }
                 }
                 else
@@ -2349,7 +2360,7 @@ protected:
                                     result.GetOutputStream().EOL();
                                 }
                                 num_dumped++;
-                                DumpModuleSymtab (m_interpreter, result.GetOutputStream(), module, m_options.m_sort_order);
+                                DumpModuleSymtab (m_interpreter, result.GetOutputStream(), module, m_options.m_sort_order, preference);
                             }
                         }
                     }
@@ -2385,6 +2396,7 @@ OptionDefinition
 CommandObjectTargetModulesDumpSymtab::CommandOptions::g_option_table[] =
 {
     { LLDB_OPT_SET_1, false, "sort", 's', OptionParser::eRequiredArgument, nullptr, g_sort_option_enumeration, 0, eArgTypeSortOrder, "Supply a sort order when dumping the symbol table."},
+    { LLDB_OPT_SET_1, false, "show-mangled-names", 'm', OptionParser::eNoArgument, nullptr, nullptr, 0, eArgTypeNone, "Do not demangle symbol names before showing them."},
     { 0, false, nullptr, 0, 0, nullptr, nullptr, 0, eArgTypeNone, nullptr }
 };
 
@@ -4090,7 +4102,7 @@ public:
             break;
         }
 
-        return true;
+        return false;
     }
 
     bool

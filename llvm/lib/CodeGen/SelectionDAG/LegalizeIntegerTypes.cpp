@@ -436,7 +436,10 @@ SDValue DAGTypeLegalizer::PromoteIntRes_FP_TO_FP16(SDNode *N) {
   EVT NVT = TLI.getTypeToTransformTo(*DAG.getContext(), N->getValueType(0));
   SDLoc dl(N);
 
-  return DAG.getNode(N->getOpcode(), dl, NVT, N->getOperand(0));
+  SDValue Res = DAG.getNode(N->getOpcode(), dl, NVT, N->getOperand(0));
+
+  return DAG.getNode(ISD::AssertZext, dl,
+                     NVT, Res, DAG.getValueType(N->getValueType(0)));
 }
 
 SDValue DAGTypeLegalizer::PromoteIntRes_INT_EXTEND(SDNode *N) {
@@ -1401,7 +1404,7 @@ void DAGTypeLegalizer::ExpandIntegerResult(SDNode *N, unsigned ResNo) {
 std::pair <SDValue, SDValue> DAGTypeLegalizer::ExpandAtomic(SDNode *Node) {
   unsigned Opc = Node->getOpcode();
   MVT VT = cast<AtomicSDNode>(Node)->getMemoryVT().getSimpleVT();
-  RTLIB::Libcall LC = RTLIB::getSYNC(Opc, VT);
+  RTLIB::Libcall LC = RTLIB::getATOMIC(Opc, VT);
   assert(LC != RTLIB::UNKNOWN_LIBCALL && "Unexpected atomic op or value type!");
 
   return ExpandChainLibCall(LC, Node, false);

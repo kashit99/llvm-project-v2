@@ -9,15 +9,15 @@
 // CHECK-DEVICE-NOT: module asm "file scope asm is host only"
 __asm__("file scope asm is host only");
 
-// CHECK-HOST: constantdata = internal global
+// CHECK-HOST-NOT: constantdata = externally_initialized global
 // CHECK-DEVICE: constantdata = externally_initialized global
 __constant__ char constantdata[256];
 
-// CHECK-HOST: devicedata = internal global
+// CHECK-HOST-NOT: devicedata = externally_initialized global
 // CHECK-DEVICE: devicedata = externally_initialized global
 __device__ char devicedata[256];
 
-// CHECK-HOST: shareddata = internal global
+// CHECK-HOST-NOT: shareddata = global
 // CHECK-DEVICE: shareddata = global
 __shared__ char shareddata[256];
 

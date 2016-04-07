@@ -444,7 +444,7 @@ JavaASTContext::GetPluginVersion()
 }
 
 lldb::TypeSystemSP
-JavaASTContext::CreateInstance(lldb::LanguageType language, Module *module, Target *target)
+JavaASTContext::CreateInstance(lldb::LanguageType language, Module *module, Target *target, const char *extra_options)
 {
     if (language == eLanguageTypeJava)
     {
@@ -652,7 +652,7 @@ JavaASTContext::IsIntegerType(lldb::opaque_compiler_type_t type, bool &is_signed
 
 bool
 JavaASTContext::IsPossibleDynamicType(lldb::opaque_compiler_type_t type, CompilerType *target_type,
-                                      bool check_cplusplus, bool check_objc)
+                                      bool check_cplusplus, bool check_objc, bool check_swift)
 {
     return llvm::isa<JavaReferenceType>(static_cast<JavaType *>(type));
 }
@@ -897,6 +897,12 @@ JavaASTContext::GetCanonicalType(lldb::opaque_compiler_type_t type)
 }
 
 CompilerType
+JavaASTContext::GetInstanceType (lldb::opaque_compiler_type_t type)
+{
+    return CompilerType(this, type);
+}
+
+CompilerType
 JavaASTContext::GetFullyUnqualifiedType(lldb::opaque_compiler_type_t type)
 {
     return CompilerType(this, type);
@@ -913,6 +919,12 @@ JavaASTContext::GetNonReferenceType(lldb::opaque_compiler_type_t type)
 
 CompilerType
 JavaASTContext::GetTypedefedType(lldb::opaque_compiler_type_t type)
+{
+    return CompilerType();
+}
+
+CompilerType
+JavaASTContext::GetUnboundType(lldb::opaque_compiler_type_t type)
 {
     return CompilerType();
 }
@@ -997,6 +1009,12 @@ JavaASTContext::GetBitSize(lldb::opaque_compiler_type_t type, ExecutionContextSc
         return obj->GetByteSize() * 8;
     }
     return 0;
+}
+
+uint64_t
+JavaASTContext::GetByteStride (void* type)
+{
+    return (GetBitSize(type, nullptr) + 7)/8;
 }
 
 lldb::Encoding
@@ -1191,10 +1209,16 @@ JavaASTContext::DumpValue(lldb::opaque_compiler_type_t type, ExecutionContext *e
 }
 
 bool
-JavaASTContext::DumpTypeValue(lldb::opaque_compiler_type_t type, Stream *s, lldb::Format format,
-                              const DataExtractor &data, lldb::offset_t data_offset, size_t data_byte_size,
-                              uint32_t bitfield_bit_size, uint32_t bitfield_bit_offset,
-                              ExecutionContextScope *exe_scope)
+JavaASTContext::DumpTypeValue(lldb::opaque_compiler_type_t type,
+                              Stream *s,
+                              lldb::Format format,
+                              const DataExtractor &data,
+                              lldb::offset_t data_offset,
+                              size_t data_byte_size,
+                              uint32_t bitfield_bit_size,
+                              uint32_t bitfield_bit_offset,
+                              ExecutionContextScope *exe_scope,
+                              bool is_base_class)
 {
     if (IsScalarType(type))
     {

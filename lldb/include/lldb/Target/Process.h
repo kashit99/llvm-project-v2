@@ -772,7 +772,8 @@ public:
     //------------------------------------------------------------------
     enum Warnings
     {
-        eWarningsOptimization = 1
+        eWarningsOptimization = 1,
+        eWarningsCantLoadSwift
     };
     
     typedef Range<lldb::addr_t, lldb::addr_t> LoadRange;
@@ -1960,6 +1961,19 @@ public:
     //------------------------------------------------------------------
     void
     PrintWarningOptimization (const SymbolContext &sc);
+    
+    //------------------------------------------------------------------
+    /// Print a user-visible warning about a module having Swift settings incompatible with the current system
+    ///
+    /// Prints a async warning message to the user one time per Process for a Module
+    /// whose Swift AST sections couldn't be loaded because they aren't buildable on
+    /// the current machine.
+    ///
+    /// @param [in] module
+    ///     The affected Module.
+    //------------------------------------------------------------------
+    void
+    PrintWarningCantLoadSwift (const Module &module);
 
     virtual bool
     GetProcessInfo(ProcessInstanceInfo &info);
@@ -2895,13 +2909,18 @@ public:
     ///     Else this variable will be set to \b true or \b false to indicate if the process
     ///     needs to have its process IOHandler popped.
     ///
+    /// @param[out] pop_command_interpreter
+    ///     This variable will be set to \b true or \b false ot indicate if the process needs
+    ///     to have its command interpreter popped.
+    ///
     /// @return
     ///     \b true if the event describes a process state changed event, \b false otherwise.
     //--------------------------------------------------------------------------------------
     static bool
     HandleProcessStateChangedEvent (const lldb::EventSP &event_sp,
                                     Stream *stream,
-                                    bool &pop_process_io_handler);
+                                    bool &pop_process_io_handler,
+                                    bool &pop_command_interpreter);
 
     Event *
     PeekAtStateChangedEvents ();
@@ -2974,6 +2993,9 @@ public:
 
     virtual ObjCLanguageRuntime *
     GetObjCLanguageRuntime (bool retry_if_null = true);
+  
+    virtual SwiftLanguageRuntime *
+    GetSwiftLanguageRuntime (bool retry_if_null = true);
     
     bool
     IsPossibleDynamicValue (ValueObject& in_value);
@@ -3399,9 +3421,10 @@ protected:
     bool                        m_finalize_called; // This is set at the end of Process::Finalize()
     bool                        m_clear_thread_plans_on_stop;
     bool                        m_force_next_event_delivery;
+    bool                        m_destroy_in_process;
+    bool                        m_destroy_complete;
     lldb::StateType             m_last_broadcast_state;   /// This helps with the Public event coalescing in ShouldBroadcastEvent.
     std::map<lldb::addr_t,lldb::addr_t> m_resolved_indirect_addresses;
-    bool m_destroy_in_process;
     bool m_can_interpret_function_calls; // Some targets, e.g the OSX kernel, don't support the ability to modify the stack.
     WarningsCollection          m_warnings_issued;  // A set of object pointers which have already had warnings printed
     
@@ -3498,7 +3521,7 @@ protected:
     PushProcessIOHandler ();
     
     bool
-    PopProcessIOHandler ();
+    PopProcessIOHandler (bool pop_command_interpreter);
     
     bool
     ProcessIOHandlerIsActive ();

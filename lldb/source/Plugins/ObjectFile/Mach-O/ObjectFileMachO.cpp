@@ -1378,8 +1378,10 @@ ObjectFileMachO::GetAddressClass (lldb::addr_t file_addr)
                     case eSectionTypeDWARFDebugStrOffsets:
                     case eSectionTypeDWARFAppleNames:
                     case eSectionTypeDWARFAppleTypes:
+                    case eSectionTypeDWARFAppleExternalTypes:
                     case eSectionTypeDWARFAppleNamespaces:
                     case eSectionTypeDWARFAppleObjC:
+                    case eSectionTypeSwiftModules:
                         return eAddressClassDebug;
 
                     case eSectionTypeEHFrame:
@@ -1440,7 +1442,10 @@ ObjectFileMachO::GetAddressClass (lldb::addr_t file_addr)
             case eSymbolTypeObjCClass:      return eAddressClassRuntime;
             case eSymbolTypeObjCMetaClass:  return eAddressClassRuntime;
             case eSymbolTypeObjCIVar:       return eAddressClassRuntime;
+            case eSymbolTypeIVarOffset:     return eAddressClassRuntime;
+            case eSymbolTypeMetadata:       return eAddressClassRuntime;
             case eSymbolTypeReExported:     return eAddressClassRuntime;
+            case eSymbolTypeASTFile:        return eAddressClassDebug;
             }
         }
     }
@@ -1816,12 +1821,15 @@ ObjectFileMachO::CreateSections (SectionList &unified_section_list)
                                     static ConstString g_sect_name_dwarf_debug_str ("__debug_str");
                                     static ConstString g_sect_name_dwarf_apple_names ("__apple_names");
                                     static ConstString g_sect_name_dwarf_apple_types ("__apple_types");
+                                    static ConstString g_sect_name_dwarf_apple_exttypes ("__apple_exttypes");
                                     static ConstString g_sect_name_dwarf_apple_namespaces ("__apple_namespac");
                                     static ConstString g_sect_name_dwarf_apple_objc ("__apple_objc");
                                     static ConstString g_sect_name_eh_frame ("__eh_frame");
                                     static ConstString g_sect_name_compact_unwind ("__unwind_info");
                                     static ConstString g_sect_name_text ("__text");
                                     static ConstString g_sect_name_data ("__data");
+                                    static ConstString g_sect_name_swift_ast_old ("__ast");
+                                    static ConstString g_sect_name_swift_ast ("__swift_ast");
                                     static ConstString g_sect_name_go_symtab ("__gosymtab");
 
                                     if (section_name == g_sect_name_dwarf_debug_abbrev)
@@ -1850,6 +1858,8 @@ ObjectFileMachO::CreateSections (SectionList &unified_section_list)
                                         sect_type = eSectionTypeDWARFAppleNames;
                                     else if (section_name == g_sect_name_dwarf_apple_types)
                                         sect_type = eSectionTypeDWARFAppleTypes;
+                                    else if (section_name == g_sect_name_dwarf_apple_exttypes)
+                                        sect_type = eSectionTypeDWARFAppleExternalTypes;
                                     else if (section_name == g_sect_name_dwarf_apple_namespaces)
                                         sect_type = eSectionTypeDWARFAppleNamespaces;
                                     else if (section_name == g_sect_name_dwarf_apple_objc)
@@ -1864,6 +1874,9 @@ ObjectFileMachO::CreateSections (SectionList &unified_section_list)
                                         sect_type = eSectionTypeCompactUnwind;
                                     else if (section_name == g_sect_name_cfstring)
                                         sect_type = eSectionTypeDataObjCCFStrings;
+                                    else if (section_name == g_sect_name_swift_ast ||
+                                             section_name == g_sect_name_swift_ast_old)
+                                        sect_type = eSectionTypeSwiftModules;
                                     else if (section_name == g_sect_name_go_symtab)
                                         sect_type = eSectionTypeGoSymtab;
                                     else if (section_name == g_sect_name_objc_data ||
@@ -2908,6 +2921,12 @@ ObjectFileMachO::ParseSymtab ()
                                                         // correctly.  To do this right, we should coalesce all the GSYM & global symbols that have the
                                                         // same address.
 
+                                                        if (symbol_name && symbol_name[0] == '_' && symbol_name[1] == '_'  && symbol_name[2] == 'T' && symbol_name[3] == 'M' && symbol_name[4] == 'd')
+                                                        {
+                                                            add_nlist = false;
+                                                            break;
+                                                        }
+
                                                         is_gsym = true;
                                                         sym[sym_idx].SetExternal(true);
 
@@ -3405,6 +3424,10 @@ ObjectFileMachO::ParseSymtab ()
                                                                                         demangled_is_synthesized = true;
                                                                                     }
                                                                                 }
+                                                                                else if (symbol_name_ref.startswith("__TM"))
+                                                                                {
+                                                                                    type = eSymbolTypeMetadata;
+                                                                                }
                                                                             }
                                                                         }
                                                                         else if (symbol_sect_name && ::strstr (symbol_sect_name, "__gcc_except_tab") == symbol_sect_name)
@@ -3616,6 +3639,25 @@ ObjectFileMachO::ParseSymtab ()
                                                                     sym[sym_idx].Clear();
                                                                     continue;
                                                                 }
+                                                                else
+                                                                {
+                                                                    if (symbol_name &&
+                                                                        symbol_name[0] == '_' &&
+                                                                        symbol_name[1] == 'T')
+                                                                    {
+                                                                        if (symbol_name[2] == 'W' &&
+                                                                            symbol_name[3] == 'v' &&
+                                                                            symbol_name[4] == 'd')
+                                                                        {
+                                                                            type = eSymbolTypeIVarOffset;
+                                                                        }
+                                                                        else if (symbol_name[2] == 'M' &&
+                                                                                 symbol_name[3] != 0)
+                                                                        {
+                                                                            type = eSymbolTypeMetadata;
+                                                                        }
+                                                                    }
+                                                                }
                                                             }
                                                         }
                                                     }
@@ -3763,6 +3805,12 @@ ObjectFileMachO::ParseSymtab ()
                         // symbol type.  This is a temporary hack to make sure the ObjectiveC symbols get treated
                         // correctly.  To do this right, we should coalesce all the GSYM & global symbols that have the
                         // same address.
+                        if (symbol_name && symbol_name[0] == '_' && symbol_name[1] == '_'  && symbol_name[2] == 'T' && symbol_name[3] == 'M' && symbol_name[4] == 'd')
+                        {
+                            add_nlist = false;
+                            break;
+                        }
+                        
                         is_gsym = true;
                         sym[sym_idx].SetExternal(true);
 
@@ -4113,6 +4161,11 @@ ObjectFileMachO::ParseSymtab ()
                         type = eSymbolTypeAdditional;
                         break;
 
+                    case N_AST:
+                        // A path to a compiler AST file
+                        type = eSymbolTypeASTFile;
+                        break;
+
                     default: break;
                     }
                 }
@@ -4262,6 +4315,10 @@ ObjectFileMachO::ParseSymtab ()
                                                         type = eSymbolTypeObjCIVar;
                                                         demangled_is_synthesized = true;
                                                     }
+                                                }
+                                                else if (symbol_name_ref.startswith("__TM"))
+                                                {
+                                                    type = eSymbolTypeMetadata;
                                                 }
                                             }
                                         }
@@ -4472,8 +4529,44 @@ ObjectFileMachO::ParseSymtab ()
                                         // We just need the flags from the linker symbol, so put these flags
                                         // into the N_GSYM flags to avoid duplicate symbols in the symbol table
                                         sym[GSYM_sym_idx].SetFlags (nlist.n_type << 16 | nlist.n_desc);
+
+                                        if (gsym_name[0] == '_' &&
+                                            gsym_name[1] == 'T')
+                                        {
+                                            if (gsym_name[2] == 'W' &&
+                                                gsym_name[3] == 'v' &&
+                                                gsym_name[4] == 'd')
+                                            {
+                                                sym[GSYM_sym_idx].SetType(eSymbolTypeIVarOffset);
+                                            }
+                                            else if (gsym_name[2] == 'M' &&
+                                                     gsym_name[3] != 0)
+                                            {
+                                                sym[GSYM_sym_idx].SetType(eSymbolTypeMetadata);
+                                            }
+                                        }
+                                        
                                         sym[sym_idx].Clear();
                                         continue;
+                                    }
+                                    else
+                                    {
+                                        if (symbol_name &&
+                                            symbol_name[0] == '_' &&
+                                            symbol_name[1] == 'T')
+                                        {
+                                            if (symbol_name[2] == 'W' &&
+                                                symbol_name[3] == 'v' &&
+                                                symbol_name[4] == 'd')
+                                            {
+                                                type = eSymbolTypeIVarOffset;
+                                            }
+                                            else if (symbol_name[2] == 'M' &&
+                                                     symbol_name[3] != 0)
+                                            {
+                                                type = eSymbolTypeMetadata;
+                                            }
+                                        }
                                     }
                                 }
                             }

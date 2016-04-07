@@ -807,9 +807,6 @@ void ARMAsmPrinter::emitAttributes() {
   if (STI.hasDivideInARMMode() && !STI.hasV8Ops())
     ATS.emitAttribute(ARMBuildAttrs::DIV_use, ARMBuildAttrs::AllowDIVExt);
 
-  if (STI.hasDSP() && isV8M(&STI))
-    ATS.emitAttribute(ARMBuildAttrs::DSP_extension, ARMBuildAttrs::Allowed);
-
   if (MMI) {
     if (const Module *SourceModule = MMI->getModule()) {
       // ABI_PCS_wchar_t to indicate wchar_t width
@@ -1243,8 +1240,6 @@ void ARMAsmPrinter::EmitUnwindingInstruction(const MachineInstr *MI) {
 
 void ARMAsmPrinter::EmitInstruction(const MachineInstr *MI) {
   const DataLayout &DL = getDataLayout();
-  MCTargetStreamer &TS = *OutStreamer->getTargetStreamer();
-  ARMTargetStreamer &ATS = static_cast<ARMTargetStreamer &>(TS);
 
   // If we just ended a constant pool, mark it as such.
   if (InConstantPool && MI->getOpcode() != ARM::CONSTPOOL_ENTRY) {
@@ -1661,26 +1656,29 @@ void ARMAsmPrinter::EmitInstruction(const MachineInstr *MI) {
     // Non-Darwin binutils don't yet support the "trap" mnemonic.
     // FIXME: Remove this special case when they do.
     if (!Subtarget->isTargetMachO()) {
+      //.long 0xe7ffdefe @ trap
       uint32_t Val = 0xe7ffdefeUL;
       OutStreamer->AddComment("trap");
-      ATS.emitInst(Val);
+      OutStreamer->EmitIntValue(Val, 4);
       return;
     }
     break;
   }
   case ARM::TRAPNaCl: {
+    //.long 0xe7fedef0 @ trap
     uint32_t Val = 0xe7fedef0UL;
     OutStreamer->AddComment("trap");
-    ATS.emitInst(Val);
+    OutStreamer->EmitIntValue(Val, 4);
     return;
   }
   case ARM::tTRAP: {
     // Non-Darwin binutils don't yet support the "trap" mnemonic.
     // FIXME: Remove this special case when they do.
     if (!Subtarget->isTargetMachO()) {
+      //.short 57086 @ trap
       uint16_t Val = 0xdefe;
       OutStreamer->AddComment("trap");
-      ATS.emitInst(Val, 'n');
+      OutStreamer->EmitIntValue(Val, 2);
       return;
     }
     break;
@@ -1852,8 +1850,7 @@ void ARMAsmPrinter::EmitInstruction(const MachineInstr *MI) {
       .addReg(0));
     return;
   }
-  case ARM::tInt_eh_sjlj_longjmp:
-  case ARM::tInt_WIN_eh_sjlj_longjmp: {
+  case ARM::tInt_eh_sjlj_longjmp: {
     // ldr $scratch, [$src, #8]
     // mov sp, $scratch
     // ldr $scratch, [$src, #4]
@@ -1861,7 +1858,6 @@ void ARMAsmPrinter::EmitInstruction(const MachineInstr *MI) {
     // bx $scratch
     unsigned SrcReg = MI->getOperand(0).getReg();
     unsigned ScratchReg = MI->getOperand(1).getReg();
-
     EmitToStreamer(*OutStreamer, MCInstBuilder(ARM::tLDRi)
       .addReg(ScratchReg)
       .addReg(SrcReg)
@@ -1888,7 +1884,7 @@ void ARMAsmPrinter::EmitInstruction(const MachineInstr *MI) {
       .addReg(0));
 
     EmitToStreamer(*OutStreamer, MCInstBuilder(ARM::tLDRi)
-      .addReg(Opc == ARM::tInt_WIN_eh_sjlj_longjmp ? ARM::R11 : ARM::R7)
+      .addReg(ARM::R7)
       .addReg(SrcReg)
       .addImm(0)
       // Predicate.

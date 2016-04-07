@@ -111,10 +111,6 @@ public:
 
   /// Find the API notes reader that corresponds to the given source location.
   APINotesReader *findAPINotes(SourceLocation Loc);
-
-  APINotesReader *getCurrentModuleReader() {
-    return CurrentModuleReader.get();
-  }
 };
 
 } // end namespace api_notes

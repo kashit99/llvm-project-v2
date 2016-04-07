@@ -17,9 +17,11 @@
 #include "clang/Basic/LLVM.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/Support/Compiler.h"
-#include "llvm/Support/MemoryBuffer.h"
 #include <memory>
 
+namespace llvm {
+  class MemoryBuffer;
+}
 namespace clang {
 
 class FileEntry;

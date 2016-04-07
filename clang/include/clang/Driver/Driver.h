@@ -83,12 +83,6 @@ class Driver {
     SaveTempsObj
   } SaveTemps;
 
-  enum BitcodeEmbedMode {
-    EmbedNone,
-    EmbedMarker,
-    EmbedBitcode
-  } BitcodeEmbed;
-
   /// LTO mode selected via -f(no-)?lto(=.*)? options.
   LTOKind LTOMode;
 
@@ -268,9 +262,6 @@ public:
   bool isSaveTempsEnabled() const { return SaveTemps != SaveTempsNone; }
   bool isSaveTempsObj() const { return SaveTemps == SaveTempsObj; }
 
-  bool embedBitcodeEnabled() const { return BitcodeEmbed == EmbedBitcode; }
-  bool embedBitcodeMarkerOnly() const { return BitcodeEmbed == EmbedMarker; }
-
   /// @}
   /// @name Primary Functionality
   /// @{
@@ -308,10 +299,12 @@ public:
   /// given arguments, which are only done for a single architecture.
   ///
   /// \param C - The compilation that is being built.
+  /// \param TC - The default host tool chain.
   /// \param Args - The input arguments.
   /// \param Actions - The list to store the resulting actions onto.
-  void BuildActions(Compilation &C, llvm::opt::DerivedArgList &Args,
-                    const InputList &Inputs, ActionList &Actions) const;
+  void BuildActions(Compilation &C, const ToolChain &TC,
+                    llvm::opt::DerivedArgList &Args, const InputList &Inputs,
+                    ActionList &Actions) const;
 
   /// BuildUniversalActions - Construct the list of actions to perform
   /// for the given arguments, which may require a universal build.
@@ -383,8 +376,9 @@ public:
   /// ConstructAction - Construct the appropriate action to do for
   /// \p Phase on the \p Input, taking in to account arguments
   /// like -fsyntax-only or --analyze.
-  Action *ConstructPhaseAction(Compilation &C, const llvm::opt::ArgList &Args,
-                               phases::ID Phase, Action *Input) const;
+  Action *ConstructPhaseAction(Compilation &C, const ToolChain &TC,
+                               const llvm::opt::ArgList &Args, phases::ID Phase,
+                               Action *Input) const;
 
   /// BuildJobsForAction - Construct the jobs to perform for the action \p A and
   /// return an InputInfo for the result of running \p A.  Will only construct
@@ -422,9 +416,6 @@ public:
   ///
   /// GCC goes to extra lengths here to be a bit more robust.
   std::string GetTemporaryPath(StringRef Prefix, const char *Suffix) const;
-
-  /// Return the pathname of the pch file in clang-cl mode.
-  std::string GetClPchPath(Compilation &C, StringRef BaseName) const;
 
   /// ShouldUseClangCompiler - Should the clang compiler be used to
   /// handle this action.
@@ -475,15 +466,6 @@ public:
   static bool GetReleaseVersion(const char *Str, unsigned &Major,
                                 unsigned &Minor, unsigned &Micro,
                                 bool &HadExtra);
-
-  /// Parse digits from a string \p Str and fulfill \p Digits with
-  /// the parsed numbers. This method assumes that the max number of
-  /// digits to look for is equal to Digits.size().
-  ///
-  /// \return True if the entire string was parsed and there are
-  /// no extra characters remaining at the end.
-  static bool GetReleaseVersion(const char *Str,
-                                MutableArrayRef<unsigned> Digits);
 };
 
 /// \return True if the last defined optimization level is -Ofast.

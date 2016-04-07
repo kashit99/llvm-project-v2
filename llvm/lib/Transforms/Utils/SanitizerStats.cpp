@@ -27,7 +27,7 @@ SanitizerStatReport::SanitizerStatReport(Module *M) : M(M) {
   EmptyModuleStatsTy = makeModuleStatsTy();
 
   ModuleStatsGV = new GlobalVariable(*M, EmptyModuleStatsTy, false,
-                                     GlobalValue::InternalLinkage, nullptr);
+                                     GlobalValue::InternalLinkage, 0);
 }
 
 ArrayType *SanitizerStatReport::makeModuleStatsArrayTy() {

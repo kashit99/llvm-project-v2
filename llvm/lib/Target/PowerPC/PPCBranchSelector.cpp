@@ -46,11 +46,6 @@ namespace {
 
     bool runOnMachineFunction(MachineFunction &Fn) override;
 
-    MachineFunctionProperties getRequiredProperties() const override {
-      return MachineFunctionProperties().set(
-          MachineFunctionProperties::Property::AllVRegsAllocated);
-    }
-
     const char *getPassName() const override {
       return "PowerPC Branch Selector";
     }
@@ -239,3 +234,4 @@ bool PPCBSel::runOnMachineFunction(MachineFunction &Fn) {
   BlockSizes.clear();
   return true;
 }
+

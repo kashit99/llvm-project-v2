@@ -25,7 +25,6 @@ subdirectories =
  AVR
  BPF
  CppBackend
- Lanai
  Hexagon
  MSP430
  NVPTX

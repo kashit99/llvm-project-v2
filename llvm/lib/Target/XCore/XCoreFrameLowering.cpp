@@ -482,9 +482,9 @@ restoreCalleeSavedRegisters(MachineBasicBlock &MBB,
 
 // This function eliminates ADJCALLSTACKDOWN,
 // ADJCALLSTACKUP pseudo instructions
-MachineBasicBlock::iterator XCoreFrameLowering::eliminateCallFramePseudoInstr(
-    MachineFunction &MF, MachineBasicBlock &MBB,
-    MachineBasicBlock::iterator I) const {
+void XCoreFrameLowering::
+eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
+                              MachineBasicBlock::iterator I) const {
   const XCoreInstrInfo &TII = *MF.getSubtarget<XCoreSubtarget>().getInstrInfo();
   if (!hasReservedCallFrame(MF)) {
     // Turn the adjcallstackdown instruction into 'extsp <amt>' and the
@@ -528,7 +528,7 @@ MachineBasicBlock::iterator XCoreFrameLowering::eliminateCallFramePseudoInstr(
     }
   }
 
-  return MBB.erase(I);
+  MBB.erase(I);
 }
 
 void XCoreFrameLowering::determineCalleeSaves(MachineFunction &MF,

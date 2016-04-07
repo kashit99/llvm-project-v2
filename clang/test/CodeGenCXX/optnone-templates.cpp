@@ -100,5 +100,5 @@ void container3()
 
 
 // CHECK: attributes [[NORMAL]] =
-// CHECK-NOT: optnone
+// CHECK-SAME-NOT: optnone
 // CHECK: attributes [[OPTNONE]] = {{.*}} optnone

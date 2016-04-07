@@ -66,7 +66,7 @@ void llvm::DeleteDeadBlock(BasicBlock *BB) {
 /// when all entries to the PHI nodes in a block are guaranteed equal, such as
 /// when the block has exactly one predecessor.
 void llvm::FoldSingleEntryPHINodes(BasicBlock *BB,
-                                   MemoryDependenceResults *MemDep) {
+                                   MemoryDependenceAnalysis *MemDep) {
   if (!isa<PHINode>(BB->begin())) return;
 
   while (PHINode *PN = dyn_cast<PHINode>(BB->begin())) {
@@ -107,7 +107,7 @@ bool llvm::DeleteDeadPHIs(BasicBlock *BB, const TargetLibraryInfo *TLI) {
 /// if possible.  The return value indicates success or failure.
 bool llvm::MergeBlockIntoPredecessor(BasicBlock *BB, DominatorTree *DT,
                                      LoopInfo *LI,
-                                     MemoryDependenceResults *MemDep) {
+                                     MemoryDependenceAnalysis *MemDep) {
   // Don't merge away blocks who have their address taken.
   if (BB->hasAddressTaken()) return false;
 
@@ -709,10 +709,11 @@ ReturnInst *llvm::FoldReturnIntoUncondBranch(ReturnInst *RI, BasicBlock *BB,
 /// UnreachableInst, otherwise it branches to Tail.
 /// Returns the NewBasicBlock's terminator.
 
-TerminatorInst *
-llvm::SplitBlockAndInsertIfThen(Value *Cond, Instruction *SplitBefore,
-                                bool Unreachable, MDNode *BranchWeights,
-                                DominatorTree *DT, LoopInfo *LI) {
+TerminatorInst *llvm::SplitBlockAndInsertIfThen(Value *Cond,
+                                                Instruction *SplitBefore,
+                                                bool Unreachable,
+                                                MDNode *BranchWeights,
+                                                DominatorTree *DT) {
   BasicBlock *Head = SplitBefore->getParent();
   BasicBlock *Tail = Head->splitBasicBlock(SplitBefore->getIterator());
   TerminatorInst *HeadOldTerm = Head->getTerminator();
@@ -740,12 +741,6 @@ llvm::SplitBlockAndInsertIfThen(Value *Cond, Instruction *SplitBefore,
       // Head dominates ThenBlock.
       DT->addNewBlock(ThenBlock, Head);
     }
-  }
-
-  if (LI) {
-    Loop *L = LI->getLoopFor(Head);
-    L->addBasicBlockToLoop(ThenBlock, *LI);
-    L->addBasicBlockToLoop(Tail, *LI);
   }
 
   return CheckTerm;

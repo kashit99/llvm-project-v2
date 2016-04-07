@@ -441,7 +441,9 @@ Thread::GetStopInfo ()
     const uint32_t stop_id = process_sp ? process_sp->GetStopID() : UINT32_MAX;
     if (plan_sp && plan_sp->PlanSucceeded())
     {
-        return StopInfo::CreateStopReasonWithPlan (plan_sp, GetReturnValueObject(), GetExpressionVariable());
+        bool is_swift_error_value;
+        ValueObjectSP return_value_object = GetReturnValueObject(&is_swift_error_value);
+        return StopInfo::CreateStopReasonWithPlan (plan_sp, return_value_object, GetExpressionVariable(), is_swift_error_value);
     }
     else
     {
@@ -1212,8 +1214,11 @@ Thread::GetCompletedPlan ()
 }
 
 ValueObjectSP
-Thread::GetReturnValueObject ()
+Thread::GetReturnValueObject (bool *is_swift_error_value)
 {
+    if (is_swift_error_value)
+        *is_swift_error_value = false;
+
     if (!m_completed_plan_stack.empty())
     {
         for (int i = m_completed_plan_stack.size() - 1; i >= 0; i--)
@@ -1221,7 +1226,11 @@ Thread::GetReturnValueObject ()
             ValueObjectSP return_valobj_sp;
             return_valobj_sp = m_completed_plan_stack[i]->GetReturnValueObject();
             if (return_valobj_sp)
+            {
+                if (is_swift_error_value)
+                    *is_swift_error_value = m_completed_plan_stack[i]->IsReturnValueSwiftErrorValue();
                 return return_valobj_sp;
+            }
         }
     }
     return ValueObjectSP();

@@ -141,15 +141,13 @@ struct CoverageMappingTest : ::testing::Test {
     ProfileReader = std::move(ReaderOrErr.get());
   }
 
-  void loadCoverageMapping(StringRef FuncName, uint64_t Hash,
-                           bool EmitFilenames = true) {
+  void loadCoverageMapping(StringRef FuncName, uint64_t Hash) {
     std::string Regions = writeCoverageRegions();
     readCoverageRegions(Regions);
 
     SmallVector<StringRef, 8> Filenames;
-    if (EmitFilenames)
-      for (const auto &E : Files)
-        Filenames.push_back(E.getKey());
+    for (const auto &E : Files)
+      Filenames.push_back(E.getKey());
     OneFunctionCoverageReader CovReader(FuncName, Hash, Filenames, OutputCMRs);
     auto CoverageOrErr = CoverageMapping::load(CovReader, *ProfileReader);
     ASSERT_TRUE(NoError(CoverageOrErr.getError()));
@@ -298,21 +296,6 @@ TEST_P(MaybeSparseCoverageMappingTest, strip_filename_prefix) {
 
   addCMR(Counter::getCounter(0), "file1", 1, 1, 9, 9);
   loadCoverageMapping("file1:func", 0x1234);
-
-  std::vector<std::string> Names;
-  for (const auto &Func : LoadedCoverage->getCoveredFunctions())
-    Names.push_back(Func.Name);
-  ASSERT_EQ(1U, Names.size());
-  ASSERT_EQ("func", Names[0]);
-}
-
-TEST_P(MaybeSparseCoverageMappingTest, strip_unknown_filename_prefix) {
-  InstrProfRecord Record("<unknown>:func", 0x1234, {0});
-  ProfileWriter.addRecord(std::move(Record));
-  readProfCounts();
-
-  addCMR(Counter::getCounter(0), "", 1, 1, 9, 9);
-  loadCoverageMapping("<unknown>:func", 0x1234, /*EmitFilenames=*/false);
 
   std::vector<std::string> Names;
   for (const auto &Func : LoadedCoverage->getCoveredFunctions())

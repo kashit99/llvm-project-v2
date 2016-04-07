@@ -1,6 +1,3 @@
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
-
 // Break through a series of strcmp.
 #include <cstring>
 #include <cstdint>

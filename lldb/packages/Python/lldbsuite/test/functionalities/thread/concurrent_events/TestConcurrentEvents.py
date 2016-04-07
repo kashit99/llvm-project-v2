@@ -21,6 +21,7 @@ from lldbsuite.test.decorators import *
 from lldbsuite.test.lldbtest import *
 from lldbsuite.test import lldbutil
 
+
 @skipIfWindows
 class ConcurrentEventsTestCase(TestBase):
 
@@ -440,7 +441,7 @@ class ConcurrentEventsTestCase(TestBase):
 
         # Initialize the (single) watchpoint on the global variable (g_watchme)
         if num_watchpoint_threads + num_delay_watchpoint_threads > 0:
-            self.runCmd("watchpoint set variable g_watchme")
+            self.expect("watchpoint set variable g_watchme", "Watchpoint created:")
             for w in self.inferior_target.watchpoint_iter():
                 self.thread_watchpoint = w
                 self.assertTrue("g_watchme" in str(self.thread_watchpoint), "Watchpoint location not shown correctly")

@@ -71,7 +71,20 @@ raw_ostream &llvm::sampleprof::operator<<(raw_ostream &OS,
   return OS;
 }
 
-LLVM_DUMP_METHOD void LineLocation::dump() const { print(dbgs()); }
+void LineLocation::dump() const { print(dbgs()); }
+
+void CallsiteLocation::print(raw_ostream &OS) const {
+  LineLocation::print(OS);
+  OS << ": inlined callee: " << CalleeName;
+}
+
+void CallsiteLocation::dump() const { print(dbgs()); }
+
+inline raw_ostream &llvm::sampleprof::operator<<(raw_ostream &OS,
+                                                 const CallsiteLocation &Loc) {
+  Loc.print(OS);
+  return OS;
+}
 
 /// \brief Print the sample record to the stream \p OS indented by \p Indent.
 void SampleRecord::print(raw_ostream &OS, unsigned Indent) const {
@@ -84,7 +97,7 @@ void SampleRecord::print(raw_ostream &OS, unsigned Indent) const {
   OS << "\n";
 }
 
-LLVM_DUMP_METHOD void SampleRecord::dump() const { print(dbgs(), 0); }
+void SampleRecord::dump() const { print(dbgs(), 0); }
 
 raw_ostream &llvm::sampleprof::operator<<(raw_ostream &OS,
                                           const SampleRecord &Sample) {
@@ -114,11 +127,11 @@ void FunctionSamples::print(raw_ostream &OS, unsigned Indent) const {
   OS.indent(Indent);
   if (CallsiteSamples.size() > 0) {
     OS << "Samples collected in inlined callsites {\n";
-    SampleSorter<LineLocation, FunctionSamples> SortedCallsiteSamples(
+    SampleSorter<CallsiteLocation, FunctionSamples> SortedCallsiteSamples(
         CallsiteSamples);
     for (const auto &CS : SortedCallsiteSamples.get()) {
       OS.indent(Indent + 2);
-      OS << CS->first << ": inlined callee: " << CS->second.getName() << ": ";
+      OS << CS->first << ": ";
       CS->second.print(OS, Indent + 4);
     }
     OS << "}\n";

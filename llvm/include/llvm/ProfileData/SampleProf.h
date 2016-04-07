@@ -74,7 +74,7 @@ static inline uint64_t SPMagic() {
          uint64_t('2') << (64 - 56) | uint64_t(0xff);
 }
 
-static inline uint64_t SPVersion() { return 103; }
+static inline uint64_t SPVersion() { return 102; }
 
 /// Represents the relative location of an instruction.
 ///
@@ -99,6 +99,23 @@ struct LineLocation {
 };
 
 raw_ostream &operator<<(raw_ostream &OS, const LineLocation &Loc);
+
+/// Represents the relative location of a callsite.
+///
+/// Callsite locations are specified by the line offset from the
+/// beginning of the function (marked by the line where the function
+/// head is), the discriminator value within that line, and the callee
+/// function name.
+struct CallsiteLocation : public LineLocation {
+  CallsiteLocation(uint32_t L, uint32_t D, StringRef N)
+      : LineLocation(L, D), CalleeName(N) {}
+  void print(raw_ostream &OS) const;
+  void dump() const;
+
+  StringRef CalleeName;
+};
+
+raw_ostream &operator<<(raw_ostream &OS, const CallsiteLocation &Loc);
 
 /// Representation of a single sample record.
 ///
@@ -171,7 +188,7 @@ raw_ostream &operator<<(raw_ostream &OS, const SampleRecord &Sample);
 
 typedef std::map<LineLocation, SampleRecord> BodySampleMap;
 class FunctionSamples;
-typedef std::map<LineLocation, FunctionSamples> CallsiteSampleMap;
+typedef std::map<CallsiteLocation, FunctionSamples> CallsiteSampleMap;
 
 /// Representation of the samples collected for a function.
 ///
@@ -180,7 +197,7 @@ typedef std::map<LineLocation, FunctionSamples> CallsiteSampleMap;
 /// within the body of the function.
 class FunctionSamples {
 public:
-  FunctionSamples() : Name(), TotalSamples(0), TotalHeadSamples(0) {}
+  FunctionSamples() : TotalSamples(0), TotalHeadSamples(0) {}
   void print(raw_ostream &OS = dbgs(), unsigned Indent = 0) const;
   void dump() const;
   sampleprof_error addTotalSamples(uint64_t Num, uint64_t Weight = 1) {
@@ -223,12 +240,13 @@ public:
   }
 
   /// Return the function samples at the given callsite location.
-  FunctionSamples &functionSamplesAt(const LineLocation &Loc) {
+  FunctionSamples &functionSamplesAt(const CallsiteLocation &Loc) {
     return CallsiteSamples[Loc];
   }
 
   /// Return a pointer to function samples at the given callsite location.
-  const FunctionSamples *findFunctionSamplesAt(const LineLocation &Loc) const {
+  const FunctionSamples *
+  findFunctionSamplesAt(const CallsiteLocation &Loc) const {
     auto iter = CallsiteSamples.find(Loc);
     if (iter == CallsiteSamples.end()) {
       return nullptr;
@@ -258,7 +276,6 @@ public:
   /// Optionally scale samples by \p Weight.
   sampleprof_error merge(const FunctionSamples &Other, uint64_t Weight = 1) {
     sampleprof_error Result = sampleprof_error::success;
-    Name = Other.getName();
     MergeResult(Result, addTotalSamples(Other.getTotalSamples(), Weight));
     MergeResult(Result, addHeadSamples(Other.getHeadSamples(), Weight));
     for (const auto &I : Other.getBodySamples()) {
@@ -267,23 +284,14 @@ public:
       MergeResult(Result, BodySamples[Loc].merge(Rec, Weight));
     }
     for (const auto &I : Other.getCallsiteSamples()) {
-      const LineLocation &Loc = I.first;
+      const CallsiteLocation &Loc = I.first;
       const FunctionSamples &Rec = I.second;
       MergeResult(Result, functionSamplesAt(Loc).merge(Rec, Weight));
     }
     return Result;
   }
 
-  /// Set the name of the function.
-  void setName(StringRef FunctionName) { Name = FunctionName; }
-
-  /// Return the function name.
-  const StringRef &getName() const { return Name; }
-
 private:
-  /// Mangled name of the function.
-  StringRef Name;
-
   /// Total number of samples collected inside this function.
   ///
   /// Samples are cumulative, they include all the samples collected

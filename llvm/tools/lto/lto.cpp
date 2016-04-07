@@ -24,7 +24,6 @@
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Signals.h"
 #include "llvm/Support/TargetSelect.h"
-#include "llvm/Support/raw_ostream.h"
 
 // extra command-line flags needed for LTOCodeGenerator
 static cl::opt<char>
@@ -83,6 +82,7 @@ static void diagnosticHandler(const DiagnosticInfo &DI, void *Context) {
     DiagnosticPrinterRawOStream DP(Stream);
     DI.print(DP);
   }
+  sLastErrorString += '\n';
 }
 
 // Initialize the configured targets if they have not been initialized.
@@ -112,6 +112,7 @@ namespace {
 static void handleLibLTODiagnostic(lto_codegen_diagnostic_severity_t Severity,
                                    const char *Msg, void *) {
   sLastErrorString = Msg;
+  sLastErrorString += "\n";
 }
 
 // This derived class owns the native object file. This helps implement the
@@ -250,14 +251,8 @@ lto_module_t lto_module_create_in_local_context(const void *mem, size_t length,
                                                 const char *path) {
   lto_initialize();
   llvm::TargetOptions Options = InitTargetOptionsFromCodeGenFlags();
-
-  // Create a local context. Ownership will be transfered to LTOModule.
-  std::unique_ptr<LLVMContext> Context = llvm::make_unique<LLVMContext>();
-  Context->setDiagnosticHandler(diagnosticHandler, nullptr, true);
-
   ErrorOr<std::unique_ptr<LTOModule>> M =
-      LTOModule::createInLocalContext(std::move(Context), mem, length, Options,
-                                      path);
+      LTOModule::createInLocalContext(mem, length, Options, path);
   if (!M)
     return nullptr;
   return wrap(M->release());
@@ -269,8 +264,8 @@ lto_module_t lto_module_create_in_codegen_context(const void *mem,
                                                   lto_code_gen_t cg) {
   lto_initialize();
   llvm::TargetOptions Options = InitTargetOptionsFromCodeGenFlags();
-  ErrorOr<std::unique_ptr<LTOModule>> M = LTOModule::createFromBuffer(
-      unwrap(cg)->getContext(), mem, length, Options, path);
+  ErrorOr<std::unique_ptr<LTOModule>> M = LTOModule::createInContext(
+      mem, length, Options, path, &unwrap(cg)->getContext());
   return wrap(M->release());
 }
 
@@ -473,16 +468,6 @@ LTOObjectBuffer thinlto_module_get_object(thinlto_code_gen_t cg,
                          MemBuffer->getBufferSize()};
 }
 
-void thinlto_codegen_disable_codegen(thinlto_code_gen_t cg,
-                                     lto_bool_t disable) {
-  unwrap(cg)->disableCodeGen(disable);
-}
-
-void thinlto_codegen_set_codegen_only(thinlto_code_gen_t cg,
-                                      lto_bool_t CodeGenOnly) {
-  unwrap(cg)->setCodeGenOnly(CodeGenOnly);
-}
-
 void thinlto_debug_options(const char *const *options, int number) {
   // if options were requested, set them
   if (number && options) {
@@ -493,7 +478,7 @@ void thinlto_debug_options(const char *const *options, int number) {
   }
 }
 
-lto_bool_t lto_module_is_thinlto(lto_module_t mod) {
+bool lto_module_is_thinlto(lto_module_t mod) {
   return unwrap(mod)->isThinLTO();
 }
 

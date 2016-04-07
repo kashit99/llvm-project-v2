@@ -48,17 +48,6 @@ namespace {
     data += swiftNameLength;
   }
 
-  /// Read serialized CommonTypeInfo.
-  void readCommonTypeInfo(const uint8_t *&data, CommonTypeInfo &info) {
-    readCommonEntityInfo(data, info);
-
-    unsigned swiftBridgeLength =
-        endian::readNext<uint16_t, little, unaligned>(data);
-    info.setSwiftBridge(
-        StringRef(reinterpret_cast<const char *>(data), swiftBridgeLength));
-    data += swiftBridgeLength;
-  }
-
   /// Used to deserialize the on-disk identifier table.
   class IdentifierTableInfo {
   public:
@@ -136,7 +125,7 @@ namespace {
     
     static internal_key_type ReadKey(const uint8_t *data, unsigned length) {
       auto nameID
-        = endian::readNext<uint32_t, little, unaligned>(data);
+        = endian::readNext<IdentifierID, little, unaligned>(data);
       auto isProtocol = endian::readNext<uint8_t, little, unaligned>(data);
       return { nameID, isProtocol };
     }
@@ -144,13 +133,20 @@ namespace {
     static data_type ReadData(internal_key_type key, const uint8_t *data,
                               unsigned length) {
       data_type result;
-      result.first = endian::readNext<uint32_t, little, unaligned>(data);
-      readCommonTypeInfo(data, result.second);
+      result.first = endian::readNext<StoredContextID, little, unaligned>(data);
+      readCommonEntityInfo(data, result.second);
       if (*data++) {
         result.second.setDefaultNullability(static_cast<NullabilityKind>(*data));
       }
       ++data;
       result.second.setHasDesignatedInits(*data++);
+
+      // swift bridge.
+      unsigned swiftBridgeLength =
+        endian::readNext<uint16_t, little, unaligned>(data);
+      result.second.setSwiftBridge(
+        StringRef(reinterpret_cast<const char *>(data), swiftBridgeLength));
+      data += swiftBridgeLength;
                                              
       return result;
     }
@@ -199,8 +195,8 @@ namespace {
     }
     
     static internal_key_type ReadKey(const uint8_t *data, unsigned length) {
-      auto classID = endian::readNext<uint32_t, little, unaligned>(data);
-      auto nameID = endian::readNext<uint32_t, little, unaligned>(data);
+      auto classID = endian::readNext<IdentifierID, little, unaligned>(data);
+      auto nameID = endian::readNext<IdentifierID, little, unaligned>(data);
       return { classID, nameID };
     }
     
@@ -259,8 +255,8 @@ namespace {
     }
     
     static internal_key_type ReadKey(const uint8_t *data, unsigned length) {
-      auto classID = endian::readNext<uint32_t, little, unaligned>(data);
-      auto selectorID = endian::readNext<uint32_t, little, unaligned>(data);
+      auto classID = endian::readNext<IdentifierID, little, unaligned>(data);
+      auto selectorID = endian::readNext<SelectorID, little, unaligned>(data);
       auto isInstance = endian::readNext<uint8_t, little, unaligned>(data);
       return internal_key_type{ classID, selectorID, isInstance };
     }
@@ -311,17 +307,17 @@ namespace {
     static internal_key_type ReadKey(const uint8_t *data, unsigned length) {
       internal_key_type key;
       key.NumPieces = endian::readNext<uint16_t, little, unaligned>(data);
-      unsigned numIdents = (length - sizeof(uint16_t)) / sizeof(uint32_t);
+      unsigned numIdents = (length - sizeof(uint16_t)) / sizeof(IdentifierID);
       for (unsigned i = 0; i != numIdents; ++i) {
         key.Identifiers.push_back(
-          endian::readNext<uint32_t, little, unaligned>(data));
+          endian::readNext<IdentifierID, little, unaligned>(data));
       }
       return key;
     }
     
     static data_type ReadData(internal_key_type key, const uint8_t *data,
                               unsigned length) {
-      return endian::readNext<uint32_t, little, unaligned>(data);
+      return endian::readNext<SelectorID, little, unaligned>(data);
     }
   };
 
@@ -358,7 +354,7 @@ namespace {
     }
     
     static internal_key_type ReadKey(const uint8_t *data, unsigned length) {
-      auto nameID = endian::readNext<uint32_t, little, unaligned>(data);
+      auto nameID = endian::readNext<IdentifierID, little, unaligned>(data);
       return nameID;
     }
     
@@ -403,7 +399,7 @@ namespace {
     }
     
     static internal_key_type ReadKey(const uint8_t *data, unsigned length) {
-      auto nameID = endian::readNext<uint32_t, little, unaligned>(data);
+      auto nameID = endian::readNext<IdentifierID, little, unaligned>(data);
       return nameID;
     }
     
@@ -411,141 +407,6 @@ namespace {
                               unsigned length) {
       GlobalFunctionInfo info;
       readFunctionInfo(data, info);
-      return info;
-    }
-  };
-
-  /// Used to deserialize the on-disk enumerator table.
-  class EnumConstantTableInfo {
-  public:
-    using internal_key_type = unsigned; // name ID
-    using external_key_type = internal_key_type;
-    using data_type = EnumConstantInfo;
-    using hash_value_type = size_t;
-    using offset_type = unsigned;
-
-    internal_key_type GetInternalKey(external_key_type key) {
-      return key;
-    }
-
-    external_key_type GetExternalKey(internal_key_type key) {
-      return key;
-    }
-
-    hash_value_type ComputeHash(internal_key_type key) {
-      return static_cast<size_t>(llvm::hash_value(key));
-    }
-    
-    static bool EqualKey(internal_key_type lhs, internal_key_type rhs) {
-      return lhs == rhs;
-    }
-    
-    static std::pair<unsigned, unsigned> 
-    ReadKeyDataLength(const uint8_t *&data) {
-      unsigned keyLength = endian::readNext<uint16_t, little, unaligned>(data);
-      unsigned dataLength = endian::readNext<uint16_t, little, unaligned>(data);
-      return { keyLength, dataLength };
-    }
-    
-    static internal_key_type ReadKey(const uint8_t *data, unsigned length) {
-      auto nameID = endian::readNext<uint32_t, little, unaligned>(data);
-      return nameID;
-    }
-    
-    static data_type ReadData(internal_key_type key, const uint8_t *data,
-                              unsigned length) {
-      EnumConstantInfo info;
-      readCommonEntityInfo(data, info);
-      return info;
-    }
-  };
-
-  /// Used to deserialize the on-disk tag table.
-  class TagTableInfo {
-  public:
-    using internal_key_type = unsigned; // name ID
-    using external_key_type = internal_key_type;
-    using data_type = TagInfo;
-    using hash_value_type = size_t;
-    using offset_type = unsigned;
-
-    internal_key_type GetInternalKey(external_key_type key) {
-      return key;
-    }
-
-    external_key_type GetExternalKey(internal_key_type key) {
-      return key;
-    }
-
-    hash_value_type ComputeHash(internal_key_type key) {
-      return static_cast<size_t>(llvm::hash_value(key));
-    }
-    
-    static bool EqualKey(internal_key_type lhs, internal_key_type rhs) {
-      return lhs == rhs;
-    }
-    
-    static std::pair<unsigned, unsigned> 
-    ReadKeyDataLength(const uint8_t *&data) {
-      unsigned keyLength = endian::readNext<uint16_t, little, unaligned>(data);
-      unsigned dataLength = endian::readNext<uint16_t, little, unaligned>(data);
-      return { keyLength, dataLength };
-    }
-    
-    static internal_key_type ReadKey(const uint8_t *data, unsigned length) {
-      auto nameID = endian::readNext<IdentifierID, little, unaligned>(data);
-      return nameID;
-    }
-    
-    static data_type ReadData(internal_key_type key, const uint8_t *data,
-                              unsigned length) {
-      TagInfo info;
-      readCommonTypeInfo(data, info);
-      return info;
-    }
-  };
-
-  /// Used to deserialize the on-disk typedef table.
-  class TypedefTableInfo {
-  public:
-    using internal_key_type = unsigned; // name ID
-    using external_key_type = internal_key_type;
-    using data_type = TypedefInfo;
-    using hash_value_type = size_t;
-    using offset_type = unsigned;
-
-    internal_key_type GetInternalKey(external_key_type key) {
-      return key;
-    }
-
-    external_key_type GetExternalKey(internal_key_type key) {
-      return key;
-    }
-
-    hash_value_type ComputeHash(internal_key_type key) {
-      return static_cast<size_t>(llvm::hash_value(key));
-    }
-    
-    static bool EqualKey(internal_key_type lhs, internal_key_type rhs) {
-      return lhs == rhs;
-    }
-    
-    static std::pair<unsigned, unsigned> 
-    ReadKeyDataLength(const uint8_t *&data) {
-      unsigned keyLength = endian::readNext<uint16_t, little, unaligned>(data);
-      unsigned dataLength = endian::readNext<uint16_t, little, unaligned>(data);
-      return { keyLength, dataLength };
-    }
-    
-    static internal_key_type ReadKey(const uint8_t *data, unsigned length) {
-      auto nameID = endian::readNext<IdentifierID, little, unaligned>(data);
-      return nameID;
-    }
-    
-    static data_type ReadData(internal_key_type key, const uint8_t *data,
-                              unsigned length) {
-      TypedefInfo info;
-      readCommonTypeInfo(data, info);
       return info;
     }
   };
@@ -561,9 +422,6 @@ public:
 
   /// The name of the module that we read from the control block.
   std::string ModuleName;
-
-  /// Various options and attributes for the module
-  ModuleOptions ModuleOpts;
 
   using SerializedIdentifierTable =
       llvm::OnDiskIterableChainedHashTable<IdentifierTableInfo>;
@@ -607,24 +465,6 @@ public:
   /// The global function table.
   std::unique_ptr<SerializedGlobalFunctionTable> GlobalFunctionTable;
 
-  using SerializedEnumConstantTable =
-      llvm::OnDiskIterableChainedHashTable<EnumConstantTableInfo>;
-
-  /// The enumerator table.
-  std::unique_ptr<SerializedEnumConstantTable> EnumConstantTable;
-
-  using SerializedTagTable =
-      llvm::OnDiskIterableChainedHashTable<TagTableInfo>;
-
-  /// The tag table.
-  std::unique_ptr<SerializedTagTable> TagTable;
-
-  using SerializedTypedefTable =
-      llvm::OnDiskIterableChainedHashTable<TypedefTableInfo>;
-
-  /// The typedef table.
-  std::unique_ptr<SerializedTypedefTable> TypedefTable;
-
   /// Retrieve the identifier ID for the given string, or an empty
   /// optional if the string is unknown.
   Optional<IdentifierID> getIdentifier(StringRef str);
@@ -649,12 +489,6 @@ public:
                                SmallVectorImpl<uint64_t> &scratch);
   bool readGlobalFunctionBlock(llvm::BitstreamCursor &cursor,
                                SmallVectorImpl<uint64_t> &scratch);
-  bool readEnumConstantBlock(llvm::BitstreamCursor &cursor,
-                             SmallVectorImpl<uint64_t> &scratch);
-  bool readTagBlock(llvm::BitstreamCursor &cursor,
-                    SmallVectorImpl<uint64_t> &scratch);
-  bool readTypedefBlock(llvm::BitstreamCursor &cursor,
-                        SmallVectorImpl<uint64_t> &scratch);
 };
 
 Optional<IdentifierID> APINotesReader::Implementation::getIdentifier(
@@ -736,10 +570,6 @@ bool APINotesReader::Implementation::readControlBlock(
 
     case control_block::MODULE_NAME:
       ModuleName = blobData.str();
-      break;
-
-    case control_block::MODULE_OPTIONS:
-      ModuleOpts.SwiftInferImportAsMember = (scratch.front() & 1) != 0;
       break;
 
     default:
@@ -1129,166 +959,6 @@ bool APINotesReader::Implementation::readGlobalFunctionBlock(
   return false;
 }
 
-bool APINotesReader::Implementation::readEnumConstantBlock(
-       llvm::BitstreamCursor &cursor, 
-       SmallVectorImpl<uint64_t> &scratch) {
-  if (cursor.EnterSubBlock(ENUM_CONSTANT_BLOCK_ID))
-    return true;
-
-  auto next = cursor.advance();
-  while (next.Kind != llvm::BitstreamEntry::EndBlock) {
-    if (next.Kind == llvm::BitstreamEntry::Error)
-      return true;
-
-    if (next.Kind == llvm::BitstreamEntry::SubBlock) {
-      // Unknown sub-block, possibly for use by a future version of the
-      // API notes format.
-      if (cursor.SkipBlock())
-        return true;
-      
-      next = cursor.advance();
-      continue;
-    }
-
-    scratch.clear();
-    StringRef blobData;
-    unsigned kind = cursor.readRecord(next.ID, scratch, &blobData);
-    switch (kind) {
-    case enum_constant_block::ENUM_CONSTANT_DATA: {
-      // Already saw enumerator table.
-      if (EnumConstantTable)
-        return true;
-
-      uint32_t tableOffset;
-      enum_constant_block::EnumConstantDataLayout::readRecord(scratch,
-                                                              tableOffset);
-      auto base = reinterpret_cast<const uint8_t *>(blobData.data());
-
-      EnumConstantTable.reset(
-        SerializedEnumConstantTable::Create(base + tableOffset,
-                                            base + sizeof(uint32_t),
-                                            base));
-      break;
-    }
-
-    default:
-      // Unknown record, possibly for use by a future version of the
-      // module format.
-      break;
-    }
-
-    next = cursor.advance();
-  }
-
-  return false;
-}
-
-bool APINotesReader::Implementation::readTagBlock(
-       llvm::BitstreamCursor &cursor, 
-       SmallVectorImpl<uint64_t> &scratch) {
-  if (cursor.EnterSubBlock(TAG_BLOCK_ID))
-    return true;
-
-  auto next = cursor.advance();
-  while (next.Kind != llvm::BitstreamEntry::EndBlock) {
-    if (next.Kind == llvm::BitstreamEntry::Error)
-      return true;
-
-    if (next.Kind == llvm::BitstreamEntry::SubBlock) {
-      // Unknown sub-block, possibly for use by a future version of the
-      // API notes format.
-      if (cursor.SkipBlock())
-        return true;
-      
-      next = cursor.advance();
-      continue;
-    }
-
-    scratch.clear();
-    StringRef blobData;
-    unsigned kind = cursor.readRecord(next.ID, scratch, &blobData);
-    switch (kind) {
-    case tag_block::TAG_DATA: {
-      // Already saw tag table.
-      if (TagTable)
-        return true;
-
-      uint32_t tableOffset;
-      tag_block::TagDataLayout::readRecord(scratch, tableOffset);
-      auto base = reinterpret_cast<const uint8_t *>(blobData.data());
-
-      TagTable.reset(
-        SerializedTagTable::Create(base + tableOffset,
-                                   base + sizeof(uint32_t),
-                                   base));
-      break;
-    }
-
-    default:
-      // Unknown record, possibly for use by a future version of the
-      // module format.
-      break;
-    }
-
-    next = cursor.advance();
-  }
-
-  return false;
-}
-
-bool APINotesReader::Implementation::readTypedefBlock(
-       llvm::BitstreamCursor &cursor, 
-       SmallVectorImpl<uint64_t> &scratch) {
-  if (cursor.EnterSubBlock(TYPEDEF_BLOCK_ID))
-    return true;
-
-  auto next = cursor.advance();
-  while (next.Kind != llvm::BitstreamEntry::EndBlock) {
-    if (next.Kind == llvm::BitstreamEntry::Error)
-      return true;
-
-    if (next.Kind == llvm::BitstreamEntry::SubBlock) {
-      // Unknown sub-block, possibly for use by a future version of the
-      // API notes format.
-      if (cursor.SkipBlock())
-        return true;
-      
-      next = cursor.advance();
-      continue;
-    }
-
-    scratch.clear();
-    StringRef blobData;
-    unsigned kind = cursor.readRecord(next.ID, scratch, &blobData);
-    switch (kind) {
-    case typedef_block::TYPEDEF_DATA: {
-      // Already saw typedef table.
-      if (TypedefTable)
-        return true;
-
-      uint32_t tableOffset;
-      typedef_block::TypedefDataLayout::readRecord(scratch, tableOffset);
-      auto base = reinterpret_cast<const uint8_t *>(blobData.data());
-
-      TypedefTable.reset(
-        SerializedTypedefTable::Create(base + tableOffset,
-                                       base + sizeof(uint32_t),
-                                       base));
-      break;
-    }
-
-    default:
-      // Unknown record, possibly for use by a future version of the
-      // module format.
-      break;
-    }
-
-    next = cursor.advance();
-  }
-
-  return false;
-}
-
 APINotesReader::APINotesReader(std::unique_ptr<llvm::MemoryBuffer> inputBuffer, 
                              bool &failed) 
   : Impl(*new Implementation)
@@ -1387,28 +1057,6 @@ APINotesReader::APINotesReader(std::unique_ptr<llvm::MemoryBuffer> inputBuffer,
       }
       break;
 
-    case ENUM_CONSTANT_BLOCK_ID:
-      if (!hasValidControlBlock || 
-          Impl.readEnumConstantBlock(cursor, scratch)) {
-        failed = true;
-        return;
-      }
-      break;
-
-    case TAG_BLOCK_ID:
-      if (!hasValidControlBlock || Impl.readTagBlock(cursor, scratch)) {
-        failed = true;
-        return;
-      }
-      break;
-
-    case TYPEDEF_BLOCK_ID:
-      if (!hasValidControlBlock || Impl.readTypedefBlock(cursor, scratch)) {
-        failed = true;
-        return;
-      }
-      break;
-
     default:
       // Unknown top-level block, possibly for use by a future version of the
       // module format.
@@ -1445,10 +1093,6 @@ APINotesReader::get(std::unique_ptr<llvm::MemoryBuffer> inputBuffer) {
 
 StringRef APINotesReader::getModuleName() const {
   return Impl.ModuleName;
-}
-
-ModuleOptions APINotesReader::getModuleOptions() const {
-  return Impl.ModuleOpts;
 }
 
 auto APINotesReader::lookupObjCClass(StringRef name)
@@ -1553,52 +1197,6 @@ Optional<GlobalFunctionInfo> APINotesReader::lookupGlobalFunction(
 
   return *known;
 }
-
-Optional<EnumConstantInfo> APINotesReader::lookupEnumConstant(StringRef name) {
-  if (!Impl.EnumConstantTable)
-    return None;
-
-  Optional<IdentifierID> nameID = Impl.getIdentifier(name);
-  if (!nameID)
-    return None;
-
-  auto known = Impl.EnumConstantTable->find(*nameID);
-  if (known == Impl.EnumConstantTable->end())
-    return None;
-
-  return *known;
-}
-
-Optional<TagInfo> APINotesReader::lookupTag(StringRef name) {
-  if (!Impl.TagTable)
-    return None;
-
-  Optional<IdentifierID> nameID = Impl.getIdentifier(name);
-  if (!nameID)
-    return None;
-
-  auto known = Impl.TagTable->find(*nameID);
-  if (known == Impl.TagTable->end())
-    return None;
-
-  return *known;
-}
-
-Optional<TypedefInfo> APINotesReader::lookupTypedef(StringRef name) {
-  if (!Impl.TypedefTable)
-    return None;
-
-  Optional<IdentifierID> nameID = Impl.getIdentifier(name);
-  if (!nameID)
-    return None;
-
-  auto known = Impl.TypedefTable->find(*nameID);
-  if (known == Impl.TypedefTable->end())
-    return None;
-
-  return *known;
-}
-
 APINotesReader::Visitor::~Visitor() { }
 
 void APINotesReader::Visitor::visitObjCClass(ContextID contextID,
@@ -1625,18 +1223,6 @@ void APINotesReader::Visitor::visitGlobalVariable(
 void APINotesReader::Visitor::visitGlobalFunction(
        StringRef name,
        const GlobalFunctionInfo &info) { }
-
-void APINotesReader::Visitor::visitEnumConstant(
-       StringRef name,
-       const EnumConstantInfo &info) { }
-
-void APINotesReader::Visitor::visitTag(
-       StringRef name,
-       const TagInfo &info) { }
-
-void APINotesReader::Visitor::visitTypedef(
-       StringRef name,
-       const TypedefInfo &info) { }
 
 void APINotesReader::visit(Visitor &visitor) {
   // FIXME: All of these iterations would be significantly more efficient if we
@@ -1722,33 +1308,6 @@ void APINotesReader::visit(Visitor &visitor) {
       auto name = identifiers[key];
       auto info = *Impl.GlobalVariableTable->find(key);
       visitor.visitGlobalVariable(name, info);
-    }
-  }
-
-  // Visit global variables.
-  if (Impl.EnumConstantTable) {
-    for (auto key : Impl.EnumConstantTable->keys()) {
-      auto name = identifiers[key];
-      auto info = *Impl.EnumConstantTable->find(key);
-      visitor.visitEnumConstant(name, info);
-    }
-  }
-
-  // Visit tags.
-  if (Impl.TagTable) {
-    for (auto key : Impl.TagTable->keys()) {
-      auto name = identifiers[key];
-      auto info = *Impl.TagTable->find(key);
-      visitor.visitTag(name, info);
-    }
-  }
-
-  // Visit typedefs.
-  if (Impl.TypedefTable) {
-    for (auto key : Impl.TypedefTable->keys()) {
-      auto name = identifiers[key];
-      auto info = *Impl.TypedefTable->find(key);
-      visitor.visitTypedef(name, info);
     }
   }
 }

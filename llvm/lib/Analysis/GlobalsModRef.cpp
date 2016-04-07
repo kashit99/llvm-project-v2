@@ -243,14 +243,13 @@ FunctionModRefBehavior
 GlobalsAAResult::getModRefBehavior(ImmutableCallSite CS) {
   FunctionModRefBehavior Min = FMRB_UnknownModRefBehavior;
 
-  if (!CS.hasOperandBundles())
-    if (const Function *F = CS.getCalledFunction())
-      if (FunctionInfo *FI = getFunctionInfo(F)) {
-        if (FI->getModRefInfo() == MRI_NoModRef)
-          Min = FMRB_DoesNotAccessMemory;
-        else if ((FI->getModRefInfo() & MRI_Mod) == 0)
-          Min = FMRB_OnlyReadsMemory;
-      }
+  if (const Function *F = CS.getCalledFunction())
+    if (FunctionInfo *FI = getFunctionInfo(F)) {
+      if (FI->getModRefInfo() == MRI_NoModRef)
+        Min = FMRB_DoesNotAccessMemory;
+      else if ((FI->getModRefInfo() & MRI_Mod) == 0)
+        Min = FMRB_OnlyReadsMemory;
+    }
 
   return FunctionModRefBehavior(AAResultBase::getModRefBehavior(CS) & Min);
 }
@@ -901,10 +900,10 @@ ModRefInfo GlobalsAAResult::getModRefInfo(ImmutableCallSite CS,
 
 GlobalsAAResult::GlobalsAAResult(const DataLayout &DL,
                                  const TargetLibraryInfo &TLI)
-    : AAResultBase(), DL(DL), TLI(TLI) {}
+    : AAResultBase(TLI), DL(DL) {}
 
 GlobalsAAResult::GlobalsAAResult(GlobalsAAResult &&Arg)
-    : AAResultBase(std::move(Arg)), DL(Arg.DL), TLI(Arg.TLI),
+    : AAResultBase(std::move(Arg)), DL(Arg.DL),
       NonAddressTakenGlobals(std::move(Arg.NonAddressTakenGlobals)),
       IndirectGlobals(std::move(Arg.IndirectGlobals)),
       AllocsForIndirectGlobals(std::move(Arg.AllocsForIndirectGlobals)),
@@ -916,8 +915,6 @@ GlobalsAAResult::GlobalsAAResult(GlobalsAAResult &&Arg)
     H.GAR = this;
   }
 }
-
-GlobalsAAResult::~GlobalsAAResult() {}
 
 /*static*/ GlobalsAAResult
 GlobalsAAResult::analyzeModule(Module &M, const TargetLibraryInfo &TLI,
@@ -936,13 +933,13 @@ GlobalsAAResult::analyzeModule(Module &M, const TargetLibraryInfo &TLI,
   return Result;
 }
 
-char GlobalsAA::PassID;
-
-GlobalsAAResult GlobalsAA::run(Module &M, AnalysisManager<Module> &AM) {
+GlobalsAAResult GlobalsAA::run(Module &M, AnalysisManager<Module> *AM) {
   return GlobalsAAResult::analyzeModule(M,
-                                        AM.getResult<TargetLibraryAnalysis>(M),
-                                        AM.getResult<CallGraphAnalysis>(M));
+                                        AM->getResult<TargetLibraryAnalysis>(M),
+                                        AM->getResult<CallGraphAnalysis>(M));
 }
+
+char GlobalsAA::PassID;
 
 char GlobalsAAWrapperPass::ID = 0;
 INITIALIZE_PASS_BEGIN(GlobalsAAWrapperPass, "globals-aa",

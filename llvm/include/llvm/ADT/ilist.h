@@ -186,38 +186,53 @@ template<typename Ty>
 struct ilist_traits<const Ty> : public ilist_traits<Ty> {};
 
 //===----------------------------------------------------------------------===//
-// Iterator for intrusive list.
+// ilist_iterator<Node> - Iterator for intrusive list.
 //
-template <typename NodeTy>
+template<typename NodeTy>
 class ilist_iterator
-    : public std::iterator<std::bidirectional_iterator_tag, NodeTy, ptrdiff_t> {
+  : public std::iterator<std::bidirectional_iterator_tag, NodeTy, ptrdiff_t> {
+
 public:
   typedef ilist_traits<NodeTy> Traits;
-  typedef std::iterator<std::bidirectional_iterator_tag, NodeTy, ptrdiff_t>
-      super;
+  typedef std::iterator<std::bidirectional_iterator_tag,
+                        NodeTy, ptrdiff_t> super;
 
   typedef typename super::value_type value_type;
   typedef typename super::difference_type difference_type;
   typedef typename super::pointer pointer;
   typedef typename super::reference reference;
-
 private:
   pointer NodePtr;
 
+  // ilist_iterator is not a random-access iterator, but it has an
+  // implicit conversion to pointer-type, which is. Declare (but
+  // don't define) these functions as private to help catch
+  // accidental misuse.
+  void operator[](difference_type) const;
+  void operator+(difference_type) const;
+  void operator-(difference_type) const;
+  void operator+=(difference_type) const;
+  void operator-=(difference_type) const;
+  template<class T> void operator<(T) const;
+  template<class T> void operator<=(T) const;
+  template<class T> void operator>(T) const;
+  template<class T> void operator>=(T) const;
+  template<class T> void operator-(T) const;
 public:
+
   explicit ilist_iterator(pointer NP) : NodePtr(NP) {}
   explicit ilist_iterator(reference NR) : NodePtr(&NR) {}
   ilist_iterator() : NodePtr(nullptr) {}
 
   // This is templated so that we can allow constructing a const iterator from
   // a nonconst iterator...
-  template <class node_ty>
+  template<class node_ty>
   ilist_iterator(const ilist_iterator<node_ty> &RHS)
-      : NodePtr(RHS.getNodePtrUnchecked()) {}
+    : NodePtr(RHS.getNodePtrUnchecked()) {}
 
   // This is templated so that we can allow assigning to a const iterator from
   // a nonconst iterator...
-  template <class node_ty>
+  template<class node_ty>
   const ilist_iterator &operator=(const ilist_iterator<node_ty> &RHS) {
     NodePtr = RHS.getNodePtrUnchecked();
     return *this;
@@ -226,8 +241,13 @@ public:
   void reset(pointer NP) { NodePtr = NP; }
 
   // Accessors...
-  explicit operator pointer() const { return NodePtr; }
-  reference operator*() const { return *NodePtr; }
+  explicit operator pointer() const {
+    return NodePtr;
+  }
+
+  reference operator*() const {
+    return *NodePtr;
+  }
   pointer operator->() const { return &operator*(); }
 
   // Comparison operators
@@ -239,21 +259,21 @@ public:
   }
 
   // Increment and decrement operators...
-  ilist_iterator &operator--() {
+  ilist_iterator &operator--() {      // predecrement - Back up
     NodePtr = Traits::getPrev(NodePtr);
     assert(NodePtr && "--'d off the beginning of an ilist!");
     return *this;
   }
-  ilist_iterator &operator++() {
+  ilist_iterator &operator++() {      // preincrement - Advance
     NodePtr = Traits::getNext(NodePtr);
     return *this;
   }
-  ilist_iterator operator--(int) {
+  ilist_iterator operator--(int) {    // postdecrement operators...
     ilist_iterator tmp = *this;
     --*this;
     return tmp;
   }
-  ilist_iterator operator++(int) {
+  ilist_iterator operator++(int) {    // postincrement operators...
     ilist_iterator tmp = *this;
     ++*this;
     return tmp;
@@ -262,6 +282,38 @@ public:
   // Internal interface, do not use...
   pointer getNodePtrUnchecked() const { return NodePtr; }
 };
+
+// These are to catch errors when people try to use them as random access
+// iterators.
+template<typename T>
+void operator-(int, ilist_iterator<T>) = delete;
+template<typename T>
+void operator-(ilist_iterator<T>,int) = delete;
+
+template<typename T>
+void operator+(int, ilist_iterator<T>) = delete;
+template<typename T>
+void operator+(ilist_iterator<T>,int) = delete;
+
+// operator!=/operator== - Allow mixed comparisons without dereferencing
+// the iterator, which could very likely be pointing to end().
+template<typename T>
+bool operator!=(const T* LHS, const ilist_iterator<const T> &RHS) {
+  return LHS != RHS.getNodePtrUnchecked();
+}
+template<typename T>
+bool operator==(const T* LHS, const ilist_iterator<const T> &RHS) {
+  return LHS == RHS.getNodePtrUnchecked();
+}
+template<typename T>
+bool operator!=(T* LHS, const ilist_iterator<T> &RHS) {
+  return LHS != RHS.getNodePtrUnchecked();
+}
+template<typename T>
+bool operator==(T* LHS, const ilist_iterator<T> &RHS) {
+  return LHS == RHS.getNodePtrUnchecked();
+}
+
 
 // Allow ilist_iterators to convert into pointers to a node automatically when
 // used by the dyn_cast, cast, isa mechanisms...

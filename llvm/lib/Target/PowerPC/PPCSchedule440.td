@@ -602,8 +602,6 @@ def PPC440Model : SchedMachineModel {
                        // This is overriden by OperandCycles if the
                        // Itineraries are queried instead.
 
-  let CompleteModel = 0;
-
   let Itineraries = PPC440Itineraries;
 }
 

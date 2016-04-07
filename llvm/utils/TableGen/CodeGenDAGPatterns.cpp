@@ -3249,7 +3249,7 @@ void CodeGenDAGPatterns::AddPatternToMatch(TreePattern *Pattern,
 
 
 void CodeGenDAGPatterns::InferInstructionFlags() {
-  ArrayRef<const CodeGenInstruction*> Instructions =
+  const std::vector<const CodeGenInstruction*> &Instructions =
     Target.getInstructionsByEnumValue();
 
   // First try to infer flags from the primary instruction pattern, if any.

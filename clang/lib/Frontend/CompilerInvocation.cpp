@@ -33,7 +33,6 @@
 #include "llvm/Option/ArgList.h"
 #include "llvm/Option/OptTable.h"
 #include "llvm/Option/Option.h"
-#include "llvm/ProfileData/InstrProfReader.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FileSystem.h"
@@ -376,45 +375,6 @@ static void parseSanitizerKinds(StringRef FlagName,
   }
 }
 
-// Set the profile kind for fprofile-instrument.
-static void setPGOInstrumentor(CodeGenOptions &Opts, ArgList &Args,
-                               DiagnosticsEngine &Diags) {
-  Arg *A = Args.getLastArg(OPT_fprofile_instrument_EQ);
-  if (A == nullptr)
-    return;
-  StringRef S = A->getValue();
-  unsigned I = llvm::StringSwitch<unsigned>(S)
-                   .Case("none", CodeGenOptions::ProfileNone)
-                   .Case("clang", CodeGenOptions::ProfileClangInstr)
-                   .Case("llvm", CodeGenOptions::ProfileIRInstr)
-                   .Default(~0U);
-  if (I == ~0U) {
-    Diags.Report(diag::err_drv_invalid_pgo_instrumentor) << A->getAsString(Args)
-                                                         << S;
-    return;
-  }
-  CodeGenOptions::ProfileInstrKind Instrumentor =
-      static_cast<CodeGenOptions::ProfileInstrKind>(I);
-  Opts.setProfileInstr(Instrumentor);
-}
-
-// Set the profile kind using fprofile-instrument-use-path.
-static void setPGOUseInstrumentor(CodeGenOptions &Opts,
-                                  const std::string ProfileName) {
-  auto ReaderOrErr = llvm::IndexedInstrProfReader::create(ProfileName);
-  // In error, return silently and let Clang PGOUse report the error message.
-  if (ReaderOrErr.getError()) {
-    Opts.setProfileUse(CodeGenOptions::ProfileClangInstr);
-    return;
-  }
-  std::unique_ptr<llvm::IndexedInstrProfReader> PGOReader =
-    std::move(ReaderOrErr.get());
-  if (PGOReader->isIRLevelProfile())
-    Opts.setProfileUse(CodeGenOptions::ProfileIRInstr);
-  else
-    Opts.setProfileUse(CodeGenOptions::ProfileClangInstr);
-}
-
 static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
                              DiagnosticsEngine &Diags,
                              const TargetOptions &TargetOpts) {
@@ -468,22 +428,19 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
   }
   if (Arg *A = Args.getLastArg(OPT_debugger_tuning_EQ)) {
     unsigned Val = llvm::StringSwitch<unsigned>(A->getValue())
-                       .Case("gdb", unsigned(llvm::DebuggerKind::GDB))
-                       .Case("lldb", unsigned(llvm::DebuggerKind::LLDB))
-                       .Case("sce", unsigned(llvm::DebuggerKind::SCE))
+                       .Case("gdb", CodeGenOptions::DebuggerKindGDB)
+                       .Case("lldb", CodeGenOptions::DebuggerKindLLDB)
+                       .Case("sce", CodeGenOptions::DebuggerKindSCE)
                        .Default(~0U);
     if (Val == ~0U)
       Diags.Report(diag::err_drv_invalid_value) << A->getAsString(Args)
                                                 << A->getValue();
     else
-      Opts.setDebuggerTuning(static_cast<llvm::DebuggerKind>(Val));
+      Opts.setDebuggerTuning(static_cast<CodeGenOptions::DebuggerKind>(Val));
   }
   Opts.DwarfVersion = getLastArgIntValue(Args, OPT_dwarf_version_EQ, 0, Diags);
   Opts.DebugColumnInfo = Args.hasArg(OPT_dwarf_column_info);
   Opts.EmitCodeView = Args.hasArg(OPT_gcodeview);
-  Opts.WholeProgramVTables = Args.hasArg(OPT_fwhole_program_vtables);
-  Opts.WholeProgramVTablesBlacklistFiles =
-      Args.getAllArgValues(OPT_fwhole_program_vtables_blacklist_EQ);
   Opts.SplitDwarfFile = Args.getLastArgValue(OPT_split_dwarf_file);
   Opts.DebugTypeExtRefs = Args.hasArg(OPT_dwarf_ext_refs);
   Opts.DebugExplicitImport = Triple.isPS4CPU(); 
@@ -520,15 +477,10 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
   Opts.DisableIntegratedAS = Args.hasArg(OPT_fno_integrated_as);
   Opts.Autolink = !Args.hasArg(OPT_fno_autolink);
   Opts.SampleProfileFile = Args.getLastArgValue(OPT_fprofile_sample_use_EQ);
-
-  setPGOInstrumentor(Opts, Args, Diags);
-  Opts.InstrProfileOutput =
-      Args.getLastArgValue(OPT_fprofile_instrument_path_EQ);
-  Opts.ProfileInstrumentUsePath =
-      Args.getLastArgValue(OPT_fprofile_instrument_use_path_EQ);
-  if (!Opts.ProfileInstrumentUsePath.empty())
-    setPGOUseInstrumentor(Opts, Opts.ProfileInstrumentUsePath);
-
+  Opts.ProfileInstrGenerate = Args.hasArg(OPT_fprofile_instr_generate) ||
+      Args.hasArg(OPT_fprofile_instr_generate_EQ);
+  Opts.InstrProfileOutput = Args.getLastArgValue(OPT_fprofile_instr_generate_EQ);
+  Opts.InstrProfileInput = Args.getLastArgValue(OPT_fprofile_instr_use_EQ);
   Opts.CoverageMapping =
       Args.hasFlag(OPT_fcoverage_mapping, OPT_fno_coverage_mapping, false);
   Opts.DumpCoverageMapping = Args.hasArg(OPT_dump_coverage_mapping);
@@ -606,8 +558,6 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
 
   Opts.MergeFunctions = Args.hasArg(OPT_fmerge_functions);
 
-  Opts.NoUseJumpTables = Args.hasArg(OPT_fno_jump_tables);
-
   Opts.PrepareForLTO = Args.hasArg(OPT_flto, OPT_flto_EQ);
   const Arg *A = Args.getLastArg(OPT_flto, OPT_flto_EQ);
   Opts.EmitSummaryIndex = A && A->containsValue("thin");
@@ -669,7 +619,6 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
   Opts.SanitizeCoverageTraceCmp = Args.hasArg(OPT_fsanitize_coverage_trace_cmp);
   Opts.SanitizeCoverage8bitCounters =
       Args.hasArg(OPT_fsanitize_coverage_8bit_counters);
-  Opts.SanitizeCoverageTracePC = Args.hasArg(OPT_fsanitize_coverage_trace_pc);
   Opts.SanitizeMemoryTrackOrigins =
       getLastArgIntValue(Args, OPT_fsanitize_memory_track_origins_EQ, 0, Diags);
   Opts.SanitizeMemoryUseAfterDtor =
@@ -1054,10 +1003,18 @@ static InputKind ParseFrontendArgs(FrontendOptions &Opts, ArgList &Args,
     Opts.Plugins.emplace_back(A->getValue(0));
     Opts.ProgramAction = frontend::PluginAction;
     Opts.ActionName = A->getValue();
+
+    for (const Arg *AA : Args.filtered(OPT_plugin_arg))
+      if (AA->getValue(0) == Opts.ActionName)
+        Opts.PluginArgs.emplace_back(AA->getValue(1));
   }
+
   Opts.AddPluginActions = Args.getAllArgValues(OPT_add_plugin);
-  for (const Arg *AA : Args.filtered(OPT_plugin_arg))
-    Opts.PluginArgs[AA->getValue(0)].emplace_back(AA->getValue(1));
+  Opts.AddPluginArgs.resize(Opts.AddPluginActions.size());
+  for (int i = 0, e = Opts.AddPluginActions.size(); i != e; ++i)
+    for (const Arg *A : Args.filtered(OPT_plugin_arg))
+      if (A->getValue(0) == Opts.AddPluginActions[i])
+        Opts.AddPluginArgs[i].emplace_back(A->getValue(1));
 
   for (const std::string &Arg :
          Args.getAllArgValues(OPT_ftest_module_file_extension_EQ)) {
@@ -1124,7 +1081,6 @@ static InputKind ParseFrontendArgs(FrontendOptions &Opts, ArgList &Args,
     = Args.getLastArgValue(OPT_foverride_record_layout_EQ);
   Opts.AuxTriple =
       llvm::Triple::normalize(Args.getLastArgValue(OPT_aux_triple));
-  Opts.FindPchSource = Args.getLastArgValue(OPT_find_pch_source_EQ);
 
   if (const Arg *A = Args.getLastArg(OPT_arcmt_check,
                                      OPT_arcmt_modify,
@@ -1440,7 +1396,6 @@ void CompilerInvocation::setLangDefaults(LangOptions &Opts, InputKind IK,
     Opts.LaxVectorConversions = 0;
     Opts.DefaultFPContract = 1;
     Opts.NativeHalfType = 1;
-    Opts.NativeHalfArgsAndReturns = 1;
   }
 
   Opts.CUDA = IK == IK_CUDA || IK == IK_PreprocessedCuda ||
@@ -1480,7 +1435,6 @@ static Visibility parseVisibility(Arg *arg, ArgList &args,
 }
 
 static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
-                          const TargetOptions &TargetOpts,
                           DiagnosticsEngine &Diags) {
   // FIXME: Cleanup per-file based stuff.
   LangStandard::Kind LangStd = LangStandard::lang_unspecified;
@@ -1566,14 +1520,14 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
   if (Args.hasArg(OPT_fcuda_is_device))
     Opts.CUDAIsDevice = 1;
 
-  if (Args.hasArg(OPT_fcuda_allow_variadic_functions))
-    Opts.CUDAAllowVariadicFunctions = 1;
+  if (Args.hasArg(OPT_fcuda_allow_host_calls_from_host_device))
+    Opts.CUDAAllowHostCallsFromHostDevice = 1;
 
-  if (Args.hasArg(OPT_fno_cuda_host_device_constexpr))
-    Opts.CUDAHostDeviceConstexpr = 0;
+  if (Args.hasArg(OPT_fcuda_disable_target_call_checks))
+    Opts.CUDADisableTargetCallChecks = 1;
 
-  if (Opts.CUDAIsDevice && Args.hasArg(OPT_fcuda_flush_denormals_to_zero))
-    Opts.CUDADeviceFlushDenormalsToZero = 1;
+  if (Args.hasArg(OPT_fcuda_target_overloads))
+    Opts.CUDATargetOverloads = 1;
 
   if (Opts.ObjC1) {
     if (Arg *arg = Args.getLastArg(OPT_fobjc_runtime_EQ)) {
@@ -1718,10 +1672,9 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
   Opts.ObjCExceptions = Args.hasArg(OPT_fobjc_exceptions);
   Opts.CXXExceptions = Args.hasArg(OPT_fcxx_exceptions);
   Opts.SjLjExceptions = Args.hasArg(OPT_fsjlj_exceptions);
-  Opts.ExternCNoUnwind = Args.hasArg(OPT_fexternc_nounwind);
   Opts.TraditionalCPP = Args.hasArg(OPT_traditional_cpp);
 
-  Opts.RTTI = Opts.CPlusPlus && !Args.hasArg(OPT_fno_rtti);
+  Opts.RTTI = !Args.hasArg(OPT_fno_rtti);
   Opts.RTTIData = Opts.RTTI && !Args.hasArg(OPT_fno_rtti_data);
   Opts.Blocks = Args.hasArg(OPT_fblocks);
   Opts.BlocksRuntimeOptional = Args.hasArg(OPT_fblocks_runtime_optional);
@@ -1794,16 +1747,14 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
   Opts.DebuggerCastResultToId = Args.hasArg(OPT_fdebugger_cast_result_to_id);
   Opts.DebuggerObjCLiteral = Args.hasArg(OPT_fdebugger_objc_literal);
   Opts.ApplePragmaPack = Args.hasArg(OPT_fapple_pragma_pack);
-  Opts.CurrentModule = Args.getLastArgValue(OPT_fmodule_name_EQ);
+  Opts.CurrentModule = Args.getLastArgValue(OPT_fmodule_name);
   Opts.AppExt = Args.hasArg(OPT_fapplication_extension);
+  Opts.ImplementationOfModule =
+      Args.getLastArgValue(OPT_fmodule_implementation_of);
   Opts.ModuleFeatures = Args.getAllArgValues(OPT_fmodule_feature);
   std::sort(Opts.ModuleFeatures.begin(), Opts.ModuleFeatures.end());
   Opts.NativeHalfType |= Args.hasArg(OPT_fnative_half_type);
-  Opts.NativeHalfArgsAndReturns |= Args.hasArg(OPT_fnative_half_arguments_and_returns);
-  // Enable HalfArgsAndReturns if present in Args or if NativeHalfArgsAndReturns
-  // is enabled.
-  Opts.HalfArgsAndReturns = Args.hasArg(OPT_fallow_half_arguments_and_returns)
-                            | Opts.NativeHalfArgsAndReturns;
+  Opts.HalfArgsAndReturns = Args.hasArg(OPT_fallow_half_arguments_and_returns);
   Opts.APINotes = Args.hasArg(OPT_fapinotes);
   Opts.GNUAsm = !Args.hasArg(OPT_fno_gnu_inline_asm);
 
@@ -1817,6 +1768,12 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
   Opts.DeclSpecKeyword =
       Args.hasFlag(OPT_fdeclspec, OPT_fno_declspec,
                    (Opts.MicrosoftExt || Opts.Borland || Opts.CUDA));
+
+  if (!Opts.CurrentModule.empty() && !Opts.ImplementationOfModule.empty() &&
+      Opts.CurrentModule != Opts.ImplementationOfModule) {
+    Diags.Report(diag::err_conflicting_module_names)
+        << Opts.CurrentModule << Opts.ImplementationOfModule;
+  }
 
   // For now, we only support local submodule visibility in C++ (because we
   // heavily depend on the ODR for merging redefinitions).
@@ -1871,24 +1828,8 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
   Opts.OpenMPIsDevice =
       Opts.OpenMP && Args.hasArg(options::OPT_fopenmp_is_device);
 
-  // Provide diagnostic when a given target is not expected to be an OpenMP
-  // device or host.
-  if (Opts.OpenMP && !Opts.OpenMPIsDevice) {
-    llvm::Triple T(TargetOpts.Triple);
-    switch (T.getArch()) {
-    default:
-      break;
-    // Add unsupported host targets here:
-    case llvm::Triple::nvptx:
-    case llvm::Triple::nvptx64:
-      Diags.Report(clang::diag::err_drv_omp_host_target_not_supported)
-          << TargetOpts.Triple;
-      break;
-    }
-  }
-
   // Get the OpenMP target triples if any.
-  if (Arg *A = Args.getLastArg(options::OPT_fomptargets_EQ)) {
+  if (Arg *A = Args.getLastArg(options::OPT_omptargets_EQ)) {
 
     for (unsigned i = 0; i < A->getNumValues(); ++i) {
       llvm::Triple TT(A->getValue(i));
@@ -1902,7 +1843,7 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
 
   // Get OpenMP host file path if any and report if a non existent file is
   // found
-  if (Arg *A = Args.getLastArg(options::OPT_fomp_host_ir_file_path)) {
+  if (Arg *A = Args.getLastArg(options::OPT_omp_host_ir_file_path)) {
     Opts.OMPHostIRFile = A->getValue();
     if (!llvm::sys::fs::exists(Opts.OMPHostIRFile))
       Diags.Report(clang::diag::err_drv_omp_host_ir_file_not_found)
@@ -2008,6 +1949,10 @@ static void ParsePreprocessorArgs(PreprocessorOptions &Opts, ArgList &Args,
 
   for (const Arg *A : Args.filtered(OPT_chain_include))
     Opts.ChainedIncludes.emplace_back(A->getValue());
+
+  // Include 'altivec.h' if -faltivec option present
+  if (Args.hasArg(OPT_faltivec))
+    Opts.Includes.emplace_back("altivec.h");
 
   for (const Arg *A : Args.filtered(OPT_remap_file)) {
     std::pair<StringRef, StringRef> Split = StringRef(A->getValue()).split(';');
@@ -2151,7 +2096,7 @@ bool CompilerInvocation::CreateFromArgs(CompilerInvocation &Res,
                         Diags, Res.getLangOpts()->Sanitize);
   } else {
     // Other LangOpts are only initialzed when the input is not AST or LLVM IR.
-    ParseLangArgs(*Res.getLangOpts(), Args, DashX, Res.getTargetOpts(), Diags);
+    ParseLangArgs(*Res.getLangOpts(), Args, DashX, Diags);
     if (Res.getFrontendOpts().ProgramAction == frontend::RewriteObjC)
       Res.getLangOpts()->ObjCExceptions = 1;
 
@@ -2392,8 +2337,8 @@ createVFSFromCompilerInvocation(const CompilerInvocation &CI,
       return IntrusiveRefCntPtr<vfs::FileSystem>();
     }
 
-    IntrusiveRefCntPtr<vfs::FileSystem> FS = vfs::getVFSFromYAML(
-        std::move(Buffer.get()), /*DiagHandler*/ nullptr, File);
+    IntrusiveRefCntPtr<vfs::FileSystem> FS =
+        vfs::getVFSFromYAML(std::move(Buffer.get()), /*DiagHandler*/ nullptr);
     if (!FS.get()) {
       Diags.Report(diag::err_invalid_vfs_overlay) << File;
       return IntrusiveRefCntPtr<vfs::FileSystem>();

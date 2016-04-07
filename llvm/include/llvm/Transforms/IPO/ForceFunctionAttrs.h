@@ -21,7 +21,9 @@ namespace llvm {
 
 /// Pass which forces specific function attributes into the IR, primarily as
 /// a debugging tool.
-struct ForceFunctionAttrsPass : PassInfoMixin<ForceFunctionAttrsPass> {
+class ForceFunctionAttrsPass {
+public:
+  static StringRef name() { return "ForceFunctionAttrsPass"; }
   PreservedAnalyses run(Module &M);
 };
 

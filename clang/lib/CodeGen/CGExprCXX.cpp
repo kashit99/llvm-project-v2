@@ -16,19 +16,18 @@
 #include "CGCXXABI.h"
 #include "CGDebugInfo.h"
 #include "CGObjCRuntime.h"
-#include "clang/Basic/CodeGenOptions.h"
 #include "clang/CodeGen/CGFunctionInfo.h"
+#include "clang/Frontend/CodeGenOptions.h"
 #include "llvm/IR/CallSite.h"
 #include "llvm/IR/Intrinsics.h"
 
 using namespace clang;
 using namespace CodeGen;
 
-static RequiredArgs
-commonEmitCXXMemberOrOperatorCall(CodeGenFunction &CGF, const CXXMethodDecl *MD,
-                                  llvm::Value *This, llvm::Value *ImplicitParam,
-                                  QualType ImplicitParamTy, const CallExpr *CE,
-                                  CallArgList &Args) {
+static RequiredArgs commonEmitCXXMemberOrOperatorCall(
+    CodeGenFunction &CGF, const CXXMethodDecl *MD, llvm::Value *Callee,
+    ReturnValueSlot ReturnValue, llvm::Value *This, llvm::Value *ImplicitParam,
+    QualType ImplicitParamTy, const CallExpr *CE, CallArgList &Args) {
   assert(CE == nullptr || isa<CXXMemberCallExpr>(CE) ||
          isa<CXXOperatorCallExpr>(CE));
   assert(MD->isInstance() &&
@@ -77,20 +76,21 @@ RValue CodeGenFunction::EmitCXXMemberOrOperatorCall(
   const FunctionProtoType *FPT = MD->getType()->castAs<FunctionProtoType>();
   CallArgList Args;
   RequiredArgs required = commonEmitCXXMemberOrOperatorCall(
-      *this, MD, This, ImplicitParam, ImplicitParamTy, CE, Args);
+      *this, MD, Callee, ReturnValue, This, ImplicitParam, ImplicitParamTy, CE,
+      Args);
   return EmitCall(CGM.getTypes().arrangeCXXMethodCall(Args, FPT, required),
                   Callee, ReturnValue, Args, MD);
 }
 
-RValue CodeGenFunction::EmitCXXDestructorCall(
-    const CXXDestructorDecl *DD, llvm::Value *Callee, llvm::Value *This,
-    llvm::Value *ImplicitParam, QualType ImplicitParamTy, const CallExpr *CE,
-    StructorType Type) {
+RValue CodeGenFunction::EmitCXXStructorCall(
+    const CXXMethodDecl *MD, llvm::Value *Callee, ReturnValueSlot ReturnValue,
+    llvm::Value *This, llvm::Value *ImplicitParam, QualType ImplicitParamTy,
+    const CallExpr *CE, StructorType Type) {
   CallArgList Args;
-  commonEmitCXXMemberOrOperatorCall(*this, DD, This, ImplicitParam,
-                                    ImplicitParamTy, CE, Args);
-  return EmitCall(CGM.getTypes().arrangeCXXStructorDeclaration(DD, Type),
-                  Callee, ReturnValueSlot(), Args, DD);
+  commonEmitCXXMemberOrOperatorCall(*this, MD, Callee, ReturnValue, This,
+                                    ImplicitParam, ImplicitParamTy, CE, Args);
+  return EmitCall(CGM.getTypes().arrangeCXXStructorDeclaration(MD, Type),
+                  Callee, ReturnValue, Args, MD);
 }
 
 static CXXRecordDecl *getCXXRecord(const Expr *E) {
@@ -259,8 +259,7 @@ RValue CodeGenFunction::EmitCXXMemberOrOperatorMemberCallExpr(
     if (SanOpts.has(SanitizerKind::CFINVCall) &&
         MD->getParent()->isDynamicClass()) {
       llvm::Value *VTable = GetVTablePtr(This, Int8PtrTy, MD->getParent());
-      EmitVTablePtrCheckForCall(MD->getParent(), VTable, CFITCK_NVCall,
-                                CE->getLocStart());
+      EmitVTablePtrCheckForCall(MD, VTable, CFITCK_NVCall, CE->getLocStart());
     }
 
     if (getLangOpts().AppleKext && MD->isVirtual() && HasQualifier)
@@ -1011,18 +1010,15 @@ void CodeGenFunction::EmitNewArrayInitializer(
   if (auto *ILE = dyn_cast<InitListExpr>(Init)) {
     if (const RecordType *RType = ILE->getType()->getAs<RecordType>()) {
       if (RType->getDecl()->isStruct()) {
-        unsigned NumElements = 0;
-        if (auto *CXXRD = dyn_cast<CXXRecordDecl>(RType->getDecl()))
-          NumElements = CXXRD->getNumBases();
+        unsigned NumFields = 0;
         for (auto *Field : RType->getDecl()->fields())
           if (!Field->isUnnamedBitfield())
-            ++NumElements;
-        // FIXME: Recurse into nested InitListExprs.
-        if (ILE->getNumInits() == NumElements)
+            ++NumFields;
+        if (ILE->getNumInits() == NumFields)
           for (unsigned i = 0, e = ILE->getNumInits(); i != e; ++i)
             if (!isa<ImplicitValueInitExpr>(ILE->getInit(i)))
-              --NumElements;
-        if (ILE->getNumInits() == NumElements && TryMemsetInitialization())
+              --NumFields;
+        if (ILE->getNumInits() == NumFields && TryMemsetInitialization())
           return;
       }
     }

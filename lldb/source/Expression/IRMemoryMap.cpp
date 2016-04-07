@@ -252,7 +252,7 @@ IRMemoryMap::Malloc (size_t size, uint8_t alignment, uint32_t permissions, Alloc
         error.SetErrorString("Couldn't malloc: invalid allocation policy");
         return LLDB_INVALID_ADDRESS;
     case eAllocationPolicyHostOnly:
-        allocation_address = FindSpace(allocation_size);
+        allocation_address = FindSpace(allocation_size, zero_memory);
         if (allocation_address == LLDB_INVALID_ADDRESS)
         {
             error.SetErrorToGenericError();
@@ -279,7 +279,7 @@ IRMemoryMap::Malloc (size_t size, uint8_t alignment, uint32_t permissions, Alloc
             if (log)
                 log->Printf ("IRMemoryMap::%s switching to eAllocationPolicyHostOnly due to failed condition (see previous expr log message)", __FUNCTION__);
             policy = eAllocationPolicyHostOnly;
-            allocation_address = FindSpace(allocation_size);
+            allocation_address = FindSpace(allocation_size, zero_memory);
             if (allocation_address == LLDB_INVALID_ADDRESS)
             {
                 error.SetErrorToGenericError();

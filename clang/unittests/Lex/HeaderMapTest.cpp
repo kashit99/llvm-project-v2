@@ -11,6 +11,7 @@
 #include "clang/Lex/HeaderMap.h"
 #include "clang/Lex/HeaderMapTypes.h"
 #include "llvm/ADT/SmallString.h"
+#include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SwapByteOrder.h"
 #include "gtest/gtest.h"
 #include <cassert>

@@ -17,16 +17,14 @@
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/Expr.h"
-#include "clang/Basic/CodeGenOptions.h"
 #include "clang/Basic/Diagnostic.h"
 #include "clang/Basic/TargetInfo.h"
+#include "clang/Frontend/CodeGenOptions.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
-
 #include <memory>
-
 using namespace clang;
 
 namespace {
@@ -101,15 +99,15 @@ namespace {
       Ctx = &Context;
 
       M->setTargetTriple(Ctx->getTargetInfo().getTriple().getTriple());
-      M->setDataLayout(Ctx->getTargetInfo().getDataLayout());
+      M->setDataLayout(Ctx->getTargetInfo().getDataLayoutString());
       Builder.reset(new CodeGen::CodeGenModule(Context, HeaderSearchOpts,
                                                PreprocessorOpts, CodeGenOpts,
                                                *M, Diags, CoverageInfo));
 
       for (auto &&Lib : CodeGenOpts.DependentLibraries)
-        Builder->AddDependentLib(Lib);
+        HandleDependentLibrary(Lib);
       for (auto &&Opt : CodeGenOpts.LinkerOptions)
-        Builder->AppendLinkerOptions(Opt);
+        HandleLinkerOption(Opt);
     }
 
     void HandleCXXStaticMemberVarInstantiation(VarDecl *VD) override {
@@ -145,22 +143,11 @@ namespace {
       DeferredInlineMethodDefinitions.clear();
     }
 
-    void HandleInlineFunctionDefinition(FunctionDecl *D) override {
+    void HandleInlineMethodDefinition(CXXMethodDecl *D) override {
       if (Diags.hasErrorOccurred())
         return;
 
       assert(D->doesThisDeclarationHaveABody());
-
-      // Handle friend functions.
-      if (D->isInIdentifierNamespace(Decl::IDNS_OrdinaryFriend)) {
-        if (Ctx->getTargetInfo().getCXXABI().isMicrosoft()
-            && !D->getLexicalDeclContext()->isDependentContext())
-          Builder->EmitTopLevelDecl(D);
-        return;
-      }
-
-      // Otherwise, must be a method.
-      auto MD = cast<CXXMethodDecl>(D);
 
       // We may want to emit this definition. However, that decision might be
       // based on computing the linkage, and we have to defer that in case we
@@ -170,13 +157,13 @@ namespace {
       //     void bar();
       //     void foo() { bar(); }
       //   } A;
-      DeferredInlineMethodDefinitions.push_back(MD);
+      DeferredInlineMethodDefinitions.push_back(D);
 
       // Provide some coverage mapping even for methods that aren't emitted.
       // Don't do this for templated classes though, as they may not be
       // instantiable.
-      if (!MD->getParent()->getDescribedClassTemplate())
-        Builder->AddDeferredUnusedCoverageMapping(MD);
+      if (!D->getParent()->getDescribedClassTemplate())
+        Builder->AddDeferredUnusedCoverageMapping(D);
     }
 
     /// HandleTagDeclDefinition - This callback is invoked each time a TagDecl
@@ -198,15 +185,6 @@ namespace {
                 Ctx->DeclMustBeEmitted(VD)) {
               Builder->EmitGlobal(VD);
             }
-          }
-        }
-      }
-      // For OpenMP emit declare reduction functions, if required.
-      if (Ctx->getLangOpts().OpenMP) {
-        for (Decl *Member : D->decls()) {
-          if (auto *DRD = dyn_cast<OMPDeclareReductionDecl>(Member)) {
-            if (Ctx->DeclMustBeEmitted(DRD))
-              Builder->EmitGlobal(DRD);
           }
         }
       }
@@ -236,13 +214,6 @@ namespace {
       }
     }
 
-    void AssignInheritanceModel(CXXRecordDecl *RD) override {
-      if (Diags.hasErrorOccurred())
-        return;
-
-      Builder->RefreshTypeCacheForClass(RD);
-    }
-
     void CompleteTentativeDefinition(VarDecl *D) override {
       if (Diags.hasErrorOccurred())
         return;
@@ -255,6 +226,19 @@ namespace {
         return;
 
       Builder->EmitVTable(RD);
+    }
+
+    void HandleLinkerOption(llvm::StringRef Opts) override {
+      Builder->AppendLinkerOptions(Opts);
+    }
+
+    void HandleDetectMismatch(llvm::StringRef Name,
+                              llvm::StringRef Value) override {
+      Builder->AddDetectMismatch(Name, Value);
+    }
+
+    void HandleDependentLibrary(llvm::StringRef Lib) override {
+      Builder->AddDependentLib(Lib);
     }
   };
 }

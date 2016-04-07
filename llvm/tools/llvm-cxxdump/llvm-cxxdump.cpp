@@ -502,9 +502,8 @@ static void dumpArchive(const Archive *Arc) {
 
 static void dumpInput(StringRef File) {
   // Attempt to open the binary.
-  Expected<OwningBinary<Binary>> BinaryOrErr = createBinary(File);
-  if (!BinaryOrErr) {
-    auto EC = errorToErrorCode(BinaryOrErr.takeError());
+  ErrorOr<OwningBinary<Binary>> BinaryOrErr = createBinary(File);
+  if (std::error_code EC = BinaryOrErr.getError()) {
     reportError(File, EC);
     return;
   }

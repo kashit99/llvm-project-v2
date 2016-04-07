@@ -129,10 +129,7 @@ void LinkerDriver::addFile(StringRef Path) {
     Files.push_back(createSharedFile(MBRef));
     return;
   default:
-    if (InLib)
-      Files.push_back(make_unique<LazyObjectFile>(MBRef));
-    else
-      Files.push_back(createObjectFile(MBRef));
+    Files.push_back(createObjectFile(MBRef));
   }
 }
 
@@ -361,12 +358,6 @@ void LinkerDriver::createFiles(opt::InputArgList &Args) {
       break;
     case OPT_no_whole_archive:
       WholeArchive = false;
-      break;
-    case OPT_start_lib:
-      InLib = true;
-      break;
-    case OPT_end_lib:
-      InLib = false;
       break;
     }
   }

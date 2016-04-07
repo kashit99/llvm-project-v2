@@ -189,9 +189,6 @@ private:
   bool relaxDwarfLineAddr(MCAsmLayout &Layout, MCDwarfLineAddrFragment &DF);
   bool relaxDwarfCallFrameFragment(MCAsmLayout &Layout,
                                    MCDwarfCallFrameFragment &DF);
-  bool relaxCVInlineLineTable(MCAsmLayout &Layout,
-                              MCCVInlineLineTableFragment &DF);
-  bool relaxCVDefRange(MCAsmLayout &Layout, MCCVDefRangeFragment &DF);
 
   /// finishLayout - Finalize a layout, including fragment lowering.
   void finishLayout(MCAsmLayout &Layout);

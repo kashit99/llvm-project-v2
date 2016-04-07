@@ -231,8 +231,7 @@ uint32_t IRObjectFile::getSymbolFlags(DataRefImpl Symb) const {
     Res |= BasicSymbolRef::SF_Global;
   if (GV->hasCommonLinkage())
     Res |= BasicSymbolRef::SF_Common;
-  if (GV->hasLinkOnceLinkage() || GV->hasWeakLinkage() ||
-      GV->hasExternalWeakLinkage())
+  if (GV->hasLinkOnceLinkage() || GV->hasWeakLinkage())
     Res |= BasicSymbolRef::SF_Weak;
 
   if (GV->getName().startswith("llvm."))
@@ -266,7 +265,10 @@ basic_symbol_iterator IRObjectFile::symbol_end_impl() const {
 
 ErrorOr<MemoryBufferRef> IRObjectFile::findBitcodeInObject(const ObjectFile &Obj) {
   for (const SectionRef &Sec : Obj.sections()) {
-    if (Sec.isBitcode()) {
+    StringRef SecName;
+    if (std::error_code EC = Sec.getName(SecName))
+      return EC;
+    if (SecName == ".llvmbc") {
       StringRef SecContents;
       if (std::error_code EC = Sec.getContents(SecContents))
         return EC;
@@ -285,10 +287,10 @@ ErrorOr<MemoryBufferRef> IRObjectFile::findBitcodeInMemBuffer(MemoryBufferRef Ob
   case sys::fs::file_magic::elf_relocatable:
   case sys::fs::file_magic::macho_object:
   case sys::fs::file_magic::coff_object: {
-    Expected<std::unique_ptr<ObjectFile>> ObjFile =
+    ErrorOr<std::unique_ptr<ObjectFile>> ObjFile =
         ObjectFile::createObjectFile(Object, Type);
     if (!ObjFile)
-      return errorToErrorCode(ObjFile.takeError());
+      return ObjFile.getError();
     return findBitcodeInObject(*ObjFile->get());
   }
   default:
@@ -303,8 +305,8 @@ llvm::object::IRObjectFile::create(MemoryBufferRef Object,
   if (!BCOrErr)
     return BCOrErr.getError();
 
-  std::unique_ptr<MemoryBuffer> Buff =
-      MemoryBuffer::getMemBuffer(BCOrErr.get(), false);
+  std::unique_ptr<MemoryBuffer> Buff(
+      MemoryBuffer::getMemBuffer(BCOrErr.get(), false));
 
   ErrorOr<std::unique_ptr<Module>> MOrErr =
       getLazyBitcodeModule(std::move(Buff), Context,

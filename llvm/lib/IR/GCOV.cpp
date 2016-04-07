@@ -22,7 +22,6 @@
 #include "llvm/Support/raw_ostream.h"
 #include <algorithm>
 #include <system_error>
-
 using namespace llvm;
 
 //===----------------------------------------------------------------------===//
@@ -105,7 +104,7 @@ bool GCOVFile::readGCDA(GCOVBuffer &Buffer) {
 }
 
 /// dump - Dump GCOVFile content to dbgs() for debugging purposes.
-LLVM_DUMP_METHOD void GCOVFile::dump() const {
+void GCOVFile::dump() const {
   for (const auto &FPtr : Functions)
     FPtr->dump();
 }
@@ -345,7 +344,7 @@ uint64_t GCOVFunction::getExitCount() const {
 }
 
 /// dump - Dump GCOVFunction content to dbgs() for debugging purposes.
-LLVM_DUMP_METHOD void GCOVFunction::dump() const {
+void GCOVFunction::dump() const {
   dbgs() << "===== " << Name << " (" << Ident << ") @ " << Filename << ":"
          << LineNumber << "\n";
   for (const auto &Block : Blocks)
@@ -402,7 +401,7 @@ void GCOVBlock::collectLineCounts(FileInfo &FI) {
 }
 
 /// dump - Dump GCOVBlock content to dbgs() for debugging purposes.
-LLVM_DUMP_METHOD void GCOVBlock::dump() const {
+void GCOVBlock::dump() const {
   dbgs() << "Block : " << Number << " Counter : " << Counter << "\n";
   if (!SrcEdges.empty()) {
     dbgs() << "\tSource Edges : ";
@@ -501,7 +500,7 @@ public:
     OS << format("%5u:", LineNum) << Line << "\n";
   }
 };
-} // end anonymous namespace
+}
 
 /// Convert a path to a gcov filename. If PreservePaths is true, this
 /// translates "/" to "#", ".." to "^", and drops ".", to match gcov.
@@ -688,6 +687,7 @@ void FileInfo::print(raw_ostream &InfoOS, StringRef MainFilename,
   if (Options.FuncCoverage)
     printFuncCoverage(InfoOS);
   printFileCoverage(InfoOS);
+  return;
 }
 
 /// printFunctionSummary - Print function and block summary.

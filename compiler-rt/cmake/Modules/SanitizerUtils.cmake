@@ -84,9 +84,9 @@ macro(add_sanitizer_rt_version_list name)
 endmacro()
 
 # Add target to check code style for sanitizer runtimes.
-if(CMAKE_HOST_UNIX)
+if(UNIX)
   add_custom_target(SanitizerLintCheck
-    COMMAND env LLVM_CHECKOUT=${LLVM_MAIN_SRC_DIR} SILENT=1 TMPDIR=
+    COMMAND LLVM_CHECKOUT=${LLVM_MAIN_SRC_DIR} SILENT=1 TMPDIR=
       PYTHON_EXECUTABLE=${PYTHON_EXECUTABLE}
       COMPILER_RT=${COMPILER_RT_SOURCE_DIR}
       ${SANITIZER_LINT_SCRIPT}

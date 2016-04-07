@@ -89,7 +89,8 @@ bool Argument::hasNonNullAttr() const {
 /// in its containing function.
 bool Argument::hasByValAttr() const {
   if (!getType()->isPointerTy()) return false;
-  return hasAttribute(Attribute::ByVal);
+  return getParent()->getAttributes().
+    hasAttribute(getArgNo()+1, Attribute::ByVal);
 }
 
 bool Argument::hasSwiftSelfAttr() const {
@@ -106,7 +107,8 @@ bool Argument::hasSwiftErrorAttr() const {
 /// its containing function.
 bool Argument::hasInAllocaAttr() const {
   if (!getType()->isPointerTy()) return false;
-  return hasAttribute(Attribute::InAlloca);
+  return getParent()->getAttributes().
+    hasAttribute(getArgNo()+1, Attribute::InAlloca);
 }
 
 bool Argument::hasByValOrInAllocaAttr() const {
@@ -138,46 +140,53 @@ uint64_t Argument::getDereferenceableOrNullBytes() const {
 /// it in its containing function.
 bool Argument::hasNestAttr() const {
   if (!getType()->isPointerTy()) return false;
-  return hasAttribute(Attribute::Nest);
+  return getParent()->getAttributes().
+    hasAttribute(getArgNo()+1, Attribute::Nest);
 }
 
 /// hasNoAliasAttr - Return true if this argument has the noalias attribute on
 /// it in its containing function.
 bool Argument::hasNoAliasAttr() const {
   if (!getType()->isPointerTy()) return false;
-  return hasAttribute(Attribute::NoAlias);
+  return getParent()->getAttributes().
+    hasAttribute(getArgNo()+1, Attribute::NoAlias);
 }
 
 /// hasNoCaptureAttr - Return true if this argument has the nocapture attribute
 /// on it in its containing function.
 bool Argument::hasNoCaptureAttr() const {
   if (!getType()->isPointerTy()) return false;
-  return hasAttribute(Attribute::NoCapture);
+  return getParent()->getAttributes().
+    hasAttribute(getArgNo()+1, Attribute::NoCapture);
 }
 
 /// hasSRetAttr - Return true if this argument has the sret attribute on
 /// it in its containing function.
 bool Argument::hasStructRetAttr() const {
   if (!getType()->isPointerTy()) return false;
-  return hasAttribute(Attribute::StructRet);
+  return getParent()->getAttributes().
+    hasAttribute(getArgNo()+1, Attribute::StructRet);
 }
 
 /// hasReturnedAttr - Return true if this argument has the returned attribute on
 /// it in its containing function.
 bool Argument::hasReturnedAttr() const {
-  return hasAttribute(Attribute::Returned);
+  return getParent()->getAttributes().
+    hasAttribute(getArgNo()+1, Attribute::Returned);
 }
 
 /// hasZExtAttr - Return true if this argument has the zext attribute on it in
 /// its containing function.
 bool Argument::hasZExtAttr() const {
-  return hasAttribute(Attribute::ZExt);
+  return getParent()->getAttributes().
+    hasAttribute(getArgNo()+1, Attribute::ZExt);
 }
 
 /// hasSExtAttr Return true if this argument has the sext attribute on it in its
 /// containing function.
 bool Argument::hasSExtAttr() const {
-  return hasAttribute(Attribute::SExt);
+  return getParent()->getAttributes().
+    hasAttribute(getArgNo()+1, Attribute::SExt);
 }
 
 /// Return true if this argument has the readonly or readnone attribute on it
@@ -207,11 +216,6 @@ void Argument::removeAttr(AttributeSet AS) {
   getParent()->removeAttributes(getArgNo() + 1,
                                 AttributeSet::get(Parent->getContext(),
                                                   getArgNo() + 1, B));
-}
-
-/// hasAttribute - Checks if an argument has a given attribute.
-bool Argument::hasAttribute(Attribute::AttrKind Kind) const {
-  return getParent()->hasAttribute(getArgNo() + 1, Kind);
 }
 
 //===----------------------------------------------------------------------===//
@@ -302,28 +306,6 @@ void Function::BuildLazyArguments() const {
   const_cast<Function*>(this)->setValueSubclassData(SDC &= ~(1<<0));
 }
 
-void Function::stealArgumentListFrom(Function &Src) {
-  assert(isDeclaration() && "Expected no references to current arguments");
-
-  // Drop the current arguments, if any, and set the lazy argument bit.
-  if (!hasLazyArguments()) {
-    assert(llvm::all_of(ArgumentList,
-                        [](const Argument &A) { return A.use_empty(); }) &&
-           "Expected arguments to be unused in declaration");
-    ArgumentList.clear();
-    setValueSubclassData(getSubclassDataFromValue() | (1 << 0));
-  }
-
-  // Nothing to steal if Src has lazy arguments.
-  if (Src.hasLazyArguments())
-    return;
-
-  // Steal arguments from Src, and fix the lazy argument bits.
-  ArgumentList.splice(ArgumentList.end(), Src.ArgumentList);
-  setValueSubclassData(getSubclassDataFromValue() & ~(1 << 0));
-  Src.setValueSubclassData(Src.getSubclassDataFromValue() | (1 << 0));
-}
-
 size_t Function::arg_size() const {
   return getFunctionType()->getNumParams();
 }
@@ -374,12 +356,6 @@ void Function::addAttribute(unsigned i, Attribute::AttrKind attr) {
 void Function::addAttributes(unsigned i, AttributeSet attrs) {
   AttributeSet PAL = getAttributes();
   PAL = PAL.addAttributes(getContext(), i, attrs);
-  setAttributes(PAL);
-}
-
-void Function::removeAttribute(unsigned i, Attribute::AttrKind attr) {
-  AttributeSet PAL = getAttributes();
-  PAL = PAL.removeAttribute(getContext(), i, attr);
   setAttributes(PAL);
 }
 
@@ -440,30 +416,17 @@ void Function::copyAttributesFrom(const GlobalValue *Src) {
     setPrologueData(SrcF->getPrologueData());
 }
 
-/// Table of string intrinsic names indexed by enum value.
-static const char * const IntrinsicNameTable[] = {
-  "not_intrinsic",
-#define GET_INTRINSIC_NAME_TABLE
-#include "llvm/IR/Intrinsics.gen"
-#undef GET_INTRINSIC_NAME_TABLE
-};
-
 /// \brief This does the actual lookup of an intrinsic ID which
 /// matches the given function name.
 static Intrinsic::ID lookupIntrinsicID(const ValueName *ValName) {
-  StringRef Name = ValName->getKey();
+  unsigned Len = ValName->getKeyLength();
+  const char *Name = ValName->getKeyData();
 
-  ArrayRef<const char *> NameTable(&IntrinsicNameTable[1],
-                                   std::end(IntrinsicNameTable));
-  int Idx = Intrinsic::lookupLLVMIntrinsicByName(NameTable, Name);
-  Intrinsic::ID ID = static_cast<Intrinsic::ID>(Idx + 1);
-  if (ID == Intrinsic::not_intrinsic)
-    return ID;
+#define GET_FUNCTION_RECOGNIZER
+#include "llvm/IR/Intrinsics.gen"
+#undef GET_FUNCTION_RECOGNIZER
 
-  // If the intrinsic is not overloaded, require an exact match. If it is
-  // overloaded, require a prefix match.
-  bool IsPrefixMatch = Name.size() > strlen(NameTable[Idx]);
-  return IsPrefixMatch == isOverloaded(ID) ? ID : Intrinsic::not_intrinsic;
+  return Intrinsic::not_intrinsic;
 }
 
 void Function::recalculateIntrinsicID() {
@@ -518,9 +481,15 @@ static std::string getMangledTypeStr(Type* Ty) {
 
 std::string Intrinsic::getName(ID id, ArrayRef<Type*> Tys) {
   assert(id < num_intrinsics && "Invalid intrinsic ID!");
+  static const char * const Table[] = {
+    "not_intrinsic",
+#define GET_INTRINSIC_NAME_TABLE
+#include "llvm/IR/Intrinsics.gen"
+#undef GET_INTRINSIC_NAME_TABLE
+  };
   if (Tys.empty())
-    return IntrinsicNameTable[id];
-  std::string Result(IntrinsicNameTable[id]);
+    return Table[id];
+  std::string Result(Table[id]);
   for (unsigned i = 0; i < Tys.size(); ++i) {
     Result += "." + getMangledTypeStr(Tys[i]);
   }
@@ -916,17 +885,11 @@ bool Function::hasAddressTaken(const User* *PutOffender) const {
     const User *FU = U.getUser();
     if (isa<BlockAddress>(FU))
       continue;
-    if (!isa<CallInst>(FU) && !isa<InvokeInst>(FU)) {
-      if (PutOffender)
-        *PutOffender = FU;
-      return true;
-    }
+    if (!isa<CallInst>(FU) && !isa<InvokeInst>(FU))
+      return PutOffender ? (*PutOffender = FU, true) : true;
     ImmutableCallSite CS(cast<Instruction>(FU));
-    if (!CS.isCallee(&U)) {
-      if (PutOffender)
-        *PutOffender = FU;
-      return true;
-    }
+    if (!CS.isCallee(&U))
+      return PutOffender ? (*PutOffender = FU, true) : true;
   }
   return false;
 }

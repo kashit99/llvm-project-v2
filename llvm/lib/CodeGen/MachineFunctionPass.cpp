@@ -21,13 +21,11 @@
 #include "llvm/Analysis/MemoryDependenceAnalysis.h"
 #include "llvm/Analysis/ScalarEvolution.h"
 #include "llvm/Analysis/ScalarEvolutionAliasAnalysis.h"
-#include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineFunctionAnalysis.h"
 #include "llvm/CodeGen/Passes.h"
 #include "llvm/CodeGen/StackProtector.h"
 #include "llvm/IR/Dominators.h"
 #include "llvm/IR/Function.h"
-
 using namespace llvm;
 
 Pass *MachineFunctionPass::createPrinterPass(raw_ostream &O,
@@ -42,26 +40,7 @@ bool MachineFunctionPass::runOnFunction(Function &F) {
     return false;
 
   MachineFunction &MF = getAnalysis<MachineFunctionAnalysis>().getMF();
-  MachineFunctionProperties &MFProps = MF.getProperties();
-
-#ifndef NDEBUG
-  if (!MFProps.verifyRequiredProperties(RequiredProperties)) {
-    errs() << "MachineFunctionProperties required by " << getPassName()
-           << " pass are not met by function " << F.getName() << ".\n"
-           << "Required properties: ";
-    RequiredProperties.print(errs());
-    errs() << "\nCurrent properties: ";
-    MFProps.print(errs());
-    errs() << "\n";
-    llvm_unreachable("MachineFunctionProperties check failed");
-  }
-#endif
-
-  bool RV = runOnMachineFunction(MF);
-
-  MFProps.set(SetProperties);
-  MFProps.clear(ClearedProperties);
-  return RV;
+  return runOnMachineFunction(MF);
 }
 
 void MachineFunctionPass::getAnalysisUsage(AnalysisUsage &AU) const {
@@ -74,13 +53,13 @@ void MachineFunctionPass::getAnalysisUsage(AnalysisUsage &AU) const {
   // because CodeGen overloads that to mean preserving the MachineBasicBlock
   // CFG in addition to the LLVM IR CFG.
   AU.addPreserved<BasicAAWrapperPass>();
-  AU.addPreserved<DominanceFrontierWrapperPass>();
+  AU.addPreserved<DominanceFrontier>();
   AU.addPreserved<DominatorTreeWrapperPass>();
   AU.addPreserved<AAResultsWrapperPass>();
   AU.addPreserved<GlobalsAAWrapperPass>();
   AU.addPreserved<IVUsers>();
   AU.addPreserved<LoopInfoWrapperPass>();
-  AU.addPreserved<MemoryDependenceWrapperPass>();
+  AU.addPreserved<MemoryDependenceAnalysis>();
   AU.addPreserved<ScalarEvolutionWrapperPass>();
   AU.addPreserved<SCEVAAWrapperPass>();
   AU.addPreserved<StackProtector>();

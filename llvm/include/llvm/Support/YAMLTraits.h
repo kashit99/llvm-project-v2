@@ -894,16 +894,12 @@ private:
 // to [de]normalize an object for use with YAML conversion.
 template <typename TNorm, typename TFinal>
 struct MappingNormalizationHeap {
-  MappingNormalizationHeap(IO &i_o, TFinal &Obj,
-                           llvm::BumpPtrAllocator *allocator)
+  MappingNormalizationHeap(IO &i_o, TFinal &Obj)
     : io(i_o), BufPtr(nullptr), Result(Obj) {
     if ( io.outputting() ) {
       BufPtr = new (&Buffer) TNorm(io, Obj);
     }
-    else if (allocator) {
-      BufPtr = allocator->Allocate<TNorm>();
-      new (BufPtr) TNorm(io);
-    } else {
+    else {
       BufPtr = new TNorm(io);
     }
   }

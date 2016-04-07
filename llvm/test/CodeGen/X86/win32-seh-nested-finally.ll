@@ -43,35 +43,31 @@ attributes #3 = { noinline }
 ; CHECK: movl $-1, -[[state:[0-9]+]](%ebp)
 ; CHECK: movl {{.*}}, %fs:0
 ; CHECK: movl $1, -[[state]](%ebp)
-; CHECK: pushl $1
+; CHECK: movl $1, (%esp)
 ; CHECK: calll _f
-; CHECK: addl $4, %esp
 ; CHECK: movl $0, -[[state]](%ebp)
-; CHECK: pushl $2
+; CHECK: movl $2, (%esp)
 ; CHECK: calll _f
-; CHECK: addl $4, %esp
 ; CHECK: movl $-1, -[[state]](%ebp)
-; CHECK: pushl $3
+; CHECK: movl $3, (%esp)
 ; CHECK: calll _f
-; CHECK: addl $4, %esp
 ; CHECK: retl
 
 ; CHECK: LBB0_[[inner:[0-9]+]]: # %ehcleanup
 ; CHECK: pushl %ebp
 ; CHECK: addl $12, %ebp
-; CHECK: pushl $2
+; CHECK: movl $0, -[[state]](%ebp)
+; CHECK: movl $2, (%esp)
 ; CHECK: calll _f
-; CHECK: addl $4, %esp
-; CHECK: addl $4, %esp
 ; CHECK: popl %ebp
 ; CHECK: retl
 
 ; CHECK: LBB0_[[outer:[0-9]+]]: # %ehcleanup.3
 ; CHECK: pushl %ebp
 ; CHECK: addl $12, %ebp
-; CHECK: pushl $3
+; CHECK: movl $-1, -[[state]](%ebp)
+; CHECK: movl $3, (%esp)
 ; CHECK: calll _f
-; CHECK: addl $8, %esp
 ; CHECK: popl %ebp
 ; CHECK: retl
 

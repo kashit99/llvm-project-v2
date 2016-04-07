@@ -36,6 +36,7 @@
 #include "lldb/Symbol/TypeMap.h"
 #include "lldb/Target/Language.h"
 #include "lldb/Utility/LLDBAssert.h"
+#include "Plugins/Language/ObjC/ObjCLanguage.h"
 
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclObjC.h"

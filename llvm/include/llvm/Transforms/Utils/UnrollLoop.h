@@ -34,11 +34,10 @@ bool UnrollLoop(Loop *L, unsigned Count, unsigned TripCount, bool AllowRuntime,
                 LoopInfo *LI, ScalarEvolution *SE, DominatorTree *DT,
                 AssumptionCache *AC, bool PreserveLCSSA);
 
-bool UnrollRuntimeLoopRemainder(Loop *L, unsigned Count,
-                                bool AllowExpensiveTripCount,
-                                bool UseEpilogRemainder, LoopInfo *LI,
-                                ScalarEvolution *SE, DominatorTree *DT,
-                                bool PreserveLCSSA);
+bool UnrollRuntimeLoopProlog(Loop *L, unsigned Count,
+                             bool AllowExpensiveTripCount, LoopInfo *LI,
+                             ScalarEvolution *SE, DominatorTree *DT,
+                             bool PreserveLCSSA);
 
 MDNode *GetUnrollMetadata(MDNode *LoopID, StringRef Name);
 }

@@ -15,7 +15,6 @@
 #ifndef LLVM_TRANSFORMS_IPO_PASSMANAGERBUILDER_H
 #define LLVM_TRANSFORMS_IPO_PASSMANAGERBUILDER_H
 
-#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -60,9 +59,8 @@ class PassManagerBuilder {
 public:
   /// Extensions are passed the builder itself (so they can see how it is
   /// configured) as well as the pass manager to add stuff to.
-  typedef std::function<void(const PassManagerBuilder &Builder,
-                             legacy::PassManagerBase &PM)>
-      ExtensionFn;
+  typedef void (*ExtensionFn)(const PassManagerBuilder &Builder,
+                              legacy::PassManagerBase &PM);
   enum ExtensionPointTy {
     /// EP_EarlyAsPossible - This extension point allows adding passes before
     /// any other transformations, allowing them to see the code as it is coming
@@ -145,7 +143,7 @@ public:
 
 private:
   /// ExtensionList - This is list of all of the extensions that are registered.
-  std::vector<std::pair<ExtensionPointTy, ExtensionFn>> Extensions;
+  std::vector<std::pair<ExtensionPointTy, ExtensionFn> > Extensions;
 
 public:
   PassManagerBuilder();
@@ -161,11 +159,9 @@ private:
                          legacy::PassManagerBase &PM) const;
   void addInitialAliasAnalysisPasses(legacy::PassManagerBase &PM) const;
   void addLTOOptimizationPasses(legacy::PassManagerBase &PM);
-  void addEarlyLTOOptimizationPasses(legacy::PassManagerBase &PM);
   void addLateLTOOptimizationPasses(legacy::PassManagerBase &PM);
   void addPGOInstrPasses(legacy::PassManagerBase &MPM);
   void addFunctionSimplificationPasses(legacy::PassManagerBase &MPM);
-  void addInstructionCombiningPass(legacy::PassManagerBase &MPM) const;
 
 public:
   /// populateFunctionPassManager - This fills in the function pass manager,
@@ -186,7 +182,7 @@ public:
 struct RegisterStandardPasses {
   RegisterStandardPasses(PassManagerBuilder::ExtensionPointTy Ty,
                          PassManagerBuilder::ExtensionFn Fn) {
-    PassManagerBuilder::addGlobalExtension(Ty, std::move(Fn));
+    PassManagerBuilder::addGlobalExtension(Ty, Fn);
   }
 };
 

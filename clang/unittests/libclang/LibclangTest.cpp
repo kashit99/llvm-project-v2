@@ -485,7 +485,7 @@ TEST_F(LibclangReparseTest, clang_parseTranslationUnit2FullArgv) {
   WriteFile(Clang, "");
 
   const char *Argv[] = {Clang.c_str(), "-target", "arm-linux-gnueabi",
-                        "-stdlib=libstdc++", "--gcc-toolchain="};
+                        "--gcc-toolchain="};
 
   EXPECT_EQ(CXError_Success,
             clang_parseTranslationUnit2FullArgv(Index, Filename.c_str(), Argv,

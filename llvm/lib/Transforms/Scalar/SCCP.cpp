@@ -1094,7 +1094,7 @@ void SCCPSolver::visitLoadInst(LoadInst &I) {
   }
 
   // Transform load from a constant into a constant if possible.
-  if (Constant *C = ConstantFoldLoadFromConstPtr(Ptr, I.getType(), DL)) {
+  if (Constant *C = ConstantFoldLoadFromConstPtr(Ptr, DL)) {
     if (isa<UndefValue>(C))
       return;
     return markConstant(IV, &I, C);
@@ -1564,6 +1564,31 @@ FunctionPass *llvm::createSCCPPass() {
   return new SCCP();
 }
 
+static void DeleteInstructionInBlock(BasicBlock *BB) {
+  DEBUG(dbgs() << "  BasicBlock Dead:" << *BB);
+  ++NumDeadBlocks;
+
+  // Check to see if there are non-terminating instructions to delete.
+  if (isa<TerminatorInst>(BB->begin()))
+    return;
+
+  // Delete the instructions backwards, as it has a reduced likelihood of having
+  // to update as many def-use and use-def chains.
+  Instruction *EndInst = BB->getTerminator(); // Last not to be deleted.
+  while (EndInst != BB->begin()) {
+    // Delete the next to last instruction.
+    Instruction *Inst = &*--EndInst->getIterator();
+    if (!Inst->use_empty())
+      Inst->replaceAllUsesWith(UndefValue::get(Inst->getType()));
+    if (Inst->isEHPad()) {
+      EndInst = Inst;
+      continue;
+    }
+    BB->getInstList().erase(Inst);
+    ++NumInstRemoved;
+  }
+}
+
 // runOnFunction() - Run the Sparse Conditional Constant Propagation algorithm,
 // and return true if the function was modified.
 //
@@ -1600,11 +1625,7 @@ bool SCCP::runOnFunction(Function &F) {
 
   for (Function::iterator BB = F.begin(), E = F.end(); BB != E; ++BB) {
     if (!Solver.isBlockExecutable(&*BB)) {
-      DEBUG(dbgs() << "  BasicBlock Dead:" << *BB);
-
-      ++NumDeadBlocks;
-      NumInstRemoved += removeAllNonTerminatorAndEHPadInstructions(&*BB);
-
+      DeleteInstructionInBlock(&*BB);
       MadeChanges = true;
       continue;
     }
@@ -1802,13 +1823,18 @@ bool IPSCCP::runOnModule(Module &M) {
 
     for (Function::iterator BB = F->begin(), E = F->end(); BB != E; ++BB) {
       if (!Solver.isBlockExecutable(&*BB)) {
-        DEBUG(dbgs() << "  BasicBlock Dead:" << *BB);
-
-        ++NumDeadBlocks;
-        NumInstRemoved +=
-            changeToUnreachable(BB->getFirstNonPHI(), /*UseLLVMTrap=*/false);
-
+        DeleteInstructionInBlock(&*BB);
         MadeChanges = true;
+
+        TerminatorInst *TI = BB->getTerminator();
+        for (BasicBlock *Succ : TI->successors()) {
+          if (!Succ->empty() && isa<PHINode>(Succ->begin()))
+            Succ->removePredecessor(&*BB);
+        }
+        if (!TI->use_empty())
+          TI->replaceAllUsesWith(UndefValue::get(TI->getType()));
+        TI->eraseFromParent();
+        new UnreachableInst(M.getContext(), &*BB);
 
         if (&*BB != &F->front())
           BlocksToErase.push_back(&*BB);

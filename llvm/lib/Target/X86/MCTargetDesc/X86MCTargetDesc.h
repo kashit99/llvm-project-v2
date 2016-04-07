@@ -14,7 +14,6 @@
 #ifndef LLVM_LIB_TARGET_X86_MCTARGETDESC_X86MCTARGETDESC_H
 #define LLVM_LIB_TARGET_X86_MCTARGETDESC_X86MCTARGETDESC_H
 
-#include "llvm/MC/MCStreamer.h"
 #include "llvm/Support/DataTypes.h"
 #include <string>
 
@@ -27,6 +26,7 @@ class MCObjectWriter;
 class MCRegisterInfo;
 class MCSubtargetInfo;
 class MCRelocationInfo;
+class MCStreamer;
 class Target;
 class Triple;
 class StringRef;
@@ -56,7 +56,7 @@ std::string ParseX86Triple(const Triple &TT);
 
 unsigned getDwarfRegFlavour(const Triple &TT, bool isEH);
 
-void initLLVMToSEHAndCVRegMapping(MCRegisterInfo *MRI);
+void InitLLVM2SEHRegisterMapping(MCRegisterInfo *MRI);
 
 /// Create a X86 MCSubtargetInfo instance. This is exposed so Asm parser, etc.
 /// do not need to go through TargetRegistry.

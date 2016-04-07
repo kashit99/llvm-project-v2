@@ -32,9 +32,8 @@ class CFLAAResult : public AAResultBase<CFLAAResult> {
   struct FunctionInfo;
 
 public:
-  explicit CFLAAResult();
+  explicit CFLAAResult(const TargetLibraryInfo &TLI);
   CFLAAResult(CFLAAResult &&Arg);
-  ~CFLAAResult();
 
   /// Handle invalidation events from the new pass manager.
   ///
@@ -53,8 +52,13 @@ public:
   AliasResult query(const MemoryLocation &LocA, const MemoryLocation &LocB);
 
   AliasResult alias(const MemoryLocation &LocA, const MemoryLocation &LocB) {
-    if (LocA.Ptr == LocB.Ptr)
-      return LocA.Size == LocB.Size ? MustAlias : PartialAlias;
+    if (LocA.Ptr == LocB.Ptr) {
+      if (LocA.Size == LocB.Size) {
+        return MustAlias;
+      } else {
+        return PartialAlias;
+      }
+    }
 
     // Comparisons between global variables and other constants should be
     // handled by BasicAA.
@@ -62,8 +66,9 @@ public:
     // a GlobalValue and ConstantExpr, but every query needs to have at least
     // one Value tied to a Function, and neither GlobalValues nor ConstantExprs
     // are.
-    if (isa<Constant>(LocA.Ptr) && isa<Constant>(LocB.Ptr))
+    if (isa<Constant>(LocA.Ptr) && isa<Constant>(LocB.Ptr)) {
       return AAResultBase::alias(LocA, LocB);
+    }
 
     AliasResult QueryResult = query(LocA, LocB);
     if (QueryResult == MayAlias)
@@ -109,14 +114,20 @@ private:
 ///
 /// FIXME: We really should refactor CFL to use the analysis more heavily, and
 /// in particular to leverage invalidation to trigger re-computation of sets.
-class CFLAA : public AnalysisInfoMixin<CFLAA> {
-  friend AnalysisInfoMixin<CFLAA>;
-  static char PassID;
-
+class CFLAA {
 public:
   typedef CFLAAResult Result;
 
-  CFLAAResult run(Function &F, AnalysisManager<Function> &AM);
+  /// \brief Opaque, unique identifier for this analysis pass.
+  static void *ID() { return (void *)&PassID; }
+
+  CFLAAResult run(Function &F, AnalysisManager<Function> *AM);
+
+  /// \brief Provide access to a name for this pass for debugging purposes.
+  static StringRef name() { return "CFLAA"; }
+
+private:
+  static char PassID;
 };
 
 /// Legacy wrapper pass to provide the CFLAAResult object.

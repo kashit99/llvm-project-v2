@@ -10,7 +10,6 @@
 #define LLVM_TOOLS_LLVM_OBJDUMP_LLVM_OBJDUMP_H
 
 #include "llvm/ADT/StringRef.h"
-#include "llvm/DebugInfo/DIContext.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/DataTypes.h"
@@ -56,7 +55,6 @@ extern cl::opt<bool> SectionContents;
 extern cl::opt<bool> SymbolTable;
 extern cl::opt<bool> UnwindInfo;
 extern cl::opt<bool> PrintImmHex;
-extern cl::opt<DIDumpType> DwarfDumpType;
 
 // Various helper functions.
 void error(std::error_code ec);
@@ -85,7 +83,6 @@ void PrintSectionHeaders(const object::ObjectFile *o);
 void PrintSectionContents(const object::ObjectFile *o);
 void PrintSymbolTable(const object::ObjectFile *o);
 LLVM_ATTRIBUTE_NORETURN void report_error(StringRef File, std::error_code EC);
-LLVM_ATTRIBUTE_NORETURN void report_error(StringRef File, llvm::Error E);
 
 } // end namespace llvm
 

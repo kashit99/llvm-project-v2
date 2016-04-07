@@ -985,7 +985,7 @@ void StringLiteral::setString(const ASTContext &C, StringRef Str,
       break;
     }
     default:
-      llvm_unreachable("unsupported CharByteWidth");
+      assert(false && "unsupported CharByteWidth");
   }
 }
 
@@ -4026,18 +4026,16 @@ unsigned AtomicExpr::getNumSubExprs(AtomicOp Op) {
   llvm_unreachable("unknown atomic op");
 }
 
-QualType OMPArraySectionExpr::getBaseOriginalType(const Expr *Base) {
+QualType OMPArraySectionExpr::getBaseOriginalType(Expr *Base) {
   unsigned ArraySectionCount = 0;
   while (auto *OASE = dyn_cast<OMPArraySectionExpr>(Base->IgnoreParens())) {
     Base = OASE->getBase();
     ++ArraySectionCount;
   }
-  while (auto *ASE =
-             dyn_cast<ArraySubscriptExpr>(Base->IgnoreParenImpCasts())) {
+  while (auto *ASE = dyn_cast<ArraySubscriptExpr>(Base->IgnoreParens())) {
     Base = ASE->getBase();
     ++ArraySectionCount;
   }
-  Base = Base->IgnoreParenImpCasts();
   auto OriginalTy = Base->getType();
   if (auto *DRE = dyn_cast<DeclRefExpr>(Base))
     if (auto *PVD = dyn_cast<ParmVarDecl>(DRE->getDecl()))

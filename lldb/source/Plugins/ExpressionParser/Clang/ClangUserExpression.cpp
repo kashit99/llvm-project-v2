@@ -92,10 +92,10 @@ ClangUserExpression::ScanContext(ExecutionContext &exe_ctx, Error &err)
 
     m_target = exe_ctx.GetTargetPtr();
 
-    if (!(m_allow_cxx || m_allow_objc))
+    if (!m_target)
     {
         if (log)
-            log->Printf("  [CUE::SC] Settings inhibit C++ and Objective-C");
+            log->Printf("  [CUE::SC] Null target");
         return;
     }
 
@@ -113,6 +113,13 @@ ClangUserExpression::ScanContext(ExecutionContext &exe_ctx, Error &err)
     {
         if (log)
             log->Printf("  [CUE::SC] Null function");
+        return;
+    }
+
+    if (!(m_allow_cxx || m_allow_objc))
+    {
+        if (log)
+            log->Printf("  [CUE::SC] Settings inhibit C++ and Objective-C");
         return;
     }
 
@@ -324,9 +331,12 @@ ApplyObjcCastHack(std::string &expr)
 }
 
 bool
-ClangUserExpression::Parse(DiagnosticManager &diagnostic_manager, ExecutionContext &exe_ctx,
-                           lldb_private::ExecutionPolicy execution_policy, bool keep_result_in_memory,
-                           bool generate_debug_info)
+ClangUserExpression::Parse (DiagnosticManager &diagnostic_manager,
+                            ExecutionContext &exe_ctx,
+                            lldb_private::ExecutionPolicy execution_policy,
+                            bool keep_result_in_memory,
+                            bool generate_debug_info,
+                            uint32_t line_offset)
 {
     Log *log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_EXPRESSIONS));
 
@@ -408,7 +418,7 @@ ClangUserExpression::Parse(DiagnosticManager &diagnostic_manager, ExecutionConte
     else
     {
         std::unique_ptr<ExpressionSourceCode> source_code(
-            ExpressionSourceCode::CreateWrapped(prefix.c_str(), m_expr_text.c_str()));
+                                                          ExpressionSourceCode::CreateWrapped(prefix.c_str(), m_expr_text.c_str()));
 
         if (m_in_cplusplus_method)
             lang_type = lldb::eLanguageTypeC_plus_plus;
@@ -417,7 +427,19 @@ ClangUserExpression::Parse(DiagnosticManager &diagnostic_manager, ExecutionConte
         else
             lang_type = lldb::eLanguageTypeC;
 
-        if (!source_code->GetText(m_transformed_text, lang_type, m_const_object, m_in_static_method, exe_ctx))
+        m_options.SetLanguage(lang_type);
+        uint32_t first_body_line = 0;
+        
+        if (!source_code->GetText(m_transformed_text,
+                                  lang_type,
+                                  m_const_object,
+                                  m_needs_object_ptr,
+                                  m_in_static_method,
+                                  m_is_swift_class,
+                                  m_options,
+                                  m_swift_generic_info,
+                                  exe_ctx,
+                                  first_body_line))
         {
             diagnostic_manager.PutCString(eDiagnosticSeverityError, "couldn't construct expression body");
             return false;
@@ -529,7 +551,6 @@ ClangUserExpression::Parse(DiagnosticManager &diagnostic_manager, ExecutionConte
                                                      exe_ctx,
                                                      m_can_interpret,
                                                      execution_policy);
-
         if (!jit_error.Success())
         {
             const char *error_cstr = jit_error.AsCString();
@@ -583,19 +604,24 @@ ClangUserExpression::Parse(DiagnosticManager &diagnostic_manager, ExecutionConte
         }
     }
 
-    if (generate_debug_info)
+    if (m_options.GetGenerateDebugInfo())
     {
-        lldb::ModuleSP jit_module_sp(m_execution_unit_sp->GetJITModule());
-
-        if (jit_module_sp)
+        StreamString jit_module_name;
+        jit_module_name.Printf("%s%u", FunctionName(), m_options.GetExpressionNumber());
+        const char *limit_file = m_options.GetPoundLineFilePath();
+        FileSpec limit_file_spec;
+        uint32_t limit_start_line = 0;
+        uint32_t limit_end_line = 0;
+        if (limit_file)
         {
-            ConstString const_func_name(FunctionName());
-            FileSpec jit_file;
-            jit_file.GetFilename() = const_func_name;
-            jit_module_sp->SetFileSpecAndObjectName (jit_file, ConstString());
-            m_jit_module_wp = jit_module_sp;
-            target->GetImages().Append(jit_module_sp);
+            limit_file_spec.SetFile(limit_file, false);
+            limit_start_line = m_options.GetPoundLineLine();
+            limit_end_line = limit_start_line + std::count(m_expr_text.begin(), m_expr_text.end(), '\n');
         }
+        m_execution_unit_sp->CreateJITModule(jit_module_name.GetString().c_str(),
+                                             limit_file ? &limit_file_spec : NULL,
+                                             limit_start_line,
+                                             limit_end_line);
     }
 
     ResetDeclMap(); // Make this go away since we don't need any of its state after parsing.  This also gets rid of any

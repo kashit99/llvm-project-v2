@@ -334,7 +334,7 @@ void MachObjectWriter::writeNlist(MachSymbolData &MSD,
     if (AliaseeInfo)
       SectionIndex = AliaseeInfo->SectionIndex;
     Symbol = AliasedSymbol;
-    // FIXME: Should this update Data as well?
+    // FIXME: Should this update Data as well?  Do we need OrigSymbol at all?
   }
 
   // Set the N_TYPE bits. See <mach-o/nlist.h>.
@@ -377,9 +377,7 @@ void MachObjectWriter::writeNlist(MachSymbolData &MSD,
 
   // The Mach-O streamer uses the lowest 16-bits of the flags for the 'desc'
   // value.
-  bool EncodeAsAltEntry =
-    IsAlias && cast<MCSymbolMachO>(OrigSymbol).isAltEntry();
-  write16(cast<MCSymbolMachO>(Symbol)->getEncodedFlags(EncodeAsAltEntry));
+  write16(cast<MCSymbolMachO>(Symbol)->getEncodedFlags());
   if (is64Bit())
     write64(Address);
   else

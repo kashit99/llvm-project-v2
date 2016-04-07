@@ -92,5 +92,3 @@ class LinuxCoreTestCase(TestBase):
             self.assertEqual(frame.GetLineEntry().GetLine(),
                     line_number("main.c", "Frame " + backtrace[i]))
             self.assertEqual(frame.FindVariable("F").GetValueAsUnsigned(), ord(backtrace[i][0]))
-
-        self.dbg.DeleteTarget(target)

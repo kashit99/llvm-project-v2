@@ -43,7 +43,6 @@ public:
     AU.setPreservesAll();
  }
 
-  void visitBranchInst(BranchInst &I);
   void visitLoadInst(LoadInst &I);
 
 };
@@ -58,28 +57,13 @@ INITIALIZE_PASS_END(AMDGPUAnnotateUniformValues, DEBUG_TYPE,
 
 char AMDGPUAnnotateUniformValues::ID = 0;
 
-static void setUniformMetadata(Instruction *I) {
-  I->setMetadata("amdgpu.uniform", MDNode::get(I->getContext(), {}));
-}
-
-void AMDGPUAnnotateUniformValues::visitBranchInst(BranchInst &I) {
-  if (I.isUnconditional())
-    return;
-
-  Value *Cond = I.getCondition();
-  if (!DA->isUniform(Cond))
-    return;
-
-  setUniformMetadata(I.getParent()->getTerminator());
-}
-
 void AMDGPUAnnotateUniformValues::visitLoadInst(LoadInst &I) {
   Value *Ptr = I.getPointerOperand();
   if (!DA->isUniform(Ptr))
     return;
 
   if (Instruction *PtrI = dyn_cast<Instruction>(Ptr))
-    setUniformMetadata(PtrI);
+    PtrI->setMetadata("amdgpu.uniform", MDNode::get(I.getContext(), {}));
 
 }
 

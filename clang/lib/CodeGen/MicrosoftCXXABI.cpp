@@ -1494,16 +1494,19 @@ void MicrosoftCXXABI::EmitDestructorCall(CodeGenFunction &CGF,
                                                     This, false);
   }
 
-  CGF.EmitCXXDestructorCall(DD, Callee, This.getPointer(),
-                            /*ImplicitParam=*/nullptr,
-                            /*ImplicitParamTy=*/QualType(), nullptr,
-                            getFromDtorType(Type));
+  CGF.EmitCXXStructorCall(DD, Callee, ReturnValueSlot(), This.getPointer(),
+                          /*ImplicitParam=*/nullptr,
+                          /*ImplicitParamTy=*/QualType(), nullptr,
+                          getFromDtorType(Type));
 }
 
 void MicrosoftCXXABI::emitVTableBitSetEntries(VPtrInfo *Info,
                                               const CXXRecordDecl *RD,
                                               llvm::GlobalVariable *VTable) {
-  if (!CGM.NeedVTableBitSets())
+  if (!getContext().getLangOpts().Sanitize.has(SanitizerKind::CFIVCall) &&
+      !getContext().getLangOpts().Sanitize.has(SanitizerKind::CFINVCall) &&
+      !getContext().getLangOpts().Sanitize.has(SanitizerKind::CFIDerivedCast) &&
+      !getContext().getLangOpts().Sanitize.has(SanitizerKind::CFIUnrelatedCast))
     return;
 
   llvm::NamedMDNode *BitsetsMD =
@@ -1519,13 +1522,13 @@ void MicrosoftCXXABI::emitVTableBitSetEntries(VPtrInfo *Info,
           : CharUnits::Zero();
 
   if (Info->PathToBaseWithVPtr.empty()) {
-    if (!CGM.IsBitSetBlacklistedRecord(RD))
+    if (!CGM.IsCFIBlacklistedRecord(RD))
       CGM.CreateVTableBitSetEntry(BitsetsMD, VTable, AddressPoint, RD);
     return;
   }
 
   // Add a bitset entry for the least derived base belonging to this vftable.
-  if (!CGM.IsBitSetBlacklistedRecord(Info->PathToBaseWithVPtr.back()))
+  if (!CGM.IsCFIBlacklistedRecord(Info->PathToBaseWithVPtr.back()))
     CGM.CreateVTableBitSetEntry(BitsetsMD, VTable, AddressPoint,
                                 Info->PathToBaseWithVPtr.back());
 
@@ -1545,12 +1548,12 @@ void MicrosoftCXXABI::emitVTableBitSetEntries(VPtrInfo *Info,
       Offset = VBI->second.VBaseOffset;
     if (!Offset.isZero())
       return;
-    if (!CGM.IsBitSetBlacklistedRecord(DerivedRD))
+    if (!CGM.IsCFIBlacklistedRecord(DerivedRD))
       CGM.CreateVTableBitSetEntry(BitsetsMD, VTable, AddressPoint, DerivedRD);
   }
 
   // Finally do the same for the most derived class.
-  if (Info->FullOffsetInMDC.isZero() && !CGM.IsBitSetBlacklistedRecord(RD))
+  if (Info->FullOffsetInMDC.isZero() && !CGM.IsCFIBlacklistedRecord(RD))
     CGM.CreateVTableBitSetEntry(BitsetsMD, VTable, AddressPoint, RD);
 }
 
@@ -1564,14 +1567,12 @@ void MicrosoftCXXABI::emitVTableDefinitions(CodeGenVTables &CGVT,
     if (VTable->hasInitializer())
       continue;
 
+    llvm::Constant *RTTI = getContext().getLangOpts().RTTIData
+                               ? getMSCompleteObjectLocator(RD, Info)
+                               : nullptr;
+
     const VTableLayout &VTLayout =
       VFTContext.getVFTableLayout(RD, Info->FullOffsetInMDC);
-
-    llvm::Constant *RTTI = nullptr;
-    if (any_of(VTLayout.vtable_components(),
-               [](const VTableComponent &VTC) { return VTC.isRTTIKind(); }))
-      RTTI = getMSCompleteObjectLocator(RD, Info);
-
     llvm::Constant *Init = CGVT.CreateVTableInitializer(
         RD, VTLayout.vtable_component_begin(),
         VTLayout.getNumVTableComponents(), VTLayout.vtable_thunk_begin(),
@@ -1670,16 +1671,7 @@ llvm::GlobalVariable *MicrosoftCXXABI::getAddrOfVTable(const CXXRecordDecl *RD,
   SmallString<256> VFTableName;
   mangleVFTableName(getMangleContext(), RD, VFPtr, VFTableName);
 
-  // Classes marked __declspec(dllimport) need vftables generated on the
-  // import-side in order to support features like constexpr.  No other
-  // translation unit relies on the emission of the local vftable, translation
-  // units are expected to generate them as needed.
-  //
-  // Because of this unique behavior, we maintain this logic here instead of
-  // getVTableLinkage.
-  llvm::GlobalValue::LinkageTypes VFTableLinkage =
-      RD->hasAttr<DLLImportAttr>() ? llvm::GlobalValue::LinkOnceODRLinkage
-                                   : CGM.getVTableLinkage(RD);
+  llvm::GlobalValue::LinkageTypes VFTableLinkage = CGM.getVTableLinkage(RD);
   bool VFTableComesFromAnotherTU =
       llvm::GlobalValue::isAvailableExternallyLinkage(VFTableLinkage) ||
       llvm::GlobalValue::isExternalLinkage(VFTableLinkage);
@@ -1752,7 +1744,9 @@ llvm::GlobalVariable *MicrosoftCXXABI::getAddrOfVTable(const CXXRecordDecl *RD,
   if (C)
     VTable->setComdat(C);
 
-  if (RD->hasAttr<DLLExportAttr>())
+  if (RD->hasAttr<DLLImportAttr>())
+    VFTable->setDLLStorageClass(llvm::GlobalValue::DLLImportStorageClass);
+  else if (RD->hasAttr<DLLExportAttr>())
     VFTable->setDLLStorageClass(llvm::GlobalValue::DLLExportStorageClass);
 
   VFTablesMap[ID] = VFTable;
@@ -1819,9 +1813,9 @@ llvm::Value *MicrosoftCXXABI::getVirtualFunctionPointer(CodeGenFunction &CGF,
 
   MicrosoftVTableContext::MethodVFTableLocation ML =
       CGM.getMicrosoftVTableContext().getMethodVFTableLocation(GD);
-  if (CGM.NeedVTableBitSets())
-    CGF.EmitBitSetCodeForVCall(getClassAtVTableLocation(getContext(), GD, ML),
-                               VTable, Loc);
+  if (CGF.SanOpts.has(SanitizerKind::CFIVCall))
+    CGF.EmitVTablePtrCheck(getClassAtVTableLocation(getContext(), GD, ML),
+                           VTable, CodeGenFunction::CFITCK_VCall, Loc);
 
   llvm::Value *VFuncPtr =
       Builder.CreateConstInBoundsGEP1_64(VTable, ML.Index, "vfn");
@@ -1849,9 +1843,10 @@ llvm::Value *MicrosoftCXXABI::EmitVirtualDestructorCall(
       DtorType == Dtor_Deleting);
 
   This = adjustThisArgumentForVirtualFunctionCall(CGF, GD, This, true);
-  RValue RV =
-      CGF.EmitCXXDestructorCall(Dtor, Callee, This.getPointer(), ImplicitParam,
-                                Context.IntTy, CE, StructorType::Deleting);
+  RValue RV = CGF.EmitCXXStructorCall(Dtor, Callee, ReturnValueSlot(),
+                                      This.getPointer(),
+                                      ImplicitParam, Context.IntTy, CE,
+                                      StructorType::Deleting);
   return RV.getScalarVal();
 }
 
@@ -2035,9 +2030,6 @@ void MicrosoftCXXABI::emitVBTableDefinition(const VPtrInfo &VBT,
     llvm::ArrayType::get(CGM.IntTy, Offsets.size());
   llvm::Constant *Init = llvm::ConstantArray::get(VBTableType, Offsets);
   GV->setInitializer(Init);
-
-  if (RD->hasAttr<DLLImportAttr>())
-    GV->setLinkage(llvm::GlobalVariable::AvailableExternallyLinkage);
 }
 
 llvm::Value *MicrosoftCXXABI::performThisAdjustment(CodeGenFunction &CGF,
@@ -2310,7 +2302,7 @@ struct ResetGuardBit final : EHScopeStack::Cleanup {
     CGBuilderTy &Builder = CGF.Builder;
     llvm::LoadInst *LI = Builder.CreateLoad(Guard);
     llvm::ConstantInt *Mask =
-        llvm::ConstantInt::get(CGF.IntTy, ~(1ULL << GuardNum));
+        llvm::ConstantInt::get(CGF.IntTy, ~(1U << GuardNum));
     Builder.CreateStore(Builder.CreateAnd(LI, Mask), Guard);
   }
 };
@@ -2423,7 +2415,7 @@ void MicrosoftCXXABI::EmitGuardedInit(CodeGenFunction &CGF, const VarDecl &D,
     // }
 
     // Test our bit from the guard variable.
-    llvm::ConstantInt *Bit = llvm::ConstantInt::get(GuardTy, 1ULL << GuardNum);
+    llvm::ConstantInt *Bit = llvm::ConstantInt::get(GuardTy, 1U << GuardNum);
     llvm::LoadInst *LI = Builder.CreateLoad(GuardAddr);
     llvm::Value *IsInitialized =
         Builder.CreateICmpNE(Builder.CreateAnd(LI, Bit), Zero);

@@ -210,7 +210,6 @@ public:
   unsigned getLength() const {
     return EndScanList ? EndScanList - Position : 1;
   }
-  void setEndScanList(const char *pos) { EndScanList = pos; }
 
   bool isIntArg() const { return (kind >= IntArgBeg && kind <= IntArgEnd) ||
     kind == FreeBSDrArg || kind == FreeBSDyArg; }
@@ -414,6 +413,11 @@ public:
   bool isObjCArg() const { return kind >= ObjCBeg && kind <= ObjCEnd; }
   bool isDoubleArg() const { return kind >= DoubleArgBeg &&
                                     kind <= DoubleArgEnd; }
+  unsigned getLength() const {
+      // Conversion specifiers currently only are represented by
+      // single characters, but we be flexible.
+    return 1;
+  }
 
   static bool classof(const analyze_format_string::ConversionSpecifier *CS) {
     return CS->isPrintfKind();
@@ -541,6 +545,8 @@ public:
 
   ScanfConversionSpecifier(const char *pos, Kind k)
     : ConversionSpecifier(false, pos, k) {}
+
+  void setEndScanList(const char *pos) { EndScanList = pos; }
 
   static bool classof(const analyze_format_string::ConversionSpecifier *CS) {
     return !CS->isPrintfKind();

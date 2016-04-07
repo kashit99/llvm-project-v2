@@ -8,7 +8,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/Frontend/CompilerInstance.h"
-#include "clang/APINotes/APINotesReader.h"
 #include "clang/AST/ASTConsumer.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/Decl.h"
@@ -350,34 +349,30 @@ void CompilerInstance::createPreprocessor(TranslationUnitKind TUKind) {
     AttachDependencyGraphGen(*PP, DepOpts.DOTOutputFile,
                              getHeaderSearchOpts().Sysroot);
 
-  // If we don't have a collector, but we are collecting module dependencies,
-  // then we're the top level compiler instance and need to create one.
-  if (!ModuleDepCollector && !DepOpts.ModuleDependencyOutputDir.empty()) {
-    ModuleDepCollector = std::make_shared<ModuleDependencyCollector>(
-        DepOpts.ModuleDependencyOutputDir);
-  }
-
-  if (ModuleDepCollector)
-    addDependencyCollector(ModuleDepCollector);
-
   for (auto &Listener : DependencyCollectors)
     Listener->attachToPreprocessor(*PP);
 
+  // If we don't have a collector, but we are collecting module dependencies,
+  // then we're the top level compiler instance and need to create one.
+  if (!ModuleDepCollector && !DepOpts.ModuleDependencyOutputDir.empty())
+    ModuleDepCollector = std::make_shared<ModuleDependencyCollector>(
+        DepOpts.ModuleDependencyOutputDir);
+
   // Handle generating header include information, if requested.
   if (DepOpts.ShowHeaderIncludes)
-    AttachHeaderIncludeGen(*PP, DepOpts);
+    AttachHeaderIncludeGen(*PP, DepOpts.ExtraDeps);
   if (!DepOpts.HeaderIncludeOutputFile.empty()) {
     StringRef OutputPath = DepOpts.HeaderIncludeOutputFile;
     if (OutputPath == "-")
       OutputPath = "";
-    AttachHeaderIncludeGen(*PP, DepOpts,
+    AttachHeaderIncludeGen(*PP, DepOpts.ExtraDeps,
                            /*ShowAllHeaders=*/true, OutputPath,
                            /*ShowDepth=*/false);
   }
 
   if (DepOpts.PrintShowIncludes) {
-    AttachHeaderIncludeGen(*PP, DepOpts,
-                           /*ShowAllHeaders=*/true, /*OutputPath=*/"",
+    AttachHeaderIncludeGen(*PP, DepOpts.ExtraDeps,
+                           /*ShowAllHeaders=*/false, /*OutputPath=*/"",
                            /*ShowDepth=*/true, /*MSStyle=*/true);
   }
 }
@@ -472,7 +467,7 @@ IntrusiveRefCntPtr<ASTReader> CompilerInstance::createPCHExternalASTSource(
 // Code Completion
 
 static bool EnableCodeCompletion(Preprocessor &PP,
-                                 StringRef Filename,
+                                 const std::string &Filename,
                                  unsigned Line,
                                  unsigned Column) {
   // Tell the source manager to chop off the given file at a specific
@@ -538,21 +533,10 @@ void CompilerInstance::createSema(TranslationUnitKind TUKind,
                          TUKind, CompletionConsumer));
 
   // If we're building a module, notify the API notes manager.
-  StringRef currentModuleName = getLangOpts().CurrentModule;
-  if (!currentModuleName.empty()) {
+  if (!getLangOpts().CurrentModule.empty()) {
     (void)TheSema->APINotes.loadCurrentModuleAPINotes(
-            currentModuleName,
+            getLangOpts().CurrentModule,
             getAPINotesOpts().ModuleSearchPaths);
-    // Check for any attributes we should add to the module
-    if (auto curReader = TheSema->APINotes.getCurrentModuleReader()) {
-      auto currentModule = getPreprocessor().getCurrentModule();
-      assert(currentModule && "how can we have a reader for it?");
-
-      // swift_infer_import_as_member
-      if (curReader->getModuleOptions().SwiftInferImportAsMember) {
-        currentModule->IsSwiftInferImportAsMember = true;
-      }
-    }
   }
 }
 
@@ -735,17 +719,16 @@ std::unique_ptr<llvm::raw_pwrite_stream> CompilerInstance::createOutputFile(
 // Initialization Utilities
 
 bool CompilerInstance::InitializeSourceManager(const FrontendInputFile &Input){
-  return InitializeSourceManager(
-      Input, getDiagnostics(), getFileManager(), getSourceManager(),
-      hasPreprocessor() ? &getPreprocessor().getHeaderSearchInfo() : nullptr,
-      getDependencyOutputOpts(), getFrontendOpts());
+  return InitializeSourceManager(Input, getDiagnostics(),
+                                 getFileManager(), getSourceManager(), 
+                                 getFrontendOpts());
 }
 
-// static
-bool CompilerInstance::InitializeSourceManager(
-    const FrontendInputFile &Input, DiagnosticsEngine &Diags,
-    FileManager &FileMgr, SourceManager &SourceMgr, HeaderSearch *HS,
-    DependencyOutputOptions &DepOpts, const FrontendOptions &Opts) {
+bool CompilerInstance::InitializeSourceManager(const FrontendInputFile &Input,
+                                               DiagnosticsEngine &Diags,
+                                               FileManager &FileMgr,
+                                               SourceManager &SourceMgr,
+                                               const FrontendOptions &Opts) {
   SrcMgr::CharacteristicKind
     Kind = Input.isSystem() ? SrcMgr::C_System : SrcMgr::C_User;
 
@@ -761,35 +744,7 @@ bool CompilerInstance::InitializeSourceManager(
 
   // Figure out where to get and map in the main file.
   if (InputFile != "-") {
-    const FileEntry *File;
-    if (Opts.FindPchSource.empty()) {
-      File = FileMgr.getFile(InputFile, /*OpenFile=*/true);
-    } else {
-      // When building a pch file in clang-cl mode, the .h file is built as if
-      // it was included by a cc file.  Since the driver doesn't know about
-      // all include search directories, the frontend must search the input
-      // file through HeaderSearch here, as if it had been included by the
-      // cc file at Opts.FindPchSource.
-      const FileEntry *FindFile = FileMgr.getFile(Opts.FindPchSource);
-      if (!FindFile) {
-        Diags.Report(diag::err_fe_error_reading) << Opts.FindPchSource;
-        return false;
-      }
-      const DirectoryLookup *UnusedCurDir;
-      SmallVector<std::pair<const FileEntry *, const DirectoryEntry *>, 16>
-          Includers;
-      Includers.push_back(std::make_pair(FindFile, FindFile->getDir()));
-      File = HS->LookupFile(InputFile, SourceLocation(), /*isAngled=*/false,
-                            /*FromDir=*/nullptr,
-                            /*CurDir=*/UnusedCurDir, Includers,
-                            /*SearchPath=*/nullptr,
-                            /*RelativePath=*/nullptr,
-                            /*RequestingModule=*/nullptr,
-                            /*SuggestedModule=*/nullptr, /*SkipCache=*/true);
-      // Also add the header to /showIncludes output.
-      if (File)
-        DepOpts.ShowIncludesPretendHeader = File->getName();
-    }
+    const FileEntry *File = FileMgr.getFile(InputFile, /*OpenFile=*/true);
     if (!File) {
       Diags.Report(diag::err_fe_error_reading) << InputFile;
       return false;
@@ -849,8 +804,7 @@ bool CompilerInstance::ExecuteAction(FrontendAction &Act) {
 
   // Create the target instance.
   setTarget(TargetInfo::CreateTargetInfo(getDiagnostics(),
-                                         getInvocation().TargetOpts,
-                                         getInvocation().getCodeGenOpts()));
+                                         getInvocation().TargetOpts));
   if (!hasTarget())
     return false;
 
@@ -858,8 +812,7 @@ bool CompilerInstance::ExecuteAction(FrontendAction &Act) {
   if (getLangOpts().CUDA && !getFrontendOpts().AuxTriple.empty()) {
     std::shared_ptr<TargetOptions> TO(new TargetOptions);
     TO->Triple = getFrontendOpts().AuxTriple;
-    setAuxTarget(TargetInfo::CreateTargetInfo(getDiagnostics(), TO,
-                                              getInvocation().getCodeGenOpts()));
+    setAuxTarget(TargetInfo::CreateTargetInfo(getDiagnostics(), TO));
   }
 
   // Inform the target of the language options.
@@ -1344,6 +1297,8 @@ void CompilerInstance::createModuleManager() {
 
     if (TheDependencyFileGenerator)
       TheDependencyFileGenerator->AttachToASTReader(*ModuleManager);
+    if (ModuleDepCollector)
+      ModuleDepCollector->attachToASTReader(*ModuleManager);
     for (auto &Listener : DependencyCollectors)
       Listener->attachToASTReader(*ModuleManager);
   }
@@ -1438,7 +1393,8 @@ CompilerInstance::loadModule(SourceLocation ImportLoc,
   // when both the preprocessor and parser see the same import declaration.
   if (ImportLoc.isValid() && LastModuleImportLoc == ImportLoc) {
     // Make the named module visible.
-    if (LastModuleImportResult && ModuleName != getLangOpts().CurrentModule)
+    if (LastModuleImportResult && ModuleName != getLangOpts().CurrentModule &&
+        ModuleName != getLangOpts().ImplementationOfModule)
       ModuleManager->makeModuleVisible(LastModuleImportResult, Visibility,
                                        ImportLoc);
     return LastModuleImportResult;
@@ -1452,7 +1408,8 @@ CompilerInstance::loadModule(SourceLocation ImportLoc,
   if (Known != KnownModules.end()) {
     // Retrieve the cached top-level module.
     Module = Known->second;    
-  } else if (ModuleName == getLangOpts().CurrentModule) {
+  } else if (ModuleName == getLangOpts().CurrentModule ||
+             ModuleName == getLangOpts().ImplementationOfModule) {
     // This is the module we're building. 
     Module = PP->getHeaderSearchInfo().lookupModule(ModuleName);
     Known = KnownModules.insert(std::make_pair(Path[0].first, Module)).first;
@@ -1630,6 +1587,10 @@ CompilerInstance::loadModule(SourceLocation ImportLoc,
     }
   }
 
+  // Don't make the module visible if we are in the implementation.
+  if (ModuleName == getLangOpts().ImplementationOfModule)
+    return ModuleLoadResult(Module, false);
+  
   // Make the named module visible, if it's not already part of the module
   // we are parsing.
   if (ModuleName != getLangOpts().CurrentModule) {

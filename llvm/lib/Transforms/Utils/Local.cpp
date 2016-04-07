@@ -1221,28 +1221,7 @@ bool llvm::replaceDbgDeclareForAlloca(AllocaInst *AI, Value *NewAllocaAddress,
                            Deref, Offset);
 }
 
-unsigned llvm::removeAllNonTerminatorAndEHPadInstructions(BasicBlock *BB) {
-  unsigned NumDeadInst = 0;
-  // Delete the instructions backwards, as it has a reduced likelihood of
-  // having to update as many def-use and use-def chains.
-  Instruction *EndInst = BB->getTerminator(); // Last not to be deleted.
-  while (EndInst != &BB->front()) {
-    // Delete the next to last instruction.
-    Instruction *Inst = &*--EndInst->getIterator();
-    if (!Inst->use_empty() && !Inst->getType()->isTokenTy())
-      Inst->replaceAllUsesWith(UndefValue::get(Inst->getType()));
-    if (Inst->isEHPad() || Inst->getType()->isTokenTy()) {
-      EndInst = Inst;
-      continue;
-    }
-    if (!isa<DbgInfoIntrinsic>(Inst))
-      ++NumDeadInst;
-    Inst->eraseFromParent();
-  }
-  return NumDeadInst;
-}
-
-unsigned llvm::changeToUnreachable(Instruction *I, bool UseLLVMTrap) {
+void llvm::changeToUnreachable(Instruction *I, bool UseLLVMTrap) {
   BasicBlock *BB = I->getParent();
   // Loop over all of the successors, removing BB's entry from any PHI
   // nodes.
@@ -1260,15 +1239,12 @@ unsigned llvm::changeToUnreachable(Instruction *I, bool UseLLVMTrap) {
   new UnreachableInst(I->getContext(), I);
 
   // All instructions after this are dead.
-  unsigned NumInstrsRemoved = 0;
   BasicBlock::iterator BBI = I->getIterator(), BBE = BB->end();
   while (BBI != BBE) {
     if (!BBI->use_empty())
       BBI->replaceAllUsesWith(UndefValue::get(BBI->getType()));
     BB->getInstList().erase(BBI++);
-    ++NumInstrsRemoved;
   }
-  return NumInstrsRemoved;
 }
 
 /// changeToCall - Convert the specified invoke into a normal call.
@@ -1592,7 +1568,7 @@ unsigned llvm::replaceDominatedUsesWith(Value *From, Value *To,
        UI != UE;) {
     Use &U = *UI++;
     auto *I = cast<Instruction>(U.getUser());
-    if (DT.properlyDominates(BB, I->getParent())) {
+    if (DT.dominates(BB, I->getParent())) {
       U.set(To);
       DEBUG(dbgs() << "Replace dominated use of '" << From->getName() << "' as "
                    << *To << " in " << *U << "\n");
@@ -1603,18 +1579,18 @@ unsigned llvm::replaceDominatedUsesWith(Value *From, Value *To,
 }
 
 bool llvm::callsGCLeafFunction(ImmutableCallSite CS) {
+  if (isa<IntrinsicInst>(CS.getInstruction()))
+    // Most LLVM intrinsics are things which can never take a safepoint.
+    // As a result, we don't need to have the stack parsable at the
+    // callsite.  This is a highly useful optimization since intrinsic
+    // calls are fairly prevalent, particularly in debug builds.
+    return true;
+
   // Check if the function is specifically marked as a gc leaf function.
   if (CS.hasFnAttr("gc-leaf-function"))
     return true;
-  if (const Function *F = CS.getCalledFunction()) {
-    if (F->hasFnAttribute("gc-leaf-function"))
-      return true;
-
-    if (auto IID = F->getIntrinsicID())
-      // Most LLVM intrinsics do not take safepoints.
-      return IID != Intrinsic::experimental_gc_statepoint &&
-             IID != Intrinsic::experimental_deoptimize;
-  }
+  if (const Function *F = CS.getCalledFunction())
+    return F->hasFnAttribute("gc-leaf-function");
 
   return false;
 }

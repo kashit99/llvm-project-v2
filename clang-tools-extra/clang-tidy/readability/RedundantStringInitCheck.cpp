@@ -61,8 +61,7 @@ void RedundantStringInitCheck::registerMatchers(MatchFinder *Finder) {
                         hasInitializer(
                             expr(anyOf(EmptyStringCtorExpr,
                                        EmptyStringCtorExprWithTemporaries))
-                            .bind("expr"))),
-                unless(parmVarDecl()))
+                            .bind("expr"))))
           .bind("decl"),
       this);
 }

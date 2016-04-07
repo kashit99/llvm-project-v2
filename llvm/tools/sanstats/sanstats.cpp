@@ -51,12 +51,12 @@ const char *ReadModule(char SizeofPtr, const char *Begin, const char *End) {
   while (Begin != End && *Begin)
     ++Begin;
   if (Begin == End)
-    return nullptr;
+    return 0;
   StringRef Filename(FilenameBegin, Begin - FilenameBegin);
 
   ++Begin;
   if (Begin == End)
-    return nullptr;
+    return 0;
 
   symbolize::LLVMSymbolizer::Options SymbolizerOptions;
   SymbolizerOptions.Demangle = ClDemangle;
@@ -70,11 +70,11 @@ const char *ReadModule(char SizeofPtr, const char *Begin, const char *End) {
     Begin += SizeofPtr;
 
     if (Begin > End)
-      return nullptr;
+      return 0;
     if (Addr == 0 && Data == 0)
       return Begin;
     if (Begin == End)
-      return nullptr;
+      return 0;
 
     ErrorOr<DILineInfo> LineInfo = Symbolizer.symbolizeCode(Filename, Addr);
     if (LineInfo) {
@@ -129,7 +129,7 @@ int main(int argc, char **argv) {
   char SizeofPtr = *Begin++;
   while (Begin != End) {
     Begin = ReadModule(SizeofPtr, Begin, End);
-    if (Begin == nullptr) {
+    if (Begin == 0) {
       errs() << argv[0] << ": " << ClInputFile << ": short read\n";
       return 1;
     }

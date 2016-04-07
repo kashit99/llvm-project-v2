@@ -10,21 +10,6 @@
 // This file describes the Hexagon V60 instructions in TableGen format.
 //
 //===----------------------------------------------------------------------===//
-def alignedload : PatFrag<(ops node:$addr), (load $addr), [{
-  return isAlignedMemNode(dyn_cast<MemSDNode>(N));
-}]>;
-
-def unalignedload : PatFrag<(ops node:$addr), (load $addr), [{
-  return !isAlignedMemNode(dyn_cast<MemSDNode>(N));
-}]>;
-
-def alignedstore : PatFrag<(ops node:$val, node:$addr), (store $val, $addr), [{
-  return isAlignedMemNode(dyn_cast<MemSDNode>(N));
-}]>;
-
-def unalignedstore : PatFrag<(ops node:$val, node:$addr), (store $val, $addr), [{
-  return !isAlignedMemNode(dyn_cast<MemSDNode>(N));
-}]>;
 
 
 // Vector store
@@ -117,7 +102,7 @@ let Itinerary = CVI_VM_TMP_LD, Type = TypeCVI_VM_TMP_LD, hasNewValue = 1 in {
 //===----------------------------------------------------------------------===//
 // Vector stores with base + immediate offset - unconditional
 //===----------------------------------------------------------------------===//
-let addrMode = BaseImmOffset, accessSize = Vector64Access, isPredicable = 1 in
+let addrMode = BaseImmOffset, accessSize = Vector64Access in
 class T_vstore_ai <string mnemonic, string baseOp, Operand ImmOp,
                    RegisterClass RC, bit isNT>
   : V6_STInst <(outs), (ins IntRegs:$src1, ImmOp:$src2, RC:$src3),
@@ -148,16 +133,16 @@ let isNVStorable = 1, isNonTemporal = 1 in {
 }
 
 let Itinerary = CVI_VM_STU, Type = TypeCVI_VM_STU in {
-  def V6_vS32Ub_ai      : T_vstore_ai_64B <"vmemu", "vS32Ub_ai">,
+  def V6_vS32Ub_ai      : T_vstore_ai_64B <"vmemu", "vs32Ub_ai">,
                           V6_vS32Ub_ai_enc;
-  def V6_vS32Ub_ai_128B : T_vstore_ai_128B <"vmemu", "vS32Ub_ai">,
+  def V6_vS32Ub_ai_128B : T_vstore_ai_128B <"vmemu", "vs32Ub_ai">,
                           V6_vS32Ub_ai_128B_enc;
 }
 //===----------------------------------------------------------------------===//
 // Vector stores with base + immediate offset - unconditional new
 //===----------------------------------------------------------------------===//
 let addrMode = BaseImmOffset, isNewValue = 1, opNewValue = 2, isNVStore = 1,
-    isPredicable = 1, Itinerary = CVI_VM_NEW_ST, Type = TypeCVI_VM_NEW_ST in
+    Itinerary = CVI_VM_NEW_ST, Type = TypeCVI_VM_NEW_ST in
 class T_vstore_new_ai <string baseOp, Operand ImmOp, RegisterClass RC, bit isNT>
   : V6_STInst <(outs ), (ins IntRegs:$src1, ImmOp:$src2, RC:$src3),
     "vmem($src1+#$src2)"#!if(isNT, ":nt", "")#" = $src3.new">, NewValueRel {
@@ -399,15 +384,13 @@ let Itinerary = CVI_VM_TMP_LD, Type = TypeCVI_VM_TMP_LD in {
 //===----------------------------------------------------------------------===//
 // Post increment vector stores with immediate offset.
 //===----------------------------------------------------------------------===//
-let addrMode = PostInc, isPredicable = 1 in
+let addrMode = PostInc in
 class T_vstore_pi <string mnemonic, string baseOp, Operand ImmOp,
                    RegisterClass RC, bit isNT>
   : V6_STInst <(outs IntRegs:$_dst_),
                (ins IntRegs:$src1, ImmOp:$src2, RC:$src3),
     mnemonic#"($src1++#$src2)"#!if(isNT, ":nt", "")#" = $src3", [],
-    "$src1 = $_dst_">, NewValueRel {
-  let BaseOpcode = baseOp;
-}
+    "$src1 = $_dst_">, NewValueRel;
 
 let accessSize = Vector64Access in
 class T_vstore_pi_64B <string mnemonic, string baseOp, bit isNT = 0>
@@ -415,7 +398,7 @@ class T_vstore_pi_64B <string mnemonic, string baseOp, bit isNT = 0>
 
 let isCodeGenOnly = 1, accessSize = Vector128Access in
 class T_vstore_pi_128B <string mnemonic, string baseOp, bit isNT = 0>
-  : T_vstore_pi <mnemonic, baseOp#"128B", s3_7Imm, VectorRegs128B, isNT>;
+  : T_vstore_pi <mnemonic, baseOp, s3_7Imm, VectorRegs128B, isNT>;
 
 let isNVStorable = 1 in {
   def V6_vS32b_pi      : T_vstore_pi_64B <"vmem", "vS32b_pi">, V6_vS32b_pi_enc;
@@ -443,7 +426,7 @@ let Itinerary = CVI_VM_STU, Type = TypeCVI_VM_STU in {
 //===----------------------------------------------------------------------===//
 let addrMode = PostInc, isNVStore = 1 in
 let Itinerary = CVI_VM_NEW_ST, Type = TypeCVI_VM_NEW_ST, isNewValue = 1,
-    isPredicable = 1, opNewValue = 3, isNVStore = 1 in
+    opNewValue = 3, isNVStore = 1 in
 class T_vstore_new_pi <string baseOp, Operand ImmOp, RegisterClass RC, bit isNT>
   : V6_STInst <(outs IntRegs:$_dst_),
                (ins IntRegs:$src1, ImmOp:$src2, RC:$src3),
@@ -661,7 +644,6 @@ let Itinerary = CVI_VM_TMP_LD, Type = TypeCVI_VM_TMP_LD in {
 //===----------------------------------------------------------------------===//
 // Post increment vector stores with register offset
 //===----------------------------------------------------------------------===//
-let isPredicable = 1 in
 class T_vstore_ppu <string mnemonic, bit isNT = 0>
   : V6_STInst <(outs IntRegs:$_dst_),
                (ins IntRegs:$src1, ModRegs:$src2, VectorRegs:$src3),
@@ -683,7 +665,7 @@ def V6_vS32Ub_ppu   : T_vstore_ppu <"vmemu">, V6_vS32Ub_ppu_enc;
 // Post increment .new vector stores with register offset
 //===----------------------------------------------------------------------===//
 let Itinerary = CVI_VM_NEW_ST, Type = TypeCVI_VM_NEW_ST, isNewValue = 1,
-    isPredicable = 1, opNewValue = 3, isNVStore = 1 in
+    opNewValue = 3, isNVStore = 1 in
 class T_vstore_new_ppu <bit isNT = 0>
   : V6_STInst <(outs IntRegs:$_dst_),
                (ins IntRegs:$src1, ModRegs:$src2, VectorRegs:$src3),
@@ -803,46 +785,30 @@ defm : STrivv_pats <v16i64, v32i64>;
 
 multiclass vS32b_ai_pats <ValueType VTSgl, ValueType VTDbl> {
   // Aligned stores
-  def : Pat<(alignedstore (VTSgl VectorRegs:$src1), IntRegs:$addr),
+  def : Pat<(store (VTSgl VectorRegs:$src1), IntRegs:$addr),
             (V6_vS32b_ai IntRegs:$addr, #0, (VTSgl VectorRegs:$src1))>,
-            Requires<[UseHVXSgl]>;
-  def : Pat<(unalignedstore (VTSgl VectorRegs:$src1), IntRegs:$addr),
-            (V6_vS32Ub_ai IntRegs:$addr, #0, (VTSgl VectorRegs:$src1))>,
             Requires<[UseHVXSgl]>;
 
   // 128B Aligned stores
-  def : Pat<(alignedstore (VTDbl VectorRegs128B:$src1), IntRegs:$addr),
+  def : Pat<(store (VTDbl VectorRegs128B:$src1), IntRegs:$addr),
             (V6_vS32b_ai_128B IntRegs:$addr, #0, (VTDbl VectorRegs128B:$src1))>,
-            Requires<[UseHVXDbl]>;
-  def : Pat<(unalignedstore (VTDbl VectorRegs128B:$src1), IntRegs:$addr),
-            (V6_vS32Ub_ai_128B IntRegs:$addr, #0, (VTDbl VectorRegs128B:$src1))>,
             Requires<[UseHVXDbl]>;
 
   // Fold Add R+IFF into vector store.
-  let AddedComplexity = 10 in {
-    def : Pat<(alignedstore (VTSgl VectorRegs:$src1),
-                     (add IntRegs:$src2, s4_6ImmPred:$offset)),
-              (V6_vS32b_ai IntRegs:$src2, s4_6ImmPred:$offset,
-                           (VTSgl VectorRegs:$src1))>,
-              Requires<[UseHVXSgl]>;
-    def : Pat<(unalignedstore (VTSgl VectorRegs:$src1),
-                     (add IntRegs:$src2, s4_6ImmPred:$offset)),
-              (V6_vS32Ub_ai IntRegs:$src2, s4_6ImmPred:$offset,
-                           (VTSgl VectorRegs:$src1))>,
-              Requires<[UseHVXSgl]>;
+  let AddedComplexity = 10 in
+  def : Pat<(store (VTSgl VectorRegs:$src1),
+                   (add IntRegs:$src2, s4_6ImmPred:$offset)),
+            (V6_vS32b_ai IntRegs:$src2, s4_6ImmPred:$offset,
+                         (VTSgl VectorRegs:$src1))>,
+            Requires<[UseHVXSgl]>;
 
-    // Fold Add R+IFF into vector store 128B.
-    def : Pat<(alignedstore (VTDbl VectorRegs128B:$src1),
-                     (add IntRegs:$src2, s4_7ImmPred:$offset)),
-              (V6_vS32b_ai_128B IntRegs:$src2, s4_7ImmPred:$offset,
-                                (VTDbl VectorRegs128B:$src1))>,
-              Requires<[UseHVXDbl]>;
-    def : Pat<(unalignedstore (VTDbl VectorRegs128B:$src1),
-                     (add IntRegs:$src2, s4_7ImmPred:$offset)),
-              (V6_vS32Ub_ai_128B IntRegs:$src2, s4_7ImmPred:$offset,
-                                (VTDbl VectorRegs128B:$src1))>,
-              Requires<[UseHVXDbl]>;
-  }
+  // Fold Add R+IFF into vector store 128B.
+  let AddedComplexity = 10 in
+  def : Pat<(store (VTDbl VectorRegs128B:$src1),
+                   (add IntRegs:$src2, s4_7ImmPred:$offset)),
+            (V6_vS32b_ai_128B IntRegs:$src2, s4_7ImmPred:$offset,
+                              (VTDbl VectorRegs128B:$src1))>,
+            Requires<[UseHVXDbl]>;
 }
 
 defm : vS32b_ai_pats <v64i8,  v128i8>;
@@ -877,37 +843,25 @@ defm : LDrivv_pats <v16i64, v32i64>;
 
 multiclass vL32b_ai_pats <ValueType VTSgl, ValueType VTDbl> {
   // Aligned loads
-  def : Pat < (VTSgl (alignedload IntRegs:$addr)),
+  def : Pat < (VTSgl (load IntRegs:$addr)),
               (V6_vL32b_ai IntRegs:$addr, #0) >,
-              Requires<[UseHVXSgl]>;
-  def : Pat < (VTSgl (unalignedload IntRegs:$addr)),
-              (V6_vL32Ub_ai IntRegs:$addr, #0) >,
               Requires<[UseHVXSgl]>;
 
   // 128B Load
-  def : Pat < (VTDbl (alignedload IntRegs:$addr)),
+  def : Pat < (VTDbl (load IntRegs:$addr)),
               (V6_vL32b_ai_128B IntRegs:$addr, #0) >,
-              Requires<[UseHVXDbl]>;
-  def : Pat < (VTDbl (unalignedload IntRegs:$addr)),
-              (V6_vL32Ub_ai_128B IntRegs:$addr, #0) >,
               Requires<[UseHVXDbl]>;
 
   // Fold Add R+IFF into vector load.
-  let AddedComplexity = 10 in {
-    def : Pat<(VTDbl (alignedload (add IntRegs:$src2, s4_7ImmPred:$offset))),
-              (V6_vL32b_ai_128B IntRegs:$src2, s4_7ImmPred:$offset)>,
-               Requires<[UseHVXDbl]>;
-    def : Pat<(VTDbl (unalignedload (add IntRegs:$src2, s4_7ImmPred:$offset))),
-              (V6_vL32Ub_ai_128B IntRegs:$src2, s4_7ImmPred:$offset)>,
-               Requires<[UseHVXDbl]>;
+  let AddedComplexity = 10 in
+  def : Pat<(VTDbl (load (add IntRegs:$src2, s4_7ImmPred:$offset))),
+            (V6_vL32b_ai_128B IntRegs:$src2, s4_7ImmPred:$offset)>,
+             Requires<[UseHVXDbl]>;
 
-    def : Pat<(VTSgl (alignedload (add IntRegs:$src2, s4_6ImmPred:$offset))),
-              (V6_vL32b_ai IntRegs:$src2, s4_6ImmPred:$offset)>,
-              Requires<[UseHVXSgl]>;
-    def : Pat<(VTSgl (unalignedload (add IntRegs:$src2, s4_6ImmPred:$offset))),
-              (V6_vL32Ub_ai IntRegs:$src2, s4_6ImmPred:$offset)>,
-              Requires<[UseHVXSgl]>;
-  }
+  let AddedComplexity = 10 in
+  def : Pat<(VTSgl (load (add IntRegs:$src2, s4_6ImmPred:$offset))),
+            (V6_vL32b_ai IntRegs:$src2, s4_6ImmPred:$offset)>,
+            Requires<[UseHVXSgl]>;
 }
 
 defm : vL32b_ai_pats <v64i8,  v128i8>;

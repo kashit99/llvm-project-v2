@@ -174,11 +174,11 @@ def MOV32rs : I<0x8C, MRMDestReg, (outs GR32:$dst), (ins SEGMENT_REG:$src),
 def MOV64rs : RI<0x8C, MRMDestReg, (outs GR64:$dst), (ins SEGMENT_REG:$src),
                  "mov{q}\t{$src, $dst|$dst, $src}", [], IIC_MOV_REG_SR>;
 
-def MOV16ms : I<0x8C, MRMDestMem, (outs), (ins i16mem:$dst, SEGMENT_REG:$src),
+def MOV16ms : I<0x8C, MRMDestMem, (outs i16mem:$dst), (ins SEGMENT_REG:$src),
                 "mov{w}\t{$src, $dst|$dst, $src}", [], IIC_MOV_MEM_SR>, OpSize16;
-def MOV32ms : I<0x8C, MRMDestMem, (outs), (ins i32mem:$dst, SEGMENT_REG:$src),
+def MOV32ms : I<0x8C, MRMDestMem, (outs i32mem:$dst), (ins SEGMENT_REG:$src),
                 "mov{l}\t{$src, $dst|$dst, $src}", [], IIC_MOV_MEM_SR>, OpSize32;
-def MOV64ms : RI<0x8C, MRMDestMem, (outs), (ins i64mem:$dst, SEGMENT_REG:$src),
+def MOV64ms : RI<0x8C, MRMDestMem, (outs i64mem:$dst), (ins SEGMENT_REG:$src),
                  "mov{q}\t{$src, $dst|$dst, $src}", [], IIC_MOV_MEM_SR>;
 
 def MOV16sr : I<0x8E, MRMSrcReg, (outs SEGMENT_REG:$dst), (ins GR16:$src),
@@ -248,7 +248,7 @@ def STR32r : I<0x00, MRM1r, (outs GR32:$dst), (ins),
                "str{l}\t$dst", [], IIC_STR>, TB, OpSize32;
 def STR64r : RI<0x00, MRM1r, (outs GR64:$dst), (ins),
                 "str{q}\t$dst", [], IIC_STR>, TB;
-def STRm   : I<0x00, MRM1m, (outs), (ins i16mem:$dst),
+def STRm   : I<0x00, MRM1m, (outs i16mem:$dst), (ins),
                "str{w}\t$dst", [], IIC_STR>, TB;
 
 def LTRr : I<0x00, MRM3r, (outs), (ins GR16:$src),
@@ -389,21 +389,21 @@ def VERWm : I<0x00, MRM5m, (outs), (ins i16mem:$seg),
 // Descriptor-table support instructions
 
 let SchedRW = [WriteSystem] in {
-def SGDT16m : I<0x01, MRM0m, (outs), (ins opaque48mem:$dst),
+def SGDT16m : I<0x01, MRM0m, (outs opaque48mem:$dst), (ins),
               "sgdt{w}\t$dst", [], IIC_SGDT>, TB, OpSize16, Requires<[Not64BitMode]>;
-def SGDT32m : I<0x01, MRM0m, (outs), (ins opaque48mem:$dst),
+def SGDT32m : I<0x01, MRM0m, (outs opaque48mem:$dst), (ins),
               "sgdt{l}\t$dst", [], IIC_SGDT>, OpSize32, TB, Requires <[Not64BitMode]>;
-def SGDT64m : I<0x01, MRM0m, (outs), (ins opaque80mem:$dst),
+def SGDT64m : I<0x01, MRM0m, (outs opaque80mem:$dst), (ins),
               "sgdt{q}\t$dst", [], IIC_SGDT>, TB, Requires <[In64BitMode]>;
-def SIDT16m : I<0x01, MRM1m, (outs), (ins opaque48mem:$dst),
+def SIDT16m : I<0x01, MRM1m, (outs opaque48mem:$dst), (ins),
               "sidt{w}\t$dst", [], IIC_SIDT>, TB, OpSize16, Requires<[Not64BitMode]>;
-def SIDT32m : I<0x01, MRM1m, (outs), (ins opaque48mem:$dst),
+def SIDT32m : I<0x01, MRM1m, (outs opaque48mem:$dst), (ins),
               "sidt{l}\t$dst", []>, OpSize32, TB, Requires <[Not64BitMode]>;
-def SIDT64m : I<0x01, MRM1m, (outs), (ins opaque80mem:$dst),
+def SIDT64m : I<0x01, MRM1m, (outs opaque80mem:$dst), (ins),
               "sidt{q}\t$dst", []>, TB, Requires <[In64BitMode]>;
 def SLDT16r : I<0x00, MRM0r, (outs GR16:$dst), (ins),
                 "sldt{w}\t$dst", [], IIC_SLDT>, TB, OpSize16;
-def SLDT16m : I<0x00, MRM0m, (outs), (ins i16mem:$dst),
+def SLDT16m : I<0x00, MRM0m, (outs i16mem:$dst), (ins),
                 "sldt{w}\t$dst", [], IIC_SLDT>, TB;
 def SLDT32r : I<0x00, MRM0r, (outs GR32:$dst), (ins),
                 "sldt{l}\t$dst", [], IIC_SLDT>, OpSize32, TB;
@@ -412,7 +412,7 @@ def SLDT32r : I<0x00, MRM0r, (outs GR32:$dst), (ins),
 //   extension.
 def SLDT64r : RI<0x00, MRM0r, (outs GR64:$dst), (ins),
                  "sldt{q}\t$dst", [], IIC_SLDT>, TB;
-def SLDT64m : RI<0x00, MRM0m, (outs), (ins i16mem:$dst),
+def SLDT64m : RI<0x00, MRM0m, (outs i16mem:$dst), (ins),
                  "sldt{q}\t$dst", [], IIC_SLDT>, TB;
 
 def LGDT16m : I<0x01, MRM2m, (outs), (ins opaque48mem:$src),
@@ -454,7 +454,7 @@ def SMSW64r : RI<0x01, MRM4r, (outs GR64:$dst), (ins),
                  "smsw{q}\t$dst", [], IIC_SMSW>, TB;
 
 // For memory operands, there is only a 16-bit form
-def SMSW16m : I<0x01, MRM4m, (outs), (ins i16mem:$dst),
+def SMSW16m : I<0x01, MRM4m, (outs i16mem:$dst), (ins),
                 "smsw{w}\t$dst", [], IIC_SMSW>, TB;
 
 def LMSW16r : I<0x01, MRM6r, (outs), (ins GR16:$src),

@@ -128,11 +128,6 @@ LLVMContext::LLVMContext() : pImpl(new LLVMContextImpl(*this)) {
   assert(AlignID == MD_align && "align kind id drifted");
   (void)AlignID;
 
-  // Create the 'llvm.loop' metadata kind.
-  unsigned LoopID = getMDKindID("llvm.loop");
-  assert(LoopID == MD_loop && "llvm.loop kind id drifted");
-  (void)LoopID;
-
   auto *DeoptEntry = pImpl->getOrInsertBundleTag("deopt");
   assert(DeoptEntry->second == LLVMContext::OB_deopt &&
          "deopt operand bundle id drifted!");
@@ -142,11 +137,6 @@ LLVMContext::LLVMContext() : pImpl(new LLVMContextImpl(*this)) {
   assert(FuncletEntry->second == LLVMContext::OB_funclet &&
          "funclet operand bundle id drifted!");
   (void)FuncletEntry;
-
-  auto *GCTransitionEntry = pImpl->getOrInsertBundleTag("gc-transition");
-  assert(GCTransitionEntry->second == LLVMContext::OB_gc_transition &&
-         "gc-transition operand bundle id drifted!");
-  (void)GCTransitionEntry;
 }
 LLVMContext::~LLVMContext() { delete pImpl; }
 
@@ -223,9 +213,27 @@ static bool isDiagnosticEnabled(const DiagnosticInfo &DI) {
   // pattern, passed via one of the -pass-remarks* flags, matches the name of
   // the pass that is emitting the diagnostic. If there is no match, ignore the
   // diagnostic and return.
-  if (auto *Remark = dyn_cast<DiagnosticInfoOptimizationBase>(&DI))
-    return Remark->isEnabled();
-
+  switch (DI.getKind()) {
+  case llvm::DK_OptimizationRemark:
+    if (!cast<DiagnosticInfoOptimizationRemark>(DI).isEnabled())
+      return false;
+    break;
+  case llvm::DK_OptimizationRemarkMissed:
+    if (!cast<DiagnosticInfoOptimizationRemarkMissed>(DI).isEnabled())
+      return false;
+    break;
+  case llvm::DK_OptimizationRemarkAnalysis:
+    if (!cast<DiagnosticInfoOptimizationRemarkAnalysis>(DI).isEnabled())
+      return false;
+    break;
+  case llvm::DK_OptimizationRemarkAnalysisFPCommute:
+    if (!cast<DiagnosticInfoOptimizationRemarkAnalysisFPCommute>(DI)
+             .isEnabled())
+      return false;
+    break;
+  default:
+    break;
+  }
   return true;
 }
 
@@ -313,9 +321,7 @@ void LLVMContext::deleteGC(const Function &Fn) {
   pImpl->GCNames.erase(&Fn);
 }
 
-bool LLVMContext::shouldDiscardValueNames() const {
-  return pImpl->DiscardValueNames;
-}
+bool LLVMContext::discardValueNames() { return pImpl->DiscardValueNames; }
 
 void LLVMContext::setDiscardValueNames(bool Discard) {
   pImpl->DiscardValueNames = Discard;

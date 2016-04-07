@@ -212,30 +212,6 @@ TEST(TripleTest, ParsedIDs) {
   EXPECT_EQ(Triple::UnknownOS, T.getOS());
   EXPECT_EQ(Triple::UnknownEnvironment, T.getEnvironment());
 
-  T = Triple("lanai-unknown-unknown");
-  EXPECT_EQ(Triple::lanai, T.getArch());
-  EXPECT_EQ(Triple::UnknownVendor, T.getVendor());
-  EXPECT_EQ(Triple::UnknownOS, T.getOS());
-  EXPECT_EQ(Triple::UnknownEnvironment, T.getEnvironment());
-
-  T = Triple("lanai");
-  EXPECT_EQ(Triple::lanai, T.getArch());
-  EXPECT_EQ(Triple::UnknownVendor, T.getVendor());
-  EXPECT_EQ(Triple::UnknownOS, T.getOS());
-  EXPECT_EQ(Triple::UnknownEnvironment, T.getEnvironment());
-
-  T = Triple("amdgcn-mesa-mesa3d");
-  EXPECT_EQ(Triple::amdgcn, T.getArch());
-  EXPECT_EQ(Triple::Mesa, T.getVendor());
-  EXPECT_EQ(Triple::Mesa3D, T.getOS());
-  EXPECT_EQ(Triple::UnknownEnvironment, T.getEnvironment());
-
-  T = Triple("amdgcn-amd-amdhsa");
-  EXPECT_EQ(Triple::amdgcn, T.getArch());
-  EXPECT_EQ(Triple::AMD, T.getVendor());
-  EXPECT_EQ(Triple::AMDHSA, T.getOS());
-  EXPECT_EQ(Triple::UnknownEnvironment, T.getEnvironment());
-
   T = Triple("huh");
   EXPECT_EQ(Triple::UnknownArch, T.getArch());
 }
@@ -510,11 +486,6 @@ TEST(TripleTest, BitWidthPredicates) {
   EXPECT_TRUE(T.isArch16Bit());
   EXPECT_FALSE(T.isArch32Bit());
   EXPECT_FALSE(T.isArch64Bit());
-
-  T.setArch(Triple::lanai);
-  EXPECT_FALSE(T.isArch16Bit());
-  EXPECT_TRUE(T.isArch32Bit());
-  EXPECT_FALSE(T.isArch64Bit());
 }
 
 TEST(TripleTest, BitWidthArchVariants) {
@@ -682,10 +653,6 @@ TEST(TripleTest, EndianArchVariants) {
 
   T.setArch(Triple::thumbeb);
   EXPECT_EQ(Triple::thumbeb, T.getBigEndianArchVariant().getArch());
-  EXPECT_EQ(Triple::UnknownArch, T.getLittleEndianArchVariant().getArch());
-
-  T.setArch(Triple::lanai);
-  EXPECT_EQ(Triple::lanai, T.getBigEndianArchVariant().getArch());
   EXPECT_EQ(Triple::UnknownArch, T.getLittleEndianArchVariant().getArch());
 }
 

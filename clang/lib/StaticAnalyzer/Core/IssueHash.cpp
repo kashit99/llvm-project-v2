@@ -132,11 +132,8 @@ static std::string NormalizeLine(const SourceManager &SM, FullSourceLoc &L,
 
   StringRef Str = GetNthLineOfFile(SM.getBuffer(L.getFileID(), L),
                                    L.getExpansionLineNumber());
-  StringRef::size_type col = Str.find_first_not_of(Whitespaces);
-  if (col == StringRef::npos)
-    col = 1; // The line only contains whitespace.
-  else
-    col++;
+  unsigned col = Str.find_first_not_of(Whitespaces);
+  col++;
   SourceLocation StartOfLine =
       SM.translateLineCol(SM.getFileID(L), L.getExpansionLineNumber(), col);
   llvm::MemoryBuffer *Buffer =

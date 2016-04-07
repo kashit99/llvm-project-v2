@@ -67,7 +67,7 @@ way to model this. Again, this tutorial won't dwell on good software
 engineering practices: for our purposes, adding a virtual method is
 simplest.
 
-The second thing we want is an "LogError" method like we used for the
+The second thing we want is an "Error" method like we used for the
 parser, which will be used to report errors found during code generation
 (for example, use of an undeclared parameter):
 
@@ -77,8 +77,8 @@ parser, which will be used to report errors found during code generation
     static IRBuilder<> Builder(getGlobalContext());
     static std::map<std::string, Value*> NamedValues;
 
-    Value *LogErrorV(const char *Str) {
-      LogError(Str);
+    Value *ErrorV(const char *Str) {
+      Error(Str);
       return nullptr;
     }
 
@@ -133,7 +133,7 @@ are all uniqued together and shared. For this reason, the API uses the
       // Look this variable up in the function.
       Value *V = NamedValues[Name];
       if (!V)
-        LogErrorV("Unknown variable name");
+        ErrorV("Unknown variable name");
       return V;
     }
 
@@ -168,7 +168,7 @@ variables <LangImpl7.html#user-defined-local-variables>`_.
         return Builder.CreateUIToFP(L, Type::getDoubleTy(getGlobalContext()),
                                     "booltmp");
       default:
-        return LogErrorV("invalid binary operator");
+        return ErrorV("invalid binary operator");
       }
     }
 
@@ -214,11 +214,11 @@ would return 0.0 and -1.0, depending on the input value.
       // Look up the name in the global module table.
       Function *CalleeF = TheModule->getFunction(Callee);
       if (!CalleeF)
-        return LogErrorV("Unknown function referenced");
+        return ErrorV("Unknown function referenced");
 
       // If argument mismatch error.
       if (CalleeF->arg_size() != Args.size())
-        return LogErrorV("Incorrect # arguments passed");
+        return ErrorV("Incorrect # arguments passed");
 
       std::vector<Value *> ArgsV;
       for (unsigned i = 0, e = Args.size(); i != e; ++i) {
@@ -328,7 +328,7 @@ codegen and attach a function body.
       return nullptr;
 
     if (!TheFunction->empty())
-      return (Function*)LogErrorV("Function cannot be redefined.");
+      return (Function*)ErrorV("Function cannot be redefined.");
 
 
 For function definitions, we start by searching TheModule's symbol table for an

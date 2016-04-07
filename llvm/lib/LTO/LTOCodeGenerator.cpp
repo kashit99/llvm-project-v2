@@ -106,12 +106,12 @@ void LTOCodeGenerator::initializeLTOPasses() {
   initializeSROALegacyPassPass(R);
   initializeSROA_DTPass(R);
   initializeSROA_SSAUpPass(R);
-  initializePostOrderFunctionAttrsLegacyPassPass(R);
+  initializePostOrderFunctionAttrsPass(R);
   initializeReversePostOrderFunctionAttrsPass(R);
   initializeGlobalsAAWrapperPassPass(R);
   initializeLICMPass(R);
   initializeMergedLoadStoreMotionPass(R);
-  initializeGVNLegacyPassPass(R);
+  initializeGVNPass(R);
   initializeMemCpyOptPass(R);
   initializeDCEPass(R);
   initializeCFGSimplifyPassPass(R);
@@ -562,9 +562,10 @@ bool LTOCodeGenerator::compileOptimized(ArrayRef<raw_pwrite_stream *> Out) {
   // parallelism level 1. This is achieved by having splitCodeGen return the
   // original module at parallelism level 1 which we then assign back to
   // MergedModule.
-  MergedModule = splitCodeGen(
-      std::move(MergedModule), Out, {}, MCpu, FeatureStr, Options, RelocModel,
-      CodeModel::Default, CGOptLevel, FileType, ShouldRestoreGlobalsLinkage);
+  MergedModule =
+      splitCodeGen(std::move(MergedModule), Out, MCpu, FeatureStr, Options,
+                   RelocModel, CodeModel::Default, CGOptLevel, FileType,
+                   ShouldRestoreGlobalsLinkage);
 
   // If statistics were requested, print them out after codegen.
   if (llvm::AreStatisticsEnabled())

@@ -70,8 +70,6 @@ void PPCSubtarget::initializeEnvironment() {
   HasP8Vector = false;
   HasP8Altivec = false;
   HasP8Crypto = false;
-  HasP9Vector = false;
-  HasP9Altivec = false;
   HasFCPSGN = false;
   HasFSQRT = false;
   HasFRE = false;
@@ -84,6 +82,7 @@ void PPCSubtarget::initializeEnvironment() {
   HasFPRND = false;
   HasFPCVT = false;
   HasISEL = false;
+  HasPOPCNTD = false;
   HasBPERMD = false;
   HasExtDiv = false;
   HasCMPB = false;
@@ -104,15 +103,12 @@ void PPCSubtarget::initializeEnvironment() {
   HasHTM = false;
   HasFusion = false;
   HasFloat128 = false;
-  IsISA3_0 = false;
-
-  HasPOPCNTD = POPCNTD_Unavailable;
 }
 
 void PPCSubtarget::initSubtargetFeatures(StringRef CPU, StringRef FS) {
   // Determine default and user specified characteristics
   std::string CPUName = CPU;
-  if (CPUName.empty() || CPU == "generic") {
+  if (CPUName.empty()) {
     // If cross-compiling with -march=ppc64le without -mcpu
     if (TargetTriple.getArch() == Triple::ppc64le)
       CPUName = "ppc64le";

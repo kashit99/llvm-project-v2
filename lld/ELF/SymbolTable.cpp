@@ -75,7 +75,7 @@ void SymbolTable<ELFT>::addFile(std::unique_ptr<InputFile> File) {
     return;
   }
 
-  // LLVM bitcode file
+  // LLVM bitcode file.
   if (auto *F = dyn_cast<BitcodeFile>(FileP)) {
     BitcodeFiles.emplace_back(cast<BitcodeFile>(File.release()));
     F->parse(ComdatGroups);
@@ -85,16 +85,7 @@ void SymbolTable<ELFT>::addFile(std::unique_ptr<InputFile> File) {
     return;
   }
 
-  // Lazy object file
-  if (auto *F = dyn_cast<LazyObjectFile>(FileP)) {
-    LazyObjectFiles.emplace_back(cast<LazyObjectFile>(File.release()));
-    F->parse();
-    for (Lazy &Sym : F->getLazySymbols())
-      addLazy(&Sym);
-    return;
-  }
-
-  // Regular object file
+  // .o file
   auto *F = cast<ObjectFile<ELFT>>(FileP);
   ObjectFiles.emplace_back(cast<ObjectFile<ELFT>>(File.release()));
   F->parse(ComdatGroups);
@@ -131,8 +122,7 @@ template <class ELFT> void SymbolTable<ELFT>::addCombinedLtoObject() {
 // Add an undefined symbol.
 template <class ELFT>
 SymbolBody *SymbolTable<ELFT>::addUndefined(StringRef Name) {
-  auto *Sym = new (Alloc)
-      UndefinedElf<ELFT>(Name, STB_GLOBAL, STV_DEFAULT, /*Type*/ 0, false);
+  auto *Sym = new (Alloc) Undefined(Name, false, STV_DEFAULT, false);
   resolve(Sym);
   return Sym;
 }
@@ -141,8 +131,7 @@ SymbolBody *SymbolTable<ELFT>::addUndefined(StringRef Name) {
 // doesn't have to be resolved, thus "opt" (optional).
 template <class ELFT>
 SymbolBody *SymbolTable<ELFT>::addUndefinedOpt(StringRef Name) {
-  auto *Sym = new (Alloc)
-      UndefinedElf<ELFT>(Name, STB_GLOBAL, STV_HIDDEN, /*Type*/ 0, true);
+  auto *Sym = new (Alloc) Undefined(Name, false, STV_HIDDEN, true);
   resolve(Sym);
   return Sym;
 }
@@ -233,8 +222,8 @@ template <class ELFT> void SymbolTable<ELFT>::resolve(SymbolBody *New) {
   SymbolBody *Existing = Sym->Body;
 
   if (auto *L = dyn_cast<Lazy>(Existing)) {
-    if (New->isUndefined()) {
-      addMemberFile(New, L);
+    if (auto *Undef = dyn_cast<Undefined>(New)) {
+      addMemberFile(Undef, L);
       return;
     }
     // Found a definition for something also in an archive.
@@ -284,17 +273,16 @@ template <class ELFT> SymbolBody *SymbolTable<ELFT>::find(StringRef Name) {
 
 template <class ELFT> void SymbolTable<ELFT>::addLazy(Lazy *L) {
   Symbol *Sym = insert(L);
-  SymbolBody *Cur = Sym->Body;
-  if (Cur == L)
+  if (Sym->Body == L)
     return;
-  if (Cur->isUndefined()) {
+  if (auto *Undef = dyn_cast<Undefined>(Sym->Body)) {
     Sym->Body = L;
-    addMemberFile(Cur, L);
+    addMemberFile(Undef, L);
   }
 }
 
 template <class ELFT>
-void SymbolTable<ELFT>::addMemberFile(SymbolBody *Undef, Lazy *L) {
+void SymbolTable<ELFT>::addMemberFile(Undefined *Undef, Lazy *L) {
   if (Undef->isUsedInRegularObj())
     L->setUsedInRegularObj();
   // Weak undefined symbols should not fetch members from archives.
@@ -315,7 +303,7 @@ void SymbolTable<ELFT>::addMemberFile(SymbolBody *Undef, Lazy *L) {
 
   // Fetch a member file that has the definition for L.
   // getMember returns nullptr if the member was already read from the library.
-  if (std::unique_ptr<InputFile> File = L->getFile())
+  if (std::unique_ptr<InputFile> File = L->getMember())
     addFile(std::move(File));
 }
 

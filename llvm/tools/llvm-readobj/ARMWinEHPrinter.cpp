@@ -198,10 +198,7 @@ Decoder::getSectionContaining(const COFFObjectFile &COFF, uint64_t VA) {
 ErrorOr<object::SymbolRef> Decoder::getSymbol(const COFFObjectFile &COFF,
                                               uint64_t VA, bool FunctionOnly) {
   for (const auto &Symbol : COFF.symbols()) {
-    ErrorOr<SymbolRef::Type> Type = Symbol.getType();
-    if (std::error_code EC = Type.getError())
-      return EC;
-    if (FunctionOnly && *Type != SymbolRef::ST_Function)
+    if (FunctionOnly && Symbol.getType() != SymbolRef::ST_Function)
       continue;
 
     ErrorOr<uint64_t> Address = Symbol.getAddress();
@@ -250,7 +247,7 @@ bool Decoder::opcode_10Lxxxxx(const uint8_t *OC, unsigned &Offset,
   printRegisters(std::make_pair(RegisterMask, 0));
   OS << '\n';
 
-  Offset += 2;
+  ++Offset, ++Offset;
   return false;
 }
 
@@ -323,7 +320,7 @@ bool Decoder::opcode_111010xx(const uint8_t *OC, unsigned &Offset,
                            static_cast<const char *>(Prologue ? "sub" : "add"),
                            Imm);
 
-  Offset += 2;
+  ++Offset, ++Offset;
   return false;
 }
 
@@ -337,7 +334,7 @@ bool Decoder::opcode_1110110L(const uint8_t *OC, unsigned &Offset,
   printRegisters(std::make_pair(GPRMask, 0));
   OS << '\n';
 
-  Offset += 2;
+  ++Offset, ++Offset;
   return false;
 }
 
@@ -353,7 +350,7 @@ bool Decoder::opcode_11101110(const uint8_t *OC, unsigned &Offset,
       << format("0x%02x 0x%02x           ; microsoft-specific (type: %u)\n",
                 OC[Offset + 0], OC[Offset + 1], OC[Offset + 1] & 0x0f);
 
-  Offset += 2;
+  ++Offset, ++Offset;
   return false;
 }
 
@@ -369,7 +366,7 @@ bool Decoder::opcode_11101111(const uint8_t *OC, unsigned &Offset,
       << format("0x%02x 0x%02x           ; ldr.w lr, [sp], #%u\n",
                 OC[Offset + 0], OC[Offset + 1], OC[Offset + 1] << 2);
 
-  Offset += 2;
+  ++Offset, ++Offset;
   return false;
 }
 
@@ -384,7 +381,7 @@ bool Decoder::opcode_11110101(const uint8_t *OC, unsigned &Offset,
   printRegisters(std::make_pair(0, VFPMask));
   OS << '\n';
 
-  Offset += 2;
+  ++Offset, ++Offset;
   return false;
 }
 
@@ -399,7 +396,7 @@ bool Decoder::opcode_11110110(const uint8_t *OC, unsigned &Offset,
   printRegisters(std::make_pair(0, VFPMask));
   OS << '\n';
 
-  Offset += 2;
+  ++Offset, ++Offset;
   return false;
 }
 
@@ -412,7 +409,7 @@ bool Decoder::opcode_11110111(const uint8_t *OC, unsigned &Offset,
                            static_cast<const char *>(Prologue ? "sub" : "add"),
                            Imm);
 
-  Offset += 3;
+  ++Offset, ++Offset, ++Offset;
   return false;
 }
 
@@ -427,7 +424,7 @@ bool Decoder::opcode_11111000(const uint8_t *OC, unsigned &Offset,
               OC[Offset + 0], OC[Offset + 1], OC[Offset + 2], OC[Offset + 3],
               static_cast<const char *>(Prologue ? "sub" : "add"), Imm);
 
-  Offset += 4;
+  ++Offset, ++Offset, ++Offset, ++Offset;
   return false;
 }
 
@@ -440,7 +437,7 @@ bool Decoder::opcode_11111001(const uint8_t *OC, unsigned &Offset,
               OC[Offset + 0], OC[Offset + 1], OC[Offset + 2],
               static_cast<const char *>(Prologue ? "sub" : "add"), Imm);
 
-  Offset += 3;
+  ++Offset, ++Offset, ++Offset;
   return false;
 }
 
@@ -455,7 +452,7 @@ bool Decoder::opcode_11111010(const uint8_t *OC, unsigned &Offset,
               OC[Offset + 0], OC[Offset + 1], OC[Offset + 2], OC[Offset + 3],
               static_cast<const char *>(Prologue ? "sub" : "add"), Imm);
 
-  Offset += 4;
+  ++Offset, ++Offset, ++Offset, ++Offset;
   return false;
 }
 

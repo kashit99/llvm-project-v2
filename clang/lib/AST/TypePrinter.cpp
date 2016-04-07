@@ -81,14 +81,12 @@ namespace {
   
   class TypePrinter {
     PrintingPolicy Policy;
-    unsigned Indentation;
     bool HasEmptyPlaceHolder;
     bool InsideCCAttribute;
 
   public:
-    explicit TypePrinter(const PrintingPolicy &Policy, unsigned Indentation = 0)
-      : Policy(Policy), Indentation(Indentation),
-        HasEmptyPlaceHolder(false), InsideCCAttribute(false) { }
+    explicit TypePrinter(const PrintingPolicy &Policy)
+      : Policy(Policy), HasEmptyPlaceHolder(false), InsideCCAttribute(false) { }
 
     void print(const Type *ty, Qualifiers qs, raw_ostream &OS,
                StringRef PlaceHolder);
@@ -413,7 +411,7 @@ void TypePrinter::printMemberPointerBefore(const MemberPointerType *T,
     OS << '(';
 
   PrintingPolicy InnerPolicy(Policy);
-  InnerPolicy.IncludeTagDefinition = false;
+  InnerPolicy.SuppressTag = false;
   TypePrinter(InnerPolicy).print(QualType(T->getClass(), 0), OS, StringRef());
 
   OS << "::*";
@@ -631,20 +629,6 @@ void TypePrinter::printFunctionProtoBefore(const FunctionProtoType *T,
   }
 }
 
-llvm::StringRef clang::getParameterABISpelling(ParameterABI ABI) {
-  switch (ABI) {
-  case ParameterABI::Ordinary:
-    llvm_unreachable("asking for spelling of ordinary parameter ABI");
-  case ParameterABI::SwiftContext:
-    return "swift_context";
-  case ParameterABI::SwiftErrorResult:
-    return "swift_error_result";
-  case ParameterABI::SwiftIndirectResult:
-    return "swift_indirect_result";
-  }
-  llvm_unreachable("bad parameter ABI kind");
-}
-
 void TypePrinter::printFunctionProtoAfter(const FunctionProtoType *T, 
                                           raw_ostream &OS) { 
   // If needed for precedence reasons, wrap the inner part in grouping parens.
@@ -657,13 +641,6 @@ void TypePrinter::printFunctionProtoAfter(const FunctionProtoType *T,
     ParamPolicyRAII ParamPolicy(Policy);
     for (unsigned i = 0, e = T->getNumParams(); i != e; ++i) {
       if (i) OS << ", ";
-
-      auto EPI = T->getExtParameterInfo(i);
-      if (EPI.isConsumed()) OS << "__attribute__((ns_consumed)) ";
-      auto ABI = EPI.getABI();
-      if (ABI != ParameterABI::Ordinary)
-        OS << "__attribute__((" << getParameterABISpelling(ABI) << ")) ";
-
       print(T->getParamType(i), OS, StringRef());
     }
   }
@@ -725,15 +702,6 @@ void TypePrinter::printFunctionProtoAfter(const FunctionProtoType *T,
     case CC_SpirFunction:
     case CC_SpirKernel:
       // Do nothing. These CCs are not available as attributes.
-      break;
-    case CC_Swift:
-      OS << " __attribute__((swiftcall))";
-      break;
-    case CC_PreserveMost:
-      OS << " __attribute__((preserve_most))";
-      break;
-    case CC_PreserveAll:
-      OS << " __attribute__((preserve_all))";
       break;
     }
   }
@@ -936,13 +904,8 @@ void TypePrinter::AppendScope(DeclContext *DC, raw_ostream &OS) {
 }
 
 void TypePrinter::printTag(TagDecl *D, raw_ostream &OS) {
-  if (Policy.IncludeTagDefinition) {
-    PrintingPolicy SubPolicy = Policy;
-    SubPolicy.IncludeTagDefinition = false;
-    D->print(OS, SubPolicy, Indentation);
-    spaceBeforePlaceHolder(OS);
+  if (Policy.SuppressTag)
     return;
-  }
 
   bool HasKindDecoration = false;
 
@@ -1097,16 +1060,14 @@ void TypePrinter::printInjectedClassNameAfter(const InjectedClassNameType *T,
 
 void TypePrinter::printElaboratedBefore(const ElaboratedType *T,
                                         raw_ostream &OS) {
-  // The tag definition will take care of these.
-  if (!Policy.IncludeTagDefinition)
-  {
-    OS << TypeWithKeyword::getKeywordName(T->getKeyword());
-    if (T->getKeyword() != ETK_None)
-      OS << " ";
-    NestedNameSpecifier* Qualifier = T->getQualifier();
-    if (Qualifier)
-      Qualifier->print(OS, Policy);
-  }
+  if (Policy.SuppressTag && isa<TagType>(T->getNamedType()))
+    return;
+  OS << TypeWithKeyword::getKeywordName(T->getKeyword());
+  if (T->getKeyword() != ETK_None)
+    OS << " ";
+  NestedNameSpecifier* Qualifier = T->getQualifier();
+  if (Qualifier)
+    Qualifier->print(OS, Policy);
   
   ElaboratedTypePolicyRAII PolicyRAII(Policy);
   printBefore(T->getNamedType(), OS);
@@ -1344,7 +1305,6 @@ void TypePrinter::printAttributedAfter(const AttributedType *T,
   case AttributedType::attr_fastcall: OS << "fastcall"; break;
   case AttributedType::attr_stdcall: OS << "stdcall"; break;
   case AttributedType::attr_thiscall: OS << "thiscall"; break;
-  case AttributedType::attr_swiftcall: OS << "swiftcall"; break;
   case AttributedType::attr_vectorcall: OS << "vectorcall"; break;
   case AttributedType::attr_pascal: OS << "pascal"; break;
   case AttributedType::attr_ms_abi: OS << "ms_abi"; break;
@@ -1361,12 +1321,6 @@ void TypePrinter::printAttributedAfter(const AttributedType *T,
    break;
   }
   case AttributedType::attr_inteloclbicc: OS << "inteloclbicc"; break;
-  case AttributedType::attr_preserve_most:
-    OS << "preserve_most";
-    break;
-  case AttributedType::attr_preserve_all:
-    OS << "preserve_all";
-    break;
   }
   OS << "))";
 }
@@ -1663,11 +1617,11 @@ std::string QualType::getAsString(const Type *ty, Qualifiers qs) {
 
 void QualType::print(const Type *ty, Qualifiers qs,
                      raw_ostream &OS, const PrintingPolicy &policy,
-                     const Twine &PlaceHolder, unsigned Indentation) {
+                     const Twine &PlaceHolder) {
   SmallString<128> PHBuf;
   StringRef PH = PlaceHolder.toStringRef(PHBuf);
 
-  TypePrinter(policy, Indentation).print(ty, qs, OS, PH);
+  TypePrinter(policy).print(ty, qs, OS, PH);
 }
 
 void QualType::getAsStringInternal(const Type *ty, Qualifiers qs,

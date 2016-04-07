@@ -10,7 +10,7 @@
 ; R600: {{^}}test:
 ; R600: MUL_IEEE {{[ *TXYZWPVxyzw.,0-9]+}} ; encoding: [{{0x[0-9a-f]+,0x[0-9a-f]+,0x[0-9a-f]+,0x[0-9a-f]+,0x10,0x02,0x[0-9a-f]+,0x[0-9a-f]+}}]
 
-define amdgpu_ps void @test(<4 x float> inreg %reg0) {
+define void @test(<4 x float> inreg %reg0) #0 {
 entry:
   %r0 = extractelement <4 x float> %reg0, i32 0
   %r1 = extractelement <4 x float> %reg0, i32 1
@@ -21,3 +21,5 @@ entry:
 }
 
 declare void @llvm.R600.store.swizzle(<4 x float>, i32, i32)
+
+attributes #0 = { "ShaderType"="0" }

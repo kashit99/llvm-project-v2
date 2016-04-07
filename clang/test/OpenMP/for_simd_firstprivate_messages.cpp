@@ -147,7 +147,7 @@ int foomain(int argc, char **argv) {
     foo();
 #pragma omp parallel reduction(+ : i) // expected-note {{defined as reduction}}
 #pragma omp for simd firstprivate(i)       // expected-error {{firstprivate variable must be shared}}
-  for (int k = 0; k < argc; ++k)
+  for (i = 0; i < argc; ++i)
     foo();
   return 0;
 }

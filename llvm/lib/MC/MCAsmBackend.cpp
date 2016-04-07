@@ -16,8 +16,8 @@ MCAsmBackend::MCAsmBackend() : HasDataInCodeSupport(false) {}
 
 MCAsmBackend::~MCAsmBackend() {}
 
-Optional<MCFixupKind> MCAsmBackend::getFixupKind(StringRef Name) const {
-  return None;
+bool MCAsmBackend::getFixupKind(StringRef Name, MCFixupKind &MappedKind) const {
+  return false;
 }
 
 const MCFixupKindInfo &MCAsmBackend::getFixupKindInfo(MCFixupKind Kind) const {

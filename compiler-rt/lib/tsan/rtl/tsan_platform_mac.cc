@@ -91,11 +91,7 @@ ThreadState *cur_thread() {
 // handler will try to access the unmapped ThreadState.
 void cur_thread_finalize() {
   uptr thread_identity = (uptr)pthread_self();
-  if (thread_identity == main_thread_identity) {
-    // Calling dispatch_main() or xpc_main() actually invokes pthread_exit to
-    // exit the main thread. Let's keep the main thread's ThreadState.
-    return;
-  }
+  CHECK_NE(thread_identity, main_thread_identity);
   ThreadState **fake_tls = (ThreadState **)MemToShadow(thread_identity);
   internal_munmap(*fake_tls, sizeof(ThreadState));
   *fake_tls = nullptr;

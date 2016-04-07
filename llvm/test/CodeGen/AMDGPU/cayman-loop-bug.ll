@@ -8,7 +8,7 @@
 ; CHECK-NOT: ALU_PUSH_BEFORE
 ; CHECK: END_LOOP
 ; CHECK: END_LOOP
-define amdgpu_ps void @main (<4 x float> inreg %reg0) {
+define void @main (<4 x float> inreg %reg0) #0 {
 entry:
   br label %outer_loop
 outer_loop:
@@ -28,3 +28,5 @@ inner_loop_body:
 exit:
   ret void
 }
+
+attributes #0 = { "ShaderType"="0" }

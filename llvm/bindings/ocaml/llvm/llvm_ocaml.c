@@ -19,7 +19,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include "llvm-c/Core.h"
-#include "llvm-c/Support.h"
 #include "caml/alloc.h"
 #include "caml/custom.h"
 #include "caml/memory.h"

@@ -33,13 +33,8 @@ private:
   void createFiles(llvm::opt::InputArgList &Args);
   template <class ELFT> void link(llvm::opt::InputArgList &Args);
 
-  // True if we are in --whole-archive and --no-whole-archive.
-  bool WholeArchive = false;
-
-  // True if we are in --start-lib and --end-lib.
-  bool InLib = false;
-
   llvm::BumpPtrAllocator Alloc;
+  bool WholeArchive = false;
   std::vector<std::unique_ptr<InputFile>> Files;
   std::vector<std::unique_ptr<MemoryBuffer>> OwningMBs;
 };

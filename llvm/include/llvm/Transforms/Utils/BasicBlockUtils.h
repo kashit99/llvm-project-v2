@@ -22,7 +22,7 @@
 
 namespace llvm {
 
-class MemoryDependenceResults;
+class MemoryDependenceAnalysis;
 class DominatorTree;
 class LoopInfo;
 class Instruction;
@@ -40,7 +40,7 @@ void DeleteDeadBlock(BasicBlock *BB);
 /// when all entries to the PHI nodes in a block are guaranteed equal, such as
 /// when the block has exactly one predecessor.
 void FoldSingleEntryPHINodes(BasicBlock *BB,
-                             MemoryDependenceResults *MemDep = nullptr);
+                             MemoryDependenceAnalysis *MemDep = nullptr);
 
 /// DeleteDeadPHIs - Examine each PHI in the given block and delete it if it
 /// is dead. Also recursively delete any operands that become dead as
@@ -53,7 +53,7 @@ bool DeleteDeadPHIs(BasicBlock *BB, const TargetLibraryInfo *TLI = nullptr);
 /// if possible.  The return value indicates success or failure.
 bool MergeBlockIntoPredecessor(BasicBlock *BB, DominatorTree *DT = nullptr,
                                LoopInfo *LI = nullptr,
-                               MemoryDependenceResults *MemDep = nullptr);
+                               MemoryDependenceAnalysis *MemDep = nullptr);
 
 // ReplaceInstWithValue - Replace all uses of an instruction (specified by BI)
 // with a value, then remove and delete the original instruction.
@@ -259,12 +259,11 @@ ReturnInst *FoldReturnIntoUncondBranch(ReturnInst *RI, BasicBlock *BB,
 /// UnreachableInst, otherwise it branches to Tail.
 /// Returns the NewBasicBlock's terminator.
 ///
-/// Updates DT and LI if given.
+/// Updates DT if given.
 TerminatorInst *SplitBlockAndInsertIfThen(Value *Cond, Instruction *SplitBefore,
                                           bool Unreachable,
                                           MDNode *BranchWeights = nullptr,
-                                          DominatorTree *DT = nullptr,
-                                          LoopInfo *LI = nullptr);
+                                          DominatorTree *DT = nullptr);
 
 /// SplitBlockAndInsertIfThenElse is similar to SplitBlockAndInsertIfThen,
 /// but also creates the ElseBlock.

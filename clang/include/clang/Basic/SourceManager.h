@@ -61,6 +61,7 @@ class SourceManager;
 class FileManager;
 class FileEntry;
 class LineTableInfo;
+class LangOptions;
 class ASTWriter;
 class ASTReader;
 
@@ -795,15 +796,6 @@ public:
                       SourceLocation IncludeLoc = SourceLocation()) {
     return createFileID(createMemBufferContentCache(std::move(Buffer)),
                         IncludeLoc, FileCharacter, LoadedID, LoadedOffset);
-  }
-
-  /// \brief Get the FileID for \p SourceFile if it exists. Otherwise, create a
-  /// new FileID for the \p SourceFile.
-  FileID getOrCreateFileID(const FileEntry *SourceFile,
-                           SrcMgr::CharacteristicKind FileCharacter) {
-    FileID ID = translateFile(SourceFile);
-    return ID.isValid() ? ID : createFileID(SourceFile, SourceLocation(),
-                                            FileCharacter);
   }
 
   /// \brief Return a new SourceLocation that encodes the

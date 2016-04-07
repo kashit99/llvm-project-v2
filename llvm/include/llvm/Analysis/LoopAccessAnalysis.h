@@ -363,10 +363,10 @@ public:
   }
 
   /// Insert a pointer and calculate the start and end SCEVs.
-  /// We need \p PSE in order to compute the SCEV expression of the pointer
+  /// \p We need Preds in order to compute the SCEV expression of the pointer
   /// according to the assumptions that we've made during the analysis.
   /// The method might also version the pointer stride according to \p Strides,
-  /// and add new predicates to \p PSE.
+  /// and change \p Preds.
   void insert(Loop *Lp, Value *Ptr, bool WritePtr, unsigned DepSetId,
               unsigned ASId, const ValueToValueMap &Strides,
               PredicatedScalarEvolution &PSE);
@@ -638,12 +638,11 @@ private:
 
 Value *stripIntegerCast(Value *V);
 
-/// \brief Return the SCEV corresponding to a pointer with the symbolic stride
-/// replaced with constant one, assuming the SCEV predicate associated with
-/// \p PSE is true.
+///\brief Return the SCEV corresponding to a pointer with the symbolic stride
+/// replaced with constant one, assuming \p Preds is true.
 ///
 /// If necessary this method will version the stride of the pointer according
-/// to \p PtrToStride and therefore add further predicates to \p PSE.
+/// to \p PtrToStride and therefore add a new predicate to \p Preds.
 ///
 /// If \p OrigPtr is not null, use it to look up the stride value instead of \p
 /// Ptr.  \p PtrToStride provides the mapping between the pointer value and its
@@ -652,24 +651,13 @@ const SCEV *replaceSymbolicStrideSCEV(PredicatedScalarEvolution &PSE,
                                       const ValueToValueMap &PtrToStride,
                                       Value *Ptr, Value *OrigPtr = nullptr);
 
-/// \brief If the pointer has a constant stride return it in units of its
-/// element size.  Otherwise return zero.
-///
-/// Ensure that it does not wrap in the address space, assuming the predicate
-/// associated with \p PSE is true.
+/// \brief Check the stride of the pointer and ensure that it does not wrap in
+/// the address space, assuming \p Preds is true.
 ///
 /// If necessary this method will version the stride of the pointer according
-/// to \p PtrToStride and therefore add further predicates to \p PSE.
-/// The \p Assume parameter indicates if we are allowed to make additional
-/// run-time assumptions.
+/// to \p PtrToStride and therefore add a new predicate to \p Preds.
 int isStridedPtr(PredicatedScalarEvolution &PSE, Value *Ptr, const Loop *Lp,
-                 const ValueToValueMap &StridesMap = ValueToValueMap(),
-                 bool Assume = false);
-
-/// \brief Returns true if the memory operations \p A and \p B are consecutive.
-/// This is a simple API that does not depend on the analysis pass. 
-bool isConsecutiveAccess(Value *A, Value *B, const DataLayout &DL,
-                         ScalarEvolution &SE, bool CheckType = true);
+                 const ValueToValueMap &StridesMap);
 
 /// \brief This analysis provides dependence information for the memory accesses
 /// of a loop.

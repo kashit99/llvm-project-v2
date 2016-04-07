@@ -15,7 +15,7 @@
 #ifndef LLVM_LIB_IR_CONSTANTSCONTEXT_H
 #define LLVM_LIB_IR_CONSTANTSCONTEXT_H
 
-#include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/Hashing.h"
 #include "llvm/IR/InlineAsm.h"
 #include "llvm/IR/Instructions.h"
@@ -225,12 +225,19 @@ public:
 /// used behind the scenes to implement getelementpr constant exprs.
 class GetElementPtrConstantExpr : public ConstantExpr {
   Type *SrcElementTy;
-  Type *ResElementTy;
   void anchor() override;
   GetElementPtrConstantExpr(Type *SrcElementTy, Constant *C,
                             ArrayRef<Constant *> IdxList, Type *DestTy);
 
 public:
+  static GetElementPtrConstantExpr *Create(Constant *C,
+                                           ArrayRef<Constant*> IdxList,
+                                           Type *DestTy,
+                                           unsigned Flags) {
+    return Create(
+        cast<PointerType>(C->getType()->getScalarType())->getElementType(), C,
+        IdxList, DestTy, Flags);
+  }
   static GetElementPtrConstantExpr *Create(Type *SrcElementTy, Constant *C,
                                            ArrayRef<Constant *> IdxList,
                                            Type *DestTy, unsigned Flags) {
@@ -240,7 +247,6 @@ public:
     return Result;
   }
   Type *getSourceElementType() const;
-  Type *getResultElementType() const;
   /// Transparently provide more efficient getOperand methods.
   DECLARE_TRANSPARENT_OPERAND_ACCESSORS(Value);
 
@@ -584,25 +590,26 @@ private:
   };
 
 public:
-  typedef DenseSet<ConstantClass *, MapInfo> MapTy;
+  typedef DenseMap<ConstantClass *, char, MapInfo> MapTy;
 
 private:
   MapTy Map;
 
 public:
-  typename MapTy::iterator begin() { return Map.begin(); }
-  typename MapTy::iterator end() { return Map.end(); }
+  typename MapTy::iterator map_begin() { return Map.begin(); }
+  typename MapTy::iterator map_end() { return Map.end(); }
 
   void freeConstants() {
     for (auto &I : Map)
-      delete I; // Asserts that use_empty().
+      // Asserts that use_empty().
+      delete I.first;
   }
 private:
   ConstantClass *create(TypeClass *Ty, ValType V, LookupKeyHashed &HashKey) {
     ConstantClass *Result = V.create(Ty);
 
     assert(Result->getType() == Ty && "Type specified is not correct!");
-    Map.insert_as(Result, HashKey);
+    Map.insert_as(std::make_pair(Result, '\0'), HashKey);
 
     return Result;
   }
@@ -620,7 +627,7 @@ public:
     if (I == Map.end())
       Result = create(Ty, V, Lookup);
     else
-      Result = *I;
+      Result = I->first;
     assert(Result && "Unexpected nullptr");
 
     return Result;
@@ -630,7 +637,7 @@ public:
   void remove(ConstantClass *CP) {
     typename MapTy::iterator I = Map.find(CP);
     assert(I != Map.end() && "Constant not found in constant table!");
-    assert(*I == CP && "Didn't find correct element?");
+    assert(I->first == CP && "Didn't find correct element?");
     Map.erase(I);
   }
 
@@ -644,7 +651,7 @@ public:
 
     auto I = Map.find_as(Lookup);
     if (I != Map.end())
-      return *I;
+      return I->first;
 
     // Update to the new value.  Optimize for the case when we have a single
     // operand that we're changing, but handle bulk updates efficiently.
@@ -658,7 +665,7 @@ public:
         if (CP->getOperand(I) == From)
           CP->setOperand(I, To);
     }
-    Map.insert_as(CP, Lookup);
+    Map.insert_as(std::make_pair(CP, '\0'), Lookup);
     return nullptr;
   }
 

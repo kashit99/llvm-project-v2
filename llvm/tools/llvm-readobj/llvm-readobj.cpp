@@ -227,17 +227,6 @@ namespace opts {
                   cl::desc("Display ELF version sections (if present)"));
   cl::alias VersionInfoShort("V", cl::desc("Alias for -version-info"),
                              cl::aliasopt(VersionInfo));
-
-  cl::opt<bool> SectionGroups("elf-section-groups",
-                              cl::desc("Display ELF section group contents"));
-  cl::alias SectionGroupsShort("g", cl::desc("Alias for -elf-sections-groups"),
-                               cl::aliasopt(SectionGroups));
-
-  cl::opt<OutputStyleTy>
-      Output("elf-output-style", cl::desc("Specify ELF dump style"),
-             cl::values(clEnumVal(LLVM, "LLVM default style"),
-                        clEnumVal(GNU, "GNU readelf style"), clEnumValEnd),
-             cl::init(LLVM));
 } // namespace opts
 
 namespace llvm {
@@ -310,15 +299,14 @@ static void dumpObject(const ObjectFile *Obj) {
   if (std::error_code EC = createDumper(Obj, Writer, Dumper))
     reportError(Obj->getFileName(), EC);
 
-  if (opts::Output == opts::LLVM) {
-    outs() << '\n';
-    outs() << "File: " << Obj->getFileName() << "\n";
-    outs() << "Format: " << Obj->getFileFormatName() << "\n";
-    outs() << "Arch: " << Triple::getArchTypeName(
-                              (llvm::Triple::ArchType)Obj->getArch()) << "\n";
-    outs() << "AddressSize: " << (8 * Obj->getBytesInAddress()) << "bit\n";
-    Dumper->printLoadName();
-  }
+  outs() << '\n';
+  outs() << "File: " << Obj->getFileName() << "\n";
+  outs() << "Format: " << Obj->getFileFormatName() << "\n";
+  outs() << "Arch: "
+         << Triple::getArchTypeName((llvm::Triple::ArchType)Obj->getArch())
+         << "\n";
+  outs() << "AddressSize: " << (8*Obj->getBytesInAddress()) << "bit\n";
+  Dumper->printLoadName();
 
   if (opts::FileHeaders)
     Dumper->printFileHeaders();
@@ -346,20 +334,16 @@ static void dumpObject(const ObjectFile *Obj) {
     Dumper->printGnuHashTable();
   if (opts::VersionInfo)
     Dumper->printVersionInfo();
-  if (Obj->isELF()) {
-    if (Obj->getArch() == llvm::Triple::arm)
-      if (opts::ARMAttributes)
-        Dumper->printAttributes();
-    if (isMipsArch(Obj->getArch())) {
-      if (opts::MipsPLTGOT)
-        Dumper->printMipsPLTGOT();
-      if (opts::MipsABIFlags)
-        Dumper->printMipsABIFlags();
-      if (opts::MipsReginfo)
-        Dumper->printMipsReginfo();
-    }
-    if (opts::SectionGroups)
-      Dumper->printGroupSections();
+  if (Obj->getArch() == llvm::Triple::arm && Obj->isELF())
+    if (opts::ARMAttributes)
+      Dumper->printAttributes();
+  if (isMipsArch(Obj->getArch()) && Obj->isELF()) {
+    if (opts::MipsPLTGOT)
+      Dumper->printMipsPLTGOT();
+    if (opts::MipsABIFlags)
+      Dumper->printMipsABIFlags();
+    if (opts::MipsReginfo)
+      Dumper->printMipsReginfo();
   }
   if (Obj->isCOFF()) {
     if (opts::COFFImports)
@@ -429,9 +413,9 @@ static void dumpMachOUniversalBinary(const MachOUniversalBinary *UBinary) {
 static void dumpInput(StringRef File) {
 
   // Attempt to open the binary.
-  Expected<OwningBinary<Binary>> BinaryOrErr = createBinary(File);
-  if (!BinaryOrErr)
-    reportError(File, errorToErrorCode(BinaryOrErr.takeError()));
+  ErrorOr<OwningBinary<Binary>> BinaryOrErr = createBinary(File);
+  if (std::error_code EC = BinaryOrErr.getError())
+    reportError(File, EC);
   Binary &Binary = *BinaryOrErr.get().getBinary();
 
   if (Archive *Arc = dyn_cast<Archive>(&Binary))

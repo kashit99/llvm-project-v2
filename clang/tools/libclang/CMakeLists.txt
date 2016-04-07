@@ -30,6 +30,7 @@ set(SOURCES
   CXTranslationUnit.h
   CXType.h
   Index_Internal.h
+  IndexingContext.h
   ../../include/clang-c/Index.h
   )
 
@@ -46,11 +47,6 @@ set(LIBS
 
 if (CLANG_ENABLE_ARCMT)
   list(APPEND LIBS clangARCMigrate)
-endif ()
-
-if (TARGET clangTidyPlugin)
-  add_definitions(-DCLANG_TOOL_EXTRA_BUILD)
-  list(APPEND LIBS clangTidyPlugin)
 endif ()
 
 find_library(DL_LIBRARY_PATH dl)

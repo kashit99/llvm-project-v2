@@ -20,14 +20,13 @@ using namespace llvm;
 
 /// initializeAnalysis - Initialize all passes linked into the Analysis library.
 void llvm::initializeAnalysis(PassRegistry &Registry) {
-  initializeAAEvalLegacyPassPass(Registry);
+  initializeAAEvalPass(Registry);
   initializeAliasSetPrinterPass(Registry);
   initializeBasicAAWrapperPassPass(Registry);
   initializeBlockFrequencyInfoWrapperPassPass(Registry);
   initializeBranchProbabilityInfoWrapperPassPass(Registry);
   initializeCallGraphWrapperPassPass(Registry);
-  initializeCallGraphDOTPrinterPass(Registry);
-  initializeCallGraphPrinterLegacyPassPass(Registry);
+  initializeCallGraphPrinterPass(Registry);
   initializeCallGraphViewerPass(Registry);
   initializeCostModelAnalysisPass(Registry);
   initializeCFGViewerPass(Registry);
@@ -39,7 +38,7 @@ void llvm::initializeAnalysis(PassRegistry &Registry) {
   initializeDelinearizationPass(Registry);
   initializeDemandedBitsPass(Registry);
   initializeDivergenceAnalysisPass(Registry);
-  initializeDominanceFrontierWrapperPassPass(Registry);
+  initializeDominanceFrontierPass(Registry);
   initializeDomViewerPass(Registry);
   initializeDomPrinterPass(Registry);
   initializeDomOnlyViewerPass(Registry);
@@ -58,10 +57,10 @@ void llvm::initializeAnalysis(PassRegistry &Registry) {
   initializeLoopInfoWrapperPassPass(Registry);
   initializeMemDepPrinterPass(Registry);
   initializeMemDerefPrinterPass(Registry);
-  initializeMemoryDependenceWrapperPassPass(Registry);
+  initializeMemoryDependenceAnalysisPass(Registry);
   initializeModuleDebugInfoPrinterPass(Registry);
   initializeObjCARCAAWrapperPassPass(Registry);
-  initializePostDominatorTreeWrapperPassPass(Registry);
+  initializePostDominatorTreePass(Registry);
   initializeRegionInfoPassPass(Registry);
   initializeRegionViewerPass(Registry);
   initializeRegionPrinterPass(Registry);

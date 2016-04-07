@@ -659,10 +659,8 @@ Parser::ParseExternalDeclaration(ParsedAttributesWithRange &attrs,
   case tok::annot_pragma_opencl_extension:
     HandlePragmaOpenCLExtension();
     return nullptr;
-  case tok::annot_pragma_openmp: {
-    AccessSpecifier AS = AS_none;
-    return ParseOpenMPDeclarativeDirectiveWithExtDecl(AS, attrs);
-  }
+  case tok::annot_pragma_openmp:
+    return ParseOpenMPDeclarativeDirective();
   case tok::annot_pragma_ms_pointers_to_members:
     HandlePragmaMSPointersToMembers();
     return nullptr;
@@ -887,14 +885,8 @@ Parser::ParseDeclOrFunctionDefInternal(ParsedAttributesWithRange &attrs,
   if (Tok.is(tok::semi)) {
     ProhibitAttributes(attrs);
     ConsumeToken();
-    RecordDecl *AnonRecord = nullptr;
-    Decl *TheDecl = Actions.ParsedFreeStandingDeclSpec(getCurScope(), AS_none,
-                                                       DS, AnonRecord);
+    Decl *TheDecl = Actions.ParsedFreeStandingDeclSpec(getCurScope(), AS, DS);
     DS.complete(TheDecl);
-    if (AnonRecord) {
-      Decl* decls[] = {AnonRecord, TheDecl};
-      return Actions.BuildDeclaratorGroup(decls, /*TypeMayContainAuto=*/false);
-    }
     return Actions.ConvertDeclToDeclGroup(TheDecl);
   }
 

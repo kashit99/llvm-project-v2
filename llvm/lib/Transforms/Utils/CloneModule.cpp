@@ -109,9 +109,6 @@ std::unique_ptr<Module> llvm::CloneModule(
   //
   for (Module::const_global_iterator I = M->global_begin(), E = M->global_end();
        I != E; ++I) {
-    if (I->isDeclaration())
-      continue;
-
     GlobalVariable *GV = cast<GlobalVariable>(VMap[&*I]);
     if (!ShouldCloneDefinition(&*I)) {
       // Skip after setting the correct linkage for an external reference.
@@ -125,27 +122,24 @@ std::unique_ptr<Module> llvm::CloneModule(
   // Similarly, copy over function bodies now...
   //
   for (Module::const_iterator I = M->begin(), E = M->end(); I != E; ++I) {
-    if (I->isDeclaration())
-      continue;
-
     Function *F = cast<Function>(VMap[&*I]);
     if (!ShouldCloneDefinition(&*I)) {
       // Skip after setting the correct linkage for an external reference.
       F->setLinkage(GlobalValue::ExternalLinkage);
-      // Personality function is not valid on a declaration.
-      F->setPersonalityFn(nullptr);
       continue;
     }
+    if (!I->isDeclaration()) {
+      Function::arg_iterator DestI = F->arg_begin();
+      for (Function::const_arg_iterator J = I->arg_begin(); J != I->arg_end();
+           ++J) {
+        DestI->setName(J->getName());
+        VMap[&*J] = &*DestI++;
+      }
 
-    Function::arg_iterator DestI = F->arg_begin();
-    for (Function::const_arg_iterator J = I->arg_begin(); J != I->arg_end();
-         ++J) {
-      DestI->setName(J->getName());
-      VMap[&*J] = &*DestI++;
+      CloneDebugInfoMetadata(F, &*I, VMap);
+      SmallVector<ReturnInst*, 8> Returns;  // Ignore returns cloned.
+      CloneFunctionInto(F, &*I, VMap, /*ModuleLevelChanges=*/true, Returns);
     }
-
-    SmallVector<ReturnInst *, 8> Returns; // Ignore returns cloned.
-    CloneFunctionInto(F, &*I, VMap, /*ModuleLevelChanges=*/true, Returns);
 
     if (I->hasPersonalityFn())
       F->setPersonalityFn(MapValue(I->getPersonalityFn(), VMap));

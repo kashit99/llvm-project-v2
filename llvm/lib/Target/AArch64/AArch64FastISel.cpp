@@ -555,9 +555,10 @@ bool AArch64FastISel::computeAddress(const Value *Obj, Address &Addr, Type *Ty)
 
     // Iterate through the GEP folding the constants into offsets where
     // we can.
-    for (gep_type_iterator GTI = gep_type_begin(U), E = gep_type_end(U);
-         GTI != E; ++GTI) {
-      const Value *Op = GTI.getOperand();
+    gep_type_iterator GTI = gep_type_begin(U);
+    for (User::const_op_iterator i = U->op_begin() + 1, e = U->op_end(); i != e;
+         ++i, ++GTI) {
+      const Value *Op = *i;
       if (StructType *STy = dyn_cast<StructType>(*GTI)) {
         const StructLayout *SL = DL.getStructLayout(STy);
         unsigned Idx = cast<ConstantInt>(Op)->getZExtValue();
@@ -946,7 +947,10 @@ bool AArch64FastISel::isValueAvailable(const Value *V) const {
     return true;
 
   const auto *I = cast<Instruction>(V);
-  return FuncInfo.MBBMap[I->getParent()] == FuncInfo.MBB;
+  if (FuncInfo.MBBMap[I->getParent()] == FuncInfo.MBB)
+    return true;
+
+  return false;
 }
 
 bool AArch64FastISel::simplifyAddress(Address &Addr, MVT VT) {
@@ -4839,18 +4843,18 @@ bool AArch64FastISel::selectGetElementPtr(const Instruction *I) {
   // Keep a running tab of the total offset to coalesce multiple N = N + Offset
   // into a single N = N + TotalOffset.
   uint64_t TotalOffs = 0;
+  Type *Ty = I->getOperand(0)->getType();
   MVT VT = TLI.getPointerTy(DL);
-  for (gep_type_iterator GTI = gep_type_begin(I), E = gep_type_end(I);
-       GTI != E; ++GTI) {
-    const Value *Idx = GTI.getOperand();
-    if (auto *StTy = dyn_cast<StructType>(*GTI)) {
+  for (auto OI = std::next(I->op_begin()), E = I->op_end(); OI != E; ++OI) {
+    const Value *Idx = *OI;
+    if (auto *StTy = dyn_cast<StructType>(Ty)) {
       unsigned Field = cast<ConstantInt>(Idx)->getZExtValue();
       // N = N + Offset
       if (Field)
         TotalOffs += DL.getStructLayout(StTy)->getElementOffset(Field);
+      Ty = StTy->getElementType(Field);
     } else {
-      Type *Ty = GTI.getIndexedType();
-
+      Ty = cast<SequentialType>(Ty)->getElementType();
       // If this is a constant subscript, handle it quickly.
       if (const auto *CI = dyn_cast<ConstantInt>(Idx)) {
         if (CI->isZero())

@@ -58,16 +58,16 @@ struct CallGraphViewer
   }
 };
 
-struct CallGraphDOTPrinter : public DOTGraphTraitsModulePrinter<
+struct CallGraphPrinter : public DOTGraphTraitsModulePrinter<
                               CallGraphWrapperPass, true, CallGraph *,
                               AnalysisCallGraphWrapperPassTraits> {
   static char ID;
 
-  CallGraphDOTPrinter()
+  CallGraphPrinter()
       : DOTGraphTraitsModulePrinter<CallGraphWrapperPass, true, CallGraph *,
                                     AnalysisCallGraphWrapperPassTraits>(
             "callgraph", ID) {
-    initializeCallGraphDOTPrinterPass(*PassRegistry::getPassRegistry());
+    initializeCallGraphPrinterPass(*PassRegistry::getPassRegistry());
   }
 };
 
@@ -77,8 +77,8 @@ char CallGraphViewer::ID = 0;
 INITIALIZE_PASS(CallGraphViewer, "view-callgraph", "View call graph", false,
                 false)
 
-char CallGraphDOTPrinter::ID = 0;
-INITIALIZE_PASS(CallGraphDOTPrinter, "dot-callgraph",
+char CallGraphPrinter::ID = 0;
+INITIALIZE_PASS(CallGraphPrinter, "dot-callgraph",
                 "Print call graph to 'dot' file", false, false)
 
 // Create methods available outside of this file, to use them
@@ -87,6 +87,6 @@ INITIALIZE_PASS(CallGraphDOTPrinter, "dot-callgraph",
 
 ModulePass *llvm::createCallGraphViewerPass() { return new CallGraphViewer(); }
 
-ModulePass *llvm::createCallGraphDOTPrinterPass() {
-  return new CallGraphDOTPrinter();
+ModulePass *llvm::createCallGraphPrinterPass() {
+  return new CallGraphPrinter();
 }

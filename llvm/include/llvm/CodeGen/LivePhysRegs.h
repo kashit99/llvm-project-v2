@@ -84,8 +84,12 @@ public:
   void removeReg(unsigned Reg) {
     assert(TRI && "LivePhysRegs is not initialized.");
     assert(Reg <= TRI->getNumRegs() && "Expected a physical register.");
-    for (MCRegAliasIterator R(Reg, TRI, true); R.isValid(); ++R)
-      LiveRegs.erase(*R);
+    for (MCSubRegIterator SubRegs(Reg, TRI, /*IncludeSelf=*/true);
+         SubRegs.isValid(); ++SubRegs)
+      LiveRegs.erase(*SubRegs);
+    for (MCSuperRegIterator SuperRegs(Reg, TRI, /*IncludeSelf=*/false);
+         SuperRegs.isValid(); ++SuperRegs)
+      LiveRegs.erase(*SuperRegs);
   }
 
   /// \brief Removes physical registers clobbered by the regmask operand @p MO.

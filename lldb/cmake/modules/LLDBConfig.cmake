@@ -23,6 +23,8 @@ endif()
 
 set(LLDB_DISABLE_PYTHON ${LLDB_DEFAULT_DISABLE_PYTHON} CACHE BOOL
   "Disables the Python scripting integration.")
+set(LLDB_ALLOW_STATIC_BINDINGS FALSE CACHE BOOL
+  "Enable using static/baked language bindings if swig is not present.")
 set(LLDB_DISABLE_CURSES ${LLDB_DEFAULT_DISABLE_CURSES} CACHE BOOL
   "Disables the Curses integration.")
 
@@ -319,6 +321,7 @@ if (CMAKE_SYSTEM_NAME MATCHES "Darwin")
   ${CORE_FOUNDATION_LIBRARY} ${CORE_SERVICES_LIBRARY} ${SECURITY_LIBRARY}
   ${DEBUG_SYMBOLS_LIBRARY})
 
+  include_directories(AFTER /usr/include/libxml2)
 else()
   if (LIBXML2_FOUND)
     add_definitions( -DLIBXML2_DEFINED )

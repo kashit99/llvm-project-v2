@@ -653,7 +653,6 @@ private:
   void SplitVecRes_UnaryOp(SDNode *N, SDValue &Lo, SDValue &Hi);
   void SplitVecRes_ExtendOp(SDNode *N, SDValue &Lo, SDValue &Hi);
   void SplitVecRes_InregOp(SDNode *N, SDValue &Lo, SDValue &Hi);
-  void SplitVecRes_ExtVecInRegOp(SDNode *N, SDValue &Lo, SDValue &Hi);
 
   void SplitVecRes_BITCAST(SDNode *N, SDValue &Lo, SDValue &Hi);
   void SplitVecRes_BUILD_VECTOR(SDNode *N, SDValue &Lo, SDValue &Hi);
@@ -714,7 +713,6 @@ private:
   SDValue WidenVecRes_BUILD_VECTOR(SDNode* N);
   SDValue WidenVecRes_CONCAT_VECTORS(SDNode* N);
   SDValue WidenVecRes_CONVERT_RNDSAT(SDNode* N);
-  SDValue WidenVecRes_EXTEND_VECTOR_INREG(SDNode* N);
   SDValue WidenVecRes_EXTRACT_SUBVECTOR(SDNode* N);
   SDValue WidenVecRes_INSERT_VECTOR_ELT(SDNode* N);
   SDValue WidenVecRes_LOAD(SDNode* N);

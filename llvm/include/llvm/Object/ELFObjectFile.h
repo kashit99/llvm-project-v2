@@ -205,7 +205,7 @@ protected:
   uint32_t getSymbolFlags(DataRefImpl Symb) const override;
   uint8_t getSymbolOther(DataRefImpl Symb) const override;
   uint8_t getSymbolELFType(DataRefImpl Symb) const override;
-  ErrorOr<SymbolRef::Type> getSymbolType(DataRefImpl Symb) const override;
+  SymbolRef::Type getSymbolType(DataRefImpl Symb) const override;
   ErrorOr<section_iterator> getSymbolSection(const Elf_Sym *Symb,
                                              const Elf_Shdr *SymTab) const;
   ErrorOr<section_iterator> getSymbolSection(DataRefImpl Symb) const override;
@@ -445,8 +445,7 @@ uint8_t ELFObjectFile<ELFT>::getSymbolELFType(DataRefImpl Symb) const {
 }
 
 template <class ELFT>
-ErrorOr<SymbolRef::Type>
-ELFObjectFile<ELFT>::getSymbolType(DataRefImpl Symb) const {
+SymbolRef::Type ELFObjectFile<ELFT>::getSymbolType(DataRefImpl Symb) const {
   const Elf_Sym *ESym = getSymbol(Symb);
 
   switch (ESym->getType()) {
@@ -494,8 +493,6 @@ uint32_t ELFObjectFile<ELFT>::getSymbolFlags(DataRefImpl Sym) const {
           Name.startswith("$a"))
         Result |= SymbolRef::SF_FormatSpecific;
     }
-    if (ESym->getType() == ELF::STT_FUNC && (ESym->st_value & 1) == 1)
-      Result |= SymbolRef::SF_Thumb;
   }
 
   if (ESym->st_shndx == ELF::SHN_UNDEF)
@@ -609,6 +606,22 @@ ELFObjectFile<ELFT>::section_rel_begin(DataRefImpl Sec) const {
   uintptr_t SHT = reinterpret_cast<uintptr_t>(EF.section_begin());
   RelData.d.a = (Sec.p - SHT) / EF.getHeader()->e_shentsize;
   RelData.d.b = 0;
+
+  const Elf_Shdr *S = reinterpret_cast<const Elf_Shdr *>(Sec.p);
+  if (S->sh_type != ELF::SHT_RELA && S->sh_type != ELF::SHT_REL)
+    return relocation_iterator(RelocationRef(RelData, this));
+
+  const Elf_Shdr *RelSec = getRelSection(RelData);
+  ErrorOr<const Elf_Shdr *> SymSecOrErr = EF.getSection(RelSec->sh_link);
+  if (std::error_code EC = SymSecOrErr.getError())
+    report_fatal_error(EC.message());
+  const Elf_Shdr *SymSec = *SymSecOrErr;
+  uint32_t SymSecType = SymSec->sh_type;
+  if (SymSecType != ELF::SHT_SYMTAB && SymSecType != ELF::SHT_DYNSYM)
+    report_fatal_error("Invalid symbol table section type!");
+  if (SymSecType == ELF::SHT_DYNSYM)
+    RelData.d.b = 1;
+
   return relocation_iterator(RelocationRef(RelData, this));
 }
 
@@ -620,14 +633,7 @@ ELFObjectFile<ELFT>::section_rel_end(DataRefImpl Sec) const {
   if (S->sh_type != ELF::SHT_RELA && S->sh_type != ELF::SHT_REL)
     return Begin;
   DataRefImpl RelData = Begin->getRawDataRefImpl();
-  const Elf_Shdr *RelSec = getRelSection(RelData);
-
-  // Error check sh_link here so that getRelocationSymbol can just use it.
-  ErrorOr<const Elf_Shdr *> SymSecOrErr = EF.getSection(RelSec->sh_link);
-  if (std::error_code EC = SymSecOrErr.getError())
-    report_fatal_error(EC.message());
-
-  RelData.d.b += S->sh_size / S->sh_entsize;
+  RelData.d.b += (S->sh_size / S->sh_entsize) << 1;
   return relocation_iterator(RelocationRef(RelData, this));
 }
 
@@ -651,7 +657,7 @@ ELFObjectFile<ELFT>::getRelocatedSection(DataRefImpl Sec) const {
 // Relocations
 template <class ELFT>
 void ELFObjectFile<ELFT>::moveRelocationNext(DataRefImpl &Rel) const {
-  ++Rel.d.b;
+  Rel.d.b += 2;
 }
 
 template <class ELFT>
@@ -666,10 +672,12 @@ ELFObjectFile<ELFT>::getRelocationSymbol(DataRefImpl Rel) const {
   if (!symbolIdx)
     return symbol_end();
 
-  // FIXME: error check symbolIdx
+  bool IsDyn = Rel.d.b & 1;
   DataRefImpl SymbolData;
-  SymbolData.d.a = sec->sh_link;
-  SymbolData.d.b = symbolIdx;
+  if (IsDyn)
+    SymbolData = toDRI(DotDynSymSec, symbolIdx);
+  else
+    SymbolData = toDRI(DotSymtabSec, symbolIdx);
   return symbol_iterator(SymbolRef(SymbolData, this));
 }
 
@@ -717,14 +725,14 @@ template <class ELFT>
 const typename ELFObjectFile<ELFT>::Elf_Rel *
 ELFObjectFile<ELFT>::getRel(DataRefImpl Rel) const {
   assert(getRelSection(Rel)->sh_type == ELF::SHT_REL);
-  return EF.template getEntry<Elf_Rel>(Rel.d.a, Rel.d.b);
+  return EF.template getEntry<Elf_Rel>(Rel.d.a, Rel.d.b >> 1);
 }
 
 template <class ELFT>
 const typename ELFObjectFile<ELFT>::Elf_Rela *
 ELFObjectFile<ELFT>::getRela(DataRefImpl Rela) const {
   assert(getRelSection(Rela)->sh_type == ELF::SHT_RELA);
-  return EF.template getEntry<Elf_Rela>(Rela.d.a, Rela.d.b);
+  return EF.template getEntry<Elf_Rela>(Rela.d.a, Rela.d.b >> 1);
 }
 
 template <class ELFT>
@@ -827,8 +835,6 @@ StringRef ELFObjectFile<ELFT>::getFileFormatName() const {
       return "ELF32-avr";
     case ELF::EM_HEXAGON:
       return "ELF32-hexagon";
-    case ELF::EM_LANAI:
-      return "ELF32-lanai";
     case ELF::EM_MIPS:
       return "ELF32-mips";
     case ELF::EM_PPC:
@@ -838,8 +844,6 @@ StringRef ELFObjectFile<ELFT>::getFileFormatName() const {
       return "ELF32-sparc";
     case ELF::EM_WEBASSEMBLY:
       return "ELF32-wasm";
-    case ELF::EM_AMDGPU:
-      return "ELF32-amdgpu";
     default:
       return "ELF32-unknown";
     }
@@ -861,10 +865,6 @@ StringRef ELFObjectFile<ELFT>::getFileFormatName() const {
       return "ELF64-mips";
     case ELF::EM_WEBASSEMBLY:
       return "ELF64-wasm";
-    case ELF::EM_AMDGPU:
-      return (EF.getHeader()->e_ident[ELF::EI_OSABI] == ELF::ELFOSABI_AMDGPU_HSA
-              && IsLittleEndian) ?
-             "ELF64-amdgpu-hsacobj" : "ELF64-amdgpu";
     default:
       return "ELF64-unknown";
     }
@@ -891,8 +891,6 @@ unsigned ELFObjectFile<ELFT>::getArch() const {
     return Triple::avr;
   case ELF::EM_HEXAGON:
     return Triple::hexagon;
-  case ELF::EM_LANAI:
-    return Triple::lanai;
   case ELF::EM_MIPS:
     switch (EF.getHeader()->e_ident[ELF::EI_CLASS]) {
     case ELF::ELFCLASS32:
@@ -920,12 +918,6 @@ unsigned ELFObjectFile<ELFT>::getArch() const {
     case ELF::ELFCLASS64: return Triple::wasm64;
     default: return Triple::UnknownArch;
     }
-
-  case ELF::EM_AMDGPU:
-    return (EF.getHeader()->e_ident[ELF::EI_CLASS] == ELF::ELFCLASS64
-         && EF.getHeader()->e_ident[ELF::EI_OSABI] == ELF::ELFOSABI_AMDGPU_HSA
-         && IsLittleEndian) ?
-      Triple::amdgcn : Triple::UnknownArch;
 
   default:
     return Triple::UnknownArch;

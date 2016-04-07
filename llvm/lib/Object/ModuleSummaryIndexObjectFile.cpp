@@ -36,7 +36,10 @@ std::unique_ptr<ModuleSummaryIndex> ModuleSummaryIndexObjectFile::takeIndex() {
 ErrorOr<MemoryBufferRef>
 ModuleSummaryIndexObjectFile::findBitcodeInObject(const ObjectFile &Obj) {
   for (const SectionRef &Sec : Obj.sections()) {
-    if (Sec.isBitcode()) {
+    StringRef SecName;
+    if (std::error_code EC = Sec.getName(SecName))
+      return EC;
+    if (SecName == ".llvmbc") {
       StringRef SecContents;
       if (std::error_code EC = Sec.getContents(SecContents))
         return EC;
@@ -56,10 +59,10 @@ ModuleSummaryIndexObjectFile::findBitcodeInMemBuffer(MemoryBufferRef Object) {
   case sys::fs::file_magic::elf_relocatable:
   case sys::fs::file_magic::macho_object:
   case sys::fs::file_magic::coff_object: {
-    Expected<std::unique_ptr<ObjectFile>> ObjFile =
+    ErrorOr<std::unique_ptr<ObjectFile>> ObjFile =
         ObjectFile::createObjectFile(Object, Type);
     if (!ObjFile)
-      return errorToErrorCode(ObjFile.takeError());
+      return ObjFile.getError();
     return findBitcodeInObject(*ObjFile->get());
   }
   default:

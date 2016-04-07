@@ -77,9 +77,11 @@ namespace __sanitizer {
   const unsigned struct_kernel_stat_sz = 144;
   const unsigned struct_kernel_stat64_sz = 104;
 #elif defined(__mips__)
-  const unsigned struct_kernel_stat_sz =
-                 SANITIZER_ANDROID ? FIRST_32_SECOND_64(104, 128) :
-                                     FIRST_32_SECOND_64(144, 216);
+  #if SANITIZER_WORDSIZE == 64
+  const unsigned struct_kernel_stat_sz = 216;
+  #else
+  const unsigned struct_kernel_stat_sz = 144;
+  #endif
   const unsigned struct_kernel_stat64_sz = 104;
 #endif
   struct __sanitizer_perf_event_attr {
@@ -514,11 +516,7 @@ namespace __sanitizer {
   };
 
 #if SANITIZER_ANDROID
-# if SANITIZER_MIPS
-  typedef unsigned long __sanitizer_sigset_t[16/sizeof(unsigned long)];
-# else
   typedef unsigned long __sanitizer_sigset_t;
-# endif
 #elif SANITIZER_MAC
   typedef unsigned __sanitizer_sigset_t;
 #elif SANITIZER_LINUX
@@ -543,15 +541,6 @@ namespace __sanitizer {
     };
     __sanitizer_sigset_t sa_mask;
     void (*sa_restorer)();
-  };
-#elif SANITIZER_ANDROID && SANITIZER_MIPS32  // check this before WORDSIZE == 32
-  struct __sanitizer_sigaction {
-    unsigned sa_flags;
-    union {
-      void (*sigaction)(int sig, void *siginfo, void *uctx);
-      void (*handler)(int sig);
-    };
-    __sanitizer_sigset_t sa_mask;
   };
 #elif SANITIZER_ANDROID && (SANITIZER_WORDSIZE == 32)
   struct __sanitizer_sigaction {

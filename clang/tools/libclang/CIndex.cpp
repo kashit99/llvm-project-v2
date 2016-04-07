@@ -1951,11 +1951,6 @@ public:
   void VisitOMPAtomicDirective(const OMPAtomicDirective *D);
   void VisitOMPTargetDirective(const OMPTargetDirective *D);
   void VisitOMPTargetDataDirective(const OMPTargetDataDirective *D);
-  void VisitOMPTargetEnterDataDirective(const OMPTargetEnterDataDirective *D);
-  void VisitOMPTargetExitDataDirective(const OMPTargetExitDataDirective *D);
-  void VisitOMPTargetParallelDirective(const OMPTargetParallelDirective *D);
-  void
-  VisitOMPTargetParallelForDirective(const OMPTargetParallelForDirective *D);
   void VisitOMPTeamsDirective(const OMPTeamsDirective *D);
   void VisitOMPTaskLoopDirective(const OMPTaskLoopDirective *D);
   void VisitOMPTaskLoopSimdDirective(const OMPTaskLoopSimdDirective *D);
@@ -2030,20 +2025,7 @@ public:
 #define OPENMP_CLAUSE(Name, Class)                                             \
   void Visit##Class(const Class *C);
 #include "clang/Basic/OpenMPKinds.def"
-  void VisitOMPClauseWithPreInit(const OMPClauseWithPreInit *C);
-  void VisitOMPClauseWithPostUpdate(const OMPClauseWithPostUpdate *C);
 };
-
-void OMPClauseEnqueue::VisitOMPClauseWithPreInit(
-    const OMPClauseWithPreInit *C) {
-  Visitor->AddStmt(C->getPreInitStmt());
-}
-
-void OMPClauseEnqueue::VisitOMPClauseWithPostUpdate(
-    const OMPClauseWithPostUpdate *C) {
-  VisitOMPClauseWithPreInit(C);
-  Visitor->AddStmt(C->getPostUpdateExpr());
-}
 
 void OMPClauseEnqueue::VisitOMPIfClause(const OMPIfClause *C) {
   Visitor->AddStmt(C->getCondition());
@@ -2074,8 +2056,8 @@ void OMPClauseEnqueue::VisitOMPDefaultClause(const OMPDefaultClause *C) { }
 void OMPClauseEnqueue::VisitOMPProcBindClause(const OMPProcBindClause *C) { }
 
 void OMPClauseEnqueue::VisitOMPScheduleClause(const OMPScheduleClause *C) {
-  VisitOMPClauseWithPreInit(C);
   Visitor->AddStmt(C->getChunkSize());
+  Visitor->AddStmt(C->getHelperChunkSize());
 }
 
 void OMPClauseEnqueue::VisitOMPOrderedClause(const OMPOrderedClause *C) {
@@ -2148,18 +2130,10 @@ void OMPClauseEnqueue::VisitOMPPrivateClause(const OMPPrivateClause *C) {
 void OMPClauseEnqueue::VisitOMPFirstprivateClause(
                                         const OMPFirstprivateClause *C) {
   VisitOMPClauseList(C);
-  VisitOMPClauseWithPreInit(C);
-  for (const auto *E : C->private_copies()) {
-    Visitor->AddStmt(E);
-  }
-  for (const auto *E : C->inits()) {
-    Visitor->AddStmt(E);
-  }
 }
 void OMPClauseEnqueue::VisitOMPLastprivateClause(
                                         const OMPLastprivateClause *C) {
   VisitOMPClauseList(C);
-  VisitOMPClauseWithPostUpdate(C);
   for (auto *E : C->private_copies()) {
     Visitor->AddStmt(E);
   }
@@ -2178,7 +2152,6 @@ void OMPClauseEnqueue::VisitOMPSharedClause(const OMPSharedClause *C) {
 }
 void OMPClauseEnqueue::VisitOMPReductionClause(const OMPReductionClause *C) {
   VisitOMPClauseList(C);
-  VisitOMPClauseWithPostUpdate(C);
   for (auto *E : C->privates()) {
     Visitor->AddStmt(E);
   }
@@ -2194,7 +2167,6 @@ void OMPClauseEnqueue::VisitOMPReductionClause(const OMPReductionClause *C) {
 }
 void OMPClauseEnqueue::VisitOMPLinearClause(const OMPLinearClause *C) {
   VisitOMPClauseList(C);
-  VisitOMPClauseWithPostUpdate(C);
   for (const auto *E : C->privates()) {
     Visitor->AddStmt(E);
   }
@@ -2250,11 +2222,9 @@ void OMPClauseEnqueue::VisitOMPMapClause(const OMPMapClause *C) {
 }
 void OMPClauseEnqueue::VisitOMPDistScheduleClause(
     const OMPDistScheduleClause *C) {
-  VisitOMPClauseWithPreInit(C);
   Visitor->AddStmt(C->getChunkSize());
+  Visitor->AddStmt(C->getHelperChunkSize());
 }
-void OMPClauseEnqueue::VisitOMPDefaultmapClause(
-    const OMPDefaultmapClause * /*C*/) {}
 }
 
 void EnqueueVisitor::EnqueueChildren(const OMPClause *S) {
@@ -2659,26 +2629,6 @@ void EnqueueVisitor::VisitOMPTargetDirective(const OMPTargetDirective *D) {
 void EnqueueVisitor::VisitOMPTargetDataDirective(const 
                                                  OMPTargetDataDirective *D) {
   VisitOMPExecutableDirective(D);
-}
-
-void EnqueueVisitor::VisitOMPTargetEnterDataDirective(
-    const OMPTargetEnterDataDirective *D) {
-  VisitOMPExecutableDirective(D);
-}
-
-void EnqueueVisitor::VisitOMPTargetExitDataDirective(
-    const OMPTargetExitDataDirective *D) {
-  VisitOMPExecutableDirective(D);
-}
-
-void EnqueueVisitor::VisitOMPTargetParallelDirective(
-    const OMPTargetParallelDirective *D) {
-  VisitOMPExecutableDirective(D);
-}
-
-void EnqueueVisitor::VisitOMPTargetParallelForDirective(
-    const OMPTargetParallelForDirective *D) {
-  VisitOMPLoopDirective(D);
 }
 
 void EnqueueVisitor::VisitOMPTeamsDirective(const OMPTeamsDirective *D) {
@@ -3159,9 +3109,6 @@ clang_parseTranslationUnit_Impl(CXIndex CIdx, const char *source_filename,
   // Configure the diagnostics.
   IntrusiveRefCntPtr<DiagnosticsEngine>
     Diags(CompilerInstance::createDiagnostics(new DiagnosticOptions));
-
-  if (options & CXTranslationUnit_KeepGoing)
-    Diags->setFatalsAsError(true);
 
   // Recover resources if we crash before exiting this function.
   llvm::CrashRecoveryContextCleanupRegistrar<DiagnosticsEngine,
@@ -4817,14 +4764,6 @@ CXString clang_getCursorKindSpelling(enum CXCursorKind Kind) {
     return cxstring::createRef("OMPTargetDirective");
   case CXCursor_OMPTargetDataDirective:
     return cxstring::createRef("OMPTargetDataDirective");
-  case CXCursor_OMPTargetEnterDataDirective:
-    return cxstring::createRef("OMPTargetEnterDataDirective");
-  case CXCursor_OMPTargetExitDataDirective:
-    return cxstring::createRef("OMPTargetExitDataDirective");
-  case CXCursor_OMPTargetParallelDirective:
-    return cxstring::createRef("OMPTargetParallelDirective");
-  case CXCursor_OMPTargetParallelForDirective:
-    return cxstring::createRef("OMPTargetParallelForDirective");
   case CXCursor_OMPTeamsDirective:
     return cxstring::createRef("OMPTeamsDirective");
   case CXCursor_OMPCancellationPointDirective:
@@ -5579,16 +5518,12 @@ CXCursor clang_getCursorDefinition(CXCursor C) {
   case Decl::StaticAssert:
   case Decl::Block:
   case Decl::Captured:
-  case Decl::OMPCapturedExpr:
   case Decl::Label:  // FIXME: Is this right??
   case Decl::ClassScopeFunctionSpecialization:
   case Decl::Import:
   case Decl::OMPThreadPrivate:
-  case Decl::OMPDeclareReduction:
   case Decl::ObjCTypeParam:
   case Decl::BuiltinTemplate:
-  case Decl::PragmaComment:
-  case Decl::PragmaDetectMismatch:
     return C;
 
   // Declaration kinds that don't make any sense here, but are
@@ -7933,10 +7868,3 @@ cxindex::Logger::~Logger() {
     OS << "--------------------------------------------------\n";
   }
 }
-
-#ifdef CLANG_TOOL_EXTRA_BUILD
-// This anchor is used to force the linker to link the clang-tidy plugin.
-extern volatile int ClangTidyPluginAnchorSource;
-static int LLVM_ATTRIBUTE_UNUSED ClangTidyPluginAnchorDestination =
-    ClangTidyPluginAnchorSource;
-#endif

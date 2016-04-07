@@ -1,4 +1,5 @@
-; RUN: opt -S -mtriple=amdgcn-unknown-unknown -amdgpu-annotate-kernel-features < %s | FileCheck -check-prefix=NOHSA -check-prefix=ALL %s
+; RUN: opt -mtriple=amdgcn-unknown-amdhsa -S -amdgpu-annotate-kernel-features < %s | FileCheck -check-prefix=HSA -check-prefix=ALL %s
+; RUN: opt -S -amdgpu-annotate-kernel-features < %s | FileCheck -check-prefix=NOHSA -check-prefix=ALL %s
 
 declare i32 @llvm.r600.read.tgid.x() #0
 declare i32 @llvm.r600.read.tgid.y() #0
@@ -11,6 +12,11 @@ declare i32 @llvm.r600.read.tidig.z() #0
 declare i32 @llvm.r600.read.local.size.x() #0
 declare i32 @llvm.r600.read.local.size.y() #0
 declare i32 @llvm.r600.read.local.size.z() #0
+
+declare i32 @llvm.r600.read.global.size.x() #0
+declare i32 @llvm.r600.read.global.size.y() #0
+declare i32 @llvm.r600.read.global.size.z() #0
+
 
 ; ALL: define void @use_tgid_x(i32 addrspace(1)* %ptr) #1 {
 define void @use_tgid_x(i32 addrspace(1)* %ptr) #1 {

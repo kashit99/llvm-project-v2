@@ -20,6 +20,7 @@ import sys
 import tempfile
 import time
 from lldbsuite.test import configuration
+from lldbsuite.test.decorators import *
 from lldbsuite.test.lldbtest import *
 from lldbgdbserverutils import *
 import logging

@@ -42,13 +42,12 @@ public:
     PM.run(M);
     std::unique_ptr<MemoryBuffer> ObjBuffer(
         new ObjectMemoryBuffer(std::move(ObjBufferSV)));
-    Expected<std::unique_ptr<object::ObjectFile>> Obj =
+    ErrorOr<std::unique_ptr<object::ObjectFile>> Obj =
         object::ObjectFile::createObjectFile(ObjBuffer->getMemBufferRef());
+    // TODO: Actually report errors helpfully.
     typedef object::OwningBinary<object::ObjectFile> OwningObj;
     if (Obj)
       return OwningObj(std::move(*Obj), std::move(ObjBuffer));
-    // TODO: Actually report errors helpfully.
-    consumeError(Obj.takeError());
     return OwningObj(nullptr, nullptr);
   }
 

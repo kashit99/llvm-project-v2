@@ -1,6 +1,6 @@
 ;RUN: llc < %s -march=r600 -mcpu=cayman
 
-define amdgpu_ps void @main(<4 x float> inreg, <4 x float> inreg) {
+define void @main(<4 x float> inreg, <4 x float> inreg) #0 {
 main_body:
   %2 = extractelement <4 x float> %0, i32 0
   %3 = extractelement <4 x float> %0, i32 1
@@ -54,4 +54,5 @@ declare <4 x float> @llvm.AMDGPU.tex(<4 x float>, i32, i32, i32) #1
 
 declare void @llvm.R600.store.swizzle(<4 x float>, i32, i32)
 
+attributes #0 = { "ShaderType"="0" }
 attributes #1 = { readnone }

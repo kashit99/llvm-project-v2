@@ -74,7 +74,7 @@ public:
                    bool(*Func)(unsigned, bool),
                    unsigned NumAlignedDPRCS2Regs) const;
 
-  MachineBasicBlock::iterator
+  void
   eliminateCallFramePseudoInstr(MachineFunction &MF,
                                 MachineBasicBlock &MBB,
                                 MachineBasicBlock::iterator MI) const override;

@@ -49,6 +49,9 @@ void RegScavenger::initRegState() {
   // All register units start out unused.
   RegUnitsAvailable.set();
 
+  if (!MBB)
+    return;
+
   // Live-in registers are in use.
   for (const auto &LI : MBB->liveins())
     setRegUsed(LI.PhysReg, LI.LaneMask);
@@ -60,8 +63,8 @@ void RegScavenger::initRegState() {
     setRegUsed(I);
 }
 
-void RegScavenger::enterBasicBlock(MachineBasicBlock &MBB) {
-  MachineFunction &MF = *MBB.getParent();
+void RegScavenger::enterBasicBlock(MachineBasicBlock *mbb) {
+  MachineFunction &MF = *mbb->getParent();
   TII = MF.getSubtarget().getInstrInfo();
   TRI = MF.getSubtarget().getRegisterInfo();
   MRI = &MF.getRegInfo();
@@ -75,15 +78,15 @@ void RegScavenger::enterBasicBlock(MachineBasicBlock &MBB) {
          "Cannot use register scavenger with inaccurate liveness");
 
   // Self-initialize.
-  if (!this->MBB) {
+  if (!MBB) {
     NumRegUnits = TRI->getNumRegUnits();
     RegUnitsAvailable.resize(NumRegUnits);
     KillRegUnits.resize(NumRegUnits);
     DefRegUnits.resize(NumRegUnits);
     TmpRegUnits.resize(NumRegUnits);
   }
-  this->MBB = &MBB;
 
+  MBB = mbb;
   initRegState();
 
   Tracking = false;

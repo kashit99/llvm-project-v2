@@ -1083,12 +1083,16 @@ public:
     //------------------------------------------------------------------
     /// Gets the outer-most return value from the completed plans
     ///
+    /// @param[out] is_swift_error_value
+    ///     If non-NULL, will be set to true if this is a Swift error value
+    ///     not a true return.
+    ///
     /// @return
     ///     A ValueObjectSP, either empty if there is no return value,
     ///     or containing the return value.
     //------------------------------------------------------------------
     lldb::ValueObjectSP
-    GetReturnValueObject ();
+    GetReturnValueObject (bool *is_swift_error_value);
 
     //------------------------------------------------------------------
     /// Gets the outer-most expression variable from the completed plans
@@ -1425,7 +1429,7 @@ protected:
 
     lldb::StackFrameListSP
     GetStackFrameList ();
-
+    
     void
     SetTemporaryResumeState(lldb::StateType new_state)
     {

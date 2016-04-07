@@ -204,7 +204,7 @@ void elf::ObjectFile<ELFT>::initializeSections(
       // If -r is given, we do not interpret or apply relocation
       // but just copy relocation sections to output.
       if (Config->Relocatable) {
-        Sections[I] = new (IAlloc.Allocate()) InputSection<ELFT>(this, &Sec);
+        Sections[I] = new (Alloc) InputSection<ELFT>(this, &Sec);
         break;
       }
 
@@ -268,8 +268,8 @@ elf::ObjectFile<ELFT>::createInputSection(const Elf_Shdr &Sec) {
   // A MIPS object file has a special section that contains register
   // usage info, which needs to be handled by the linker specially.
   if (Config->EMachine == EM_MIPS && Name == ".reginfo") {
-    MipsReginfo.reset(new MipsReginfoInputSection<ELFT>(this, &Sec));
-    return MipsReginfo.get();
+    MipsReginfo = new (Alloc) MipsReginfoInputSection<ELFT>(this, &Sec);
+    return MipsReginfo;
   }
 
   // We dont need special handling of .eh_frame sections if relocatable
@@ -278,7 +278,7 @@ elf::ObjectFile<ELFT>::createInputSection(const Elf_Shdr &Sec) {
     return new (EHAlloc.Allocate()) EHInputSection<ELFT>(this, &Sec);
   if (shouldMerge<ELFT>(Sec))
     return new (MAlloc.Allocate()) MergeInputSection<ELFT>(this, &Sec);
-  return new (IAlloc.Allocate()) InputSection<ELFT>(this, &Sec);
+  return new (Alloc) InputSection<ELFT>(this, &Sec);
 }
 
 template <class ELFT> void elf::ObjectFile<ELFT>::initializeSymbols() {
@@ -306,7 +306,7 @@ elf::ObjectFile<ELFT>::getSection(const Elf_Sym &Sym) const {
 
 template <class ELFT>
 SymbolBody *elf::ObjectFile<ELFT>::createSymbolBody(const Elf_Sym *Sym) {
-  unsigned char Binding = Sym->getBinding();
+   unsigned char Binding = Sym->getBinding();
   InputSectionBase<ELFT> *Sec = getSection(*Sym);
   if (Binding == STB_LOCAL) {
     if (Sym->st_shndx == SHN_UNDEF)
@@ -473,7 +473,7 @@ BitcodeFile::createSymbolBody(const DenseSet<const Comdat *> &KeptComdats,
   uint32_t Flags = Sym.getFlags();
   bool IsWeak = Flags & BasicSymbolRef::SF_Weak;
   if (Flags & BasicSymbolRef::SF_Undefined) {
-    Body = new (Alloc) UndefinedBitcode(NameRef, IsWeak, Visibility);
+    Body = new (Alloc) Undefined(NameRef, IsWeak, Visibility, false);
   } else if (Flags & BasicSymbolRef::SF_Common) {
     const DataLayout &DL = M.getDataLayout();
     uint64_t Size = DL.getTypeAllocSize(GV->getValueType());
@@ -562,66 +562,6 @@ std::unique_ptr<InputFile> elf::createObjectFile(MemoryBufferRef MB,
 
 std::unique_ptr<InputFile> elf::createSharedFile(MemoryBufferRef MB) {
   return createELFFile<SharedFile>(MB);
-}
-
-void LazyObjectFile::parse() {
-  for (StringRef Sym : getSymbols())
-    LazySymbols.emplace_back(Sym, this->MB);
-}
-
-template <class ELFT> std::vector<StringRef> LazyObjectFile::getElfSymbols() {
-  typedef typename ELFT::Shdr Elf_Shdr;
-  typedef typename ELFT::Sym Elf_Sym;
-  typedef typename ELFT::SymRange Elf_Sym_Range;
-
-  const ELFFile<ELFT> Obj = createELFObj<ELFT>(this->MB);
-  for (const Elf_Shdr &Sec : Obj.sections()) {
-    if (Sec.sh_type != SHT_SYMTAB)
-      continue;
-    Elf_Sym_Range Syms = Obj.symbols(&Sec);
-    uint32_t FirstNonLocal = Sec.sh_info;
-    StringRef StringTable = check(Obj.getStringTableForSymtab(Sec));
-    std::vector<StringRef> V;
-    for (const Elf_Sym &Sym : Syms.slice(FirstNonLocal))
-      V.push_back(check(Sym.getName(StringTable)));
-    return V;
-  }
-  return {};
-}
-
-std::vector<StringRef> LazyObjectFile::getBitcodeSymbols() {
-  LLVMContext Context;
-  std::unique_ptr<IRObjectFile> Obj =
-      check(IRObjectFile::create(this->MB, Context));
-  std::vector<StringRef> V;
-  for (const BasicSymbolRef &Sym : Obj->symbols()) {
-    if (BitcodeFile::shouldSkip(Sym))
-      continue;
-    SmallString<64> Name;
-    raw_svector_ostream OS(Name);
-    Sym.printName(OS);
-    V.push_back(Saver.save(StringRef(Name)));
-  }
-  return V;
-}
-
-// Returns a vector of globally-visible symbol names.
-std::vector<StringRef> LazyObjectFile::getSymbols() {
-  using namespace sys::fs;
-
-  StringRef Buf = this->MB.getBuffer();
-  if (identify_magic(Buf) == file_magic::bitcode)
-    return getBitcodeSymbols();
-
-  std::pair<unsigned char, unsigned char> Type = getElfArchType(Buf);
-  if (Type.first == ELF::ELFCLASS32) {
-    if (Type.second == ELF::ELFDATA2LSB)
-      return getElfSymbols<ELF32LE>();
-    return getElfSymbols<ELF32BE>();
-  }
-  if (Type.second == ELF::ELFDATA2LSB)
-    return getElfSymbols<ELF64LE>();
-  return getElfSymbols<ELF64BE>();
 }
 
 template class elf::ELFFileBase<ELF32LE>;

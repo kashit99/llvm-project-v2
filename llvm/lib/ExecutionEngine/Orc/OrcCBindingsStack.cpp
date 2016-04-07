@@ -22,11 +22,6 @@ OrcCBindingsStack::createCompileCallbackMgr(Triple T) {
   switch (T.getArch()) {
     default: return nullptr;
 
-    case Triple::x86: {
-      typedef orc::LocalJITCompileCallbackManager<orc::OrcI386> CCMgrT;
-      return llvm::make_unique<CCMgrT>(0);
-    };
-
     case Triple::x86_64: {
       typedef orc::LocalJITCompileCallbackManager<orc::OrcX86_64> CCMgrT;
       return llvm::make_unique<CCMgrT>(0);
@@ -38,12 +33,6 @@ OrcCBindingsStack::IndirectStubsManagerBuilder
 OrcCBindingsStack::createIndirectStubsMgrBuilder(Triple T) {
   switch (T.getArch()) {
     default: return nullptr;
-
-    case Triple::x86:
-      return [](){
-        return llvm::make_unique<
-                 orc::LocalIndirectStubsManager<orc::OrcI386>>();
-      };
 
     case Triple::x86_64:
       return [](){

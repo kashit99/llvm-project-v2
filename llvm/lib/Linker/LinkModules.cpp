@@ -39,6 +39,11 @@ class ModuleLinker {
   /// imported as declarations instead of definitions.
   DenseSet<const GlobalValue *> *GlobalsToImport;
 
+  /// Association between metadata value id and temporary metadata that
+  /// remains unmapped after function importing. Saved during function
+  /// importing and consumed during the metadata linking postpass.
+  DenseMap<unsigned, MDNode *> *ValIDToTempMDMap;
+
   /// Used as the callback for lazy linking.
   /// The mover has just hit GV and we have to decide if it, and other members
   /// of the same comdat, should be linked. Every member to be linked is passed
@@ -71,8 +76,8 @@ class ModuleLinker {
       ComdatsChosen;
   bool getComdatResult(const Comdat *SrcC, Comdat::SelectionKind &SK,
                        bool &LinkFromSrc);
-  // Keep track of the lazy linked global members of each comdat in source.
-  DenseMap<const Comdat *, std::vector<GlobalValue *>> LazyComdatMembers;
+  // Keep track of the global value members of each comdat in source.
+  DenseMap<const Comdat *, std::vector<GlobalValue *>> ComdatMembers;
 
   /// Given a global in the source module, return the global in the
   /// destination module that is being linked to, if any.
@@ -97,11 +102,6 @@ class ModuleLinker {
     return DGV;
   }
 
-  /// Drop GV if it is a member of a comdat that we are dropping.
-  /// This can happen with COFF's largest selection kind.
-  void dropReplacedComdat(GlobalValue &GV,
-                          const DenseSet<const Comdat *> &ReplacedDstComdats);
-
   bool linkIfNeeded(GlobalValue &GV);
 
   /// Helper method to check if we are importing from the current source
@@ -114,9 +114,10 @@ class ModuleLinker {
 
 public:
   ModuleLinker(IRMover &Mover, std::unique_ptr<Module> SrcM, unsigned Flags,
-               DenseSet<const GlobalValue *> *GlobalsToImport = nullptr)
+               DenseSet<const GlobalValue *> *GlobalsToImport = nullptr,
+               DenseMap<unsigned, MDNode *> *ValIDToTempMDMap = nullptr)
       : Mover(Mover), SrcM(std::move(SrcM)), Flags(Flags),
-        GlobalsToImport(GlobalsToImport) {}
+        GlobalsToImport(GlobalsToImport), ValIDToTempMDMap(ValIDToTempMDMap) {}
 
   bool run();
 };
@@ -416,8 +417,9 @@ bool ModuleLinker::linkIfNeeded(GlobalValue &GV) {
     bool LinkFromSrc;
     Comdat::SelectionKind SK;
     std::tie(SK, LinkFromSrc) = ComdatsChosen[SC];
-    if (!LinkFromSrc)
-      return false;
+    if (LinkFromSrc)
+      ValuesToLink.insert(&GV);
+    return false;
   }
 
   bool LinkFromSrc = true;
@@ -440,58 +442,14 @@ void ModuleLinker::addLazyFor(GlobalValue &GV, IRMover::ValueAdder Add) {
   const Comdat *SC = GV.getComdat();
   if (!SC)
     return;
-  for (GlobalValue *GV2 : LazyComdatMembers[SC]) {
-    GlobalValue *DGV = getLinkedToGlobal(GV2);
-    bool LinkFromSrc = true;
-    if (DGV && shouldLinkFromSource(LinkFromSrc, *DGV, *GV2))
-      return;
-    if (!LinkFromSrc)
-      continue;
-    if (shouldInternalizeLinkedSymbols())
+  for (GlobalValue *GV2 : ComdatMembers[SC]) {
+    if (!GV2->hasLocalLinkage() && shouldInternalizeLinkedSymbols())
       Internalize.insert(GV2->getName());
     Add(*GV2);
   }
 }
 
-void ModuleLinker::dropReplacedComdat(
-    GlobalValue &GV, const DenseSet<const Comdat *> &ReplacedDstComdats) {
-  Comdat *C = GV.getComdat();
-  if (!C)
-    return;
-  if (!ReplacedDstComdats.count(C))
-    return;
-  if (GV.use_empty()) {
-    GV.eraseFromParent();
-    return;
-  }
-
-  if (auto *F = dyn_cast<Function>(&GV)) {
-    F->deleteBody();
-  } else if (auto *Var = dyn_cast<GlobalVariable>(&GV)) {
-    Var->setInitializer(nullptr);
-  } else {
-    auto &Alias = cast<GlobalAlias>(GV);
-    Module &M = *Alias.getParent();
-    PointerType &Ty = *cast<PointerType>(Alias.getType());
-    GlobalValue *Declaration;
-    if (auto *FTy = dyn_cast<FunctionType>(Alias.getValueType())) {
-      Declaration = Function::Create(FTy, GlobalValue::ExternalLinkage, "", &M);
-    } else {
-      Declaration =
-          new GlobalVariable(M, Ty.getElementType(), /*isConstant*/ false,
-                             GlobalValue::ExternalLinkage,
-                             /*Initializer*/ nullptr);
-    }
-    Declaration->takeName(&Alias);
-    Alias.replaceAllUsesWith(Declaration);
-    Alias.eraseFromParent();
-  }
-}
-
 bool ModuleLinker::run() {
-  Module &DstM = Mover.getModule();
-  DenseSet<const Comdat *> ReplacedDstComdats;
-
   for (const auto &SMEC : SrcM->getComdatSymbolTable()) {
     const Comdat &C = SMEC.getValue();
     if (ComdatsChosen.count(&C))
@@ -501,51 +459,19 @@ bool ModuleLinker::run() {
     if (getComdatResult(&C, SK, LinkFromSrc))
       return true;
     ComdatsChosen[&C] = std::make_pair(SK, LinkFromSrc);
-
-    if (!LinkFromSrc)
-      continue;
-
-    Module::ComdatSymTabType &ComdatSymTab = DstM.getComdatSymbolTable();
-    Module::ComdatSymTabType::iterator DstCI = ComdatSymTab.find(C.getName());
-    if (DstCI == ComdatSymTab.end())
-      continue;
-
-    // The source comdat is replacing the dest one.
-    const Comdat *DstC = &DstCI->second;
-    ReplacedDstComdats.insert(DstC);
-  }
-
-  // Alias have to go first, since we are not able to find their comdats
-  // otherwise.
-  for (auto I = DstM.alias_begin(), E = DstM.alias_end(); I != E;) {
-    GlobalAlias &GV = *I++;
-    dropReplacedComdat(GV, ReplacedDstComdats);
-  }
-
-  for (auto I = DstM.global_begin(), E = DstM.global_end(); I != E;) {
-    GlobalVariable &GV = *I++;
-    dropReplacedComdat(GV, ReplacedDstComdats);
-  }
-
-  for (auto I = DstM.begin(), E = DstM.end(); I != E;) {
-    Function &GV = *I++;
-    dropReplacedComdat(GV, ReplacedDstComdats);
   }
 
   for (GlobalVariable &GV : SrcM->globals())
-    if (GV.hasLinkOnceLinkage())
-      if (const Comdat *SC = GV.getComdat())
-        LazyComdatMembers[SC].push_back(&GV);
+    if (const Comdat *SC = GV.getComdat())
+      ComdatMembers[SC].push_back(&GV);
 
   for (Function &SF : *SrcM)
-    if (SF.hasLinkOnceLinkage())
-      if (const Comdat *SC = SF.getComdat())
-        LazyComdatMembers[SC].push_back(&SF);
+    if (const Comdat *SC = SF.getComdat())
+      ComdatMembers[SC].push_back(&SF);
 
   for (GlobalAlias &GA : SrcM->aliases())
-    if (GA.hasLinkOnceLinkage())
-      if (const Comdat *SC = GA.getComdat())
-        LazyComdatMembers[SC].push_back(&GA);
+    if (const Comdat *SC = GA.getComdat())
+      ComdatMembers[SC].push_back(&GA);
 
   // Insert all of the globals in src into the DstM module... without linking
   // initializers (which could refer to functions not yet mapped over).
@@ -566,14 +492,8 @@ bool ModuleLinker::run() {
     const Comdat *SC = GV->getComdat();
     if (!SC)
       continue;
-    for (GlobalValue *GV2 : LazyComdatMembers[SC]) {
-      GlobalValue *DGV = getLinkedToGlobal(GV2);
-      bool LinkFromSrc = true;
-      if (DGV && shouldLinkFromSource(LinkFromSrc, *DGV, *GV2))
-        return true;
-      if (LinkFromSrc)
-        ValuesToLink.insert(GV2);
-    }
+    for (GlobalValue *GV2 : ComdatMembers[SC])
+      ValuesToLink.insert(GV2);
   }
 
   if (shouldInternalizeLinkedSymbols()) {
@@ -584,8 +504,10 @@ bool ModuleLinker::run() {
   if (Mover.move(std::move(SrcM), ValuesToLink.getArrayRef(),
                  [this](GlobalValue &GV, IRMover::ValueAdder Add) {
                    addLazyFor(GV, Add);
-                 }))
+                 },
+                 ValIDToTempMDMap, false))
     return true;
+  Module &DstM = Mover.getModule();
   for (auto &P : Internalize) {
     GlobalValue *GV = DstM.getNamedValue(P.first());
     GV->setLinkage(GlobalValue::InternalLinkage);
@@ -597,9 +519,22 @@ bool ModuleLinker::run() {
 Linker::Linker(Module &M) : Mover(M) {}
 
 bool Linker::linkInModule(std::unique_ptr<Module> Src, unsigned Flags,
-                          DenseSet<const GlobalValue *> *GlobalsToImport) {
-  ModuleLinker ModLinker(Mover, std::move(Src), Flags, GlobalsToImport);
+                          DenseSet<const GlobalValue *> *GlobalsToImport,
+                          DenseMap<unsigned, MDNode *> *ValIDToTempMDMap) {
+  ModuleLinker ModLinker(Mover, std::move(Src), Flags, GlobalsToImport,
+                         ValIDToTempMDMap);
   return ModLinker.run();
+}
+
+bool Linker::linkInMetadata(std::unique_ptr<Module> Src,
+                            DenseMap<unsigned, MDNode *> *ValIDToTempMDMap) {
+  SetVector<GlobalValue *> ValuesToLink;
+  if (Mover.move(
+          std::move(Src), ValuesToLink.getArrayRef(),
+          [this](GlobalValue &GV, IRMover::ValueAdder Add) { assert(false); },
+          ValIDToTempMDMap, true))
+    return true;
+  return false;
 }
 
 //===----------------------------------------------------------------------===//

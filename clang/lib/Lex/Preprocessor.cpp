@@ -53,8 +53,6 @@
 #include "llvm/Support/raw_ostream.h"
 using namespace clang;
 
-template class llvm::Registry<clang::PragmaHandler>;
-
 //===----------------------------------------------------------------------===//
 ExternalPreprocessorSource::~ExternalPreprocessorSource() { }
 
@@ -479,7 +477,7 @@ void Preprocessor::CreateString(StringRef Str, Token &Tok,
 }
 
 Module *Preprocessor::getCurrentModule() {
-  if (!getLangOpts().CompilingModule)
+  if (getLangOpts().CurrentModule.empty())
     return nullptr;
 
   return getHeaderSearchInfo().lookupModule(getLangOpts().CurrentModule);

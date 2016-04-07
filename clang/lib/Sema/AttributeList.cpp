@@ -159,7 +159,6 @@ struct ParsedAttrInfo {
   unsigned HasCustomParsing : 1;
   unsigned IsTargetSpecific : 1;
   unsigned IsType : 1;
-  unsigned IsStmt : 1;
   unsigned IsKnownToGCC : 1;
 
   bool (*DiagAppertainsToDecl)(Sema &S, const AttributeList &Attr,
@@ -203,10 +202,6 @@ bool AttributeList::isTargetSpecificAttr() const {
 
 bool AttributeList::isTypeAttr() const {
   return getInfo(*this).IsType;
-}
-
-bool AttributeList::isStmtAttr() const {
-  return getInfo(*this).IsStmt;
 }
 
 bool AttributeList::existsInTarget(const TargetInfo &Target) const {

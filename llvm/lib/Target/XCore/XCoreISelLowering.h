@@ -229,9 +229,6 @@ namespace llvm {
                      bool isVarArg,
                      const SmallVectorImpl<ISD::OutputArg> &ArgsFlags,
                      LLVMContext &Context) const override;
-    bool shouldInsertFencesForAtomic(const Instruction *I) const override {
-      return true;
-    }
   };
 }
 

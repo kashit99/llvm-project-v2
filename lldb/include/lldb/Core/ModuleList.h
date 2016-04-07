@@ -571,6 +571,9 @@ public:
     void
     ForEach (std::function <bool (const lldb::ModuleSP &module_sp)> const &callback) const;
 
+    void
+    ClearModuleDependentCaches ();
+
 protected:
     //------------------------------------------------------------------
     // Class typedefs.

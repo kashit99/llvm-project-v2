@@ -1176,7 +1176,7 @@ def getDefaultTimeout(platform_name):
         # We are consistently needing more time on a few tests.
         return "6m"
     else:
-        return "4m"
+        return "5m"
 
 
 def touch(fname, times=None):

@@ -15,7 +15,6 @@
 #define LLVM_EXECUTIONENGINE_ORC_RPCUTILS_H
 
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/ExecutionEngine/Orc/OrcError.h"
 
 namespace llvm {
 namespace orc {
@@ -26,7 +25,7 @@ namespace remote {
 // partially specialized.
 class RPCBase {
 protected:
-  template <typename ProcedureIdT, ProcedureIdT ProcId, typename FnT>
+  template <typename ProcedureIdT, ProcedureIdT ProcId, typename... Ts>
   class ProcedureHelper {
   public:
     static const ProcedureIdT Id = ProcId;
@@ -36,8 +35,7 @@ protected:
 
   template <typename ChannelT, typename ProcedureIdT, ProcedureIdT ProcId,
             typename... ArgTs>
-  class CallHelper<ChannelT,
-                   ProcedureHelper<ProcedureIdT, ProcId, void(ArgTs...)>> {
+  class CallHelper<ChannelT, ProcedureHelper<ProcedureIdT, ProcId, ArgTs...>> {
   public:
     static std::error_code call(ChannelT &C, const ArgTs &... Args) {
       if (auto EC = serialize(C, ProcId))
@@ -53,7 +51,7 @@ protected:
   template <typename ChannelT, typename ProcedureIdT, ProcedureIdT ProcId,
             typename... ArgTs>
   class HandlerHelper<ChannelT,
-                      ProcedureHelper<ProcedureIdT, ProcId, void(ArgTs...)>> {
+                      ProcedureHelper<ProcedureIdT, ProcId, ArgTs...>> {
   public:
     template <typename HandlerT>
     static std::error_code handle(ChannelT &C, HandlerT Handler) {
@@ -180,8 +178,8 @@ public:
   ///         })
   ///     /* handle EC */;
   ///
-  template <ProcedureIdT ProcId, typename FnT>
-  using Procedure = ProcedureHelper<ProcedureIdT, ProcId, FnT>;
+  template <ProcedureIdT ProcId, typename... Ts>
+  using Procedure = ProcedureHelper<ProcedureIdT, ProcId, Ts...>;
 
   /// Serialize Args... to channel C, but do not call C.send().
   ///

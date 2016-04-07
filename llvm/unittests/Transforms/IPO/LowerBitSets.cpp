@@ -11,7 +11,6 @@
 #include "gtest/gtest.h"
 
 using namespace llvm;
-using namespace lowerbitsets;
 
 TEST(LowerBitSets, BitSetBuilder) {
   struct {

@@ -199,22 +199,6 @@ public:
                              StringRef FileName) override;
   MCSymbol *getDwarfLineTableSymbol(unsigned CUID) override;
 
-  unsigned EmitCVFileDirective(unsigned FileNo, StringRef Filename) override;
-  void EmitCVLocDirective(unsigned FunctionId, unsigned FileNo, unsigned Line,
-                          unsigned Column, bool PrologueEnd, bool IsStmt,
-                          StringRef FileName) override;
-  void EmitCVLinetableDirective(unsigned FunctionId, const MCSymbol *FnStart,
-                                const MCSymbol *FnEnd) override;
-  void EmitCVInlineLinetableDirective(
-      unsigned PrimaryFunctionId, unsigned SourceFileId, unsigned SourceLineNum,
-      const MCSymbol *FnStartSym, const MCSymbol *FnEndSym,
-      ArrayRef<unsigned> SecondaryFunctionIds) override;
-  void EmitCVDefRangeDirective(
-      ArrayRef<std::pair<const MCSymbol *, const MCSymbol *>> Ranges,
-      StringRef FixedSizePortion) override;
-  void EmitCVStringTableDirective() override;
-  void EmitCVFileChecksumsDirective() override;
-
   void EmitIdent(StringRef IdentString) override;
   void EmitCFISections(bool EH, bool Debug) override;
   void EmitCFIDefCfa(int64_t Register, int64_t Offset) override;
@@ -822,7 +806,7 @@ void MCAsmStreamer::EmitValueToAlignment(unsigned ByteAlignment, int64_t Value,
     default:
       llvm_unreachable("Invalid size for machine code value!");
     case 1:
-      OS << "\t.p2align\t";
+      OS << "\t.align\t";
       break;
     case 2:
       OS << ".p2alignw ";
@@ -834,7 +818,10 @@ void MCAsmStreamer::EmitValueToAlignment(unsigned ByteAlignment, int64_t Value,
       llvm_unreachable("Unsupported alignment size!");
     }
 
-    OS << Log2_32(ByteAlignment);
+    if (MAI->getAlignmentIsInBytes())
+      OS << ByteAlignment;
+    else
+      OS << Log2_32(ByteAlignment);
 
     if (Value || MaxBytesToEmit) {
       OS << ", 0x";
@@ -967,105 +954,6 @@ MCSymbol *MCAsmStreamer::getDwarfLineTableSymbol(unsigned CUID) {
   // Always use the zeroth line table, since asm syntax only supports one line
   // table for now.
   return MCStreamer::getDwarfLineTableSymbol(0);
-}
-
-unsigned MCAsmStreamer::EmitCVFileDirective(unsigned FileNo,
-                                            StringRef Filename) {
-  if (!getContext().getCVFile(Filename, FileNo))
-    return 0;
-
-  OS << "\t.cv_file\t" << FileNo << ' ';
-
-  PrintQuotedString(Filename, OS);
-  EmitEOL();
-
-  return FileNo;
-}
-
-void MCAsmStreamer::EmitCVLocDirective(unsigned FunctionId, unsigned FileNo,
-                                       unsigned Line, unsigned Column,
-                                       bool PrologueEnd, bool IsStmt,
-                                       StringRef FileName) {
-  OS << "\t.cv_loc\t" << FunctionId << " " << FileNo << " " << Line << " "
-     << Column;
-  if (PrologueEnd)
-    OS << " prologue_end";
-
-  unsigned OldIsStmt = getContext().getCurrentCVLoc().isStmt();
-  if (IsStmt != OldIsStmt) {
-    OS << " is_stmt ";
-
-    if (IsStmt)
-      OS << "1";
-    else
-      OS << "0";
-  }
-
-  if (IsVerboseAsm) {
-    OS.PadToColumn(MAI->getCommentColumn());
-    OS << MAI->getCommentString() << ' ' << FileName << ':'
-       << Line << ':' << Column;
-  }
-  EmitEOL();
-  this->MCStreamer::EmitCVLocDirective(FunctionId, FileNo, Line, Column,
-                                       PrologueEnd, IsStmt, FileName);
-}
-
-void MCAsmStreamer::EmitCVLinetableDirective(unsigned FunctionId,
-                                             const MCSymbol *FnStart,
-                                             const MCSymbol *FnEnd) {
-  OS << "\t.cv_linetable\t" << FunctionId << ", ";
-  FnStart->print(OS, MAI);
-  OS << ", ";
-  FnEnd->print(OS, MAI);
-  EmitEOL();
-  this->MCStreamer::EmitCVLinetableDirective(FunctionId, FnStart, FnEnd);
-}
-
-void MCAsmStreamer::EmitCVInlineLinetableDirective(
-    unsigned PrimaryFunctionId, unsigned SourceFileId, unsigned SourceLineNum,
-    const MCSymbol *FnStartSym, const MCSymbol *FnEndSym,
-    ArrayRef<unsigned> SecondaryFunctionIds) {
-  OS << "\t.cv_inline_linetable\t" << PrimaryFunctionId << ' ' << SourceFileId
-     << ' ' << SourceLineNum << ' ';
-  FnStartSym->print(OS, MAI);
-  OS << ' ';
-  FnEndSym->print(OS, MAI);
-  if (!SecondaryFunctionIds.empty()) {
-    OS << " contains";
-    for (unsigned SecondaryFunctionId : SecondaryFunctionIds)
-      OS << ' ' << SecondaryFunctionId;
-  }
-  EmitEOL();
-  this->MCStreamer::EmitCVInlineLinetableDirective(
-      PrimaryFunctionId, SourceFileId, SourceLineNum, FnStartSym, FnEndSym,
-      SecondaryFunctionIds);
-}
-
-void MCAsmStreamer::EmitCVDefRangeDirective(
-    ArrayRef<std::pair<const MCSymbol *, const MCSymbol *>> Ranges,
-    StringRef FixedSizePortion) {
-  OS << "\t.cv_def_range\t";
-  for (std::pair<const MCSymbol *, const MCSymbol *> Range : Ranges) {
-    OS << ' ';
-    Range.first->print(OS, MAI);
-    OS << ' ';
-    Range.second->print(OS, MAI);
-  }
-  OS << ", ";
-  PrintQuotedString(FixedSizePortion, OS);
-  EmitEOL();
-  this->MCStreamer::EmitCVDefRangeDirective(Ranges, FixedSizePortion);
-}
-
-void MCAsmStreamer::EmitCVStringTableDirective() {
-  OS << "\t.cv_stringtable";
-  EmitEOL();
-}
-
-void MCAsmStreamer::EmitCVFileChecksumsDirective() {
-  OS << "\t.cv_filechecksums";
-  EmitEOL();
 }
 
 void MCAsmStreamer::EmitIdent(StringRef IdentString) {

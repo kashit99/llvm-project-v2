@@ -66,11 +66,6 @@ namespace {
       return Changed;
     }
 
-    MachineFunctionProperties getRequiredProperties() const override {
-      return MachineFunctionProperties().set(
-          MachineFunctionProperties::Property::AllVRegsAllocated);
-    }
-
     void insertCallDefsUses(MachineBasicBlock::iterator MI,
                             SmallSet<unsigned, 32>& RegDefs,
                             SmallSet<unsigned, 32>& RegUses);

@@ -87,9 +87,8 @@ public:
   // Typically the first section of each PT_LOAD segment has this flag.
   bool PageAlign = false;
 
+  virtual void assignOffsets() {}
   virtual void finalize() {}
-  virtual void
-  forEachInputSection(std::function<void(InputSectionBase<ELFT> *)> F) {}
   virtual void writeTo(uint8_t *Buf) {}
   virtual ~OutputSectionBase() = default;
 
@@ -113,7 +112,6 @@ public:
   uintX_t getMipsLocalFullAddr(const SymbolBody &B);
   uintX_t getMipsLocalPageAddr(uintX_t Addr);
   uintX_t getGlobalDynAddr(const SymbolBody &B) const;
-  uintX_t getGlobalDynOffset(const SymbolBody &B) const;
   uintX_t getNumEntries() const { return Entries.size(); }
 
   // Returns the symbol which corresponds to the first entry of the global part
@@ -127,7 +125,6 @@ public:
   unsigned getMipsLocalEntriesNum() const;
 
   uintX_t getTlsIndexVA() { return Base::getVA() + TlsIndexOff; }
-  uint32_t getTlsIndexOff() { return TlsIndexOff; }
 
 private:
   std::vector<const SymbolBody *> Entries;
@@ -174,17 +171,36 @@ template <class ELFT> struct DynamicReloc {
   typedef typename ELFT::uint uintX_t;
   uint32_t Type;
 
+  // Where the relocation is.
+  enum OffsetKind {
+    Off_Got,       // The got entry of Sym.
+    Off_GotPlt,    // The got.plt entry of Sym.
+    Off_Bss,       // The bss entry of Sym (copy reloc).
+    Off_Sec,       // The final position of the given input section and offset.
+    Off_LTlsIndex, // The local tls index.
+    Off_GTlsIndex, // The global tls index of Sym.
+    Off_GTlsOffset // The global tls offset of Sym.
+  } OKind;
+
   SymbolBody *Sym = nullptr;
-  OutputSectionBase<ELFT> *OffsetSec = nullptr;
+  InputSectionBase<ELFT> *OffsetSec = nullptr;
   uintX_t OffsetInSec = 0;
   bool UseSymVA = false;
   uintX_t Addend = 0;
 
-  DynamicReloc(uint32_t Type, OutputSectionBase<ELFT> *OffsetSec,
+  DynamicReloc(uint32_t Type, OffsetKind OKind, SymbolBody *Sym)
+      : Type(Type), OKind(OKind), Sym(Sym) {}
+
+  DynamicReloc(uint32_t Type, OffsetKind OKind, bool UseSymVA, SymbolBody *Sym)
+      : Type(Type), OKind(OKind), Sym(Sym), UseSymVA(UseSymVA) {}
+
+  DynamicReloc(uint32_t Type, InputSectionBase<ELFT> *OffsetSec,
                uintX_t OffsetInSec, bool UseSymVA, SymbolBody *Sym,
                uintX_t Addend)
-      : Type(Type), Sym(Sym), OffsetSec(OffsetSec), OffsetInSec(OffsetInSec),
-        UseSymVA(UseSymVA), Addend(Addend) {}
+      : Type(Type), OKind(Off_Sec), Sym(Sym), OffsetSec(OffsetSec),
+        OffsetInSec(OffsetInSec), UseSymVA(UseSymVA), Addend(Addend) {}
+
+  uintX_t getOffset() const;
 };
 
 template <class ELFT>
@@ -256,9 +272,10 @@ public:
   void sortInitFini();
   void sortCtorsDtors();
   void writeTo(uint8_t *Buf) override;
+  void assignOffsets() override;
   void finalize() override;
-  void
-  forEachInputSection(std::function<void(InputSectionBase<ELFT> *)> F) override;
+
+private:
   std::vector<InputSection<ELFT> *> Sections;
 };
 
@@ -304,9 +321,6 @@ public:
   typedef typename ELFT::Rela Elf_Rela;
   EHOutputSection(StringRef Name, uint32_t Type, uintX_t Flags);
   void writeTo(uint8_t *Buf) override;
-  void finalize() override;
-  void
-  forEachInputSection(std::function<void(InputSectionBase<ELFT> *)> F) override;
 
   template <class RelTy>
   void addSectionAux(EHInputSection<ELFT> *S, llvm::ArrayRef<RelTy> Rels);
@@ -321,7 +335,6 @@ private:
 
   // Maps CIE content + personality to a index in Cies.
   llvm::DenseMap<std::pair<StringRef, SymbolBody *>, unsigned> CieMap;
-  bool Finalized = false;
 };
 
 template <class ELFT>
@@ -480,8 +493,6 @@ public:
 
   bool Live = false;
 
-  EHOutputSection<ELFT> *Sec = nullptr;
-
 private:
   struct FdeData {
     uint8_t Enc;
@@ -491,6 +502,7 @@ private:
 
   uintX_t getFdePc(uintX_t EhVA, const FdeData &F);
 
+  EHOutputSection<ELFT> *Sec = nullptr;
   std::vector<FdeData> FdeList;
 };
 

@@ -100,12 +100,12 @@ static bool LowerFenceInst(FenceInst *FI) {
 }
 
 static bool LowerLoadInst(LoadInst *LI) {
-  LI->setAtomic(AtomicOrdering::NotAtomic);
+  LI->setAtomic(NotAtomic);
   return true;
 }
 
 static bool LowerStoreInst(StoreInst *SI) {
-  SI->setAtomic(AtomicOrdering::NotAtomic);
+  SI->setAtomic(NotAtomic);
   return true;
 }
 

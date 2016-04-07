@@ -1,4 +1,4 @@
-//===-- AMDGPUMachineFunctionInfo.h -------------------------------*- C++ -*-=//
+//===-- R600MachineFunctionInfo.h - R600 Machine Function Info ----*- C++ -*-=//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -6,9 +6,12 @@
 // License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
+//
+/// \file
+//===----------------------------------------------------------------------===//
 
-#ifndef LLVM_LIB_TARGET_AMDGPU_AMDGPUMACHINEFUNCTION_H
-#define LLVM_LIB_TARGET_AMDGPU_AMDGPUMACHINEFUNCTION_H
+#ifndef LLVM_LIB_TARGET_R600_AMDGPUMACHINEFUNCTION_H
+#define LLVM_LIB_TARGET_R600_AMDGPUMACHINEFUNCTION_H
 
 #include "llvm/CodeGen/MachineFunction.h"
 #include <map>
@@ -17,6 +20,7 @@ namespace llvm {
 
 class AMDGPUMachineFunction : public MachineFunctionInfo {
   virtual void anchor();
+  unsigned ShaderType;
 
 public:
   AMDGPUMachineFunction(const MachineFunction &MF);
@@ -28,6 +32,10 @@ public:
 
   /// Start of implicit kernel args
   unsigned ABIArgOffset;
+
+  unsigned getShaderType() const {
+    return ShaderType;
+  }
 
   bool isKernel() const {
     // FIXME: Assume everything is a kernel until function calls are supported.

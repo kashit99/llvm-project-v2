@@ -328,7 +328,9 @@ static AArch64_AM::ShiftExtendType getShiftTypeForNode(SDValue N) {
 bool AArch64DAGToDAGISel::isWorthFolding(SDValue V) const {
   // it hurts if the value is used at least twice, unless we are optimizing
   // for code size.
-  return ForCodeSize || V.hasOneUse();
+  if (ForCodeSize || V.hasOneUse())
+    return true;
+  return false;
 }
 
 /// SelectShiftedRegister - Select a "shifted register" operand.  If the value
@@ -608,7 +610,7 @@ static bool isWorthFoldingADDlow(SDValue N) {
 
     // ldar and stlr have much more restrictive addressing modes (just a
     // register).
-    if (isStrongerThanMonotonic(cast<MemSDNode>(Use)->getOrdering()))
+    if (cast<MemSDNode>(Use)->getOrdering() > Monotonic)
       return false;
   }
 
@@ -795,7 +797,10 @@ bool AArch64DAGToDAGISel::SelectExtendedSHL(SDValue N, unsigned Size,
   if (ShiftVal != 0 && ShiftVal != LegalShiftVal)
     return false;
 
-  return isWorthFolding(N);
+  if (isWorthFolding(N))
+    return true;
+
+  return false;
 }
 
 bool AArch64DAGToDAGISel::SelectAddrModeWRO(SDValue N, unsigned Size,

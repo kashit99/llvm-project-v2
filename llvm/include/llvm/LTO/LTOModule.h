@@ -18,6 +18,8 @@
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/IR/Module.h"
+#include "llvm/MC/MCContext.h"
+#include "llvm/MC/MCObjectFileInfo.h"
 #include "llvm/Object/IRObjectFile.h"
 #include "llvm/Target/TargetMachine.h"
 #include <string>
@@ -57,6 +59,8 @@ private:
   std::vector<const char*>                _asm_undefines;
 
   LTOModule(std::unique_ptr<object::IRObjectFile> Obj, TargetMachine *TM);
+  LTOModule(std::unique_ptr<object::IRObjectFile> Obj, TargetMachine *TM,
+            std::unique_ptr<LLVMContext> Context);
 
 public:
   ~LTOModule();
@@ -101,9 +105,13 @@ public:
   static ErrorOr<std::unique_ptr<LTOModule>>
   createFromBuffer(LLVMContext &Context, const void *mem, size_t length,
                    TargetOptions options, StringRef path = "");
+
   static ErrorOr<std::unique_ptr<LTOModule>>
-  createInLocalContext(std::unique_ptr<LLVMContext> Context, const void *mem,
-                       size_t length, TargetOptions options, StringRef path);
+  createInLocalContext(const void *mem, size_t length, TargetOptions options,
+                       StringRef path);
+  static ErrorOr<std::unique_ptr<LTOModule>>
+  createInContext(const void *mem, size_t length, TargetOptions options,
+                  StringRef path, LLVMContext *Context);
 
   const Module &getModule() const {
     return const_cast<LTOModule*>(this)->getModule();
@@ -203,7 +211,7 @@ private:
   /// Create an LTOModule (private version).
   static ErrorOr<std::unique_ptr<LTOModule>>
   makeLTOModule(MemoryBufferRef Buffer, TargetOptions options,
-                LLVMContext &Context, bool ShouldBeLazy);
+                LLVMContext *Context);
 };
 }
 #endif

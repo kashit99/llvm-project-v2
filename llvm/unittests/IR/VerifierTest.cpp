@@ -1,4 +1,4 @@
-//===- llvm/unittest/IR/VerifierTest.cpp - Verifier unit tests --*- C++ -*-===//
+//===- llvm/unittest/IR/VerifierTest.cpp - Verifier unit tests ------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -126,8 +126,7 @@ TEST(VerifierTest, CrossModuleMetadataRef) {
   Module M2("M2", C);
   GlobalVariable *newGV =
       new GlobalVariable(M1, Type::getInt8Ty(C), false,
-                         GlobalVariable::ExternalLinkage, nullptr,
-                         "Some Global");
+                         GlobalVariable::ExternalLinkage, NULL, "Some Global");
 
   DIBuilder dbuilder(M2);
   auto CU = dbuilder.createCompileUnit(dwarf::DW_LANG_Julia, "test.jl", ".",
@@ -144,5 +143,5 @@ TEST(VerifierTest, CrossModuleMetadataRef) {
   EXPECT_TRUE(StringRef(ErrorOS.str())
                   .startswith("Referencing global in another module!"));
 }
-} // end anonymous namespace
-} // end namespace llvm
+}
+}

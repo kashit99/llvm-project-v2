@@ -1,6 +1,10 @@
 from __future__ import print_function
 from __future__ import absolute_import
 
+import lldb
+from lldbsuite.test.lldbtest import *
+import lldbsuite.test.lldbutil as lldbutil
+import lldbsuite.test.test_categories as test_categories
 # System modules
 import os
 
@@ -20,7 +24,8 @@ def source_type(filename):
         '.cxx' : 'CXX_SOURCES',
         '.cc' : 'CXX_SOURCES',
         '.m' : 'OBJC_SOURCES',
-        '.mm' : 'OBJCXX_SOURCES'
+        '.mm' : 'OBJCXX_SOURCES',
+        '.swift' : 'SWIFT_SOURCES'
     }.get(extension, None)
 
 
@@ -186,7 +191,7 @@ def ApplyDecoratorsToFunction(func, decorators):
     elif hasattr(decorators, '__call__'):
         tmp = decorators(tmp)
     return tmp
-    
+
 
 def MakeInlineTest(__file, __globals, decorators=None):
     # Derive the test name from the current file name
@@ -198,9 +203,15 @@ def MakeInlineTest(__file, __globals, decorators=None):
     test = type(test_name, (InlineTest,), {'using_dsym': None})
     test.name = test_name
 
-    test.test_with_dsym = ApplyDecoratorsToFunction(test._InlineTest__test_with_dsym, decorators)
-    test.test_with_dwarf = ApplyDecoratorsToFunction(test._InlineTest__test_with_dwarf, decorators)
-    test.test_with_dwo = ApplyDecoratorsToFunction(test._InlineTest__test_with_dwo, decorators)
+    target_platform = lldb.DBG.GetSelectedPlatform().GetTriple().split('-')[2]
+    supported_categories = [x for x in set(test_categories.debug_info_categories) 
+                            if test_categories.is_supported_on_platform(x, target_platform)]
+    if "dsym" in supported_categories:
+        test.test_with_dsym = ApplyDecoratorsToFunction(test._InlineTest__test_with_dsym, decorators)
+    if "dwarf" in supported_categories:
+        test.test_with_dwarf = ApplyDecoratorsToFunction(test._InlineTest__test_with_dwarf, decorators)
+    if "dwo" in supported_categories:
+        test.test_with_dwo = ApplyDecoratorsToFunction(test._InlineTest__test_with_dwo, decorators)
 
     # Add the test case to the globals, and hide InlineTest
     __globals.update({test_name : test})

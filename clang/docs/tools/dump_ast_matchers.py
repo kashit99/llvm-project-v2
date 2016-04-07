@@ -47,7 +47,7 @@ def esc(text):
       except:
         doxygen_probes[url] = False
     if doxygen_probes[url]:
-      return r'Matcher&lt;<a href="%s">%s</a>&gt;' % (url, name)
+      return r'Matcher&lt<a href="%s">%s</a>&gt;' % (url, name)
     else:
       return m.group(0)
   text = re.sub(
@@ -83,11 +83,6 @@ def strip_doxygen(comment):
   """Returns the given comment without \-escaped words."""
   # If there is only a doxygen keyword in the line, delete the whole line.
   comment = re.sub(r'^\\[^\s]+\n', r'', comment, flags=re.M)
-  
-  # If there is a doxygen \see command, change the \see prefix into "See also:".
-  # FIXME: it would be better to turn this into a link to the target instead.
-  comment = re.sub(r'\\see', r'See also:', comment)
-  
   # Delete the doxygen command and the following whitespace.
   comment = re.sub(r'\\[^\s]+\s+', r'', comment)
   return comment
@@ -262,16 +257,6 @@ def act_on_decl(declaration, comment, allowed_types):
     if m:
       name = m.groups()[0]
       add_matcher('*', name, 'Matcher<*>', comment)
-      return
-
-    # Parse Variadic functions.
-    m = re.match(
-        r"""^.*llvm::VariadicFunction\s*<\s*([^,]+),\s*([^,]+),\s*[^>]+>\s*
-              ([a-zA-Z]*)\s*=\s*{.*};$""",
-        declaration, flags=re.X)
-    if m:
-      result, arg, name = m.groups()[:3]
-      add_matcher(result, name, '%s, ..., %s' % (arg, arg), comment)
       return
 
     # Parse Variadic operator matchers.

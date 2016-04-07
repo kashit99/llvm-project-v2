@@ -191,8 +191,8 @@ static void diagnosticHandler(const DiagnosticInfo &DI) {
     exit(1);
 }
 
-static void diagnosticHandlerWithContext(const DiagnosticInfo &DI,
-                                         void *Context) {
+static void diagnosticHandlerWithContenxt(const DiagnosticInfo &DI,
+                                          void *Context) {
   diagnosticHandler(DI);
 }
 
@@ -219,11 +219,8 @@ getLocalLTOModule(StringRef Path, std::unique_ptr<MemoryBuffer> &Buffer,
   error(BufferOrErr, "error loading file '" + Path + "'");
   Buffer = std::move(BufferOrErr.get());
   CurrentActivity = ("loading file '" + Path + "'").str();
-  std::unique_ptr<LLVMContext> Context = llvm::make_unique<LLVMContext>();
-  Context->setDiagnosticHandler(diagnosticHandlerWithContext, nullptr, true);
   ErrorOr<std::unique_ptr<LTOModule>> Ret = LTOModule::createInLocalContext(
-      std::move(Context), Buffer->getBufferStart(), Buffer->getBufferSize(),
-      Options, Path);
+      Buffer->getBufferStart(), Buffer->getBufferSize(), Options, Path);
   CurrentActivity = "";
   return std::move(*Ret);
 }
@@ -258,7 +255,7 @@ static void createCombinedModuleSummaryIndex() {
     CurrentActivity = "loading file '" + Filename + "'";
     ErrorOr<std::unique_ptr<ModuleSummaryIndex>> IndexOrErr =
         llvm::getModuleSummaryIndexForFile(Filename, diagnosticHandler);
-    error(IndexOrErr, "error " + CurrentActivity);
+    error(IndexOrErr, "error: " + CurrentActivity);
     std::unique_ptr<ModuleSummaryIndex> Index = std::move(IndexOrErr.get());
     CurrentActivity = "";
     // Skip files without a module summary.
@@ -281,7 +278,7 @@ std::vector<std::unique_ptr<MemoryBuffer>>
 loadAllFilesForIndex(const ModuleSummaryIndex &Index) {
   std::vector<std::unique_ptr<MemoryBuffer>> InputBuffers;
 
-  for (auto &ModPath : Index.modulePaths()) {
+  for (auto &ModPath : Index.modPathStringEntries()) {
     const auto &Filename = ModPath.first();
     auto CurrentActivity = "loading file '" + Filename + "'";
     auto InputOrErr = MemoryBuffer::getFile(Filename);
@@ -316,7 +313,7 @@ static void writeModuleToFile(Module &TheModule, StringRef Filename) {
   std::error_code EC;
   raw_fd_ostream OS(Filename, EC, sys::fs::OpenFlags::F_None);
   error(EC, "error opening the file '" + Filename + "'");
-  WriteBitcodeToFile(&TheModule, OS, /* ShouldPreserveUseListOrder */ true);
+  WriteBitcodeToFile(&TheModule, OS, true, false);
 }
 
 class ThinLTOProcessing {
@@ -374,7 +371,7 @@ private:
 
   /// Load the combined index from disk, then load every file referenced by
   /// the index and add them to the generator, finally perform the promotion
-  /// on the files mentioned on the command line (these must match the index
+  /// on the files mentionned on the command line (these must match the index
   /// content).
   void promote() {
     if (InputFilenames.size() != 1 && !OutputFilename.empty())
@@ -400,7 +397,7 @@ private:
 
   /// Load the combined index from disk, then load every file referenced by
   /// the index and add them to the generator, then performs the promotion and
-  /// cross module importing on the files mentioned on the command line
+  /// cross module importing on the files mentionned on the command line
   /// (these must match the index content).
   void import() {
     if (InputFilenames.size() != 1 && !OutputFilename.empty())
@@ -565,7 +562,7 @@ int main(int argc, char **argv) {
   unsigned BaseArg = 0;
 
   LLVMContext Context;
-  Context.setDiagnosticHandler(diagnosticHandlerWithContext, nullptr, true);
+  Context.setDiagnosticHandler(diagnosticHandlerWithContenxt, nullptr, true);
 
   LTOCodeGenerator CodeGen(Context);
 
@@ -588,6 +585,7 @@ int main(int argc, char **argv) {
     CurrentActivity = "loading file '" + InputFilenames[i] + "'";
     ErrorOr<std::unique_ptr<LTOModule>> ModuleOrErr =
         LTOModule::createFromFile(Context, InputFilenames[i].c_str(), Options);
+    error(ModuleOrErr, "error " + CurrentActivity);
     std::unique_ptr<LTOModule> &Module = *ModuleOrErr;
     CurrentActivity = "";
 

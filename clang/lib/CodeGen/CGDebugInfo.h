@@ -18,8 +18,8 @@
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExternalASTSource.h"
 #include "clang/AST/Type.h"
-#include "clang/Basic/CodeGenOptions.h"
 #include "clang/Basic/SourceLocation.h"
+#include "clang/Frontend/CodeGenOptions.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/IR/DIBuilder.h"
@@ -109,7 +109,7 @@ class CGDebugInfo {
   /// compilation.
   std::vector<std::pair<const TagType *, llvm::TrackingMDRef>> ReplaceMap;
 
-  /// Cache of replaceable forward declarations (functions and
+  /// Cache of replaceable forward declarartions (functions and
   /// variables) to RAUW at the end of compilation.
   std::vector<std::pair<const DeclaratorDecl *, llvm::TrackingMDRef>>
       FwdDeclReplaceMap;

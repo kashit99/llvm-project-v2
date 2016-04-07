@@ -30,7 +30,6 @@ namespace llvm {
 class LoadInst;
 class StoreInst;
 class VAArgInst;
-class MemSetInst;
 class AliasSetTracker;
 class AliasSet;
 
@@ -330,7 +329,6 @@ public:
   bool add(LoadInst *LI);
   bool add(StoreInst *SI);
   bool add(VAArgInst *VAAI);
-  bool add(MemSetInst *MSI);
   bool add(Instruction *I);       // Dispatch to one of the other add methods...
   void add(BasicBlock &BB);       // Add all instructions in basic block
   void add(const AliasSetTracker &AST); // Add alias relations from another AST
@@ -343,7 +341,6 @@ public:
   bool remove(LoadInst *LI);
   bool remove(StoreInst *SI);
   bool remove(VAArgInst *VAAI);
-  bool remove(MemSetInst *MSI);
   bool remove(Instruction *I);
   void remove(AliasSet &AS);
   bool removeUnknown(Instruction *I);

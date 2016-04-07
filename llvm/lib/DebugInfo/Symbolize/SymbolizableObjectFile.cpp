@@ -119,10 +119,7 @@ std::error_code SymbolizableObjectFile::addSymbol(const SymbolRef &Symbol,
                                                   uint64_t SymbolSize,
                                                   DataExtractor *OpdExtractor,
                                                   uint64_t OpdAddress) {
-  ErrorOr<SymbolRef::Type> SymbolTypeOrErr = Symbol.getType();
-  if (auto EC = SymbolTypeOrErr.getError())
-    return EC;
-  SymbolRef::Type SymbolType = *SymbolTypeOrErr;
+  SymbolRef::Type SymbolType = Symbol.getType();
   if (SymbolType != SymbolRef::ST_Function && SymbolType != SymbolRef::ST_Data)
     return std::error_code();
   ErrorOr<uint64_t> SymbolAddressOrErr = Symbol.getAddress();

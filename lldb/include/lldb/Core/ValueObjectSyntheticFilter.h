@@ -81,6 +81,14 @@ public:
         return true;
     }
     
+    bool
+    IsBaseClass () override
+    {
+        if (m_parent)
+            return m_parent->IsBaseClass();
+        return false;
+    }
+
     void
     CalculateSyntheticValue(bool use_synthetic) override
     {
@@ -128,12 +136,26 @@ public:
         return (UpdateValueIfNeeded(), m_provides_value == eLazyBoolYes);
     }
     
+    lldb::ValueObjectSP
+    GetSyntheticChildAtOffset(uint32_t offset,
+                              const CompilerType& type,
+                              bool can_create,
+                              ConstString name = ConstString()) override
+    {
+        if (m_parent)
+            return m_parent->GetSyntheticChildAtOffset(offset,
+                                                       type,
+                                                       can_create,
+                                                       name);
+        return nullptr;
+    }
+
     bool
-    GetIsConstant() const override
+    GetIsConstant () const override
     {
         return false;
     }
-
+    
     bool
     SetValueFromCString(const char *value_str, Error& error) override;
     

@@ -124,98 +124,108 @@ Diag &Diag::operator<<(const Value &V) {
 }
 
 /// Hexadecimal printing for numbers too large for Printf to handle directly.
-static void RenderHex(InternalScopedString *Buffer, UIntMax Val) {
+static void PrintHex(UIntMax Val) {
 #if HAVE_INT128_T
-  Buffer->append("0x%08x%08x%08x%08x", (unsigned int)(Val >> 96),
-                 (unsigned int)(Val >> 64), (unsigned int)(Val >> 32),
-                 (unsigned int)(Val));
+  Printf("0x%08x%08x%08x%08x",
+          (unsigned int)(Val >> 96),
+          (unsigned int)(Val >> 64),
+          (unsigned int)(Val >> 32),
+          (unsigned int)(Val));
 #else
   UNREACHABLE("long long smaller than 64 bits?");
 #endif
 }
 
-static void RenderLocation(InternalScopedString *Buffer, Location Loc) {
+static void renderLocation(Location Loc) {
+  InternalScopedString LocBuffer(1024);
   switch (Loc.getKind()) {
   case Location::LK_Source: {
     SourceLocation SLoc = Loc.getSourceLocation();
     if (SLoc.isInvalid())
-      Buffer->append("<unknown>");
+      LocBuffer.append("<unknown>");
     else
-      RenderSourceLocation(Buffer, SLoc.getFilename(), SLoc.getLine(),
+      RenderSourceLocation(&LocBuffer, SLoc.getFilename(), SLoc.getLine(),
                            SLoc.getColumn(), common_flags()->symbolize_vs_style,
                            common_flags()->strip_path_prefix);
-    return;
+    break;
   }
   case Location::LK_Memory:
-    Buffer->append("%p", Loc.getMemoryLocation());
-    return;
+    LocBuffer.append("%p", Loc.getMemoryLocation());
+    break;
   case Location::LK_Symbolized: {
     const AddressInfo &Info = Loc.getSymbolizedStack()->info;
-    if (Info.file)
-      RenderSourceLocation(Buffer, Info.file, Info.line, Info.column,
+    if (Info.file) {
+      RenderSourceLocation(&LocBuffer, Info.file, Info.line, Info.column,
                            common_flags()->symbolize_vs_style,
                            common_flags()->strip_path_prefix);
-    else if (Info.module)
-      RenderModuleLocation(Buffer, Info.module, Info.module_offset,
+    } else if (Info.module) {
+      RenderModuleLocation(&LocBuffer, Info.module, Info.module_offset,
                            common_flags()->strip_path_prefix);
-    else
-      Buffer->append("%p", Info.address);
-    return;
+    } else {
+      LocBuffer.append("%p", Info.address);
+    }
+    break;
   }
   case Location::LK_Null:
-    Buffer->append("<unknown>");
-    return;
+    LocBuffer.append("<unknown>");
+    break;
   }
+  Printf("%s:", LocBuffer.data());
 }
 
-static void RenderText(InternalScopedString *Buffer, const char *Message,
-                       const Diag::Arg *Args) {
+static void renderText(const char *Message, const Diag::Arg *Args) {
   for (const char *Msg = Message; *Msg; ++Msg) {
     if (*Msg != '%') {
-      Buffer->append("%c", *Msg);
-      continue;
-    }
-    const Diag::Arg &A = Args[*++Msg - '0'];
-    switch (A.Kind) {
-    case Diag::AK_String:
-      Buffer->append("%s", A.String);
-      break;
-    case Diag::AK_TypeName: {
-      if (SANITIZER_WINDOWS)
-        // The Windows implementation demangles names early.
-        Buffer->append("'%s'", A.String);
-      else
-        Buffer->append("'%s'", Symbolizer::GetOrInit()->Demangle(A.String));
-      break;
-    }
-    case Diag::AK_SInt:
-      // 'long long' is guaranteed to be at least 64 bits wide.
-      if (A.SInt >= INT64_MIN && A.SInt <= INT64_MAX)
-        Buffer->append("%lld", (long long)A.SInt);
-      else
-        RenderHex(Buffer, A.SInt);
-      break;
-    case Diag::AK_UInt:
-      if (A.UInt <= UINT64_MAX)
-        Buffer->append("%llu", (unsigned long long)A.UInt);
-      else
-        RenderHex(Buffer, A.UInt);
-      break;
-    case Diag::AK_Float: {
-      // FIXME: Support floating-point formatting in sanitizer_common's
-      //        printf, and stop using snprintf here.
-      char FloatBuffer[32];
+      char Buffer[64];
+      unsigned I;
+      for (I = 0; Msg[I] && Msg[I] != '%' && I != 63; ++I)
+        Buffer[I] = Msg[I];
+      Buffer[I] = '\0';
+      Printf(Buffer);
+      Msg += I - 1;
+    } else {
+      const Diag::Arg &A = Args[*++Msg - '0'];
+      switch (A.Kind) {
+      case Diag::AK_String:
+        Printf("%s", A.String);
+        break;
+      case Diag::AK_TypeName: {
+        if (SANITIZER_WINDOWS)
+          // The Windows implementation demangles names early.
+          Printf("'%s'", A.String);
+        else
+          Printf("'%s'", Symbolizer::GetOrInit()->Demangle(A.String));
+        break;
+      }
+      case Diag::AK_SInt:
+        // 'long long' is guaranteed to be at least 64 bits wide.
+        if (A.SInt >= INT64_MIN && A.SInt <= INT64_MAX)
+          Printf("%lld", (long long)A.SInt);
+        else
+          PrintHex(A.SInt);
+        break;
+      case Diag::AK_UInt:
+        if (A.UInt <= UINT64_MAX)
+          Printf("%llu", (unsigned long long)A.UInt);
+        else
+          PrintHex(A.UInt);
+        break;
+      case Diag::AK_Float: {
+        // FIXME: Support floating-point formatting in sanitizer_common's
+        //        printf, and stop using snprintf here.
+        char Buffer[32];
 #if SANITIZER_WINDOWS
-      sprintf_s(FloatBuffer, sizeof(FloatBuffer), "%Lg", (long double)A.Float);
+        sprintf_s(Buffer, sizeof(Buffer), "%Lg", (long double)A.Float);
 #else
-      snprintf(FloatBuffer, sizeof(FloatBuffer), "%Lg", (long double)A.Float);
+        snprintf(Buffer, sizeof(Buffer), "%Lg", (long double)A.Float);
 #endif
-      Buffer->append("%s", FloatBuffer);
-      break;
-    }
-    case Diag::AK_Pointer:
-      Buffer->append("%p", A.Pointer);
-      break;
+        Printf("%s", Buffer);
+        break;
+      }
+      case Diag::AK_Pointer:
+        Printf("%p", A.Pointer);
+        break;
+      }
     }
   }
 }
@@ -243,9 +253,9 @@ static inline uptr addNoOverflow(uptr LHS, uptr RHS) {
 }
 
 /// Render a snippet of the address space near a location.
-static void PrintMemorySnippet(const Decorator &Decor, MemoryLocation Loc,
-                               Range *Ranges, unsigned NumRanges,
-                               const Diag::Arg *Args) {
+static void renderMemorySnippet(const Decorator &Decor, MemoryLocation Loc,
+                                Range *Ranges, unsigned NumRanges,
+                                const Diag::Arg *Args) {
   // Show at least the 8 bytes surrounding Loc.
   const unsigned MinBytesNearLoc = 4;
   MemoryLocation Min = subtractNoOverflow(Loc, MinBytesNearLoc);
@@ -268,15 +278,14 @@ static void PrintMemorySnippet(const Decorator &Decor, MemoryLocation Loc,
   }
 
   // Emit data.
-  InternalScopedString Buffer(1024);
   for (uptr P = Min; P != Max; ++P) {
     unsigned char C = *reinterpret_cast<const unsigned char*>(P);
-    Buffer.append("%s%02x", (P % 8 == 0) ? "  " : " ", C);
+    Printf("%s%02x", (P % 8 == 0) ? "  " : " ", C);
   }
-  Buffer.append("\n");
+  Printf("\n");
 
   // Emit highlights.
-  Buffer.append(Decor.Highlight());
+  Printf(Decor.Highlight());
   Range *InRange = upperBound(Min, Ranges, NumRanges);
   for (uptr P = Min; P != Max; ++P) {
     char Pad = ' ', Byte = ' ';
@@ -288,13 +297,10 @@ static void PrintMemorySnippet(const Decorator &Decor, MemoryLocation Loc,
       Pad = '~';
     if (InRange && InRange->getStart().getMemoryLocation() <= P)
       Byte = '~';
-    if (P % 8 == 0)
-      Buffer.append("%c", Pad);
-    Buffer.append("%c", Pad);
-    Buffer.append("%c", P == Loc ? '^' : Byte);
-    Buffer.append("%c", Byte);
+    char Buffer[] = { Pad, Pad, P == Loc ? '^' : Byte, Byte, 0 };
+    Printf((P % 8 == 0) ? Buffer : &Buffer[1]);
   }
-  Buffer.append("%s\n", Decor.EndHighlight());
+  Printf("%s\n", Decor.EndHighlight());
 
   // Go over the line again, and print names for the ranges.
   InRange = 0;
@@ -309,9 +315,9 @@ static void PrintMemorySnippet(const Decorator &Decor, MemoryLocation Loc,
 
     if (InRange && InRange->getStart().getMemoryLocation() == P) {
       while (Spaces--)
-        Buffer.append(" ");
-      RenderText(&Buffer, InRange->getText(), Args);
-      Buffer.append("\n");
+        Printf(" ");
+      renderText(InRange->getText(), Args);
+      Printf("\n");
       // FIXME: We only support naming one range for now!
       break;
     }
@@ -319,7 +325,6 @@ static void PrintMemorySnippet(const Decorator &Decor, MemoryLocation Loc,
     Spaces += 2;
   }
 
-  Printf("%s", Buffer.data());
   // FIXME: Print names for anything we can identify within the line:
   //
   //  * If we can identify the memory itself as belonging to a particular
@@ -336,30 +341,28 @@ Diag::~Diag() {
   // All diagnostics should be printed under report mutex.
   CommonSanitizerReportMutex.CheckLocked();
   Decorator Decor;
-  InternalScopedString Buffer(1024);
+  Printf(Decor.Bold());
 
-  Buffer.append(Decor.Bold());
-  RenderLocation(&Buffer, Loc);
-  Buffer.append(":");
+  renderLocation(Loc);
 
   switch (Level) {
   case DL_Error:
-    Buffer.append("%s runtime error: %s%s", Decor.Warning(), Decor.EndWarning(),
-                  Decor.Bold());
+    Printf("%s runtime error: %s%s",
+           Decor.Warning(), Decor.EndWarning(), Decor.Bold());
     break;
 
   case DL_Note:
-    Buffer.append("%s note: %s", Decor.Note(), Decor.EndNote());
+    Printf("%s note: %s", Decor.Note(), Decor.EndNote());
     break;
   }
 
-  RenderText(&Buffer, Message, Args);
+  renderText(Message, Args);
 
-  Buffer.append("%s\n", Decor.Default());
-  Printf("%s", Buffer.data());
+  Printf("%s\n", Decor.Default());
 
   if (Loc.isMemoryLocation())
-    PrintMemorySnippet(Decor, Loc.getMemoryLocation(), Ranges, NumRanges, Args);
+    renderMemorySnippet(Decor, Loc.getMemoryLocation(), Ranges,
+                        NumRanges, Args);
 }
 
 ScopedReport::ScopedReport(ReportOptions Opts, Location SummaryLoc,

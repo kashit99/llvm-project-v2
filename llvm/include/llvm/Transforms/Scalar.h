@@ -132,7 +132,7 @@ Pass *createIndVarSimplifyPass();
 // into:
 //    %Z = add int 2, %X
 //
-FunctionPass *createInstructionCombiningPass(bool ExpensiveCombines = true);
+FunctionPass *createInstructionCombiningPass();
 
 //===----------------------------------------------------------------------===//
 //
@@ -153,6 +153,16 @@ Pass *createLoopInterchangePass();
 // a loop's canonical induction variable as one of their indices.
 //
 Pass *createLoopStrengthReducePass();
+
+//===----------------------------------------------------------------------===//
+//
+// GlobalMerge - This pass merges internal (by default) globals into structs
+// to enable reuse of a base pointer by indexed addressing modes.
+// It can also be configured to focus on size optimizations only.
+//
+Pass *createGlobalMergePass(const TargetMachine *TM, unsigned MaximalOffset,
+                            bool OnlyOptimizeForSize = false,
+                            bool MergeExternalByDefault = false);
 
 //===----------------------------------------------------------------------===//
 //
@@ -192,12 +202,6 @@ Pass *createLoopRotatePass(int MaxHeaderSize = -1);
 // LoopIdiom - This pass recognizes and replaces idioms in loops.
 //
 Pass *createLoopIdiomPass();
-
-//===----------------------------------------------------------------------===//
-//
-// LoopVersioningLICM - This pass is a loop versioning pass for LICM.
-//
-Pass *createLoopVersioningLICMPass();
 
 //===----------------------------------------------------------------------===//
 //
@@ -258,10 +262,7 @@ FunctionPass *createFlattenCFGPass();
 //
 // CFG Structurization - Remove irreducible control flow
 //
-///
-/// When \p SkipUniformRegions is true the structizer will not structurize
-/// regions that only contain uniform branches.
-Pass *createStructurizeCFGPass(bool SkipUniformRegions = false);
+Pass *createStructurizeCFGPass();
 
 //===----------------------------------------------------------------------===//
 //
@@ -335,6 +336,13 @@ FunctionPass *createMergedLoadStoreMotionPass();
 
 //===----------------------------------------------------------------------===//
 //
+// GVN - This pass performs global value numbering and redundant load
+// elimination cotemporaneously.
+//
+FunctionPass *createGVNPass(bool NoLoads = false);
+
+//===----------------------------------------------------------------------===//
+//
 // MemCpyOpt - This pass performs optimizations related to eliminating memcpy
 // calls and/or combining multiple stores into memset's.
 //
@@ -374,9 +382,10 @@ Pass *createLowerAtomicPass();
 
 //===----------------------------------------------------------------------===//
 //
-// LowerGuardIntrinsic - Lower guard intrinsics to normal control flow.
+// LowerEmuTLS - This pass generates __emutls_[vt].xyz variables for all
+// TLS variables for the emulated TLS model.
 //
-Pass *createLowerGuardIntrinsicPass();
+ModulePass *createLowerEmuTLSPass(const TargetMachine *TM);
 
 //===----------------------------------------------------------------------===//
 //
@@ -483,13 +492,6 @@ FunctionPass *createLoopDistributePass();
 // LoopLoadElimination - Perform loop-aware load elimination.
 //
 FunctionPass *createLoopLoadEliminationPass();
-
-//===----------------------------------------------------------------------===//
-//
-// LoopSimplifyCFG - This pass performs basic CFG simplification on loops,
-// primarily to help other loop passes.
-//
-Pass *createLoopSimplifyCFGPass();
 
 //===----------------------------------------------------------------------===//
 //

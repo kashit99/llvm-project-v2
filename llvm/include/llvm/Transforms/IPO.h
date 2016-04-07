@@ -188,6 +188,15 @@ ModulePass *createBlockExtractorPass();
 ModulePass *createStripDeadPrototypesPass();
 
 //===----------------------------------------------------------------------===//
+/// createPostOrderFunctionAttrsPass - This pass walks SCCs of the call graph
+/// in post-order to deduce and propagate function attributes. It can discover
+/// functions that do not access memory, or only read memory, and give them the
+/// readnone/readonly attribute. It also discovers function arguments that are
+/// not captured by the function and marks them with the nocapture attribute.
+///
+Pass *createPostOrderFunctionAttrsPass();
+
+//===----------------------------------------------------------------------===//
 /// createReversePostOrderFunctionAttrsPass - This pass walks SCCs of the call
 /// graph in RPO to deduce and propagate function attributes. Currently it
 /// only handles synthesizing norecurse attributes.
@@ -221,10 +230,6 @@ ModulePass *createLowerBitSetsPass();
 
 /// \brief This pass export CFI checks for use by external modules.
 ModulePass *createCrossDSOCFIPass();
-
-/// \brief This pass implements whole-program devirtualization using bitset
-/// metadata.
-ModulePass *createWholeProgramDevirtPass();
 
 //===----------------------------------------------------------------------===//
 // SampleProfilePass - Loads sample profile data from disk and generates

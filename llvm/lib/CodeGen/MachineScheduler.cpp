@@ -219,11 +219,6 @@ static cl::opt<bool> EnableMachineSched(
     cl::desc("Enable the machine instruction scheduling pass."), cl::init(true),
     cl::Hidden);
 
-static cl::opt<bool> EnablePostRAMachineSched(
-    "enable-post-misched",
-    cl::desc("Enable the post-ra machine instruction scheduling pass."),
-    cl::init(true), cl::Hidden);
-
 /// Forward declare the standard machine scheduler. This will be used as the
 /// default scheduler if the target does not set a default.
 static ScheduleDAGInstrs *createGenericSchedLive(MachineSchedContext *C);
@@ -360,10 +355,7 @@ bool PostMachineScheduler::runOnMachineFunction(MachineFunction &mf) {
   if (skipOptnoneFunction(*mf.getFunction()))
     return false;
 
-  if (EnablePostRAMachineSched.getNumOccurrences()) {
-    if (!EnablePostRAMachineSched)
-      return false;
-  } else if (!mf.getSubtarget().enablePostRAScheduler()) {
+  if (!mf.getSubtarget().enablePostRAScheduler()) {
     DEBUG(dbgs() << "Subtarget disables post-MI-sched.\n");
     return false;
   }
@@ -651,7 +643,7 @@ void ScheduleDAGMI::moveInstruction(
 
   // Update LiveIntervals
   if (LIS)
-    LIS->handleMove(*MI, /*UpdateFlags=*/true);
+    LIS->handleMove(MI, /*UpdateFlags=*/true);
 
   // Recede RegionBegin if an instruction moves above the first.
   if (RegionBegin == InsertPos)
@@ -1039,7 +1031,7 @@ void ScheduleDAGMILive::updatePressureDiffs(
       if (I == BB->end())
         VNI = LI.getVNInfoBefore(LIS->getMBBEndIdx(BB));
       else {
-        LiveQueryResult LRQ = LI.Query(LIS->getInstructionIndex(*I));
+        LiveQueryResult LRQ = LI.Query(LIS->getInstructionIndex(I));
         VNI = LRQ.valueIn();
       }
       // RegisterPressureTracker guarantees that readsReg is true for LiveUses.
@@ -1050,8 +1042,8 @@ void ScheduleDAGMILive::updatePressureDiffs(
         // If this use comes before the reaching def, it cannot be a last use,
         // so decrease its pressure change.
         if (!SU->isScheduled && SU != &ExitSU) {
-          LiveQueryResult LRQ =
-              LI.Query(LIS->getInstructionIndex(*SU->getInstr()));
+          LiveQueryResult LRQ
+            = LI.Query(LIS->getInstructionIndex(SU->getInstr()));
           if (LRQ.valueIn() == VNI) {
             PressureDiff &PDiff = getPressureDiff(SU);
             PDiff.addPressureChange(Reg, true, &MRI);
@@ -1243,7 +1235,8 @@ unsigned ScheduleDAGMILive::computeCyclicCriticalPath() {
         continue;
 
       // Only consider uses of the phi.
-      LiveQueryResult LRQ = LI.Query(LIS->getInstructionIndex(*SU->getInstr()));
+      LiveQueryResult LRQ =
+        LI.Query(LIS->getInstructionIndex(SU->getInstr()));
       if (!LRQ.valueIn()->isPHIDef())
         continue;
 
@@ -1292,7 +1285,7 @@ void ScheduleDAGMILive::scheduleMI(SUnit *SU, bool IsTopNode) {
       RegOpers.collect(*MI, *TRI, MRI, ShouldTrackLaneMasks, false);
       if (ShouldTrackLaneMasks) {
         // Adjust liveness and add missing dead+read-undef flags.
-        SlotIndex SlotIdx = LIS->getInstructionIndex(*MI).getRegSlot();
+        SlotIndex SlotIdx = LIS->getInstructionIndex(MI).getRegSlot();
         RegOpers.adjustLaneLiveness(*LIS, MRI, SlotIdx, MI);
       } else {
         // Adjust for missing dead-def flags.
@@ -1328,7 +1321,7 @@ void ScheduleDAGMILive::scheduleMI(SUnit *SU, bool IsTopNode) {
       RegOpers.collect(*MI, *TRI, MRI, ShouldTrackLaneMasks, false);
       if (ShouldTrackLaneMasks) {
         // Adjust liveness and add missing dead+read-undef flags.
-        SlotIndex SlotIdx = LIS->getInstructionIndex(*MI).getRegSlot();
+        SlotIndex SlotIdx = LIS->getInstructionIndex(MI).getRegSlot();
         RegOpers.adjustLaneLiveness(*LIS, MRI, SlotIdx, MI);
       } else {
         // Adjust for missing dead-def flags.
@@ -1361,8 +1354,8 @@ class LoadClusterMutation : public ScheduleDAGMutation {
   struct LoadInfo {
     SUnit *SU;
     unsigned BaseReg;
-    int64_t Offset;
-    LoadInfo(SUnit *su, unsigned reg, int64_t ofs)
+    unsigned Offset;
+    LoadInfo(SUnit *su, unsigned reg, unsigned ofs)
       : SU(su), BaseReg(reg), Offset(ofs) {}
 
     bool operator<(const LoadInfo &RHS) const {
@@ -1377,7 +1370,7 @@ public:
                       const TargetRegisterInfo *tri)
     : TII(tii), TRI(tri) {}
 
-  void apply(ScheduleDAGInstrs *DAGInstrs) override;
+  void apply(ScheduleDAGMI *DAG) override;
 protected:
   void clusterNeighboringLoads(ArrayRef<SUnit*> Loads, ScheduleDAGMI *DAG);
 };
@@ -1389,7 +1382,7 @@ void LoadClusterMutation::clusterNeighboringLoads(ArrayRef<SUnit*> Loads,
   for (unsigned Idx = 0, End = Loads.size(); Idx != End; ++Idx) {
     SUnit *SU = Loads[Idx];
     unsigned BaseReg;
-    int64_t Offset;
+    unsigned Offset;
     if (TII->getMemOpBaseRegImmOfs(SU->getInstr(), BaseReg, Offset, TRI))
       LoadRecords.push_back(LoadInfo(SU, BaseReg, Offset));
   }
@@ -1429,9 +1422,7 @@ void LoadClusterMutation::clusterNeighboringLoads(ArrayRef<SUnit*> Loads,
 }
 
 /// \brief Callback from DAG postProcessing to create cluster edges for loads.
-void LoadClusterMutation::apply(ScheduleDAGInstrs *DAGInstrs) {
-  ScheduleDAGMI *DAG = static_cast<ScheduleDAGMI*>(DAGInstrs);
-
+void LoadClusterMutation::apply(ScheduleDAGMI *DAG) {
   // Map DAG NodeNum to store chain ID.
   DenseMap<unsigned, unsigned> StoreChainIDs;
   // Map each store chain to a set of dependent loads.
@@ -1476,7 +1467,7 @@ public:
   MacroFusion(const TargetInstrInfo &TII, const TargetRegisterInfo &TRI)
     : TII(TII), TRI(TRI) {}
 
-  void apply(ScheduleDAGInstrs *DAGInstrs) override;
+  void apply(ScheduleDAGMI *DAG) override;
 };
 } // anonymous
 
@@ -1496,9 +1487,7 @@ static bool HasDataDep(const TargetRegisterInfo &TRI, const MachineInstr &MI,
 
 /// \brief Callback from DAG postProcessing to create cluster edges to encourage
 /// fused operations.
-void MacroFusion::apply(ScheduleDAGInstrs *DAGInstrs) {
-  ScheduleDAGMI *DAG = static_cast<ScheduleDAGMI*>(DAGInstrs);
-
+void MacroFusion::apply(ScheduleDAGMI *DAG) {
   // For now, assume targets can only fuse with the branch.
   SUnit &ExitSU = DAG->ExitSU;
   MachineInstr *Branch = ExitSU.getInstr();
@@ -1549,7 +1538,7 @@ class CopyConstrain : public ScheduleDAGMutation {
 public:
   CopyConstrain(const TargetInstrInfo *, const TargetRegisterInfo *) {}
 
-  void apply(ScheduleDAGInstrs *DAGInstrs) override;
+  void apply(ScheduleDAGMI *DAG) override;
 
 protected:
   void constrainLocalCopy(SUnit *CopySU, ScheduleDAGMILive *DAG);
@@ -1580,14 +1569,12 @@ void CopyConstrain::constrainLocalCopy(SUnit *CopySU, ScheduleDAGMILive *DAG) {
   MachineInstr *Copy = CopySU->getInstr();
 
   // Check for pure vreg copies.
-  const MachineOperand &SrcOp = Copy->getOperand(1);
-  unsigned SrcReg = SrcOp.getReg();
-  if (!TargetRegisterInfo::isVirtualRegister(SrcReg) || !SrcOp.readsReg())
+  unsigned SrcReg = Copy->getOperand(1).getReg();
+  if (!TargetRegisterInfo::isVirtualRegister(SrcReg))
     return;
 
-  const MachineOperand &DstOp = Copy->getOperand(0);
-  unsigned DstReg = DstOp.getReg();
-  if (!TargetRegisterInfo::isVirtualRegister(DstReg) || DstOp.isDead())
+  unsigned DstReg = Copy->getOperand(0).getReg();
+  if (!TargetRegisterInfo::isVirtualRegister(DstReg))
     return;
 
   // Check if either the dest or source is local. If it's live across a back
@@ -1704,16 +1691,15 @@ void CopyConstrain::constrainLocalCopy(SUnit *CopySU, ScheduleDAGMILive *DAG) {
 
 /// \brief Callback from DAG postProcessing to create weak edges to encourage
 /// copy elimination.
-void CopyConstrain::apply(ScheduleDAGInstrs *DAGInstrs) {
-  ScheduleDAGMI *DAG = static_cast<ScheduleDAGMI*>(DAGInstrs);
+void CopyConstrain::apply(ScheduleDAGMI *DAG) {
   assert(DAG->hasVRegLiveness() && "Expect VRegs with LiveIntervals");
 
   MachineBasicBlock::iterator FirstPos = nextIfDebug(DAG->begin(), DAG->end());
   if (FirstPos == DAG->end())
     return;
-  RegionBeginIdx = DAG->getLIS()->getInstructionIndex(*FirstPos);
+  RegionBeginIdx = DAG->getLIS()->getInstructionIndex(&*FirstPos);
   RegionEndIdx = DAG->getLIS()->getInstructionIndex(
-      *priorNonDebug(DAG->end(), DAG->begin()));
+    &*priorNonDebug(DAG->end(), DAG->begin()));
 
   for (unsigned Idx = 0, End = DAG->SUnits.size(); Idx != End; ++Idx) {
     SUnit *SU = &DAG->SUnits[Idx];

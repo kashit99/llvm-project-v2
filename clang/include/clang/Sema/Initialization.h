@@ -284,10 +284,9 @@ public:
 
 
   /// \brief Create the initialization entity for a base class subobject.
-  static InitializedEntity
-  InitializeBase(ASTContext &Context, const CXXBaseSpecifier *Base,
-                 bool IsInheritedVirtualBase,
-                 const InitializedEntity *Parent = nullptr);
+  static InitializedEntity InitializeBase(ASTContext &Context,
+                                          const CXXBaseSpecifier *Base,
+                                          bool IsInheritedVirtualBase);
 
   /// \brief Create the initialization entity for a delegated constructor.
   static InitializedEntity InitializeDelegation(QualType Type) {

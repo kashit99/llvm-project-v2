@@ -306,7 +306,6 @@ StringRef InstrProfSymtab::getFuncName(uint64_t Pointer, size_t Size) {
   return Data.substr(Pointer - Address, Size);
 }
 
-namespace {
 struct CovMapFuncRecordReader {
   // The interface to read coverage mapping function records for
   // a module. \p Buf is a reference to the buffer pointer pointing
@@ -414,7 +413,6 @@ public:
     return std::error_code();
   }
 };
-} // end anonymous namespace
 
 template <class IntPtrT, support::endianness Endian>
 std::unique_ptr<CovMapFuncRecordReader> CovMapFuncRecordReader::get(
@@ -506,8 +504,8 @@ loadBinaryFormat(MemoryBufferRef ObjectBuffer, InstrProfSymtab &ProfileNames,
                  StringRef &CoverageMapping, uint8_t &BytesInAddress,
                  support::endianness &Endian, StringRef Arch) {
   auto BinOrErr = object::createBinary(ObjectBuffer);
-  if (!BinOrErr)
-    return errorToErrorCode(BinOrErr.takeError());
+  if (std::error_code EC = BinOrErr.getError())
+    return EC;
   auto Bin = std::move(BinOrErr.get());
   std::unique_ptr<ObjectFile> OF;
   if (auto *Universal = dyn_cast<object::MachOUniversalBinary>(Bin.get())) {

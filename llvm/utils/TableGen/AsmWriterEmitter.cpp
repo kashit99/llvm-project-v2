@@ -7,7 +7,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This tablegen backend emits an assembly printer for the current target.
+// This tablegen backend is emits an assembly printer for the current target.
 // Note that this is currently fairly skeletal, but will grow over time.
 //
 //===----------------------------------------------------------------------===//
@@ -38,6 +38,7 @@ class AsmWriterEmitter {
   CodeGenTarget Target;
   ArrayRef<const CodeGenInstruction *> NumberedInstructions;
   std::vector<AsmWriterInst> Instructions;
+  std::vector<std::string> PrintMethods;
 public:
   AsmWriterEmitter(RecordKeeper &R);
 
@@ -49,7 +50,7 @@ private:
   void EmitPrintAliasInstruction(raw_ostream &O);
 
   void FindUniqueOperandCommands(std::vector<std::string> &UOC,
-                                 std::vector<std::vector<unsigned>> &InstIdxs,
+                                 std::vector<unsigned> &InstIdxs,
                                  std::vector<unsigned> &InstOpsUsed,
                                  bool PassSubtarget) const;
 };
@@ -136,9 +137,10 @@ static void EmitInstructions(std::vector<AsmWriterInst> &Insts,
 
 void AsmWriterEmitter::
 FindUniqueOperandCommands(std::vector<std::string> &UniqueOperandCommands,
-                          std::vector<std::vector<unsigned>> &InstIdxs,
+                          std::vector<unsigned> &InstIdxs,
                           std::vector<unsigned> &InstOpsUsed,
                           bool PassSubtarget) const {
+  InstIdxs.assign(Instructions.size(), ~0U);
 
   // This vector parallels UniqueOperandCommands, keeping track of which
   // instructions each case are used for.  It is a comma separated string of
@@ -160,14 +162,13 @@ FindUniqueOperandCommands(std::vector<std::string> &UniqueOperandCommands,
                        UniqueOperandCommands.end(), Command);
     if (I != UniqueOperandCommands.end()) {
       size_t idx = I - UniqueOperandCommands.begin();
+      InstIdxs[i] = idx;
       InstrsForCase[idx] += ", ";
       InstrsForCase[idx] += Inst.CGI->TheDef->getName();
-      InstIdxs[idx].push_back(i);
     } else {
+      InstIdxs[i] = UniqueOperandCommands.size();
       UniqueOperandCommands.push_back(std::move(Command));
       InstrsForCase.push_back(Inst.CGI->TheDef->getName());
-      InstIdxs.emplace_back();
-      InstIdxs.back().push_back(i);
 
       // This command matches one operand so far.
       InstOpsUsed.push_back(1);
@@ -177,28 +178,38 @@ FindUniqueOperandCommands(std::vector<std::string> &UniqueOperandCommands,
   // For each entry of UniqueOperandCommands, there is a set of instructions
   // that uses it.  If the next command of all instructions in the set are
   // identical, fold it into the command.
-  for (size_t CommandIdx = 0, e = UniqueOperandCommands.size();
+  for (unsigned CommandIdx = 0, e = UniqueOperandCommands.size();
        CommandIdx != e; ++CommandIdx) {
 
-    const auto &Idxs = InstIdxs[CommandIdx];
-
     for (unsigned Op = 1; ; ++Op) {
-      // Find the first instruction in the set.
-      const AsmWriterInst &FirstInst = Instructions[Idxs.front()];
+      // Scan for the first instruction in the set.
+      auto NIT = std::find(InstIdxs.begin(), InstIdxs.end(), CommandIdx);
+      if (NIT == InstIdxs.end()) break;  // No commonality.
+
       // If this instruction has no more operands, we isn't anything to merge
       // into this command.
+      const AsmWriterInst &FirstInst = Instructions[NIT-InstIdxs.begin()];
       if (FirstInst.Operands.size() == Op)
         break;
 
       // Otherwise, scan to see if all of the other instructions in this command
       // set share the operand.
-      if (std::any_of(Idxs.begin()+1, Idxs.end(),
-                      [&](unsigned Idx) {
-                        const AsmWriterInst &OtherInst = Instructions[Idx];
-                        return OtherInst.Operands.size() == Op ||
-                          OtherInst.Operands[Op] != FirstInst.Operands[Op];
-                      }))
-        break;
+      bool AllSame = true;
+
+      for (NIT = std::find(NIT+1, InstIdxs.end(), CommandIdx);
+           NIT != InstIdxs.end();
+           NIT = std::find(NIT+1, InstIdxs.end(), CommandIdx)) {
+        // Okay, found another instruction in this command set.  If the operand
+        // matches, we're ok, otherwise bail out.
+        const AsmWriterInst &OtherInst = Instructions[NIT-InstIdxs.begin()];
+
+        if (OtherInst.Operands.size() == Op ||
+            OtherInst.Operands[Op] != FirstInst.Operands[Op]) {
+          AllSame = false;
+          break;
+        }
+      }
+      if (!AllSame) break;
 
       // Okay, everything in this command set has the same next operand.  Add it
       // to UniqueOperandCommands and remember that it was consumed.
@@ -318,7 +329,7 @@ void AsmWriterEmitter::EmitPrintInstruction(raw_ostream &O) {
 
   while (1) {
     std::vector<std::string> UniqueOperandCommands;
-    std::vector<std::vector<unsigned>> InstIdxs;
+    std::vector<unsigned> InstIdxs;
     std::vector<unsigned> NumInstOpsHandled;
     FindUniqueOperandCommands(UniqueOperandCommands, InstIdxs,
                               NumInstOpsHandled, PassSubtarget);
@@ -338,22 +349,23 @@ void AsmWriterEmitter::EmitPrintInstruction(raw_ostream &O) {
     }
 
     // Otherwise, we can include this in the initial lookup table.  Add it in.
-    for (size_t i = 0, e = InstIdxs.size(); i != e; ++i) {
-      unsigned NumOps = NumInstOpsHandled[i];
-      for (unsigned Idx : InstIdxs[i]) {
-        OpcodeInfo[Instructions[Idx].CGIIndex] |=
-          (uint64_t)i << (OpcodeInfoBits-BitsLeft);
-        // Remove the info about this operand from the instruction.
-        AsmWriterInst &Inst = Instructions[Idx];
-        if (!Inst.Operands.empty()) {
-          assert(NumOps <= Inst.Operands.size() &&
-                 "Can't remove this many ops!");
-          Inst.Operands.erase(Inst.Operands.begin(),
-                              Inst.Operands.begin()+NumOps);
-        }
+    for (size_t i = 0, e = Instructions.size(); i != e; ++i)
+      if (InstIdxs[i] != ~0U)
+        OpcodeInfo[Instructions[i].CGIIndex] |=
+          (uint64_t)InstIdxs[i] << (OpcodeInfoBits-BitsLeft);
+    BitsLeft -= NumBits;
+
+    // Remove the info about this operand.
+    for (size_t i = 0, e = Instructions.size(); i != e; ++i) {
+      AsmWriterInst &Inst = Instructions[i];
+      if (!Inst.Operands.empty()) {
+        unsigned NumOps = NumInstOpsHandled[InstIdxs[i]];
+        assert(NumOps <= Inst.Operands.size() &&
+               "Can't remove this many ops!");
+        Inst.Operands.erase(Inst.Operands.begin(),
+                            Inst.Operands.begin()+NumOps);
       }
     }
-    BitsLeft -= NumBits;
 
     // Remember the handlers for this set of operands.
     TableDrivenOperandPrinters.push_back(std::move(UniqueOperandCommands));
@@ -776,8 +788,6 @@ void AsmWriterEmitter::EmitPrintAliasInstruction(raw_ostream &O) {
   // A map of which conditions need to be met for each instruction operand
   // before it can be matched to the mnemonic.
   std::map<std::string, std::vector<IAPrinter>> IAPrinterMap;
-
-  std::vector<std::string> PrintMethods;
 
   // A list of MCOperandPredicates for all operands in use, and the reverse map
   std::vector<const Record*> MCOpPredicates;

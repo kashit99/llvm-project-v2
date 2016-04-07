@@ -141,14 +141,14 @@ define i32 @ext_3(<4 x i32> %v) nounwind {
 define <4 x float> @insertps_1(<4 x float> %t1, <4 x float> %t2) nounwind {
 ; X32-LABEL: insertps_1:
 ; X32:       ## BB#0:
-; X32-NEXT:    insertps {{.*#+}} xmm0 = zero,xmm1[0],zero,xmm0[3]
+; X32-NEXT:    insertps {{.*#+}} xmm0 = zero,xmm0[1,2,3]
 ; X32-NEXT:    retl
 ;
 ; X64-LABEL: insertps_1:
 ; X64:       ## BB#0:
-; X64-NEXT:    insertps {{.*#+}} xmm0 = zero,xmm1[0],zero,xmm0[3]
+; X64-NEXT:    insertps {{.*#+}} xmm0 = zero,xmm0[1,2,3]
 ; X64-NEXT:    retq
-  %tmp1 = call <4 x float> @llvm.x86.sse41.insertps(<4 x float> %t1, <4 x float> %t2, i32 21) nounwind readnone
+  %tmp1 = call <4 x float> @llvm.x86.sse41.insertps(<4 x float> %t1, <4 x float> %t2, i32 1) nounwind readnone
   ret <4 x float> %tmp1
 }
 
@@ -697,16 +697,16 @@ define <4 x i32> @i32_shuf_X00A(<4 x i32> %x, <4 x i32> %a) {
 define <4 x i32> @i32_shuf_X00X(<4 x i32> %x, <4 x i32> %a) {
 ; X32-LABEL: i32_shuf_X00X:
 ; X32:       ## BB#0:
-; X32-NEXT:    pxor %xmm1, %xmm1
-; X32-NEXT:    pshufd {{.*#+}} xmm0 = xmm0[0,1,2,0]
-; X32-NEXT:    pblendw {{.*#+}} xmm0 = xmm0[0,1],xmm1[2,3,4,5],xmm0[6,7]
+; X32-NEXT:    pshufd {{.*#+}} xmm1 = xmm0[0,1,2,0]
+; X32-NEXT:    pxor %xmm0, %xmm0
+; X32-NEXT:    pblendw {{.*#+}} xmm0 = xmm1[0,1],xmm0[2,3,4,5],xmm1[6,7]
 ; X32-NEXT:    retl
 ;
 ; X64-LABEL: i32_shuf_X00X:
 ; X64:       ## BB#0:
-; X64-NEXT:    pxor %xmm1, %xmm1
-; X64-NEXT:    pshufd {{.*#+}} xmm0 = xmm0[0,1,2,0]
-; X64-NEXT:    pblendw {{.*#+}} xmm0 = xmm0[0,1],xmm1[2,3,4,5],xmm0[6,7]
+; X64-NEXT:    pshufd {{.*#+}} xmm1 = xmm0[0,1,2,0]
+; X64-NEXT:    pxor %xmm0, %xmm0
+; X64-NEXT:    pblendw {{.*#+}} xmm0 = xmm1[0,1],xmm0[2,3,4,5],xmm1[6,7]
 ; X64-NEXT:    retq
   %vecext = extractelement <4 x i32> %x, i32 0
   %vecinit = insertelement <4 x i32> undef, i32 %vecext, i32 0

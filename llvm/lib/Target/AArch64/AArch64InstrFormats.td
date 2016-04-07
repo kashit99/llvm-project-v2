@@ -9377,8 +9377,7 @@ class BaseCASEncoding<dag oops, dag iops, string asm, string operands,
 class BaseCAS<string order, string size, RegisterClass RC>
       : BaseCASEncoding<(outs RC:$out),(ins RC:$Rs, RC:$Rt, GPR64sp:$Rn),
                         "cas" # order # size, "\t$Rs, $Rt, [$Rn]",
-                        "$out = $Rs",[]>,
-        Sched<[WriteAtomic]> {
+                        "$out = $Rs",[]> {
   let NP = 1;
 }
 
@@ -9392,8 +9391,7 @@ multiclass CompareAndSwap<bits<1> Acq, bits<1> Rel, string order> {
 class BaseCASP<string order, string size, RegisterOperand RC>
       : BaseCASEncoding<(outs RC:$out),(ins RC:$Rs, RC:$Rt, GPR64sp:$Rn),
                         "casp" # order # size, "\t$Rs, $Rt, [$Rn]",
-                        "$out = $Rs",[]>,
-        Sched<[WriteAtomic]> {
+                        "$out = $Rs",[]> {
   let NP = 0;
 }
 
@@ -9407,8 +9405,7 @@ multiclass CompareAndSwapPair<bits<1> Acq, bits<1> Rel, string order> {
 let Predicates = [HasV8_1a] in
 class BaseSWP<string order, string size, RegisterClass RC>
       : I<(outs RC:$Rt),(ins RC:$Rs, GPR64sp:$Rn), "swp" # order # size,
-          "\t$Rs, $Rt, [$Rn]","",[]>,
-        Sched<[WriteAtomic]> {
+          "\t$Rs, $Rt, [$Rn]","",[]> {
   bits<2> Sz;
   bit Acq;
   bit Rel;
@@ -9439,8 +9436,7 @@ multiclass Swap<bits<1> Acq, bits<1> Rel, string order> {
 let Predicates = [HasV8_1a], mayLoad = 1, mayStore = 1, hasSideEffects = 1 in
 class BaseLDOPregister<string op, string order, string size, RegisterClass RC>
       : I<(outs RC:$Rt),(ins RC:$Rs, GPR64sp:$Rn), "ld" # op # order # size,
-          "\t$Rs, $Rt, [$Rn]","",[]>,
-        Sched<[WriteAtomic]> {
+          "\t$Rs, $Rt, [$Rn]","",[]> {
   bits<2> Sz;
   bit Acq;
   bit Rel;

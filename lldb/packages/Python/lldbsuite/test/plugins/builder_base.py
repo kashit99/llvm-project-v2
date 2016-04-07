@@ -13,9 +13,11 @@ variable.
 """
 
 import os, sys
+import os.path
 import platform
 import lldbsuite.test.lldbtest as lldbtest
 import lldbsuite.test.lldbutil as lldbutil
+import swift
 
 def getArchitecture():
     """Returns the architecture in effect the test suite is running with."""
@@ -64,13 +66,22 @@ def getCCSpec(compiler):
     Helper function to return the key-value string to specify the compiler
     used for the make system.
     """
+
+    lldbLib = os.environ["LLDB_LIB_DIR"] if "LLDB_LIB_DIR" in os.environ else None
+
     cc = compiler if compiler else None
     if not cc and "CC" in os.environ:
         cc = os.environ["CC"]
+
+    swiftcc = swift.getSwiftCompiler()
+
+    # Note the leading space character.
     if cc:
-        return "CC=\"%s\"" % cc
-    else:
-        return ""
+        if swiftcc:
+            return (" CC=" + cc + " SWIFTCC=" + swiftcc )
+        else:
+            return "CC=\"%s\"" % cc
+    return ""
 
 def getCmdLine(d):
     """
@@ -104,6 +115,9 @@ def buildDefault(sender=None, architecture=None, compiler=None, dictionary=None,
 
     # True signifies that we can handle building default.
     return True
+
+def safeGetEnviron(name,default = None):
+    return os.environ[name] if name in os.environ else default
 
 def buildDwarf(sender=None, architecture=None, compiler=None, dictionary=None, clean=True):
     """Build the binaries with dwarf debug info."""

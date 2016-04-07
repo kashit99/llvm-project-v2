@@ -333,20 +333,24 @@ static bool CreatePrologue(Function *F, Module *M, ReturnInst *RI,
                            AllocaInst *&AI, Value *&StackGuardVar) {
   bool SupportsSelectionDAGSP = false;
   PointerType *PtrTy = Type::getInt8PtrTy(RI->getContext());
-  IRBuilder<> B(&F->getEntryBlock().front());
+  unsigned AddressSpace, Offset;
+  if (TLI->getStackCookieLocation(AddressSpace, Offset)) {
+    Constant *OffsetVal =
+        ConstantInt::get(Type::getInt32Ty(RI->getContext()), Offset);
 
-  StackGuardVar = TLI->getStackCookieLocation(B);
-  if (!StackGuardVar) {
-    if (TT.isOSOpenBSD()) {
-      StackGuardVar = M->getOrInsertGlobal("__guard_local", PtrTy);
-      cast<GlobalValue>(StackGuardVar)
-          ->setVisibility(GlobalValue::HiddenVisibility);
-    } else {
-      SupportsSelectionDAGSP = true;
-      StackGuardVar = M->getOrInsertGlobal("__stack_chk_guard", PtrTy);
-    }
+    StackGuardVar =
+        ConstantExpr::getIntToPtr(OffsetVal, PointerType::get(PtrTy,
+                                                              AddressSpace));
+  } else if (TT.isOSOpenBSD()) {
+    StackGuardVar = M->getOrInsertGlobal("__guard_local", PtrTy);
+    cast<GlobalValue>(StackGuardVar)
+        ->setVisibility(GlobalValue::HiddenVisibility);
+  } else {
+    SupportsSelectionDAGSP = true;
+    StackGuardVar = M->getOrInsertGlobal("__stack_chk_guard", PtrTy);
   }
 
+  IRBuilder<> B(&F->getEntryBlock().front());
   AI = B.CreateAlloca(PtrTy, nullptr, "StackGuardSlot");
   LoadInst *LI = B.CreateLoad(StackGuardVar, "StackGuard");
   B.CreateCall(Intrinsic::getDeclaration(M, Intrinsic::stackprotector),

@@ -38,22 +38,6 @@ namespace {
   };
 }
 
-// FIXME: Remove ECOverride once Error has been plumbed down to obj tool code.
-static Error
-malformedError(std::string FileName, std::string Msg,
-               object_error ECOverride = object_error::parse_failed) {
-  return make_error<GenericBinaryError>(std::move(FileName), std::move(Msg),
-                                        ECOverride);
-}
-
-
-// FIXME: Remove ECOverride once Error has been plumbed down to obj tool code.
-static Error
-malformedError(const MachOObjectFile &Obj, std::string Msg,
-               object_error ECOverride = object_error::parse_failed) {
-  return malformedError(Obj.getFileName(), std::move(Msg), ECOverride);
-}
-
 // FIXME: Replace all uses of this function with getStructOrErr.
 template <typename T>
 static T getStruct(const MachOObjectFile *O, const char *P) {
@@ -69,10 +53,10 @@ static T getStruct(const MachOObjectFile *O, const char *P) {
 }
 
 template <typename T>
-static Expected<T> getStructOrErr(const MachOObjectFile *O, const char *P) {
+static ErrorOr<T> getStructOrErr(const MachOObjectFile *O, const char *P) {
   // Don't read before the beginning or past the end of the file
   if (P < O->getData().begin() || P + sizeof(T) > O->getData().end())
-    return malformedError(*O, "Structure read out-of-range");
+    return object_error::parse_failed;
 
   T Cmd;
   memcpy(&Cmd, P, sizeof(T));
@@ -177,29 +161,27 @@ static uint32_t getSectionFlags(const MachOObjectFile *O,
   return Sect.flags;
 }
 
-static Expected<MachOObjectFile::LoadCommandInfo>
+static ErrorOr<MachOObjectFile::LoadCommandInfo>
 getLoadCommandInfo(const MachOObjectFile *Obj, const char *Ptr) {
-  if (auto CmdOrErr = getStructOrErr<MachO::load_command>(Obj, Ptr)) {
-    if (CmdOrErr->cmdsize < 8)
-      return malformedError(*Obj, "Mach-O load command with size < 8 bytes",
-                            object_error::macho_small_load_command);
-    return MachOObjectFile::LoadCommandInfo({Ptr, *CmdOrErr});
-  } else
-    return CmdOrErr.takeError();
+  auto CmdOrErr = getStructOrErr<MachO::load_command>(Obj, Ptr);
+  if (!CmdOrErr)
+    return CmdOrErr.getError();
+  if (CmdOrErr->cmdsize < 8)
+    return object_error::macho_small_load_command;
+  MachOObjectFile::LoadCommandInfo Load;
+  Load.Ptr = Ptr;
+  Load.C = CmdOrErr.get();
+  return Load;
 }
 
-static Expected<MachOObjectFile::LoadCommandInfo>
+static ErrorOr<MachOObjectFile::LoadCommandInfo>
 getFirstLoadCommandInfo(const MachOObjectFile *Obj) {
   unsigned HeaderSize = Obj->is64Bit() ? sizeof(MachO::mach_header_64)
                                        : sizeof(MachO::mach_header);
-  if (sizeof(MachOObjectFile::LoadCommandInfo) > Obj->getHeader().sizeofcmds)
-    return malformedError(*Obj, "truncated or malformed object (load command "
-                          "0 extends past the end all load commands in the "
-                          "file)");
   return getLoadCommandInfo(Obj, getPtr(Obj, HeaderSize));
 }
 
-static Expected<MachOObjectFile::LoadCommandInfo>
+static ErrorOr<MachOObjectFile::LoadCommandInfo>
 getNextLoadCommandInfo(const MachOObjectFile *Obj,
                        const MachOObjectFile::LoadCommandInfo &L) {
   return getLoadCommandInfo(Obj, L.Ptr + L.C.cmdsize);
@@ -207,112 +189,92 @@ getNextLoadCommandInfo(const MachOObjectFile *Obj,
 
 template <typename T>
 static void parseHeader(const MachOObjectFile *Obj, T &Header,
-                        Error &Err) {
-  if (auto HeaderOrErr = getStructOrErr<T>(Obj, getPtr(Obj, 0)))
-    Header = *HeaderOrErr;
+                        std::error_code &EC) {
+  auto HeaderOrErr = getStructOrErr<T>(Obj, getPtr(Obj, 0));
+  if (HeaderOrErr)
+    Header = HeaderOrErr.get();
   else
-    Err = HeaderOrErr.takeError();
+    EC = HeaderOrErr.getError();
 }
 
 // Parses LC_SEGMENT or LC_SEGMENT_64 load command, adds addresses of all
 // sections to \param Sections, and optionally sets
 // \param IsPageZeroSegment to true.
 template <typename SegmentCmd>
-static Error parseSegmentLoadCommand(
+static std::error_code parseSegmentLoadCommand(
     const MachOObjectFile *Obj, const MachOObjectFile::LoadCommandInfo &Load,
     SmallVectorImpl<const char *> &Sections, bool &IsPageZeroSegment) {
   const unsigned SegmentLoadSize = sizeof(SegmentCmd);
   if (Load.C.cmdsize < SegmentLoadSize)
-    return malformedError(*Obj,
-                          "Mach-O segment load command size is too small",
-                          object_error::macho_load_segment_too_small);
-  if (auto SegOrErr = getStructOrErr<SegmentCmd>(Obj, Load.Ptr)) {
-    SegmentCmd S = SegOrErr.get();
-    const unsigned SectionSize =
+    return object_error::macho_load_segment_too_small;
+  auto SegOrErr = getStructOrErr<SegmentCmd>(Obj, Load.Ptr);
+  if (!SegOrErr)
+    return SegOrErr.getError();
+  SegmentCmd S = SegOrErr.get();
+  const unsigned SectionSize =
       Obj->is64Bit() ? sizeof(MachO::section_64) : sizeof(MachO::section);
-    if (S.nsects > std::numeric_limits<uint32_t>::max() / SectionSize ||
-        S.nsects * SectionSize > Load.C.cmdsize - SegmentLoadSize)
-      return malformedError(*Obj,
-                            "Mach-O segment load command contains too many "
-                            "sections",
-                            object_error::macho_load_segment_too_many_sections);
-    for (unsigned J = 0; J < S.nsects; ++J) {
-      const char *Sec = getSectionPtr(Obj, Load, J);
-      Sections.push_back(Sec);
-    }
-    IsPageZeroSegment |= StringRef("__PAGEZERO").equals(S.segname);
-  } else
-    return SegOrErr.takeError();
-
-  return Error::success();
-}
-
-Expected<std::unique_ptr<MachOObjectFile>>
-MachOObjectFile::create(MemoryBufferRef Object, bool IsLittleEndian,
-                        bool Is64Bits) {
-  Error Err;
-  std::unique_ptr<MachOObjectFile> Obj(
-      new MachOObjectFile(std::move(Object), IsLittleEndian,
-                           Is64Bits, Err));
-  if (Err)
-    return std::move(Err);
-  return std::move(Obj);
+  if (S.nsects > std::numeric_limits<uint32_t>::max() / SectionSize ||
+      S.nsects * SectionSize > Load.C.cmdsize - SegmentLoadSize)
+    return object_error::macho_load_segment_too_many_sections;
+  for (unsigned J = 0; J < S.nsects; ++J) {
+    const char *Sec = getSectionPtr(Obj, Load, J);
+    Sections.push_back(Sec);
+  }
+  IsPageZeroSegment |= StringRef("__PAGEZERO").equals(S.segname);
+  return std::error_code();
 }
 
 MachOObjectFile::MachOObjectFile(MemoryBufferRef Object, bool IsLittleEndian,
-                                 bool Is64bits, Error &Err)
+                                 bool Is64bits, std::error_code &EC)
     : ObjectFile(getMachOType(IsLittleEndian, Is64bits), Object),
       SymtabLoadCmd(nullptr), DysymtabLoadCmd(nullptr),
       DataInCodeLoadCmd(nullptr), LinkOptHintsLoadCmd(nullptr),
       DyldInfoLoadCmd(nullptr), UuidLoadCmd(nullptr),
       HasPageZeroSegment(false) {
-  ErrorAsOutParameter ErrAsOutParam(Err);
   if (is64Bit())
-    parseHeader(this, Header64, Err);
+    parseHeader(this, Header64, EC);
   else
-    parseHeader(this, Header, Err);
-  if (Err)
+    parseHeader(this, Header, EC);
+  if (EC)
     return;
 
   uint32_t LoadCommandCount = getHeader().ncmds;
   if (LoadCommandCount == 0)
     return;
 
-  LoadCommandInfo Load;
-  if (auto LoadOrErr = getFirstLoadCommandInfo(this))
-    Load = *LoadOrErr;
-  else {
-    Err = LoadOrErr.takeError();
+  auto LoadOrErr = getFirstLoadCommandInfo(this);
+  if (!LoadOrErr) {
+    EC = LoadOrErr.getError();
     return;
   }
-
+  LoadCommandInfo Load = LoadOrErr.get();
   for (unsigned I = 0; I < LoadCommandCount; ++I) {
     LoadCommands.push_back(Load);
     if (Load.C.cmd == MachO::LC_SYMTAB) {
       // Multiple symbol tables
       if (SymtabLoadCmd) {
-        Err = malformedError(*this, "Multiple symbol tables");
+        EC = object_error::parse_failed;
         return;
       }
       SymtabLoadCmd = Load.Ptr;
     } else if (Load.C.cmd == MachO::LC_DYSYMTAB) {
       // Multiple dynamic symbol tables
       if (DysymtabLoadCmd) {
-        Err = malformedError(*this, "Multiple dynamic symbol tables");
+        EC = object_error::parse_failed;
         return;
       }
       DysymtabLoadCmd = Load.Ptr;
     } else if (Load.C.cmd == MachO::LC_DATA_IN_CODE) {
       // Multiple data in code tables
       if (DataInCodeLoadCmd) {
-        Err = malformedError(*this, "Multiple data-in-code tables");
+        EC = object_error::parse_failed;
         return;
       }
       DataInCodeLoadCmd = Load.Ptr;
     } else if (Load.C.cmd == MachO::LC_LINKER_OPTIMIZATION_HINT) {
       // Multiple linker optimization hint tables
       if (LinkOptHintsLoadCmd) {
-        Err = malformedError(*this, "Multiple linker optimization hint tables");
+        EC = object_error::parse_failed;
         return;
       }
       LinkOptHintsLoadCmd = Load.Ptr;
@@ -320,24 +282,24 @@ MachOObjectFile::MachOObjectFile(MemoryBufferRef Object, bool IsLittleEndian,
                Load.C.cmd == MachO::LC_DYLD_INFO_ONLY) {
       // Multiple dyldinfo load commands
       if (DyldInfoLoadCmd) {
-        Err = malformedError(*this, "Multiple dyldinfo load commands");
+        EC = object_error::parse_failed;
         return;
       }
       DyldInfoLoadCmd = Load.Ptr;
     } else if (Load.C.cmd == MachO::LC_UUID) {
       // Multiple UUID load commands
       if (UuidLoadCmd) {
-        Err = malformedError(*this, "Multiple UUID load commands");
+        EC = object_error::parse_failed;
         return;
       }
       UuidLoadCmd = Load.Ptr;
     } else if (Load.C.cmd == MachO::LC_SEGMENT_64) {
-      if ((Err = parseSegmentLoadCommand<MachO::segment_command_64>(
-                   this, Load, Sections, HasPageZeroSegment)))
+      if ((EC = parseSegmentLoadCommand<MachO::segment_command_64>(
+               this, Load, Sections, HasPageZeroSegment)))
         return;
     } else if (Load.C.cmd == MachO::LC_SEGMENT) {
-      if ((Err = parseSegmentLoadCommand<MachO::segment_command>(
-                   this, Load, Sections, HasPageZeroSegment)))
+      if ((EC = parseSegmentLoadCommand<MachO::segment_command>(
+               this, Load, Sections, HasPageZeroSegment)))
         return;
     } else if (Load.C.cmd == MachO::LC_LOAD_DYLIB ||
                Load.C.cmd == MachO::LC_LOAD_WEAK_DYLIB ||
@@ -347,20 +309,19 @@ MachOObjectFile::MachOObjectFile(MemoryBufferRef Object, bool IsLittleEndian,
       Libraries.push_back(Load.Ptr);
     }
     if (I < LoadCommandCount - 1) {
-      if (auto LoadOrErr = getNextLoadCommandInfo(this, Load))
-        Load = *LoadOrErr;
-      else {
-        Err = LoadOrErr.takeError();
+      auto LoadOrErr = getNextLoadCommandInfo(this, Load);
+      if (!LoadOrErr) {
+        EC = LoadOrErr.getError();
         return;
       }
+      Load = LoadOrErr.get();
     }
   }
   if (!SymtabLoadCmd) {
     if (DysymtabLoadCmd) {
-      Err = malformedError(*this,
-                           "truncated or malformed object (contains "
-                           "LC_DYSYMTAB load command without a LC_SYMTAB load "
-                           "command)");
+      // Diagnostic("truncated or malformed object (contains LC_DYSYMTAB load "
+      // "command without a LC_SYMTAB load command)");
+      EC = object_error::parse_failed;
       return;
     }
   } else if (DysymtabLoadCmd) {
@@ -369,57 +330,49 @@ MachOObjectFile::MachOObjectFile(MemoryBufferRef Object, bool IsLittleEndian,
     MachO::dysymtab_command Dysymtab =
       getStruct<MachO::dysymtab_command>(this, DysymtabLoadCmd);
     if (Dysymtab.nlocalsym != 0 && Dysymtab.ilocalsym > Symtab.nsyms) {
-      Err = malformedError(*this,
-                           "truncated or malformed object (iolocalsym in "
-                           "LC_DYSYMTAB load command extends past the end of "
-                           "the symbol table)");
+      // Diagnostic("truncated or malformed object (ilocalsym in LC_DYSYMTAB "
+      // "load command extends past the end of the symbol table)"
+      EC = object_error::parse_failed;
       return;
     }
     uint64_t big_size = Dysymtab.ilocalsym;
     big_size += Dysymtab.nlocalsym;
     if (Dysymtab.nlocalsym != 0 && big_size > Symtab.nsyms) {
-      Err = malformedError(*this,
-                           "truncated or malformed object (ilocalsym plus "
-                           "nlocalsym in LC_DYSYMTAB load command extends past "
-                           "the end of the symbol table)");
+      // Diagnostic("truncated or malformed object (ilocalsym plus nlocalsym "
+      // "in LC_DYSYMTAB load command extends past the end of the symbol table)"
+      EC = object_error::parse_failed;
       return;
     }
     if (Dysymtab.nextdefsym != 0 && Dysymtab.ilocalsym > Symtab.nsyms) {
-      Err = malformedError(*this,
-                           "truncated or malformed object (nextdefsym in "
-                           "LC_DYSYMTAB load command extends past the end of "
-                           "the symbol table)");
+      // Diagnostic("truncated or malformed object (nextdefsym in LC_DYSYMTAB "
+      // "load command extends past the end of the symbol table)"
+      EC = object_error::parse_failed;
       return;
     }
     big_size = Dysymtab.iextdefsym;
     big_size += Dysymtab.nextdefsym;
     if (Dysymtab.nextdefsym != 0 && big_size > Symtab.nsyms) {
-      Err = malformedError(*this,
-                           "truncated or malformed object (iextdefsym plus "
-                           "nextdefsym in LC_DYSYMTAB load command extends "
-                           "past the end of the symbol table)");
+      // Diagnostic("truncated or malformed object (iextdefsym plus nextdefsym "
+      // "in LC_DYSYMTAB load command extends past the end of the symbol table)"
+      EC = object_error::parse_failed;
       return;
     }
     if (Dysymtab.nundefsym != 0 && Dysymtab.iundefsym > Symtab.nsyms) {
-      Err = malformedError(*this,
-                           "truncated or malformed object (nundefsym in "
-                           "LC_DYSYMTAB load command extends past the end of "
-                           "the symbol table)");
+      // Diagnostic("truncated or malformed object (nundefsym in LC_DYSYMTAB "
+      // "load command extends past the end of the symbol table)"
+      EC = object_error::parse_failed;
       return;
     }
     big_size = Dysymtab.iundefsym;
     big_size += Dysymtab.nundefsym;
     if (Dysymtab.nundefsym != 0 && big_size > Symtab.nsyms) {
-      Err = malformedError(*this,
-                           "truncated or malformed object (iundefsym plus "
-                           "nundefsym in LC_DYSYMTAB load command extends past "
-                           "the end of the symbol table");
+      // Diagnostic("truncated or malformed object (iundefsym plus nundefsym "
+      // "in LC_DYSYMTAB load command extends past the end of the symbol table)"
+      EC = object_error::parse_failed;
       return;
     }
   }
   assert(LoadCommands.size() == LoadCommandCount);
-
-  Err = Error::success();
 }
 
 void MachOObjectFile::moveSymbolNext(DataRefImpl &Symb) const {
@@ -490,8 +443,7 @@ uint64_t MachOObjectFile::getCommonSymbolSizeImpl(DataRefImpl DRI) const {
   return getNValue(DRI);
 }
 
-ErrorOr<SymbolRef::Type>
-MachOObjectFile::getSymbolType(DataRefImpl Symb) const {
+SymbolRef::Type MachOObjectFile::getSymbolType(DataRefImpl Symb) const {
   MachO::nlist_base Entry = getSymbolTableEntryBase(this, Symb);
   uint8_t n_type = Entry.n_type;
 
@@ -503,10 +455,7 @@ MachOObjectFile::getSymbolType(DataRefImpl Symb) const {
     case MachO::N_UNDF :
       return SymbolRef::ST_Unknown;
     case MachO::N_SECT :
-      ErrorOr<section_iterator> SecOrError = getSymbolSection(Symb);
-      if (!SecOrError)
-        return SecOrError.getError();
-      section_iterator Sec = *SecOrError;
+      section_iterator Sec = *getSymbolSection(Symb);
       if (Sec->isData() || Sec->isBSS())
         return SymbolRef::ST_Data;
       return SymbolRef::ST_Function;
@@ -562,11 +511,8 @@ MachOObjectFile::getSymbolSection(DataRefImpl Symb) const {
     return section_end();
   DataRefImpl DRI;
   DRI.d.a = index - 1;
-  if (DRI.d.a >= Sections.size()){
-    // Diagnostic("bad section index (" + index + ") for symbol at index " +
-    //  SymbolIndex);
+  if (DRI.d.a >= Sections.size())
     return object_error::parse_failed;
-  }
   return section_iterator(SectionRef(DRI, this));
 }
 
@@ -681,14 +627,6 @@ unsigned MachOObjectFile::getSectionID(SectionRef Sec) const {
 
 bool MachOObjectFile::isSectionVirtual(DataRefImpl Sec) const {
   // FIXME: Unimplemented.
-  return false;
-}
-
-bool MachOObjectFile::isSectionBitcode(DataRefImpl Sec) const {
-  StringRef SegmentName = getSectionFinalSegmentName(Sec);
-  StringRef SectName;
-  if (!getSectionName(Sec, SectName))
-    return (SegmentName == "__LLVM" && SectName == "__bitcode");
   return false;
 }
 
@@ -2425,17 +2363,23 @@ bool MachOObjectFile::isRelocatableObject() const {
   return getHeader().filetype == MachO::MH_OBJECT;
 }
 
-Expected<std::unique_ptr<MachOObjectFile>>
+ErrorOr<std::unique_ptr<MachOObjectFile>>
 ObjectFile::createMachOObjectFile(MemoryBufferRef Buffer) {
   StringRef Magic = Buffer.getBuffer().slice(0, 4);
+  std::error_code EC;
+  std::unique_ptr<MachOObjectFile> Ret;
   if (Magic == "\xFE\xED\xFA\xCE")
-    return MachOObjectFile::create(Buffer, false, false);
-  if (Magic == "\xCE\xFA\xED\xFE")
-    return MachOObjectFile::create(Buffer, true, false);
-  if (Magic == "\xFE\xED\xFA\xCF")
-    return MachOObjectFile::create(Buffer, false, true);
-  if (Magic == "\xCF\xFA\xED\xFE")
-    return MachOObjectFile::create(Buffer, true, true);
-  return malformedError(Buffer.getBufferIdentifier(),
-                        "Unrecognized MachO magic number");
+    Ret.reset(new MachOObjectFile(Buffer, false, false, EC));
+  else if (Magic == "\xCE\xFA\xED\xFE")
+    Ret.reset(new MachOObjectFile(Buffer, true, false, EC));
+  else if (Magic == "\xFE\xED\xFA\xCF")
+    Ret.reset(new MachOObjectFile(Buffer, false, true, EC));
+  else if (Magic == "\xCF\xFA\xED\xFE")
+    Ret.reset(new MachOObjectFile(Buffer, true, true, EC));
+  else
+    return object_error::parse_failed;
+
+  if (EC)
+    return EC;
+  return std::move(Ret);
 }

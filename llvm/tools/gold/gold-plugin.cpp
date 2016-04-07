@@ -362,7 +362,7 @@ ld_plugin_status onload(ld_plugin_tv *tv) {
     return LDPS_ERR;
   }
   if (!release_input_file) {
-    message(LDPL_ERROR, "release_input_file not passed to LLVMgold.");
+    message(LDPL_ERROR, "relesase_input_file not passed to LLVMgold.");
     return LDPS_ERR;
   }
 
@@ -888,9 +888,7 @@ private:
 
   /// Sets up output files necessary to perform optional multi-threaded
   /// split code generation, and invokes the code generation implementation.
-  /// If BCFileName is not empty, saves bitcode for module partitions into
-  /// {BCFileName}0 .. {BCFileName}N.
-  void runSplitCodeGen(const SmallString<128> &BCFilename);
+  void runSplitCodeGen();
 };
 }
 
@@ -903,17 +901,22 @@ static SubtargetFeatures getFeatures(Triple &TheTriple) {
 }
 
 static CodeGenOpt::Level getCGOptLevel() {
+  CodeGenOpt::Level CGOptLevel;
   switch (options::OptLevel) {
   case 0:
-    return CodeGenOpt::None;
+    CGOptLevel = CodeGenOpt::None;
+    break;
   case 1:
-    return CodeGenOpt::Less;
+    CGOptLevel = CodeGenOpt::Less;
+    break;
   case 2:
-    return CodeGenOpt::Default;
+    CGOptLevel = CodeGenOpt::Default;
+    break;
   case 3:
-    return CodeGenOpt::Aggressive;
+    CGOptLevel = CodeGenOpt::Aggressive;
+    break;
   }
-  llvm_unreachable("Invalid optimization level");
+  return CGOptLevel;
 }
 
 void CodeGen::initTargetMachine() {
@@ -989,7 +992,7 @@ void CodeGen::runCodegenPasses() {
   CodeGenPasses.run(*M);
 }
 
-void CodeGen::runSplitCodeGen(const SmallString<128> &BCFilename) {
+void CodeGen::runSplitCodeGen() {
   const std::string &TripleStr = M->getTargetTriple();
   Triple TheTriple(TripleStr);
 
@@ -1012,7 +1015,6 @@ void CodeGen::runSplitCodeGen(const SmallString<128> &BCFilename) {
   unsigned int MaxThreads = options::Parallelism ? options::Parallelism : 1;
 
   std::vector<SmallString<128>> Filenames(MaxThreads);
-  std::vector<SmallString<128>> BCFilenames(MaxThreads);
   bool TempOutFile = Filename.empty();
   {
     // Open a file descriptor for each backend task. This is done in a block
@@ -1027,18 +1029,8 @@ void CodeGen::runSplitCodeGen(const SmallString<128> &BCFilename) {
       OSPtrs[I] = &OSs.back();
     }
 
-    std::list<llvm::raw_fd_ostream> BCOSs;
-    std::vector<llvm::raw_pwrite_stream *> BCOSPtrs;
-    if (!BCFilename.empty() && MaxThreads > 1) {
-      for (unsigned I = 0; I != MaxThreads; ++I) {
-        int FD = openOutputFile(BCFilename, false, BCFilenames[I], I);
-        BCOSs.emplace_back(FD, true);
-        BCOSPtrs.push_back(&BCOSs.back());
-      }
-    }
-
     // Run backend tasks.
-    splitCodeGen(std::move(M), OSPtrs, BCOSPtrs, options::mcpu, Features.getString(),
+    splitCodeGen(std::move(M), OSPtrs, options::mcpu, Features.getString(),
                  Options, RelocationModel, CodeModel::Default, CGOptLevel);
   }
 
@@ -1049,16 +1041,14 @@ void CodeGen::runSplitCodeGen(const SmallString<128> &BCFilename) {
 void CodeGen::runAll() {
   runLTOPasses();
 
-  SmallString<128> OptFilename;
   if (options::TheOutputType == options::OT_SAVE_TEMPS) {
-    OptFilename = output_name;
+    std::string OptFilename = output_name;
     // If the CodeGen client provided a filename, use it. Always expect
     // a provided filename if we are in a task (i.e. ThinLTO backend).
     assert(!SaveTempsFilename.empty() || TaskID == -1);
     if (!SaveTempsFilename.empty())
       OptFilename = SaveTempsFilename;
-    OptFilename += ".opt.bc";
-    saveBCFile(OptFilename, *M);
+    saveBCFile(OptFilename + ".opt.bc", *M);
   }
 
   // If we are already in a thread (i.e. ThinLTO), just perform
@@ -1067,7 +1057,7 @@ void CodeGen::runAll() {
     runCodegenPasses();
   // Otherwise attempt split code gen.
   else
-    runSplitCodeGen(OptFilename);
+    runSplitCodeGen();
 }
 
 /// Links the module in \p View from file \p F into the combined module
@@ -1304,14 +1294,10 @@ static ld_plugin_status all_symbols_read_hook(void) {
 
   if (options::TheOutputType == options::OT_BC_ONLY ||
       options::TheOutputType == options::OT_DISABLE) {
-    if (options::TheOutputType == options::OT_DISABLE) {
+    if (options::TheOutputType == options::OT_DISABLE)
       // Remove the output file here since ld.bfd creates the output file
       // early.
-      std::error_code EC = sys::fs::remove(output_name);
-      if (EC)
-        message(LDPL_ERROR, "Failed to delete '%s': %s", output_name.c_str(),
-                EC.message().c_str());
-    }
+      sys::fs::remove(output_name);
     exit(0);
   }
 

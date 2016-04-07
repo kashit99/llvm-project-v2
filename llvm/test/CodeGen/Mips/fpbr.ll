@@ -18,8 +18,7 @@ entry:
 ; GPR:           mfc1     $[[GPRCC:[0-9]+]], $[[FGRCC:f[0-9]+]]
 ; FIXME: We ought to be able to transform not+bnez -> beqz
 ; GPR:           not      $[[GPRCC]], $[[GPRCC]]
-; 32-GPR:        bnez     $[[GPRCC]], $BB0_2
-; 64-GPR:        bnezc    $[[GPRCC]], $BB0_2
+; GPR:           bnez     $[[GPRCC]], $BB0_2
 
   %cmp = fcmp oeq float %f2, %f3
   br i1 %cmp, label %if.then, label %if.else
@@ -52,8 +51,7 @@ entry:
 ; 64-GPR:        cmp.ule.s $[[FGRCC:f[0-9]+]], $f13, $f12
 ; GPR:           mfc1     $[[GPRCC:[0-9]+]], $[[FGRCC:f[0-9]+]]
 ; GPR-NOT:       not      $[[GPRCC]], $[[GPRCC]]
-; 32-GPR:        bnez     $[[GPRCC]], $BB1_2
-; 64-GPR:        bnezc    $[[GPRCC]], $BB1_2
+; GPR:           bnez     $[[GPRCC]], $BB1_2
 
   %cmp = fcmp olt float %f2, %f3
   br i1 %cmp, label %if.then, label %if.else
@@ -82,8 +80,7 @@ entry:
 ; 64-GPR:        cmp.ult.s $[[FGRCC:f[0-9]+]], $f13, $f12
 ; GPR:           mfc1     $[[GPRCC:[0-9]+]], $[[FGRCC:f[0-9]+]]
 ; GPR-NOT:       not      $[[GPRCC]], $[[GPRCC]]
-; 32-GPR:        beqz     $[[GPRCC]], $BB2_2
-; 64-GPR:        beqzc    $[[GPRCC]], $BB2_2
+; GPR:           beqz     $[[GPRCC]], $BB2_2
 
   %cmp = fcmp ugt float %f2, %f3
   br i1 %cmp, label %if.else, label %if.then
@@ -113,8 +110,7 @@ entry:
 ; GPR:           mfc1     $[[GPRCC:[0-9]+]], $[[FGRCC:f[0-9]+]]
 ; FIXME: We ought to be able to transform not+bnez -> beqz
 ; GPR:           not      $[[GPRCC]], $[[GPRCC]]
-; 32-GPR:        bnez     $[[GPRCC]], $BB3_2
-; 64-GPR:        bnezc    $[[GPRCC]], $BB3_2
+; GPR:           bnez     $[[GPRCC]], $BB3_2
 
   %cmp = fcmp oeq double %f2, %f3
   br i1 %cmp, label %if.then, label %if.else
@@ -143,8 +139,7 @@ entry:
 ; 64-GPR:        cmp.ule.d $[[FGRCC:f[0-9]+]], $f13, $f12
 ; GPR:           mfc1     $[[GPRCC:[0-9]+]], $[[FGRCC:f[0-9]+]]
 ; GPR-NOT:       not      $[[GPRCC]], $[[GPRCC]]
-; 32-GPR:        bnez     $[[GPRCC]], $BB4_2
-; 64-GPR:        bnezc    $[[GPRCC]], $BB4_2
+; GPR:           bnez     $[[GPRCC]], $BB4_2
 
   %cmp = fcmp olt double %f2, %f3
   br i1 %cmp, label %if.then, label %if.else
@@ -173,8 +168,7 @@ entry:
 ; 64-GPR:        cmp.ult.d $[[FGRCC:f[0-9]+]], $f13, $f12
 ; GPR:           mfc1     $[[GPRCC:[0-9]+]], $[[FGRCC:f[0-9]+]]
 ; GPR-NOT:       not      $[[GPRCC]], $[[GPRCC]]
-; 32-GPR:        beqz     $[[GPRCC]], $BB5_2
-; 64-GPR:        beqzc    $[[GPRCC]], $BB5_2
+; GPR:           beqz     $[[GPRCC]], $BB5_2
 
   %cmp = fcmp ugt double %f2, %f3
   br i1 %cmp, label %if.else, label %if.then

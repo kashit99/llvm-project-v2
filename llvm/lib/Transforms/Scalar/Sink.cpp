@@ -145,10 +145,8 @@ bool Sinking::ProcessBlock(BasicBlock &BB) {
     if (isa<DbgInfoIntrinsic>(Inst))
       continue;
 
-    if (SinkInstruction(Inst, Stores)) {
-      ++NumSunk;
-      MadeChange = true;
-    }
+    if (SinkInstruction(Inst, Stores))
+      ++NumSunk, MadeChange = true;
 
     // If we just processed the first instruction in the block, we're done.
   } while (!ProcessedBegin);

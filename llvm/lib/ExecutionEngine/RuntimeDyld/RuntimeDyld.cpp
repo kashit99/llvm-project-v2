@@ -169,9 +169,7 @@ RuntimeDyldImpl::loadObjectImpl(const object::ObjectFile &Obj) {
     if (Flags & SymbolRef::SF_Common)
       CommonSymbols.push_back(*I);
     else {
-      ErrorOr<object::SymbolRef::Type> SymTypeOrErr = I->getType();
-      Check(SymTypeOrErr.getError());
-      object::SymbolRef::Type SymType = *SymTypeOrErr;
+      object::SymbolRef::Type SymType = I->getType();
 
       // Get symbol name.
       ErrorOr<StringRef> NameOrErr = I->getName();

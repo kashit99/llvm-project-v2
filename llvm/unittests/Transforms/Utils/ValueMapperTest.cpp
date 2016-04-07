@@ -7,7 +7,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/IR/Function.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/Transforms/Utils/ValueMapper.h"
@@ -16,51 +15,6 @@
 using namespace llvm;
 
 namespace {
-
-TEST(ValueMapperTest, MapMetadata) {
-  LLVMContext Context;
-  auto *U = MDTuple::get(Context, None);
-
-  // The node should be unchanged.
-  ValueToValueMapTy VM;
-  EXPECT_EQ(U, MapMetadata(U, VM, RF_None));
-}
-
-TEST(ValueMapperTest, MapMetadataCycle) {
-  LLVMContext Context;
-  MDNode *U0;
-  MDNode *U1;
-  {
-    Metadata *Ops[] = {nullptr};
-    auto T = MDTuple::getTemporary(Context, Ops);
-    Ops[0] = T.get();
-    U0 = MDTuple::get(Context, Ops);
-    T->replaceOperandWith(0, U0);
-    U1 = MDNode::replaceWithUniqued(std::move(T));
-    U0->resolveCycles();
-  }
-
-  EXPECT_TRUE(U0->isResolved());
-  EXPECT_TRUE(U0->isUniqued());
-  EXPECT_TRUE(U1->isResolved());
-  EXPECT_TRUE(U1->isUniqued());
-  EXPECT_EQ(U1, U0->getOperand(0));
-  EXPECT_EQ(U0, U1->getOperand(0));
-
-  // Cycles shouldn't be duplicated.
-  {
-    ValueToValueMapTy VM;
-    EXPECT_EQ(U0, MapMetadata(U0, VM, RF_None));
-    EXPECT_EQ(U1, MapMetadata(U1, VM, RF_None));
-  }
-
-  // Check the other order.
-  {
-    ValueToValueMapTy VM;
-    EXPECT_EQ(U1, MapMetadata(U1, VM, RF_None));
-    EXPECT_EQ(U0, MapMetadata(U0, VM, RF_None));
-  }
-}
 
 TEST(ValueMapperTest, MapMetadataUnresolved) {
   LLVMContext Context;
@@ -101,42 +55,4 @@ TEST(ValueMapperTest, MapMetadataDistinctOperands) {
   EXPECT_EQ(New, D->getOperand(0));
 }
 
-TEST(ValueMapperTest, MapMetadataSeeded) {
-  LLVMContext Context;
-  auto *D = MDTuple::getDistinct(Context, None);
-
-  // The node should be moved.
-  ValueToValueMapTy VM;
-  EXPECT_EQ(None, VM.getMappedMD(D));
-
-  VM.MD().insert(std::make_pair(D, TrackingMDRef(D)));
-  EXPECT_EQ(D, *VM.getMappedMD(D));
-  EXPECT_EQ(D, MapMetadata(D, VM, RF_None));
 }
-
-TEST(ValueMapperTest, MapMetadataSeededWithNull) {
-  LLVMContext Context;
-  auto *D = MDTuple::getDistinct(Context, None);
-
-  // The node should be moved.
-  ValueToValueMapTy VM;
-  EXPECT_EQ(None, VM.getMappedMD(D));
-
-  VM.MD().insert(std::make_pair(D, TrackingMDRef()));
-  EXPECT_EQ(nullptr, *VM.getMappedMD(D));
-  EXPECT_EQ(nullptr, MapMetadata(D, VM, RF_None));
-}
-
-TEST(ValueMapperTest, MapMetadataNullMapGlobalWithIgnoreMissingLocals) {
-  LLVMContext C;
-  FunctionType *FTy =
-      FunctionType::get(Type::getVoidTy(C), Type::getInt8Ty(C), false);
-  std::unique_ptr<Function> F(
-      Function::Create(FTy, GlobalValue::ExternalLinkage, "F"));
-
-  ValueToValueMapTy VM;
-  RemapFlags Flags = RF_IgnoreMissingLocals | RF_NullMapMissingGlobalValues;
-  EXPECT_EQ(nullptr, MapValue(F.get(), VM, Flags));
-}
-
-} // end namespace

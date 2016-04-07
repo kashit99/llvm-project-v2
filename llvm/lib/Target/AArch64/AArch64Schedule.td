@@ -92,8 +92,6 @@ def WriteV   : SchedWrite; // Vector ops.
 def WriteVLD : SchedWrite; // Vector loads.
 def WriteVST : SchedWrite; // Vector stores.
 
-def WriteAtomic : SchedWrite; // Atomic memory operations (CAS, Swap, LDOP)
-
 // Read the unwritten lanes of the VLD's destination registers.
 def ReadVLD : SchedRead;
 

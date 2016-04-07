@@ -17,7 +17,6 @@ add_clang_library(clangTooling
   clangASTMatchers
   clangBasic
   clangDriver
-  clangFormat
   clangFrontend
   clangLex
   clangRewrite

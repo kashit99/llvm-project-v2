@@ -206,15 +206,8 @@ void MCJIT::generateCodeForModule(Module *M) {
 
   // Load the object into the dynamic linker.
   // MCJIT now owns the ObjectImage pointer (via its LoadedObjects list).
-  Expected<std::unique_ptr<object::ObjectFile>> LoadedObject =
+  ErrorOr<std::unique_ptr<object::ObjectFile>> LoadedObject =
     object::ObjectFile::createObjectFile(ObjectToLoad->getMemBufferRef());
-  if (!LoadedObject) {
-    std::string Buf;
-    raw_string_ostream OS(Buf);
-    logAllUnhandledErrors(LoadedObject.takeError(), OS, "");
-    OS.flush();
-    report_fatal_error(Buf);
-  }
   std::unique_ptr<RuntimeDyld::LoadedObjectInfo> L =
     Dyld.loadObject(*LoadedObject.get());
 

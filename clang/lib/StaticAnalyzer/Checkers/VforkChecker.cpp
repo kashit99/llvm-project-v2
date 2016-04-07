@@ -54,10 +54,10 @@ class VforkChecker : public Checker<check::PreCall, check::PostCall,
   bool isCallWhitelisted(const IdentifierInfo *II, CheckerContext &C) const;
 
   void reportBug(const char *What, CheckerContext &C,
-                 const char *Details = nullptr) const;
+                 const char *Details = 0) const;
 
 public:
-  VforkChecker() : II_vfork(nullptr) {}
+  VforkChecker() : II_vfork(0) {}
 
   void checkPreCall(const CallEvent &Call, CheckerContext &C) const;
   void checkPostCall(const CallEvent &Call, CheckerContext &C) const;
@@ -107,7 +107,7 @@ bool VforkChecker::isCallWhitelisted(const IdentifierInfo *II,
       "execv",
       "execvp",
       "execvpe",
-      nullptr
+      0,
     };
 
     ASTContext &AC = C.getASTContext();

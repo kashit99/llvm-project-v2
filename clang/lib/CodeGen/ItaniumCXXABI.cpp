@@ -154,9 +154,17 @@ public:
                                Address Ptr, QualType ElementType,
                                const CXXDestructorDecl *Dtor) override;
 
+  /// Itanium says that an _Unwind_Exception has to be "double-word"
+  /// aligned (and thus the end of it is also so-aligned), meaning 16
+  /// bytes.  Of course, that was written for the actual Itanium,
+  /// which is a 64-bit platform.  Classically, the ABI doesn't really
+  /// specify the alignment on other platforms, but in practice
+  /// libUnwind declares the struct with __attribute__((aligned)), so
+  /// we assume that alignment here.  (It's generally 16 bytes, but
+  /// some targets overwrite it.)
   CharUnits getAlignmentOfExnObject() {
-    unsigned Align = CGM.getContext().getTargetInfo().getExnObjectAlignment();
-    return CGM.getContext().toCharUnitsFromBits(Align);
+    auto align = CGM.getContext().getTargetDefaultAlignForAttributeAligned();
+    return CGM.getContext().toCharUnitsFromBits(align);
   }
 
   void emitRethrow(CodeGenFunction &CGF, bool isNoReturn) override;
@@ -1521,8 +1529,8 @@ ItaniumCXXABI::getVTableAddressPoint(BaseSubobject Base,
                               .getVTableLayout(VTableClass)
                               .getAddressPoint(Base);
   llvm::Value *Indices[] = {
-    llvm::ConstantInt::get(CGM.Int32Ty, 0),
-    llvm::ConstantInt::get(CGM.Int32Ty, AddressPoint)
+    llvm::ConstantInt::get(CGM.Int64Ty, 0),
+    llvm::ConstantInt::get(CGM.Int64Ty, AddressPoint)
   };
 
   return llvm::ConstantExpr::getInBoundsGetElementPtr(VTable->getValueType(),
@@ -1594,7 +1602,9 @@ llvm::Value *ItaniumCXXABI::getVirtualFunctionPointer(CodeGenFunction &CGF,
   auto *MethodDecl = cast<CXXMethodDecl>(GD.getDecl());
   llvm::Value *VTable = CGF.GetVTablePtr(This, Ty, MethodDecl->getParent());
 
-  CGF.EmitBitSetCodeForVCall(MethodDecl->getParent(), VTable, Loc);
+  if (CGF.SanOpts.has(SanitizerKind::CFIVCall))
+    CGF.EmitVTablePtrCheckForCall(MethodDecl, VTable,
+                                  CodeGenFunction::CFITCK_VCall, Loc);
 
   uint64_t VTableIndex = CGM.getItaniumVTableContext().getMethodVTableIndex(GD);
   llvm::Value *VFuncPtr =
@@ -1999,7 +2009,7 @@ void ItaniumCXXABI::EmitGuardedInit(CodeGenFunction &CGF,
   //
   // In LLVM, we do this by marking the load Acquire.
   if (threadsafe)
-    LI->setAtomic(llvm::AtomicOrdering::Acquire);
+    LI->setAtomic(llvm::Acquire);
 
   // For ARM, we should only check the first bit, rather than the entire byte:
   //
@@ -2178,8 +2188,9 @@ ItaniumCXXABI::getOrCreateThreadLocalWrapper(const VarDecl *VD,
   if (RetQT->isReferenceType())
     RetQT = RetQT.getNonReferenceType();
 
-  const CGFunctionInfo &FI = CGM.getTypes().arrangeBuiltinFunctionDeclaration(
-      getContext().getPointerType(RetQT), FunctionArgList());
+  const CGFunctionInfo &FI = CGM.getTypes().arrangeFreeFunctionDeclaration(
+      getContext().getPointerType(RetQT), FunctionArgList(),
+      FunctionType::ExtInfo(), false);
 
   llvm::FunctionType *FnTy = CGM.getTypes().GetFunctionType(FI);
   llvm::Function *Wrapper =
@@ -2271,7 +2282,9 @@ void ItaniumCXXABI::EmitThreadLocalInitFuncs(
       Init = llvm::Function::Create(
           FnTy, llvm::GlobalVariable::ExternalWeakLinkage, InitFnName.str(),
           &CGM.getModule());
-      const CGFunctionInfo &FI = CGM.getTypes().arrangeNullaryFunction();
+      const CGFunctionInfo &FI = CGM.getTypes().arrangeFreeFunctionDeclaration(
+          CGM.getContext().VoidTy, FunctionArgList(), FunctionType::ExtInfo(),
+          false);
       CGM.SetLLVMFunctionAttributes(nullptr, FI, cast<llvm::Function>(Init));
     }
 
@@ -2503,11 +2516,6 @@ static bool TypeInfoIsInStandardLibrary(const BuiltinType *Ty) {
   //   long, unsigned long, long long, unsigned long long, float, double,
   //   long double, char16_t, char32_t, and the IEEE 754r decimal and
   //   half-precision floating point types.
-  //
-  // GCC also emits RTTI for __int128.
-  // FIXME: We do not emit RTTI information for decimal types here.
-
-  // Types added here must also be added to EmitFundamentalRTTIDescriptors.
   switch (Ty->getKind()) {
     case BuiltinType::Void:
     case BuiltinType::NullPtr:
@@ -2534,8 +2542,6 @@ static bool TypeInfoIsInStandardLibrary(const BuiltinType *Ty) {
     case BuiltinType::Char32:
     case BuiltinType::Int128:
     case BuiltinType::UInt128:
-      return true;
-
     case BuiltinType::OCLImage1d:
     case BuiltinType::OCLImage1dArray:
     case BuiltinType::OCLImage1dBuffer:
@@ -2554,7 +2560,7 @@ static bool TypeInfoIsInStandardLibrary(const BuiltinType *Ty) {
     case BuiltinType::OCLQueue:
     case BuiltinType::OCLNDRange:
     case BuiltinType::OCLReserveID:
-      return false;
+      return true;
 
     case BuiltinType::Dependent:
 #define BUILTIN_TYPE(Id, SingletonId)
@@ -2883,7 +2889,7 @@ static llvm::GlobalVariable::LinkageTypes getTypeInfoLinkage(CodeGenModule &CGM,
 
 llvm::Constant *ItaniumRTTIBuilder::BuildTypeInfo(QualType Ty, bool Force) {
   // We want to operate on the canonical type.
-  Ty = Ty.getCanonicalType();
+  Ty = CGM.getContext().getCanonicalType(Ty);
 
   // Check if we've already emitted an RTTI descriptor for this type.
   SmallString<256> Name;
@@ -3346,7 +3352,6 @@ void ItaniumCXXABI::EmitFundamentalRTTIDescriptor(QualType Type) {
 }
 
 void ItaniumCXXABI::EmitFundamentalRTTIDescriptors() {
-  // Types added here must also be added to TypeInfoIsInStandardLibrary.
   QualType FundamentalTypes[] = {
       getContext().VoidTy,             getContext().NullPtrTy,
       getContext().BoolTy,             getContext().WCharTy,
@@ -3355,8 +3360,7 @@ void ItaniumCXXABI::EmitFundamentalRTTIDescriptors() {
       getContext().UnsignedShortTy,    getContext().IntTy,
       getContext().UnsignedIntTy,      getContext().LongTy,
       getContext().UnsignedLongTy,     getContext().LongLongTy,
-      getContext().UnsignedLongLongTy, getContext().Int128Ty,
-      getContext().UnsignedInt128Ty,   getContext().HalfTy,
+      getContext().UnsignedLongLongTy, getContext().HalfTy,
       getContext().FloatTy,            getContext().DoubleTy,
       getContext().LongDoubleTy,       getContext().Char16Ty,
       getContext().Char32Ty,

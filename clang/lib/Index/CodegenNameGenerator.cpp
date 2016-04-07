@@ -31,7 +31,7 @@ struct CodegenNameGenerator::Implementation {
 
   Implementation(ASTContext &Ctx)
     : MC(Ctx.createMangleContext()),
-      DL(Ctx.getTargetInfo().getDataLayout()) {}
+      DL(Ctx.getTargetInfo().getDataLayoutString()) {}
 
   bool writeName(const Decl *D, raw_ostream &OS) {
     // First apply frontend mangling.
@@ -76,6 +76,8 @@ struct CodegenNameGenerator::Implementation {
 
     ASTContext &Ctx = ND->getASTContext();
     std::unique_ptr<MangleContext> M(Ctx.createMangleContext());
+    std::unique_ptr<llvm::DataLayout> DL(
+        new llvm::DataLayout(Ctx.getTargetInfo().getDataLayoutString()));
 
     std::vector<std::string> Manglings;
 

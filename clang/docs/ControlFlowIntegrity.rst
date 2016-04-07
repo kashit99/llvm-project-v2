@@ -129,8 +129,7 @@ type ``void*`` or another unrelated type (which can be checked with
 The difference between these two types of casts is that the first is defined
 by the C++ standard to produce an undefined value, while the second is not
 in itself undefined behavior (it is well defined to cast the pointer back
-to its original type) unless the object is uninitialized and the cast is a
-``static_cast`` (see C++14 [basic.life]p5).
+to its original type).
 
 If a program as a matter of policy forbids the second type of cast, that
 restriction can normally be enforced. However it may in some cases be necessary

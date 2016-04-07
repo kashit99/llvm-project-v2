@@ -31,6 +31,7 @@ struct CrashRecoveryContextImpl {
   const CrashRecoveryContextImpl *Next;
 
   CrashRecoveryContext *CRC;
+  std::string Backtrace;
   ::jmp_buf JumpBuffer;
   volatile unsigned Failed : 1;
   unsigned SwitchedThread : 1;
@@ -332,6 +333,13 @@ void CrashRecoveryContext::HandleCrash() {
   CrashRecoveryContextImpl *CRCI = (CrashRecoveryContextImpl *) Impl;
   assert(CRCI && "Crash recovery context never initialized!");
   CRCI->HandleCrash();
+}
+
+const std::string &CrashRecoveryContext::getBacktrace() const {
+  CrashRecoveryContextImpl *CRC = (CrashRecoveryContextImpl *) Impl;
+  assert(CRC && "Crash recovery context never initialized!");
+  assert(CRC->Failed && "No crash was detected!");
+  return CRC->Backtrace;
 }
 
 // FIXME: Portability.

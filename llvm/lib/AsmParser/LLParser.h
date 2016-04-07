@@ -148,9 +148,6 @@ namespace llvm {
 
     bool parseStandaloneConstantValue(Constant *&C, const SlotMapping *Slots);
 
-    bool parseTypeAtBeginning(Type *&Ty, unsigned &Read,
-                              const SlotMapping *Slots);
-
     LLVMContext &getContext() { return Context; }
 
   private:
@@ -261,7 +258,6 @@ namespace llvm {
     bool ValidateEndOfModule();
     bool ParseTargetDefinition();
     bool ParseModuleAsm();
-    bool ParseSourceFileName();
     bool ParseDepLibs();        // FIXME: Remove in 4.0.
     bool ParseUnnamedType();
     bool ParseNamedType();
@@ -275,11 +271,9 @@ namespace llvm {
                      bool HasLinkage, unsigned Visibility,
                      unsigned DLLStorageClass,
                      GlobalVariable::ThreadLocalMode TLM, bool UnnamedAddr);
-    bool parseIndirectSymbol(const std::string &Name, LocTy Loc,
-                             unsigned Linkage, unsigned Visibility,
-                             unsigned DLLStorageClass,
-                             GlobalVariable::ThreadLocalMode TLM,
-                             bool UnnamedAddr);
+    bool ParseAlias(const std::string &Name, LocTy Loc, unsigned Linkage,
+                    unsigned Visibility, unsigned DLLStorageClass,
+                    GlobalVariable::ThreadLocalMode TLM, bool UnnamedAddr);
     bool parseComdat();
     bool ParseStandaloneMetadata();
     bool ParseNamedMetadata();

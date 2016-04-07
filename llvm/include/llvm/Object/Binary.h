@@ -134,8 +134,8 @@ public:
 /// @brief Create a Binary from Source, autodetecting the file type.
 ///
 /// @param Source The data to create the Binary from.
-Expected<std::unique_ptr<Binary>> createBinary(MemoryBufferRef Source,
-                                               LLVMContext *Context = nullptr);
+ErrorOr<std::unique_ptr<Binary>> createBinary(MemoryBufferRef Source,
+                                              LLVMContext *Context = nullptr);
 
 template <typename T> class OwningBinary {
   std::unique_ptr<T> Bin;
@@ -185,7 +185,7 @@ template <typename T> const T* OwningBinary<T>::getBinary() const {
   return Bin.get();
 }
 
-Expected<OwningBinary<Binary>> createBinary(StringRef Path);
+ErrorOr<OwningBinary<Binary>> createBinary(StringRef Path);
 }
 }
 

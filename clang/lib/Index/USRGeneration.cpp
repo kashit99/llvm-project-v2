@@ -90,23 +90,18 @@ public:
   void VisitVarDecl(const VarDecl *D);
   void VisitNonTypeTemplateParmDecl(const NonTypeTemplateParmDecl *D);
   void VisitTemplateTemplateParmDecl(const TemplateTemplateParmDecl *D);
-
   void VisitLinkageSpecDecl(const LinkageSpecDecl *D) {
     IgnoreResults = true;
   }
-
   void VisitUsingDirectiveDecl(const UsingDirectiveDecl *D) {
     IgnoreResults = true;
   }
-
   void VisitUsingDecl(const UsingDecl *D) {
     IgnoreResults = true;
   }
-
   void VisitUnresolvedUsingValueDecl(const UnresolvedUsingValueDecl *D) {
     IgnoreResults = true;
   }
-
   void VisitUnresolvedUsingTypenameDecl(const UnresolvedUsingTypenameDecl *D) {
     IgnoreResults = true;
   }
@@ -131,17 +126,14 @@ public:
   void GenObjCClass(StringRef cls) {
     generateUSRForObjCClass(cls, Out);
   }
-
   /// Generate a USR for an Objective-C class category.
   void GenObjCCategory(StringRef cls, StringRef cat) {
     generateUSRForObjCCategory(cls, cat, Out);
   }
-
   /// Generate a USR fragment for an Objective-C property.
   void GenObjCProperty(StringRef prop) {
     generateUSRForObjCProperty(prop, Out);
   }
-
   /// Generate a USR for an Objective-C protocol.
   void GenObjCProtocol(StringRef prot) {
     generateUSRForObjCProtocol(prot, Out);
@@ -156,6 +148,7 @@ public:
   ///  the decl had no name.
   bool EmitDeclName(const NamedDecl *D);
 };
+
 } // end anonymous namespace
 
 //===----------------------------------------------------------------------===//
@@ -300,11 +293,13 @@ void USRGenerator::VisitVarDecl(const VarDecl *D) {
 void USRGenerator::VisitNonTypeTemplateParmDecl(
                                         const NonTypeTemplateParmDecl *D) {
   GenLoc(D, /*IncludeOffset=*/true);
+  return;
 }
 
 void USRGenerator::VisitTemplateTemplateParmDecl(
                                         const TemplateTemplateParmDecl *D) {
   GenLoc(D, /*IncludeOffset=*/true);
+  return;
 }
 
 void USRGenerator::VisitNamespaceDecl(const NamespaceDecl *D) {
@@ -520,6 +515,7 @@ void USRGenerator::VisitTypedefDecl(const TypedefDecl *D) {
 
 void USRGenerator::VisitTemplateTypeParmDecl(const TemplateTypeParmDecl *D) {
   GenLoc(D, /*IncludeOffset=*/true);
+  return;
 }
 
 bool USRGenerator::GenLoc(const Decl *D, bool IncludeOffset) {
@@ -911,3 +907,4 @@ bool clang::index::generateUSRForMacro(const MacroDefinitionRecord *MD,
   Out << MD->getName()->getName();
   return false;
 }
+

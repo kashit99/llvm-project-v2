@@ -102,9 +102,6 @@ available_targets = {
   'amdgcn--': { 'devices' :
                 [{'gpu' : 'tahiti', 'aliases' : ['pitcairn', 'verde', 'oland', 'hainan', 'bonaire', 'kabini', 'kaveri', 'hawaii','mullins','tonga','carrizo','iceland','fiji','stoney'],
                  'defines' : {}} ]},
-  'amdgcn--amdhsa': { 'devices' :
-                      [{'gpu' : '', 'aliases' : ['bonaire', 'hawaii', 'kabini', 'kaveri', 'mullins', 'carrizo', 'stoney', 'fiji', 'iceland', 'tonga'],
-                       'defines' : {}} ]},
   'nvptx--'   : { 'devices' : [{'gpu' : '', 'aliases' : [],
                                 'defines' : {'all' : ['cl_khr_fp64']}}]},
   'nvptx64--' : { 'devices' : [{'gpu' : '', 'aliases' : [],
@@ -115,7 +112,7 @@ available_targets = {
                                         'defines' : {'all' : ['cl_khr_fp64']}}]},
 }
 
-default_targets = ['nvptx--nvidiacl', 'nvptx64--nvidiacl', 'r600--', 'amdgcn--', 'amdgcn--amdhsa']
+default_targets = ['nvptx--nvidiacl', 'nvptx64--nvidiacl', 'r600--', 'amdgcn--']
 
 targets = args
 if not targets:

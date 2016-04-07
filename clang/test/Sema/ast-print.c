@@ -1,5 +1,4 @@
 // RUN: %clang_cc1 %s -ast-print | FileCheck %s
-// RUN: %clang_cc1 %s -ast-print | %clang_cc1 -fsyntax-only -
 
 typedef void func_typedef();
 func_typedef xxx;
@@ -40,7 +39,6 @@ int rvarr(int n, int a[restrict static n]) {
   return a[2];
 }
 
-// CHECK: typedef struct {
 typedef struct {
   int f;
 } T __attribute__ ((__aligned__));
@@ -55,13 +53,3 @@ struct pair_t {
 
 // CHECK: struct pair_t p = {a: 3, .b = 4};
 struct pair_t p = {a: 3, .b = 4};
-
-void initializers() {
-  // CHECK: int *x = ((void *)0), *y = ((void *)0);
-  int *x = ((void *)0), *y = ((void *)0);
-  struct Z{};
-  struct {
-    struct Z z;
-  // CHECK: } z = {(struct Z){}};
-  } z = {(struct Z){}};
-}

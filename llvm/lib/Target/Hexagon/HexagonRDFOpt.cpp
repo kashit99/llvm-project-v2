@@ -55,11 +55,6 @@ namespace {
     }
     bool runOnMachineFunction(MachineFunction &MF) override;
 
-    MachineFunctionProperties getRequiredProperties() const override {
-      return MachineFunctionProperties().set(
-          MachineFunctionProperties::Property::AllVRegsAllocated);
-    }
-
     static char ID;
 
   private:
@@ -76,7 +71,6 @@ INITIALIZE_PASS_DEPENDENCY(MachineDominanceFrontier)
 INITIALIZE_PASS_END(HexagonRDFOpt, "rdfopt", "Hexagon RDF opt", false, false)
 
 
-namespace {
 struct HexagonCP : public CopyPropagation {
   HexagonCP(DataFlowGraph &G) : CopyPropagation(G) {}
   bool interpretAsCopy(const MachineInstr *MI, EqualityMap &EM) override;
@@ -91,7 +85,6 @@ struct HexagonDCE : public DeadCodeElimination {
 
   bool run();
 };
-} // end anonymous namespace
 
 
 bool HexagonCP::interpretAsCopy(const MachineInstr *MI, EqualityMap &EM) {

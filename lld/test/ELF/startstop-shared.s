@@ -16,10 +16,3 @@
 
 // CHECK:      Name: __start_bar
 // CHECK-NEXT: Value: 0x[[ADDR]]
-// CHECK-NEXT: Size:
-// CHECK-NEXT: Binding: Local
-
-// CHECK:      Name: __start_foo
-// CHECK-NEXT: Value:
-// CHECK-NEXT: Size:
-// CHECK-NEXT: Binding: Global

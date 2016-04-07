@@ -48,11 +48,6 @@ public:
 
   bool runOnMachineFunction(MachineFunction &F) override;
 
-  MachineFunctionProperties getRequiredProperties() const override {
-    return MachineFunctionProperties().set(
-        MachineFunctionProperties::Property::AllVRegsAllocated);
-  }
-
   const char *getPassName() const override { return AARCH64_DEAD_REG_DEF_NAME; }
 
   void getAnalysisUsage(AnalysisUsage &AU) const override {
@@ -105,7 +100,7 @@ bool AArch64DeadRegisterDefinitions::processMachineBasicBlock(
           continue;
         }
         // Don't change the register if there's an implicit def of a subreg or
-        // superreg.
+        // supperreg.
         if (implicitlyDefinesOverlappingReg(MO.getReg(), MI)) {
           DEBUG(dbgs() << "    Ignoring, implicitly defines overlap reg.\n");
           continue;

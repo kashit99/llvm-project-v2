@@ -640,7 +640,6 @@ def GenericModel : SchedMachineModel {
   let LoadLatency = 4;
   let HighLatency = 10;
   let PostRAScheduler = 0;
-  let CompleteModel = 0;
 }
 
 include "X86ScheduleAtom.td"

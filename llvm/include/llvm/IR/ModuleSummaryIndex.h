@@ -25,8 +25,6 @@
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/raw_ostream.h"
 
-#include <array>
-
 namespace llvm {
 
 /// \brief Class to accumulate and hold information about a callee.
@@ -82,7 +80,7 @@ private:
   /// (either by the initializer of a global variable, or referenced
   /// from within a function). This does not include functions called, which
   /// are listed in the derived FunctionSummary object.
-  std::vector<GlobalValue::GUID> RefEdgeList;
+  std::vector<uint64_t> RefEdgeList;
 
 protected:
   /// GlobalValueSummary constructor.
@@ -107,7 +105,7 @@ public:
 
   /// Record a reference from this global value to the global value identified
   /// by \p RefGUID.
-  void addRefEdge(GlobalValue::GUID RefGUID) { RefEdgeList.push_back(RefGUID); }
+  void addRefEdge(uint64_t RefGUID) { RefEdgeList.push_back(RefGUID); }
 
   /// Record a reference from this global value to each global value identified
   /// in \p RefEdges.
@@ -117,8 +115,8 @@ public:
   }
 
   /// Return the list of GUIDs referenced by this global value definition.
-  std::vector<GlobalValue::GUID> &refs() { return RefEdgeList; }
-  const std::vector<GlobalValue::GUID> &refs() const { return RefEdgeList; }
+  std::vector<uint64_t> &refs() { return RefEdgeList; }
+  const std::vector<uint64_t> &refs() const { return RefEdgeList; }
 };
 
 /// \brief Function summary information to aid decisions and implementation of
@@ -126,7 +124,7 @@ public:
 class FunctionSummary : public GlobalValueSummary {
 public:
   /// <CalleeGUID, CalleeInfo> call edge pair.
-  typedef std::pair<GlobalValue::GUID, CalleeInfo> EdgeTy;
+  typedef std::pair<uint64_t, CalleeInfo> EdgeTy;
 
 private:
   /// Number of instructions (ignoring debug instructions, e.g.) computed
@@ -152,7 +150,7 @@ public:
   /// Record a call graph edge from this function to the function identified
   /// by \p CalleeGUID, with \p CalleeInfo including the cumulative profile
   /// count (across all calls from this function) or 0 if no PGO.
-  void addCallGraphEdge(GlobalValue::GUID CalleeGUID, CalleeInfo Info) {
+  void addCallGraphEdge(uint64_t CalleeGUID, CalleeInfo Info) {
     CallGraphEdgeList.push_back(std::make_pair(CalleeGUID, Info));
   }
 
@@ -164,8 +162,8 @@ public:
   }
 
   /// Return the list of <CalleeGUID, ProfileCount> pairs.
-  std::vector<EdgeTy> &calls() { return CallGraphEdgeList; }
-  const std::vector<EdgeTy> &calls() const { return CallGraphEdgeList; }
+  std::vector<EdgeTy> &edges() { return CallGraphEdgeList; }
+  const std::vector<EdgeTy> &edges() const { return CallGraphEdgeList; }
 };
 
 /// \brief Global variable summary information to aid decisions and
@@ -230,9 +228,6 @@ public:
   void setBitcodeIndex(uint64_t Offset) { BitcodeIndex = Offset; }
 };
 
-/// 160 bits SHA1
-typedef std::array<uint32_t, 5> ModuleHash;
-
 /// List of global value info structures for a particular value held
 /// in the GlobalValueMap. Requires a vector in the case of multiple
 /// COMDAT values of the same name.
@@ -243,16 +238,16 @@ typedef std::vector<std::unique_ptr<GlobalValueInfo>> GlobalValueInfoList;
 /// less overhead, as the value type is not very small and the size
 /// of the map is unknown, resulting in inefficiencies due to repeated
 /// insertions and resizing.
-typedef std::map<GlobalValue::GUID, GlobalValueInfoList> GlobalValueInfoMapTy;
+typedef std::map<uint64_t, GlobalValueInfoList> GlobalValueInfoMapTy;
 
 /// Type used for iterating through the global value info map.
 typedef GlobalValueInfoMapTy::const_iterator const_globalvalueinfo_iterator;
 typedef GlobalValueInfoMapTy::iterator globalvalueinfo_iterator;
 
 /// String table to hold/own module path strings, which additionally holds the
-/// module ID assigned to each module during the plugin step, as well as a hash
-/// of the module. The StringMap makes a copy of and owns inserted strings.
-typedef StringMap<std::pair<uint64_t, ModuleHash>> ModulePathStringTableTy;
+/// module ID assigned to each module during the plugin step. The StringMap
+/// makes a copy of and owns inserted strings.
+typedef StringMap<uint64_t> ModulePathStringTableTy;
 
 /// Class to hold module path string table and global value map,
 /// and encapsulate methods for operating on them.
@@ -293,7 +288,7 @@ public:
 
   /// Get the list of global value info objects for a given value GUID.
   const const_globalvalueinfo_iterator
-  findGlobalValueInfoList(GlobalValue::GUID ValueGUID) const {
+  findGlobalValueInfoList(uint64_t ValueGUID) const {
     return GlobalValueMap.find(ValueGUID);
   }
 
@@ -304,45 +299,21 @@ public:
   }
 
   /// Add a global value info for a value of the given GUID.
-  void addGlobalValueInfo(GlobalValue::GUID ValueGUID,
+  void addGlobalValueInfo(uint64_t ValueGUID,
                           std::unique_ptr<GlobalValueInfo> Info) {
     GlobalValueMap[ValueGUID].push_back(std::move(Info));
   }
 
-  /// Returns the first GlobalValueInfo for \p GV, asserting that there
-  /// is only one if \p PerModuleIndex.
-  GlobalValueInfo *getGlobalValueInfo(const GlobalValue &GV,
-                                      bool PerModuleIndex = true) const {
-    assert(GV.hasName() && "Can't get GlobalValueInfo for GV with no name");
-    return getGlobalValueInfo(GlobalValue::getGUID(GV.getName()),
-                              PerModuleIndex);
-  }
-
-  /// Returns the first GlobalValueInfo for \p ValueGUID, asserting that there
-  /// is only one if \p PerModuleIndex.
-  GlobalValueInfo *getGlobalValueInfo(GlobalValue::GUID ValueGUID,
-                                      bool PerModuleIndex = true) const;
-
-  /// Table of modules, containing module hash and id.
-  const StringMap<std::pair<uint64_t, ModuleHash>> &modulePaths() const {
-    return ModulePathStringTable;
-  }
-
-  /// Table of modules, containing hash and id.
-  StringMap<std::pair<uint64_t, ModuleHash>> &modulePaths() {
-    return ModulePathStringTable;
+  /// Iterator to allow writer to walk through table during emission.
+  iterator_range<StringMap<uint64_t>::const_iterator>
+  modPathStringEntries() const {
+    return llvm::make_range(ModulePathStringTable.begin(),
+                            ModulePathStringTable.end());
   }
 
   /// Get the module ID recorded for the given module path.
   uint64_t getModuleId(const StringRef ModPath) const {
-    return ModulePathStringTable.lookup(ModPath).first;
-  }
-
-  /// Get the module SHA1 hash recorded for the given module path.
-  const ModuleHash &getModuleHash(const StringRef ModPath) const {
-    auto It = ModulePathStringTable.find(ModPath);
-    assert(It != ModulePathStringTable.end() && "Module not registered");
-    return It->second.second;
+    return ModulePathStringTable.lookup(ModPath);
   }
 
   /// Add the given per-module index into this module index/summary,
@@ -361,14 +332,11 @@ public:
     return NewName.str();
   }
 
-  /// Add a new module path with the given \p Hash, mapped to the given \p
-  /// ModID, and return an iterator to the entry in the index.
-  ModulePathStringTableTy::iterator
-  addModulePath(StringRef ModPath, uint64_t ModId,
-                ModuleHash Hash = ModuleHash{{0}}) {
-    return ModulePathStringTable.insert(std::make_pair(
-                                            ModPath,
-                                            std::make_pair(ModId, Hash))).first;
+  /// Add a new module path, mapped to the given module Id, and return StringRef
+  /// owned by string table map.
+  StringRef addModulePath(StringRef ModPath, uint64_t ModId) {
+    return ModulePathStringTable.insert(std::make_pair(ModPath, ModId))
+        .first->first();
   }
 
   /// Check if the given Module has any functions available for exporting

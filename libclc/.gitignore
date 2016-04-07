@@ -1,6 +1,5 @@
 Makefile
 amdgcn--
-amdgcn--amdhsa
 build/*.pyc
 built_libs/
 generic--

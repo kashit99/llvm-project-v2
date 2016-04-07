@@ -20,28 +20,25 @@
 
 // CHECK: distinct !DICompileUnit(language: DW_LANG_{{.*}}C_plus_plus,
 // CHECK-SAME:                    isOptimized: false,
-// CHECK-NOT:                     splitDebugFilename:
-// CHECK-SAME:                    dwoId:
+// CHECK-SAME-NOT:                splitDebugFilename:
+// CHECK:                         dwoId:
 
 // CHECK: !DICompositeType(tag: DW_TAG_enumeration_type, name: "Enum"
 // CHECK-SAME:             identifier: "_ZTSN8DebugCXX4EnumE")
 // CHECK: !DINamespace(name: "DebugCXX"
 
 // CHECK: !DICompositeType(tag: DW_TAG_enumeration_type,
-// CHECK-NOT:              name:
-// CHECK-SAME:             )
+// CHECK-SAME-NOT:         name:
 
 // CHECK: !DICompositeType(tag: DW_TAG_enumeration_type,
-// CHECK-NOT:              name:
-// CHECK-SAME:             )
+// CHECK-SAME-NOT:         name:
 
 // CHECK: !DICompositeType(tag: DW_TAG_enumeration_type,
-// CHECK-NOT:              name:
+// CHECK-SAME-NOT:         name:
 // CHECK-SAME:             identifier: "_ZTS11TypedefEnum")
 
 // CHECK: !DICompositeType(tag: DW_TAG_enumeration_type,
-// CHECK-NOT:              name:
-// CHECK-SAME:             )
+// CHECK-SAME-NOT:         name:
 // CHECK: !DIEnumerator(name: "e5", value: 5)
 
 // CHECK: !DICompositeType(tag: DW_TAG_structure_type, name: "Struct"
@@ -64,11 +61,11 @@
 // CHECK: !DIDerivedType(tag: DW_TAG_member, name: "_vptr$FwdVirtual"
 
 // CHECK: !DICompositeType(tag: DW_TAG_union_type,
-// CHECK-NOT:              name:
+// CHECK-SAME-NOT:         name:
 // CHECK-SAME:             identifier: "_ZTS12TypedefUnion")
 
 // CHECK: !DICompositeType(tag: DW_TAG_structure_type,
-// CHECK-NOT:              name:
+// CHECK-SAME-NOT:         name:
 // CHECK-SAME:             identifier: "_ZTS13TypedefStruct")
 
 // CHECK: !DICompositeType(tag: DW_TAG_class_type, name: "Derived",
@@ -85,12 +82,10 @@
 // no mangled name here yet.
 
 // CHECK: !DICompositeType(tag: DW_TAG_union_type,
-// CHECK-NOT:              name:
-// CHECK-SAME:             )
+// CHECK-SAME-NOT:         name:
 
 // CHECK: !DICompositeType(tag: DW_TAG_structure_type,
-// CHECK-NOT:              name:
-// CHECK-SAME:             )
+// CHECK-SAME-NOT:         name:
 
 // CHECK: !DICompositeType(tag: DW_TAG_structure_type,
 // CHECK-SAME:             name: "InAnonymousNamespace",

@@ -141,8 +141,8 @@ static bool getSystemRegistryString(const char *keyPath, const char *valueName,
       nextKey++;
     size_t partialKeyLength = keyEnd - keyPath;
     char partialKey[256];
-    if (partialKeyLength >= sizeof(partialKey))
-      partialKeyLength = sizeof(partialKey) - 1;
+    if (partialKeyLength > sizeof(partialKey))
+      partialKeyLength = sizeof(partialKey);
     strncpy(partialKey, keyPath, partialKeyLength);
     partialKey[partialKeyLength] = '\0';
     HKEY hTopKey = NULL;
@@ -659,8 +659,7 @@ static void TranslateOptArg(Arg *A, llvm::opt::DerivedArgList &DAL,
             DAL.AddFlagArg(A, Opts.getOption(options::OPT_fbuiltin));
             DAL.AddJoinedArg(A, Opts.getOption(options::OPT_O), "2");
           }
-          if (SupportsForcingFramePointer &&
-              !DAL.hasArgNoClaim(options::OPT_fno_omit_frame_pointer))
+          if (SupportsForcingFramePointer)
             DAL.AddFlagArg(A,
                            Opts.getOption(options::OPT_fomit_frame_pointer));
           if (OptChar == '1' || OptChar == '2')
@@ -702,12 +701,6 @@ static void TranslateOptArg(Arg *A, llvm::opt::DerivedArgList &DAL,
         else
           DAL.AddFlagArg(
               A, Opts.getOption(options::OPT_fno_omit_frame_pointer));
-      } else {
-        // Don't warn about /Oy- in 64-bit builds (where
-        // SupportsForcingFramePointer is false).  The flag having no effect
-        // there is a compiler-internal optimization, and people shouldn't have
-        // to special-case their build files for 64-bit clang-cl.
-        A->claim();
       }
       break;
     }

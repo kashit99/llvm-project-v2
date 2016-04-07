@@ -358,13 +358,20 @@ entry:
   ret void
 }
 
+attributes #0 = { nounwind "less-precise-fpmad"="false" "no-frame-pointer-elim"="false" "no-infs-fp-math"="false" "no-nans-fp-math"="false" "unsafe-fp-math"="false" "use-soft-float"="false" }
+
 ; When i128 was a legal type this program generated cannot select errors:
 
 ; FUNC-LABEL: {{^}}"i128-const-store":
-; EG: MEM_RAT_CACHELESS STORE_RAW T{{[0-9]+}}.XYZW, T{{[0-9]+}}.X, 1
-
-; CM: MEM_RAT_CACHELESS STORE_DWORD T{{[0-9]+}}, T{{[0-9]+}}.X
-
+; FIXME: We should be able to to this with one store instruction
+; EG: STORE_RAW
+; EG: STORE_RAW
+; EG: STORE_RAW
+; EG: STORE_RAW
+; CM: STORE_DWORD
+; CM: STORE_DWORD
+; CM: STORE_DWORD
+; CM: STORE_DWORD
 ; SI: buffer_store_dwordx4
 define void @i128-const-store(i32 addrspace(1)* %out) {
 entry:
@@ -377,5 +384,3 @@ entry:
   store i32 2, i32 addrspace(1)* %arrayidx6, align 4
   ret void
 }
-
-attributes #0 = { nounwind "less-precise-fpmad"="false" "no-frame-pointer-elim"="false" "no-infs-fp-math"="false" "no-nans-fp-math"="false" "unsafe-fp-math"="false" "use-soft-float"="false" }

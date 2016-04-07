@@ -28,7 +28,8 @@ class SCEVAAResult : public AAResultBase<SCEVAAResult> {
   ScalarEvolution &SE;
 
 public:
-  explicit SCEVAAResult(ScalarEvolution &SE) : AAResultBase(), SE(SE) {}
+  explicit SCEVAAResult(const TargetLibraryInfo &TLI, ScalarEvolution &SE)
+      : AAResultBase(TLI), SE(SE) {}
   SCEVAAResult(SCEVAAResult &&Arg) : AAResultBase(std::move(Arg)), SE(Arg.SE) {}
 
   AliasResult alias(const MemoryLocation &LocA, const MemoryLocation &LocB);
@@ -38,14 +39,20 @@ private:
 };
 
 /// Analysis pass providing a never-invalidated alias analysis result.
-class SCEVAA : public AnalysisInfoMixin<SCEVAA> {
-  friend AnalysisInfoMixin<SCEVAA>;
-  static char PassID;
-
+class SCEVAA {
 public:
   typedef SCEVAAResult Result;
 
-  SCEVAAResult run(Function &F, AnalysisManager<Function> &AM);
+  /// \brief Opaque, unique identifier for this analysis pass.
+  static void *ID() { return (void *)&PassID; }
+
+  SCEVAAResult run(Function &F, AnalysisManager<Function> *AM);
+
+  /// \brief Provide access to a name for this pass for debugging purposes.
+  static StringRef name() { return "SCEVAA"; }
+
+private:
+  static char PassID;
 };
 
 /// Legacy wrapper pass to provide the SCEVAAResult object.

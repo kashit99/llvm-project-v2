@@ -1,17 +1,14 @@
-; RUN: llc < %s -march=x86-64 -mtriple=x86_64-unknown-linux-gnu -mcpu=corei7 -mattr=-f16c -asm-verbose=false -fixup-byte-word-insts=1 \
-; RUN:   | FileCheck %s -check-prefix=CHECK -check-prefix=CHECK-LIBCALL -check-prefix=BWON
-; RUN: llc < %s -march=x86-64 -mtriple=x86_64-unknown-linux-gnu -mcpu=corei7 -mattr=-f16c -asm-verbose=false -fixup-byte-word-insts=0 \
-; RUN:   | FileCheck %s -check-prefix=CHECK -check-prefix=CHECK-LIBCALL -check-prefix=BWOFF
-; RUN: llc < %s -march=x86-64 -mtriple=x86_64-unknown-linux-gnu -mcpu=corei7 -mattr=+f16c -asm-verbose=false -fixup-byte-word-insts=1 \
-; RUN:    | FileCheck %s -check-prefix=CHECK -check-prefix=CHECK-F16C -check-prefix=BWON
-; RUN: llc < %s -mtriple=i686-unknown-linux-gnu -mattr +sse2 -asm-verbose=false -fixup-byte-word-insts=0  \
+; RUN: llc < %s -march=x86-64 -mtriple=x86_64-unknown-linux-gnu -mcpu=corei7 -mattr=-f16c -asm-verbose=false \
+; RUN:   | FileCheck %s -check-prefix=CHECK -check-prefix=CHECK-LIBCALL
+; RUN: llc < %s -march=x86-64 -mtriple=x86_64-unknown-linux-gnu -mcpu=corei7 -mattr=+f16c -asm-verbose=false \
+; RUN:    | FileCheck %s -check-prefix=CHECK -check-prefix=CHECK-F16C
+; RUN: llc < %s -mtriple=i686-unknown-linux-gnu -mattr +sse2 -asm-verbose=false \
 ; RUN:    | FileCheck %s -check-prefix=CHECK-I686
 
 define void @test_load_store(half* %in, half* %out) {
 ; CHECK-LABEL: test_load_store:
-; BWON:  movzwl (%rdi), %eax
-; BWOFF: movw (%rdi), %ax
-; CHECK: movw %ax, (%rsi)
+; CHECK: movw (%rdi), [[TMP:%[a-z0-9]+]]
+; CHECK: movw [[TMP]], (%rsi)
   %val = load half, half* %in
   store half %val, half* %out
   ret void

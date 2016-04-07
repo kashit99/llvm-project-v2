@@ -452,12 +452,6 @@ int main(int argc, char **argv) {
     Ctx.setDwarfDebugProducer(StringRef(DwarfDebugProducer));
   if (!DebugCompilationDir.empty())
     Ctx.setCompilationDir(DebugCompilationDir);
-  else {
-    // If no compilation dir is set, try to use the current directory.
-    SmallString<128> CWD;
-    if (!sys::fs::current_path(CWD))
-      Ctx.setCompilationDir(CWD);
-  }
   if (!MainFileName.empty())
     Ctx.setMainFileName(MainFileName);
 

@@ -1,6 +1,3 @@
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
-
 // Make sure LLVMFuzzerInitialize is called.
 #include <assert.h>
 #include <stddef.h>

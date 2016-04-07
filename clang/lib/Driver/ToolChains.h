@@ -496,8 +496,6 @@ protected:
     return TargetVersion < VersionTuple(V0, V1, V2);
   }
 
-  StringRef getOSLibraryNameSuffix() const;
-
 public:
   /// }
   /// @name ToolChain Implementation
@@ -512,7 +510,6 @@ public:
   TranslateArgs(const llvm::opt::DerivedArgList &Args,
                 const char *BoundArch) const override;
 
-  CXXStdlibType GetDefaultCXXStdlibType() const override;
   ObjCRuntime getDefaultObjCRuntime(bool isNonFragile) const override;
   bool hasBlocksRuntime() const override;
 
@@ -541,8 +538,6 @@ public:
   void CheckObjCARC() const override;
 
   bool UseSjLjExceptions(const llvm::opt::ArgList &Args) const override;
-
-  bool SupportsEmbeddedBitcode() const override;
 
   SanitizerMask getSupportedSanitizers() const override;
 };
@@ -617,10 +612,7 @@ public:
   void AddCXXStdlibLibArgs(const llvm::opt::ArgList &Args,
                            llvm::opt::ArgStringList &CmdArgs) const override;
 
-  bool isPIEDefault() const override { return true; }
-
-  SanitizerMask getSupportedSanitizers() const override;
-  SanitizerMask getDefaultSanitizers() const override;
+  bool isPIEDefault() const override { return false; }
 
 protected:
   Tool *buildLinker() const override;
@@ -705,7 +697,7 @@ public:
   bool IsMathErrnoDefault() const override { return false; }
   bool IsObjCNonFragileABIDefault() const override { return true; }
 
-  CXXStdlibType GetDefaultCXXStdlibType() const override;
+  CXXStdlibType GetCXXStdlibType(const llvm::opt::ArgList &Args) const override;
   void AddClangCXXStdlibIncludeArgs(
       const llvm::opt::ArgList &DriverArgs,
       llvm::opt::ArgStringList &CC1Args) const override;
@@ -729,12 +721,10 @@ public:
   bool IsMathErrnoDefault() const override { return false; }
   bool IsObjCNonFragileABIDefault() const override { return true; }
 
-  CXXStdlibType GetDefaultCXXStdlibType() const override;
+  CXXStdlibType GetCXXStdlibType(const llvm::opt::ArgList &Args) const override;
   void AddClangCXXStdlibIncludeArgs(
       const llvm::opt::ArgList &DriverArgs,
       llvm::opt::ArgStringList &CC1Args) const override;
-  void AddCXXStdlibLibArgs(const llvm::opt::ArgList &Args,
-                           llvm::opt::ArgStringList &CmdArgs) const override;
 
   bool UseSjLjExceptions(const llvm::opt::ArgList &Args) const override;
   bool isPIEDefault() const override;
@@ -757,7 +747,7 @@ public:
   bool IsMathErrnoDefault() const override { return false; }
   bool IsObjCNonFragileABIDefault() const override { return true; }
 
-  CXXStdlibType GetDefaultCXXStdlibType() const override;
+  CXXStdlibType GetCXXStdlibType(const llvm::opt::ArgList &Args) const override;
 
   void AddClangCXXStdlibIncludeArgs(
       const llvm::opt::ArgList &DriverArgs,
@@ -873,14 +863,6 @@ public:
 private:
   Multilib SelectedMultilib;
   std::string LibSuffix;
-};
-
-class LLVM_LIBRARY_VISIBILITY LanaiToolChain : public Generic_ELF {
-public:
-  LanaiToolChain(const Driver &D, const llvm::Triple &Triple,
-                 const llvm::opt::ArgList &Args)
-      : Generic_ELF(D, Triple, Args) {}
-  bool IsIntegratedAssemblerDefault() const override { return true; }
 };
 
 class LLVM_LIBRARY_VISIBILITY HexagonToolChain : public Linux {

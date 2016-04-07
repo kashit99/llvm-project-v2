@@ -38,9 +38,9 @@ _rdpkru_u32(void)
 }
 
 static __inline__ void __DEFAULT_FN_ATTRS
-_wrpkru(unsigned int __val)
+_wrpkru(unsigned int val)
 {
-  return __builtin_ia32_wrpkru(__val);
+  return __builtin_ia32_wrpkru(val);
 }
 
 #undef __DEFAULT_FN_ATTRS

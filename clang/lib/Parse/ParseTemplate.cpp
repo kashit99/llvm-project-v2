@@ -209,15 +209,11 @@ Parser::ParseSingleDeclarationAfterTemplate(
   if (Tok.is(tok::semi)) {
     ProhibitAttributes(prefixAttrs);
     DeclEnd = ConsumeToken();
-    RecordDecl *AnonRecord = nullptr;
     Decl *Decl = Actions.ParsedFreeStandingDeclSpec(
         getCurScope(), AS, DS,
         TemplateInfo.TemplateParams ? *TemplateInfo.TemplateParams
                                     : MultiTemplateParamsArg(),
-        TemplateInfo.Kind == ParsedTemplateInfo::ExplicitInstantiation,
-        AnonRecord);
-    assert(!AnonRecord &&
-           "Anonymous unions/structs should not be valid with template");
+        TemplateInfo.Kind == ParsedTemplateInfo::ExplicitInstantiation);
     DS.complete(Decl);
     return Decl;
   }
@@ -1369,7 +1365,7 @@ void Parser::ParseLateTemplatedFuncDef(LateParsedTemplate &LPT) {
   // Append the current token at the end of the new token stream so that it
   // doesn't get lost.
   LPT.Toks.push_back(Tok);
-  PP.EnterTokenStream(LPT.Toks, true);
+  PP.EnterTokenStream(LPT.Toks.data(), LPT.Toks.size(), true, false);
 
   // Consume the previously pushed token.
   ConsumeAnyToken(/*ConsumeCodeCompletionTok=*/true);

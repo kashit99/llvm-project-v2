@@ -418,7 +418,7 @@ public:
                   SISchedulerBlockSchedulerVariant ScheduleVariant);
 };
 
-class SIScheduleDAGMI final : public ScheduleDAGMILive {
+class SIScheduleDAGMI : public ScheduleDAGMILive {
   const SIInstrInfo *SITII;
   const SIRegisterInfo *SITRI;
 

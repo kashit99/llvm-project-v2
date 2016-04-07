@@ -61,6 +61,10 @@
 #include "AppleObjCDeclVendor.h"
 #include "AppleObjCTrampolineHandler.h"
 
+#include "clang/AST/ASTContext.h"
+#include "clang/AST/DeclObjC.h"
+
+#include <vector>
 
 using namespace lldb;
 using namespace lldb_private;
@@ -390,6 +394,7 @@ AppleObjCRuntimeV2::AppleObjCRuntimeV2 (Process *process,
     m_non_pointer_isa_cache_ap(NonPointerISACache::CreateInstance(*this,objc_module_sp)),
     m_tagged_pointer_vendor_ap(TaggedPointerVendorV2::CreateInstance(*this,objc_module_sp)),
     m_encoding_to_type_sp(),
+    m_warn_if_no_classes_cached{false,false},
     m_noclasses_warning_emitted(false)
 {
     static const ConstString g_gdb_object_getClass("gdb_object_getClass");
@@ -398,10 +403,11 @@ AppleObjCRuntimeV2::AppleObjCRuntimeV2 (Process *process,
 
 bool
 AppleObjCRuntimeV2::GetDynamicTypeAndAddress (ValueObject &in_value,
-                                              DynamicValueType use_dynamic, 
-                                              TypeAndOrName &class_type_or_name, 
+                                              lldb::DynamicValueType use_dynamic,
+                                              TypeAndOrName &class_type_or_name,
                                               Address &address,
-                                              Value::ValueType &value_type)
+                                              Value::ValueType &value_type,
+                                              bool allow_swift)
 {
     // We should never get here with a null process...
     assert (m_process != NULL);
@@ -420,7 +426,7 @@ AppleObjCRuntimeV2::GetDynamicTypeAndAddress (ValueObject &in_value,
     value_type = Value::ValueType::eValueTypeScalar;
 
     // Make sure we can have a dynamic value before starting...
-    if (CouldHaveDynamicValue (in_value))
+    if (CouldHaveDynamicValue (in_value, allow_swift))
     {
         // First job, pull out the address at 0 offset from the object  That will be the ISA pointer.
         ClassDescriptorSP objc_class_sp (GetNonKVOClassDescriptor (in_value));
@@ -455,8 +461,23 @@ AppleObjCRuntimeV2::GetDynamicTypeAndAddress (ValueObject &in_value,
                 }
             }
         }
-    }    
+    }
     return class_type_or_name.IsEmpty() == false;
+}
+
+bool
+AppleObjCRuntimeV2::GetDynamicTypeAndAddress (ValueObject &in_value,
+                                              DynamicValueType use_dynamic, 
+                                              TypeAndOrName &class_type_or_name, 
+                                              Address &address,
+                                              Value::ValueType &value_type)
+{
+    return GetDynamicTypeAndAddress(in_value,
+                                    use_dynamic,
+                                    class_type_or_name,
+                                    address,
+                                    value_type,
+                                    /* allow_swift = */ false);
 }
 
 //------------------------------------------------------------------
@@ -1219,7 +1240,7 @@ AppleObjCRuntimeV2::GetISAHashTablePointer ()
 }
 
 bool
-AppleObjCRuntimeV2::UpdateISAToDescriptorMapDynamic(RemoteNXMapTable &hash_table)
+AppleObjCRuntimeV2::UpdateISAToDescriptorMapDynamic(RemoteNXMapTable &hash_table, uint32_t &discovered_classes_count)
 {
     Process *process = GetProcess();
     
@@ -1382,6 +1403,7 @@ AppleObjCRuntimeV2::UpdateISAToDescriptorMapDynamic(RemoteNXMapTable &hash_table
         {
             // The result is the number of ClassInfo structures that were filled in
             uint32_t num_class_infos = return_value.GetScalar().ULong();
+            discovered_classes_count = num_class_infos;
             if (log)
                 log->Printf("Discovered %u ObjC classes\n",num_class_infos);
             if (num_class_infos > 0)
@@ -1696,7 +1718,7 @@ AppleObjCRuntimeV2::UpdateISAToDescriptorMapSharedCache()
 }
 
 bool
-AppleObjCRuntimeV2::UpdateISAToDescriptorMapFromMemory (RemoteNXMapTable &hash_table)
+AppleObjCRuntimeV2::UpdateISAToDescriptorMapFromMemory (RemoteNXMapTable &hash_table, uint32_t &discovered_classes_count)
 {
     Log *log(GetLogIfAllCategoriesSet(LIBLLDB_LOG_PROCESS));
     
@@ -1727,7 +1749,7 @@ AppleObjCRuntimeV2::UpdateISAToDescriptorMapFromMemory (RemoteNXMapTable &hash_t
         }
     }
     
-    return num_map_table_isas > 0;
+    return ((discovered_classes_count = num_map_table_isas) > 0);
 }
 
 lldb::addr_t
@@ -1771,7 +1793,9 @@ void
 AppleObjCRuntimeV2::UpdateISAToDescriptorMapIfNeeded()
 {
     Timer scoped_timer (__PRETTY_FUNCTION__, __PRETTY_FUNCTION__);
-    
+
+    bool found_dynamic = true, found_in_shared_cache = true;
+
     // Else we need to check with our process to see when the map was updated.
     Process *process = GetProcess();
 
@@ -1789,7 +1813,9 @@ AppleObjCRuntimeV2::UpdateISAToDescriptorMapIfNeeded()
         m_hash_signature.UpdateSignature (hash_table);
 
         // Grab the dynamically loaded objc classes from the hash table in memory
-        UpdateISAToDescriptorMapDynamic(hash_table);
+        uint32_t discovered_classes_count;
+        found_dynamic = UpdateISAToDescriptorMapDynamic(hash_table, discovered_classes_count);
+        found_dynamic &= (discovered_classes_count > 0);
 
         // Now get the objc classes that are baked into the Objective C runtime
         // in the shared cache, but only once per process as this data never
@@ -1798,9 +1824,15 @@ AppleObjCRuntimeV2::UpdateISAToDescriptorMapIfNeeded()
         {
             DescriptorMapUpdateResult shared_cache_update_result = UpdateISAToDescriptorMapSharedCache();
             if (!shared_cache_update_result.any_found)
-                WarnIfNoClassesCached ();
+                found_in_shared_cache = false;
             else
                 m_loaded_objc_opt = true;
+        }
+
+        if (!found_in_shared_cache)
+        {
+            const bool globally = !found_dynamic;
+            WarnIfNoClassesFound(globally);
         }
     }
     else
@@ -1809,10 +1841,34 @@ AppleObjCRuntimeV2::UpdateISAToDescriptorMapIfNeeded()
     }
 }
 
+static bool
+DoesProcessHaveSharedCache (Process& process)
+{
+    PlatformSP platform_sp = process.GetTarget().GetPlatform();
+    if (!platform_sp)
+        return true; // this should not happen
+
+    ConstString platform_plugin_name = platform_sp->GetPluginName();
+    if (platform_plugin_name)
+    {
+        llvm::StringRef platform_plugin_name_sr = platform_plugin_name.GetStringRef();
+        if (platform_plugin_name_sr.endswith("-simulator"))
+            return false;
+    }
+
+    return true;
+}
+
 void
-AppleObjCRuntimeV2::WarnIfNoClassesCached ()
+AppleObjCRuntimeV2::WarnIfNoClassesFound (bool globally)
 {
     if (m_noclasses_warning_emitted)
+                return;
+
+    if (globally && m_warn_if_no_classes_cached.globally)
+        return;
+    
+    if (!globally && m_warn_if_no_classes_cached.in_shared_cache)
         return;
 
     if (m_process &&
@@ -1825,11 +1881,22 @@ AppleObjCRuntimeV2::WarnIfNoClassesCached ()
     }
 
     Debugger &debugger(GetProcess()->GetTarget().GetDebugger());
-    
-    if (debugger.GetAsyncOutputStream())
+    StreamSP debugger_async_out_sp = debugger.GetAsyncOutputStream();
+    if (debugger_async_out_sp)
     {
-        debugger.GetAsyncOutputStream()->PutCString("warning: could not load any Objective-C class information from the dyld shared cache. This will significantly reduce the quality of type information available.\n");
-        m_noclasses_warning_emitted = true;
+        if (globally)
+        {
+            debugger_async_out_sp->PutCString("warning: could not load any Objective-C class information. This will significantly reduce the quality of type information available.\n");
+            m_warn_if_no_classes_cached.globally = true;
+        }
+        else
+        {
+            // the iDevices simulators do not have the objc_opt_ro class table
+            // so don't actually complain to the user
+            if (DoesProcessHaveSharedCache(*m_process))
+                debugger_async_out_sp->PutCString("warning: could not load any Objective-C class information from the dyld shared cache. This will significantly reduce the quality of type information available.\n");
+            m_warn_if_no_classes_cached.in_shared_cache = true;
+        }
     }
 }
 

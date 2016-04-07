@@ -199,7 +199,6 @@ def HexagonModelV4 : SchedMachineModel {
   let IssueWidth = 4;
   let Itineraries = HexagonItinerariesV4;
   let LoadLatency = 1;
-  let CompleteModel = 0;
 }
 
 //===----------------------------------------------------------------------===//

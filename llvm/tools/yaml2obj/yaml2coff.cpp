@@ -19,7 +19,7 @@
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Object/COFF.h"
-#include "llvm/ObjectYAML/COFFYAML.h"
+#include "llvm/Object/COFFYAML.h"
 #include "llvm/Support/Endian.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SourceMgr.h"
@@ -76,24 +76,14 @@ struct COFFParser {
         unsigned Index = getStringIndex(Name);
         std::string str = utostr(Index);
         if (str.size() > 7) {
-          errs() << "String table got too large\n";
+          errs() << "String table got too large";
           return false;
         }
         Sec.Header.Name[0] = '/';
         std::copy(str.begin(), str.end(), Sec.Header.Name + 1);
       }
 
-      if (Sec.Alignment) {
-        if (Sec.Alignment > 8192) {
-          errs() << "Section alignment is too large\n";
-          return false;
-        }
-        if (!isPowerOf2_32(Sec.Alignment)) {
-          errs() << "Section alignment is not a power of 2\n";
-          return false;
-        }
-        Sec.Header.Characteristics |= (Log2_32(Sec.Alignment) + 1) << 20;
-      }
+      Sec.Header.Characteristics |= (Log2_32(Sec.Alignment) + 1) << 20;
     }
     return true;
   }

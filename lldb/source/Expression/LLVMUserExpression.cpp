@@ -304,6 +304,21 @@ LLVMUserExpression::PrepareToExecuteJITExpression(DiagnosticManager &diagnostic_
         return false;
     }
 
+    if (m_options.GetREPLEnabled())
+    {
+        Error materialize_error;
+        
+        m_dematerializer_sp = m_materializer_ap->Materialize(frame, *m_execution_unit_sp, LLDB_INVALID_ADDRESS, materialize_error);
+        
+        if (!materialize_error.Success())
+        {
+            diagnostic_manager.Printf(eDiagnosticSeverityError, "Couldn't materialize: %s\n", materialize_error.AsCString());
+            return false;
+        }
+        
+        return true;
+    }
+
     if (m_jit_start_addr != LLDB_INVALID_ADDRESS || m_can_interpret)
     {
         if (m_materialized_address == LLDB_INVALID_ADDRESS)

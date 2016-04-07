@@ -55,7 +55,6 @@
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "llvm/Transforms/Utils/Local.h"
-#include "llvm/Transforms/Utils/LoopUtils.h"
 #include <algorithm>
 #include <map>
 #include <set>
@@ -212,8 +211,17 @@ namespace {
     ///
     void getAnalysisUsage(AnalysisUsage &AU) const override {
       AU.addRequired<AssumptionCacheTracker>();
+      AU.addRequiredID(LoopSimplifyID);
+      AU.addPreservedID(LoopSimplifyID);
+      AU.addRequired<LoopInfoWrapperPass>();
+      AU.addPreserved<LoopInfoWrapperPass>();
+      AU.addRequiredID(LCSSAID);
+      AU.addPreservedID(LCSSAID);
+      AU.addRequired<DominatorTreeWrapperPass>();
+      AU.addPreserved<DominatorTreeWrapperPass>();
+      AU.addPreserved<ScalarEvolutionWrapperPass>();
       AU.addRequired<TargetTransformInfoWrapperPass>();
-      getLoopAnalysisUsage(AU);
+      AU.addPreserved<GlobalsAAWrapperPass>();
     }
 
   private:
@@ -374,9 +382,11 @@ void LUAnalysisCache::cloneData(const Loop *NewLoop, const Loop *OldLoop,
 char LoopUnswitch::ID = 0;
 INITIALIZE_PASS_BEGIN(LoopUnswitch, "loop-unswitch", "Unswitch loops",
                       false, false)
-INITIALIZE_PASS_DEPENDENCY(AssumptionCacheTracker)
-INITIALIZE_PASS_DEPENDENCY(LoopPass)
 INITIALIZE_PASS_DEPENDENCY(TargetTransformInfoWrapperPass)
+INITIALIZE_PASS_DEPENDENCY(AssumptionCacheTracker)
+INITIALIZE_PASS_DEPENDENCY(LoopSimplify)
+INITIALIZE_PASS_DEPENDENCY(LoopInfoWrapperPass)
+INITIALIZE_PASS_DEPENDENCY(LCSSA)
 INITIALIZE_PASS_END(LoopUnswitch, "loop-unswitch", "Unswitch loops",
                       false, false)
 
@@ -1068,7 +1078,7 @@ void LoopUnswitch::UnswitchNontrivialCondition(Value *LIC, Constant *Val,
     for (BasicBlock::iterator I = NewBlocks[i]->begin(),
            E = NewBlocks[i]->end(); I != E; ++I)
       RemapInstruction(&*I, VMap,
-                       RF_NoModuleLevelChanges | RF_IgnoreMissingLocals);
+                       RF_NoModuleLevelChanges | RF_IgnoreMissingEntries);
 
   // Rewrite the original preheader to select between versions of the loop.
   BranchInst *OldBR = cast<BranchInst>(loopPreheader->getTerminator());

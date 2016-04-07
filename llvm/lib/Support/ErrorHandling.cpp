@@ -19,7 +19,6 @@
 #include "llvm/Config/config.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/Errc.h"
-#include "llvm/Support/Error.h"
 #include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/Mutex.h"
 #include "llvm/Support/MutexGuard.h"

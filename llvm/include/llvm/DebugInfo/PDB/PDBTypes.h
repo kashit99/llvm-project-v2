@@ -14,8 +14,7 @@
 #include "llvm/DebugInfo/CodeView/CodeView.h"
 #include "llvm/Support/Endian.h"
 #include <functional>
-#include <cstdint>
-#include <cstring>
+#include <stdint.h>
 
 namespace llvm {
 
@@ -351,21 +350,11 @@ enum PDB_VariantType {
   UInt32,
   UInt64,
   Bool,
-  String
 };
 
 struct Variant {
   Variant()
     : Type(PDB_VariantType::Empty) {
-  }
-
-  Variant(const Variant &Other) : Type(PDB_VariantType::Empty) {
-    *this = Other;
-  }
-
-  ~Variant() {
-    if (Type == PDB_VariantType::String)
-      delete[] Value.String;
   }
 
   PDB_VariantType Type;
@@ -381,13 +370,10 @@ struct Variant {
     uint16_t UInt16;
     uint32_t UInt32;
     uint64_t UInt64;
-    char *String;
-  } Value;
-
+  };
 #define VARIANT_EQUAL_CASE(Enum)                                               \
   case PDB_VariantType::Enum:                                                  \
-    return Value.Enum == Other.Value.Enum;
-
+    return Enum == Other.Enum;
   bool operator==(const Variant &Other) const {
     if (Type != Other.Type)
       return false;
@@ -403,29 +389,12 @@ struct Variant {
       VARIANT_EQUAL_CASE(UInt16)
       VARIANT_EQUAL_CASE(UInt32)
       VARIANT_EQUAL_CASE(UInt64)
-      VARIANT_EQUAL_CASE(String)
     default:
       return true;
     }
   }
-
 #undef VARIANT_EQUAL_CASE
-
   bool operator!=(const Variant &Other) const { return !(*this == Other); }
-  Variant &operator=(const Variant &Other) {
-    if (this == &Other)
-      return *this;
-    if (Type == PDB_VariantType::String)
-      delete[] Value.String;
-    Type = Other.Type;
-    Value = Other.Value;
-    if (Other.Type == PDB_VariantType::String &&
-        Other.Value.String != nullptr) {
-      Value.String = new char[strlen(Other.Value.String) + 1];
-      ::strcpy(Value.String, Other.Value.String);
-    }
-    return *this;
-  }
 };
 
 namespace PDB {
@@ -455,9 +424,9 @@ struct SuperBlock {
   // This contains the block # of the block map.
   support::ulittle32_t BlockMapAddr;
 };
-} // end namespace PDB
+}
 
-} // end namespace llvm
+} // namespace llvm
 
 namespace std {
 template <> struct hash<llvm::PDB_SymType> {
@@ -468,6 +437,7 @@ template <> struct hash<llvm::PDB_SymType> {
     return std::hash<int>()(static_cast<int>(Arg));
   }
 };
-} // end namespace std
+}
 
-#endif // LLVM_DEBUGINFO_PDB_PDBTYPES_H
+
+#endif

@@ -36,8 +36,7 @@ struct PrintingPolicy {
   /// \brief Create a default printing policy for C.
   PrintingPolicy(const LangOptions &LO)
     : LangOpts(LO), Indentation(2), SuppressSpecifiers(false),
-      SuppressTagKeyword(false),
-      IncludeTagDefinition(false), SuppressScope(false),
+      SuppressTagKeyword(false), SuppressTag(false), SuppressScope(false),
       SuppressUnwrittenScope(false), SuppressInitializers(false),
       ConstantArraySizeAsWritten(false), AnonymousTagLocations(true),
       SuppressStrongLifetime(false), SuppressLifetimeQualifiers(false),
@@ -78,15 +77,15 @@ struct PrintingPolicy {
   /// \endcode
   bool SuppressTagKeyword : 1;
 
-  /// \brief When true, include the body of a tag definition.
+  /// \brief Whether type printing should skip printing the actual tag type.
   ///
-  /// This is used to place the definition of a struct
-  /// in the middle of another declaration as with:
+  /// This is used when the caller needs to print a tag definition in front
+  /// of the type, as in constructs like the following:
   ///
   /// \code
   /// typedef struct { int x, y; } Point;
   /// \endcode
-  bool IncludeTagDefinition : 1;
+  bool SuppressTag : 1;
 
   /// \brief Suppresses printing of scope specifiers.
   bool SuppressScope : 1;

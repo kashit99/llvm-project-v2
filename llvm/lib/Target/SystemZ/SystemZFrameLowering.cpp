@@ -511,7 +511,7 @@ SystemZFrameLowering::hasReservedCallFrame(const MachineFunction &MF) const {
   return true;
 }
 
-MachineBasicBlock::iterator SystemZFrameLowering::
+void SystemZFrameLowering::
 eliminateCallFramePseudoInstr(MachineFunction &MF,
                               MachineBasicBlock &MBB,
                               MachineBasicBlock::iterator MI) const {
@@ -520,7 +520,7 @@ eliminateCallFramePseudoInstr(MachineFunction &MF,
   case SystemZ::ADJCALLSTACKUP:
     assert(hasReservedCallFrame(MF) &&
            "ADJSTACKDOWN and ADJSTACKUP should be no-ops");
-    return MBB.erase(MI);
+    MBB.erase(MI);
     break;
 
   default:

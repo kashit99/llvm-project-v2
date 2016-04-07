@@ -18,8 +18,8 @@
 
 #include "clang/CodeGen/CodeGenABITypes.h"
 #include "CodeGenModule.h"
-#include "clang/Basic/CodeGenOptions.h"
 #include "clang/CodeGen/CGFunctionInfo.h"
+#include "clang/Frontend/CodeGenOptions.h"
 #include "clang/Lex/HeaderSearchOptions.h"
 #include "clang/Lex/PreprocessorOptions.h"
 
@@ -66,5 +66,5 @@ const CGFunctionInfo &CodeGenABITypes::arrangeFreeFunctionCall(
     FunctionType::ExtInfo info, RequiredArgs args) {
   return CGM->getTypes().arrangeLLVMFunctionInfo(
       returnType, /*IsInstanceMethod=*/false, /*IsChainCall=*/false, argTypes,
-      info, {}, args);
+      info, args);
 }

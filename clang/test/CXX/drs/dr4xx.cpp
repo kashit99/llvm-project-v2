@@ -1197,12 +1197,12 @@ namespace dr496 { // dr496: no
   int check6[ __is_trivially_assignable(B, const B&) ? 1 : -1];
 }
 
-namespace dr497 { // dr497: sup 253
+namespace dr497 { // dr497: yes
   void before() {
     struct S {
       mutable int i;
     };
-    const S cs;
+    const S cs; // expected-error {{default initialization}}
     int S::*pm = &S::i;
     cs.*pm = 88; // expected-error {{not assignable}}
   }

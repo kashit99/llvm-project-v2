@@ -285,6 +285,7 @@ protected:
   
   void buildAndRunPasses() {
     LLVMPassManagerRef pass = LLVMCreatePassManager();
+    LLVMAddTargetData(LLVMGetExecutionEngineTargetData(Engine), pass);
     LLVMAddConstantPropagationPass(pass);
     LLVMAddInstructionCombiningPass(pass);
     LLVMRunPassManager(pass, Module);
@@ -302,6 +303,8 @@ protected:
       LLVMCreateFunctionPassManagerForModule(Module);
     LLVMPassManagerRef modulePasses =
       LLVMCreatePassManager();
+    
+    LLVMAddTargetData(LLVMGetExecutionEngineTargetData(Engine), modulePasses);
     
     LLVMPassManagerBuilderPopulateFunctionPassManager(passBuilder,
                                                       functionPasses);

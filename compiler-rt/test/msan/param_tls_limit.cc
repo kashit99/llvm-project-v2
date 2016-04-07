@@ -20,17 +20,6 @@
 // In case of no overflow, it is still poisoned.
 #define NO_OVERFLOW(x) assert(__msan_test_shadow(&x, sizeof(x)) == 0)
 
-#if defined(__x86_64__)
-// In x86_64, if argument is partially outside tls, it is considered completly
-// unpoisoned
-#define PARTIAL_OVERFLOW(x) OVERFLOW(x)
-#else
-// In other archs, bigger arguments are splitted in multiple IR arguments, so
-// they are considered poisoned till tls limit. Checking last byte of such arg:
-#define PARTIAL_OVERFLOW(x) assert(__msan_test_shadow((char *)(&(x) + 1) - 1, 1) == -1)
-#endif
-
-
 template<int N>
 struct S {
   char x[N];
@@ -45,17 +34,17 @@ void f800(S<800> s) {
 }
 
 void f801(S<801> s) {
-  PARTIAL_OVERFLOW(s);
+  OVERFLOW(s);
 }
 
 void f1000(S<1000> s) {
-  PARTIAL_OVERFLOW(s);
+  OVERFLOW(s);
 }
 
 void f_many(int a, double b, S<800> s, int c, double d) {
   NO_OVERFLOW(a);
   NO_OVERFLOW(b);
-  PARTIAL_OVERFLOW(s);
+  OVERFLOW(s);
   OVERFLOW(c);
   OVERFLOW(d);
 }
@@ -65,7 +54,7 @@ void f_many(int a, double b, S<800> s, int c, double d) {
 void f_many2(int a, S<800 - 8 - 2> s, int c, double d) {
   NO_OVERFLOW(a);
   NO_OVERFLOW(s);
-  PARTIAL_OVERFLOW(c);
+  OVERFLOW(c);
   OVERFLOW(d);
 }
 

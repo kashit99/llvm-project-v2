@@ -99,11 +99,19 @@ is in the ``test-suite`` module. See :ref:`test-suite Quickstart
 Regression tests
 ----------------
 
-To run all of the LLVM regression tests use the check-llvm target:
+To run all of the LLVM regression tests, use the master Makefile in the
+``llvm/test`` directory. LLVM Makefiles require GNU Make (read the :doc:`LLVM
+Makefile Guide <MakefileGuide>` for more details):
 
 .. code-block:: bash
 
-    % make check-llvm
+    % make -C llvm/test
+
+or:
+
+.. code-block:: bash
+
+    % make check
 
 If you have `Clang <http://clang.llvm.org/>`_ checked out and built, you
 can run the LLVM and Clang tests simultaneously using:

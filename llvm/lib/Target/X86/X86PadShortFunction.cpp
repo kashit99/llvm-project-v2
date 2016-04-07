@@ -55,11 +55,6 @@ namespace {
 
     bool runOnMachineFunction(MachineFunction &MF) override;
 
-    MachineFunctionProperties getRequiredProperties() const override {
-      return MachineFunctionProperties().set(
-          MachineFunctionProperties::Property::AllVRegsAllocated);
-    }
-
     const char *getPassName() const override {
       return "X86 Atom pad short functions";
     }

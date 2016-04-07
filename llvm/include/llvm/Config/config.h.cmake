@@ -1,3 +1,5 @@
+/* include/llvm/Config/config.h.cmake corresponding to config.h.in. */
+
 #ifndef CONFIG_H
 #define CONFIG_H
 
@@ -12,6 +14,9 @@
 
 /* Define to enable crash overrides */
 #cmakedefine ENABLE_CRASH_OVERRIDES
+
+/* Define to disable C++ atexit */
+#cmakedefine DISABLE_LLVM_DYLIB_ATEXIT
 
 /* Define if position independent code is enabled */
 #cmakedefine ENABLE_PIC
@@ -554,6 +559,9 @@
 
 /* Define to 1 if your <sys/time.h> declares `struct tm'. */
 #undef TM_IN_SYS_TIME
+
+/* Type of 1st arg on ELM Callback */
+#cmakedefine WIN32_ELMCB_PCSTR ${WIN32_ELMCB_PCSTR}
 
 /* Define to `int' if <sys/types.h> does not define. */
 #undef pid_t

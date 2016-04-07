@@ -16,14 +16,13 @@
 #include "CodeGenModule.h"
 #include "clang/AST/CXXInheritance.h"
 #include "clang/AST/RecordLayout.h"
-#include "clang/Basic/CodeGenOptions.h"
 #include "clang/CodeGen/CGFunctionInfo.h"
+#include "clang/Frontend/CodeGenOptions.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/Format.h"
 #include "llvm/Transforms/Utils/Cloning.h"
-
 #include <algorithm>
 #include <cstdio>
 
@@ -608,8 +607,6 @@ llvm::Constant *CodeGenVTables::CreateVTableInitializer(
             llvm::FunctionType::get(CGM.VoidTy, /*isVarArg=*/false);
           StringRef PureCallName = CGM.getCXXABI().GetPureVirtualCallName();
           PureVirtualFn = CGM.CreateRuntimeFunction(Ty, PureCallName);
-          if (auto *F = dyn_cast<llvm::Function>(PureVirtualFn))
-            F->setUnnamedAddr(true);
           PureVirtualFn = llvm::ConstantExpr::getBitCast(PureVirtualFn,
                                                          CGM.Int8PtrTy);
         }
@@ -621,8 +618,6 @@ llvm::Constant *CodeGenVTables::CreateVTableInitializer(
           StringRef DeletedCallName =
             CGM.getCXXABI().GetDeletedVirtualCallName();
           DeletedVirtualFn = CGM.CreateRuntimeFunction(Ty, DeletedCallName);
-          if (auto *F = dyn_cast<llvm::Function>(DeletedVirtualFn))
-            F->setUnnamedAddr(true);
           DeletedVirtualFn = llvm::ConstantExpr::getBitCast(DeletedVirtualFn,
                                                          CGM.Int8PtrTy);
         }
@@ -843,11 +838,6 @@ CodeGenVTables::GenerateClassData(const CXXRecordDecl *RD) {
 bool CodeGenVTables::isVTableExternal(const CXXRecordDecl *RD) {
   assert(RD->isDynamicClass() && "Non-dynamic classes have no VTable.");
 
-  // We always synthesize vtables on the import side regardless of whether or
-  // not it is an explicit instantiation declaration.
-  if (CGM.getTarget().getCXXABI().isMicrosoft() && RD->hasAttr<DLLImportAttr>())
-    return false;
-
   // If we have an explicit instantiation declaration (and not a
   // definition), the vtable is defined elsewhere.
   TemplateSpecializationKind TSK = RD->getTemplateSpecializationKind();
@@ -903,34 +893,21 @@ void CodeGenModule::EmitDeferredVTables() {
   DeferredVTables.clear();
 }
 
-bool CodeGenModule::NeedVTableBitSets() {
-  return getCodeGenOpts().WholeProgramVTables ||
-         getLangOpts().Sanitize.has(SanitizerKind::CFIVCall) ||
-         getLangOpts().Sanitize.has(SanitizerKind::CFINVCall) ||
-         getLangOpts().Sanitize.has(SanitizerKind::CFIDerivedCast) ||
-         getLangOpts().Sanitize.has(SanitizerKind::CFIUnrelatedCast);
-}
+bool CodeGenModule::IsCFIBlacklistedRecord(const CXXRecordDecl *RD) {
+  if (RD->hasAttr<UuidAttr>() &&
+      getContext().getSanitizerBlacklist().isBlacklistedType("attr:uuid"))
+    return true;
 
-bool CodeGenModule::IsBitSetBlacklistedRecord(const CXXRecordDecl *RD) {
-  std::string TypeName = RD->getQualifiedNameAsString();
-  auto isInBlacklist = [&](const SanitizerBlacklist &BL) {
-    if (RD->hasAttr<UuidAttr>() && BL.isBlacklistedType("attr:uuid"))
-      return true;
-
-    return BL.isBlacklistedType(TypeName);
-  };
-
-  return isInBlacklist(WholeProgramVTablesBlacklist) ||
-         ((LangOpts.Sanitize.has(SanitizerKind::CFIVCall) ||
-           LangOpts.Sanitize.has(SanitizerKind::CFINVCall) ||
-           LangOpts.Sanitize.has(SanitizerKind::CFIDerivedCast) ||
-           LangOpts.Sanitize.has(SanitizerKind::CFIUnrelatedCast)) &&
-          isInBlacklist(getContext().getSanitizerBlacklist()));
+  return getContext().getSanitizerBlacklist().isBlacklistedType(
+      RD->getQualifiedNameAsString());
 }
 
 void CodeGenModule::EmitVTableBitSetEntries(llvm::GlobalVariable *VTable,
                                             const VTableLayout &VTLayout) {
-  if (!NeedVTableBitSets())
+  if (!LangOpts.Sanitize.has(SanitizerKind::CFIVCall) &&
+      !LangOpts.Sanitize.has(SanitizerKind::CFINVCall) &&
+      !LangOpts.Sanitize.has(SanitizerKind::CFIDerivedCast) &&
+      !LangOpts.Sanitize.has(SanitizerKind::CFIUnrelatedCast))
     return;
 
   CharUnits PointerWidth =
@@ -940,7 +917,7 @@ void CodeGenModule::EmitVTableBitSetEntries(llvm::GlobalVariable *VTable,
   std::vector<BSEntry> BitsetEntries;
   // Create a bit set entry for each address point.
   for (auto &&AP : VTLayout.getAddressPoints()) {
-    if (IsBitSetBlacklistedRecord(AP.first.getBase()))
+    if (IsCFIBlacklistedRecord(AP.first.getBase()))
       continue;
 
     BitsetEntries.push_back(std::make_pair(AP.first.getBase(), AP.second));

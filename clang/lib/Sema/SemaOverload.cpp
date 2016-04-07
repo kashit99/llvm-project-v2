@@ -293,13 +293,6 @@ StandardConversionSequence::getNarrowingKind(ASTContext &Ctx,
   //   A narrowing conversion is an implicit conversion ...
   QualType FromType = getToType(0);
   QualType ToType = getToType(1);
-
-  // A conversion to an enumeration type is narrowing if the conversion to
-  // the underlying type is narrowing. This only arises for expressions of
-  // the form 'Enum{init}'.
-  if (auto *ET = ToType->getAs<EnumType>())
-    ToType = ET->getDecl()->getIntegerType();
-
   switch (Second) {
   // 'bool' is an integral type; dispatch to the right place to handle it.
   case ICK_Boolean_Conversion:
@@ -992,7 +985,7 @@ Sema::CheckOverload(Scope *S, FunctionDecl *New, const LookupResult &Old,
 }
 
 bool Sema::IsOverload(FunctionDecl *New, FunctionDecl *Old,
-                      bool UseMemberUsingDeclRules, bool ConsiderCudaAttrs) {
+                      bool UseUsingDeclRules) {
   // C++ [basic.start.main]p2: This function shall not be overloaded.
   if (New->isMain())
     return false;
@@ -1048,7 +1041,7 @@ bool Sema::IsOverload(FunctionDecl *New, FunctionDecl *Old,
   //
   // However, we don't consider either of these when deciding whether
   // a member introduced by a shadow declaration is hidden.
-  if (!UseMemberUsingDeclRules && NewTemplate &&
+  if (!UseUsingDeclRules && NewTemplate &&
       (!TemplateParameterListsAreEqual(NewTemplate->getTemplateParameters(),
                                        OldTemplate->getTemplateParameters(),
                                        false, TPL_TemplateMatch) ||
@@ -1068,7 +1061,7 @@ bool Sema::IsOverload(FunctionDecl *New, FunctionDecl *Old,
   if (OldMethod && NewMethod &&
       !OldMethod->isStatic() && !NewMethod->isStatic()) {
     if (OldMethod->getRefQualifier() != NewMethod->getRefQualifier()) {
-      if (!UseMemberUsingDeclRules &&
+      if (!UseUsingDeclRules &&
           (OldMethod->getRefQualifier() == RQ_None ||
            NewMethod->getRefQualifier() == RQ_None)) {
         // C++0x [over.load]p2:
@@ -1125,7 +1118,7 @@ bool Sema::IsOverload(FunctionDecl *New, FunctionDecl *Old,
       return true;
   }
 
-  if (getLangOpts().CUDA && ConsiderCudaAttrs) {
+  if (getLangOpts().CUDA && getLangOpts().CUDATargetOverloads) {
     CUDAFunctionTarget NewTarget = IdentifyCUDATarget(New),
                        OldTarget = IdentifyCUDATarget(Old);
     if (NewTarget == CFT_InvalidTarget || NewTarget == CFT_Global)
@@ -1136,10 +1129,7 @@ bool Sema::IsOverload(FunctionDecl *New, FunctionDecl *Old,
     // Don't allow mixing of HD with other kinds. This guarantees that
     // we have only one viable function with this signature on any
     // side of CUDA compilation .
-    // __global__ functions can't be overloaded based on attribute
-    // difference because, like HD, they also exist on both sides.
-    if ((NewTarget == CFT_HostDevice) || (OldTarget == CFT_HostDevice) ||
-        (NewTarget == CFT_Global) || (OldTarget == CFT_Global))
+    if ((NewTarget == CFT_HostDevice) || (OldTarget == CFT_HostDevice))
       return false;
 
     // Allow overloading of functions with same signature, but
@@ -2557,8 +2547,9 @@ bool Sema::IsBlockPointerConversion(QualType FromType, QualType ToType,
        // Argument types are too different. Abort.
        return false;
    }
-   if (!Context.doFunctionTypesMatchOnExtParameterInfos(FromFunctionType,
-                                                        ToFunctionType))
+   if (LangOpts.ObjCAutoRefCount && 
+       !Context.FunctionTypesMatchOnNSConsumedAttrs(FromFunctionType, 
+                                                    ToFunctionType))
      return false;
    
    ConvertedType = ToType;
@@ -5973,27 +5964,34 @@ EnableIfAttr *Sema::CheckEnableIf(FunctionDecl *Function, ArrayRef<Expr *> Args,
   bool ContainsValueDependentExpr = false;
 
   // Convert the arguments.
-  for (unsigned I = 0, E = Args.size(); I != E; ++I) {
-    ExprResult R;
-    if (I == 0 && !MissingImplicitThis && isa<CXXMethodDecl>(Function) &&
+  for (unsigned i = 0, e = Args.size(); i != e; ++i) {
+    if (i == 0 && !MissingImplicitThis && isa<CXXMethodDecl>(Function) &&
         !cast<CXXMethodDecl>(Function)->isStatic() &&
         !isa<CXXConstructorDecl>(Function)) {
       CXXMethodDecl *Method = cast<CXXMethodDecl>(Function);
-      R = PerformObjectArgumentInitialization(Args[0], /*Qualifier=*/nullptr,
-                                              Method, Method);
+      ExprResult R =
+        PerformObjectArgumentInitialization(Args[0], /*Qualifier=*/nullptr,
+                                            Method, Method);
+      if (R.isInvalid()) {
+        InitializationFailed = true;
+        break;
+      }
+      ContainsValueDependentExpr |= R.get()->isValueDependent();
+      ConvertedArgs.push_back(R.get());
     } else {
-      R = PerformCopyInitialization(InitializedEntity::InitializeParameter(
-                                        Context, Function->getParamDecl(I)),
-                                    SourceLocation(), Args[I]);
+      ExprResult R =
+        PerformCopyInitialization(InitializedEntity::InitializeParameter(
+                                                Context,
+                                                Function->getParamDecl(i)),
+                                  SourceLocation(),
+                                  Args[i]);
+      if (R.isInvalid()) {
+        InitializationFailed = true;
+        break;
+      }
+      ContainsValueDependentExpr |= R.get()->isValueDependent();
+      ConvertedArgs.push_back(R.get());
     }
-
-    if (R.isInvalid()) {
-      InitializationFailed = true;
-      break;
-    }
-
-    ContainsValueDependentExpr |= R.get()->isValueDependent();
-    ConvertedArgs.push_back(R.get());
   }
 
   if (InitializationFailed || Trap.hasErrorOccurred())
@@ -6825,8 +6823,7 @@ namespace {
 /// enumeration types.
 class BuiltinCandidateTypeSet  {
   /// TypeSet - A set of types.
-  typedef llvm::SetVector<QualType, SmallVector<QualType, 8>,
-                          llvm::SmallPtrSet<QualType, 8>> TypeSet;
+  typedef llvm::SmallPtrSet<QualType, 8> TypeSet;
 
   /// PointerTypes - The set of pointer types that will be used in the
   /// built-in candidates.
@@ -6925,7 +6922,7 @@ BuiltinCandidateTypeSet::AddPointerWithMoreQualifiedTypeVariants(QualType Ty,
                                              const Qualifiers &VisibleQuals) {
 
   // Insert this type.
-  if (!PointerTypes.insert(Ty))
+  if (!PointerTypes.insert(Ty).second)
     return false;
 
   QualType PointeeTy;
@@ -6993,7 +6990,7 @@ bool
 BuiltinCandidateTypeSet::AddMemberPointerWithMoreQualifiedTypeVariants(
     QualType Ty) {
   // Insert this type.
-  if (!MemberPointerTypes.insert(Ty))
+  if (!MemberPointerTypes.insert(Ty).second)
     return false;
 
   const MemberPointerType *PointerTy = Ty->getAs<MemberPointerType>();
@@ -8496,7 +8493,7 @@ Sema::AddArgumentDependentLookupCandidates(DeclarationName Name,
 // Cand1's first N enable_if attributes have precisely the same conditions as
 // Cand2's first N enable_if attributes (where N = the number of enable_if
 // attributes on Cand2), and Cand1 has more than N enable_if attributes.
-static bool hasBetterEnableIfAttrs(const Sema &S, const FunctionDecl *Cand1,
+static bool hasBetterEnableIfAttrs(Sema &S, const FunctionDecl *Cand1,
                                    const FunctionDecl *Cand2) {
 
   // FIXME: The next several lines are just
@@ -8639,7 +8636,8 @@ bool clang::isBetterOverloadCandidate(Sema &S, const OverloadCandidate &Cand1,
        Cand2.Function->hasAttr<EnableIfAttr>()))
     return hasBetterEnableIfAttrs(S, Cand1.Function, Cand2.Function);
 
-  if (S.getLangOpts().CUDA && Cand1.Function && Cand2.Function) {
+  if (S.getLangOpts().CUDA && S.getLangOpts().CUDATargetOverloads &&
+      Cand1.Function && Cand2.Function) {
     FunctionDecl *Caller = dyn_cast<FunctionDecl>(S.CurContext);
     return S.IdentifyCUDAPreference(Caller, Cand1.Function) >
            S.IdentifyCUDAPreference(Caller, Cand2.Function);
@@ -8733,44 +8731,14 @@ OverloadingResult
 OverloadCandidateSet::BestViableFunction(Sema &S, SourceLocation Loc,
                                          iterator &Best,
                                          bool UserDefinedConversion) {
-  llvm::SmallVector<OverloadCandidate *, 16> Candidates;
-  std::transform(begin(), end(), std::back_inserter(Candidates),
-                 [](OverloadCandidate &Cand) { return &Cand; });
-
-  // [CUDA] HD->H or HD->D calls are technically not allowed by CUDA
-  // but accepted by both clang and NVCC. However during a particular
-  // compilation mode only one call variant is viable. We need to
-  // exclude non-viable overload candidates from consideration based
-  // only on their host/device attributes. Specifically, if one
-  // candidate call is WrongSide and the other is SameSide, we ignore
-  // the WrongSide candidate.
-  if (S.getLangOpts().CUDA) {
-    const FunctionDecl *Caller = dyn_cast<FunctionDecl>(S.CurContext);
-    bool ContainsSameSideCandidate =
-        llvm::any_of(Candidates, [&](OverloadCandidate *Cand) {
-          return Cand->Function &&
-                 S.IdentifyCUDAPreference(Caller, Cand->Function) ==
-                     Sema::CFP_SameSide;
-        });
-    if (ContainsSameSideCandidate) {
-      auto IsWrongSideCandidate = [&](OverloadCandidate *Cand) {
-        return Cand->Function &&
-               S.IdentifyCUDAPreference(Caller, Cand->Function) ==
-                   Sema::CFP_WrongSide;
-      };
-      Candidates.erase(std::remove_if(Candidates.begin(), Candidates.end(),
-                                      IsWrongSideCandidate),
-                       Candidates.end());
-    }
-  }
-
   // Find the best viable function.
   Best = end();
-  for (auto *Cand : Candidates)
+  for (iterator Cand = begin(); Cand != end(); ++Cand) {
     if (Cand->Viable)
       if (Best == end() || isBetterOverloadCandidate(S, *Cand, *Best, Loc,
                                                      UserDefinedConversion))
         Best = Cand;
+  }
 
   // If we didn't find any viable functions, abort.
   if (Best == end())
@@ -8780,7 +8748,7 @@ OverloadCandidateSet::BestViableFunction(Sema &S, SourceLocation Loc,
 
   // Make sure that this function is better than every other viable
   // function. If not, we have an ambiguity.
-  for (auto *Cand : Candidates) {
+  for (iterator Cand = begin(); Cand != end(); ++Cand) {
     if (Cand->Viable &&
         Cand != Best &&
         !isBetterOverloadCandidate(S, *Best, *Cand, Loc,
@@ -9067,10 +9035,8 @@ static void DiagnoseBadConversion(Sema &S, OverloadCandidate *Cand,
   else {
     // TODO: detect and diagnose the full richness of const mismatches.
     if (CanQual<PointerType> FromPT = CFromTy->getAs<PointerType>())
-      if (CanQual<PointerType> ToPT = CToTy->getAs<PointerType>()) {
-        CFromTy = FromPT->getPointeeType();
-        CToTy = ToPT->getPointeeType();
-      }
+      if (CanQual<PointerType> ToPT = CToTy->getAs<PointerType>())
+        CFromTy = FromPT->getPointeeType(), CToTy = ToPT->getPointeeType();
   }
 
   if (CToTy.getUnqualifiedType() == CFromTy.getUnqualifiedType() &&
@@ -9147,13 +9113,10 @@ static void DiagnoseBadConversion(Sema &S, OverloadCandidate *Cand,
   if (const PointerType *PTy = TempFromTy->getAs<PointerType>())
     TempFromTy = PTy->getPointeeType();
   if (TempFromTy->isIncompleteType()) {
-    // Emit the generic diagnostic and, optionally, add the hints to it.
     S.Diag(Fn->getLocation(), diag::note_ovl_candidate_bad_conv_incomplete)
       << (unsigned) FnKind << FnDesc
       << (FromExpr ? FromExpr->getSourceRange() : SourceRange())
-      << FromTy << ToTy << (unsigned) isObjectArgument << I+1
-      << (unsigned) (Cand->Fix.Kind);
-      
+      << FromTy << ToTy << (unsigned) isObjectArgument << I+1;
     MaybeEmitInheritedConstructorNote(S, Fn);
     return;
   }
@@ -10298,32 +10261,21 @@ public:
       }
     }
 
-    if (S.getLangOpts().CUDA && Matches.size() > 1)
+    if (S.getLangOpts().CUDA && S.getLangOpts().CUDATargetOverloads &&
+        Matches.size() > 1)
       EliminateSuboptimalCudaMatches();
   }
 
   bool hasComplained() const { return HasComplained; }
 
 private:
-  bool candidateHasExactlyCorrectType(const FunctionDecl *FD) {
-    QualType Discard;
-    return Context.hasSameUnqualifiedType(TargetFunctionType, FD->getType()) ||
-           S.IsNoReturnConversion(FD->getType(), TargetFunctionType, Discard);
-  }
-
-  /// \return true if A is considered a better overload candidate for the
-  /// desired type than B.
+  // Is A considered a better overload candidate for the desired type than B?
   bool isBetterCandidate(const FunctionDecl *A, const FunctionDecl *B) {
-    // If A doesn't have exactly the correct type, we don't want to classify it
-    // as "better" than anything else. This way, the user is required to
-    // disambiguate for us if there are multiple candidates and no exact match.
-    return candidateHasExactlyCorrectType(A) &&
-           (!candidateHasExactlyCorrectType(B) ||
-            hasBetterEnableIfAttrs(S, A, B));
+    return hasBetterEnableIfAttrs(S, A, B);
   }
 
-  /// \return true if we were able to eliminate all but one overload candidate,
-  /// false otherwise.
+  // Returns true if we've eliminated any (read: all but one) candidates, false
+  // otherwise.
   bool eliminiateSuboptimalOverloadCandidates() {
     // Same algorithm as overload resolution -- one pass to pick the "best",
     // another pass to be sure that nothing is better than the best.
@@ -10396,6 +10348,7 @@ private:
     // Template argument deduction ensures that we have an exact match or
     // compatible pointer-to-function arguments that would be adjusted by ICS.
     // This function template specicalization works.
+    Specialization = cast<FunctionDecl>(Specialization->getCanonicalDecl());
     assert(S.isSameOrCompatibleFunctionType(
               Context.getCanonicalType(Specialization->getType()),
               Context.getCanonicalType(TargetFunctionType)));
@@ -10436,9 +10389,12 @@ private:
       if (!S.checkAddressOfFunctionIsAvailable(FunDecl))
         return false;
 
-      // If we're in C, we need to support types that aren't exactly identical.
-      if (!S.getLangOpts().CPlusPlus ||
-          candidateHasExactlyCorrectType(FunDecl)) {
+      QualType ResultTy;
+      if (Context.hasSameUnqualifiedType(TargetFunctionType, 
+                                         FunDecl->getType()) ||
+          S.IsNoReturnConversion(FunDecl->getType(), TargetFunctionType,
+                                 ResultTy) ||
+          (!S.getLangOpts().CPlusPlus && TargetType->isVoidPointerType())) {
         Matches.push_back(std::make_pair(
             CurAccessFunPair, cast<FunctionDecl>(FunDecl->getCanonicalDecl())));
         FoundNonTemplateFunction = true;
@@ -10664,42 +10620,6 @@ Sema::ResolveAddressOfOverloadedFunction(Expr *AddressOfExpr,
   if (pHadMultipleCandidates)
     *pHadMultipleCandidates = Resolver.hadMultipleCandidates();
   return Fn;
-}
-
-/// \brief Given an expression that refers to an overloaded function, try to
-/// resolve that function to a single function that can have its address taken.
-/// This will modify `Pair` iff it returns non-null.
-///
-/// This routine can only realistically succeed if all but one candidates in the
-/// overload set for SrcExpr cannot have their addresses taken.
-FunctionDecl *
-Sema::resolveAddressOfOnlyViableOverloadCandidate(Expr *E,
-                                                  DeclAccessPair &Pair) {
-  OverloadExpr::FindResult R = OverloadExpr::find(E);
-  OverloadExpr *Ovl = R.Expression;
-  FunctionDecl *Result = nullptr;
-  DeclAccessPair DAP;
-  // Don't use the AddressOfResolver because we're specifically looking for
-  // cases where we have one overload candidate that lacks
-  // enable_if/pass_object_size/...
-  for (auto I = Ovl->decls_begin(), E = Ovl->decls_end(); I != E; ++I) {
-    auto *FD = dyn_cast<FunctionDecl>(I->getUnderlyingDecl());
-    if (!FD)
-      return nullptr;
-
-    if (!checkAddressOfFunctionIsAvailable(FD))
-      continue;
-
-    // We have more than one result; quit.
-    if (Result)
-      return nullptr;
-    DAP = I.getPair();
-    Result = FD;
-  }
-
-  if (Result)
-    Pair = DAP;
-  return Result;
 }
 
 /// \brief Given an expression that refers to an overloaded function, try to

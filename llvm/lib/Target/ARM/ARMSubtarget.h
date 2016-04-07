@@ -43,9 +43,8 @@ class ARMSubtarget : public ARMGenSubtargetInfo {
 protected:
   enum ARMProcFamilyEnum {
     Others, CortexA5, CortexA7, CortexA8, CortexA9, CortexA12, CortexA15,
-    CortexA17, CortexR4, CortexR4F, CortexR5, CortexR7, CortexM3,
-    CortexA32, CortexA35, CortexA53, CortexA57, CortexA72,
-    Krait, Swift, ExynosM1
+    CortexA17, CortexR4, CortexR4F, CortexR5, CortexR7, CortexA35, CortexA53,
+    CortexA57, CortexA72, Krait, Swift, ExynosM1
   };
   enum ARMProcClassEnum {
     None, AClass, RClass, MClass
@@ -202,9 +201,6 @@ protected:
   /// HasTrustZone - if true, processor supports TrustZone security extensions
   bool HasTrustZone;
 
-  /// Has8MSecExt - if true, processor supports ARMv8-M Security Extensions
-  bool Has8MSecExt;
-
   /// HasCrypto - if true, processor supports Cryptography extensions
   bool HasCrypto;
 
@@ -335,7 +331,7 @@ public:
   bool isCortexA9() const { return ARMProcFamily == CortexA9; }
   bool isCortexA15() const { return ARMProcFamily == CortexA15; }
   bool isSwift()    const { return ARMProcFamily == Swift; }
-  bool isCortexM3() const { return ARMProcFamily == CortexM3; }
+  bool isCortexM3() const { return CPUString == "cortex-m3"; }
   bool isLikeA9() const { return isCortexA9() || isCortexA15() || isKrait(); }
   bool isCortexR5() const { return ARMProcFamily == CortexR5; }
   bool isKrait() const { return ARMProcFamily == Krait; }
@@ -370,7 +366,6 @@ public:
   bool isFPOnlySP() const { return FPOnlySP; }
   bool hasPerfMon() const { return HasPerfMon; }
   bool hasTrustZone() const { return HasTrustZone; }
-  bool has8MSecExt() const { return Has8MSecExt; }
   bool hasZeroCycleZeroing() const { return HasZeroCycleZeroing; }
   bool prefers32BitThumb() const { return Pref32BitThumb; }
   bool avoidCPSRPartialUpdate() const { return AvoidCPSRPartialUpdate; }

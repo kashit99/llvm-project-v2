@@ -15,7 +15,6 @@
 #include "FormatStringParsing.h"
 #include "clang/Basic/LangOptions.h"
 #include "clang/Basic/TargetInfo.h"
-#include "llvm/Support/ConvertUTF.h"
 
 using clang::analyze_format_string::ArgType;
 using clang::analyze_format_string::FormatStringHandler;
@@ -191,21 +190,13 @@ clang::analyze_format_string::ParseLengthModifier(FormatSpecifier &FS,
       return false;
     case 'h':
       ++I;
-      if (I != E && *I == 'h') {
-        ++I;
-        lmKind = LengthModifier::AsChar;
-      } else {
-        lmKind = LengthModifier::AsShort;
-      }
+      lmKind = (I != E && *I == 'h') ? (++I, LengthModifier::AsChar)
+                                     : LengthModifier::AsShort;
       break;
     case 'l':
       ++I;
-      if (I != E && *I == 'l') {
-        ++I;
-        lmKind = LengthModifier::AsLongLong;
-      } else {
-        lmKind = LengthModifier::AsLong;
-      }
+      lmKind = (I != E && *I == 'l') ? (++I, LengthModifier::AsLongLong)
+                                     : LengthModifier::AsLong;
       break;
     case 'j': lmKind = LengthModifier::AsIntMax;     ++I; break;
     case 'z': lmKind = LengthModifier::AsSizeT;      ++I; break;
@@ -258,28 +249,6 @@ clang::analyze_format_string::ParseLengthModifier(FormatSpecifier &FS,
   }
   LengthModifier lm(lmPosition, lmKind);
   FS.setLengthModifier(lm);
-  return true;
-}
-
-bool clang::analyze_format_string::ParseUTF8InvalidSpecifier(
-    const char *SpecifierBegin, const char *FmtStrEnd, unsigned &Len) {
-  if (SpecifierBegin + 1 >= FmtStrEnd)
-    return false;
-
-  const UTF8 *SB = reinterpret_cast<const UTF8 *>(SpecifierBegin + 1);
-  const UTF8 *SE = reinterpret_cast<const UTF8 *>(FmtStrEnd);
-  const char FirstByte = *SB;
-
-  // If the invalid specifier is a multibyte UTF-8 string, return the
-  // total length accordingly so that the conversion specifier can be
-  // properly updated to reflect a complete UTF-8 specifier.
-  unsigned NumBytes = getNumBytesForUTF8(FirstByte);
-  if (NumBytes == 1)
-    return false;
-  if (SB + NumBytes > SE)
-    return false;
-
-  Len = NumBytes + 1;
   return true;
 }
 

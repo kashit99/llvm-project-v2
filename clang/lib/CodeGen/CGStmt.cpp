@@ -256,27 +256,15 @@ void CodeGenFunction::EmitStmt(const Stmt *S) {
   case Stmt::OMPTargetDataDirectiveClass:
     EmitOMPTargetDataDirective(cast<OMPTargetDataDirective>(*S));
     break;
-  case Stmt::OMPTargetEnterDataDirectiveClass:
-    EmitOMPTargetEnterDataDirective(cast<OMPTargetEnterDataDirective>(*S));
-    break;
-  case Stmt::OMPTargetExitDataDirectiveClass:
-    EmitOMPTargetExitDataDirective(cast<OMPTargetExitDataDirective>(*S));
-    break;
-  case Stmt::OMPTargetParallelDirectiveClass:
-    EmitOMPTargetParallelDirective(cast<OMPTargetParallelDirective>(*S));
-    break;
-  case Stmt::OMPTargetParallelForDirectiveClass:
-    EmitOMPTargetParallelForDirective(cast<OMPTargetParallelForDirective>(*S));
-    break;
   case Stmt::OMPTaskLoopDirectiveClass:
     EmitOMPTaskLoopDirective(cast<OMPTaskLoopDirective>(*S));
     break;
   case Stmt::OMPTaskLoopSimdDirectiveClass:
     EmitOMPTaskLoopSimdDirective(cast<OMPTaskLoopSimdDirective>(*S));
     break;
-  case Stmt::OMPDistributeDirectiveClass:
+case Stmt::OMPDistributeDirectiveClass:
     EmitOMPDistributeDirective(cast<OMPDistributeDirective>(*S));
-    break;
+	break;
   }
 }
 
@@ -870,8 +858,7 @@ CodeGenFunction::EmitCXXForRangeStmt(const CXXForRangeStmt &S,
 
   // Evaluate the first pieces before the loop.
   EmitStmt(S.getRangeStmt());
-  EmitStmt(S.getBeginStmt());
-  EmitStmt(S.getEndStmt());
+  EmitStmt(S.getBeginEndStmt());
 
   // Start the loop with a block that tests the condition.
   // If there's an increment, the continue scope will be overwritten
@@ -1160,7 +1147,7 @@ void CodeGenFunction::EmitCaseStmt(const CaseStmt &S) {
   // If the body of the case is just a 'break', try to not emit an empty block.
   // If we're profiling or we're not optimizing, leave the block in for better
   // debug and coverage analysis.
-  if (!CGM.getCodeGenOpts().hasProfileClangInstr() &&
+  if (!CGM.getCodeGenOpts().ProfileInstrGenerate &&
       CGM.getCodeGenOpts().OptimizationLevel > 0 &&
       isa<BreakStmt>(S.getSubStmt())) {
     JumpDest Block = BreakContinueStack.back().BreakBlock;
@@ -1207,7 +1194,7 @@ void CodeGenFunction::EmitCaseStmt(const CaseStmt &S) {
 
     if (SwitchWeights)
       SwitchWeights->push_back(getProfileCount(NextCase));
-    if (CGM.getCodeGenOpts().hasProfileClangInstr()) {
+    if (CGM.getCodeGenOpts().ProfileInstrGenerate) {
       CaseDest = createBasicBlock("sw.bb");
       EmitBlockWithFallThrough(CaseDest, &S);
     }
@@ -2160,7 +2147,8 @@ CodeGenFunction::GenerateCapturedStmtFunction(const CapturedStmt &S) {
   // Create the function declaration.
   FunctionType::ExtInfo ExtInfo;
   const CGFunctionInfo &FuncInfo =
-    CGM.getTypes().arrangeBuiltinFunctionDeclaration(Ctx.VoidTy, Args);
+      CGM.getTypes().arrangeFreeFunctionDeclaration(Ctx.VoidTy, Args, ExtInfo,
+                                                    /*IsVariadic=*/false);
   llvm::FunctionType *FuncLLVMTy = CGM.getTypes().GetFunctionType(FuncInfo);
 
   llvm::Function *F =

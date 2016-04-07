@@ -79,8 +79,7 @@ foo_equals2 = (_foo - _bar + 0xffff0000)
 // CHECK:     Type: Section (0xE)
 // CHECK:     Section: __text (0x1)
 // CHECK:     RefType: UndefinedNonLazy (0x0)
-// CHECK:     Flags [ (0x220)
-// CHECK:       AltEntry (0x200)
+// CHECK:     Flags [ (0x20)
 // CHECK:       NoDeadStrip (0x20)
 // CHECK:     ]
 // CHECK:     Value: 0xFFFF0001
@@ -100,8 +99,7 @@ foo_equals2 = (_foo - _bar + 0xffff0000)
 // CHECK:     Type: Section (0xE)
 // CHECK:     Section: __text (0x1)
 // CHECK:     RefType: UndefinedNonLazy (0x0)
-// CHECK:     Flags [ (0x200)
-// CHECK:       AltEntry (0x200)
+// CHECK:     Flags [ (0x0)
 // CHECK:     ]
 // CHECK:     Value: 0xFFFF0001
 // CHECK:   }
@@ -120,8 +118,7 @@ foo_equals2 = (_foo - _bar + 0xffff0000)
 // CHECK:     Type: Section (0xE)
 // CHECK:     Section: __text (0x1)
 // CHECK:     RefType: UndefinedNonLazy (0x0)
-// CHECK:     Flags [ (0x220)
-// CHECK:	AltEntry (0x200)
+// CHECK:     Flags [ (0x20)
 // CHECK:       NoDeadStrip (0x20)
 // CHECK:     ]
 // CHECK:     Value: 0xFFFF0001

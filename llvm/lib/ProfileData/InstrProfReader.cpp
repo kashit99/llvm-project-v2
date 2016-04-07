@@ -109,26 +109,8 @@ bool TextInstrProfReader::hasFormat(const MemoryBuffer &Buffer) {
                      [](char c) { return ::isprint(c) || ::isspace(c); });
 }
 
-// Read the profile variant flag from the header: ":FE" means this is a FE
-// generated profile. ":IR" means this is an IR level profile. Other strings
-// with a leading ':' will be reported an error format.
 std::error_code TextInstrProfReader::readHeader() {
   Symtab.reset(new InstrProfSymtab());
-  bool IsIRInstr = false;
-  if (!Line->startswith(":")) {
-    IsIRLevelProfile = false;
-    return success();
-  }
-  StringRef Str = (Line)->substr(1);
-  if (Str.equals_lower("ir"))
-    IsIRInstr = true;
-  else if (Str.equals_lower("fe"))
-    IsIRInstr = false;
-  else
-    return instrprof_error::bad_header;
-
-  ++Line;
-  IsIRLevelProfile = IsIRInstr;
   return success();
 }
 
@@ -311,8 +293,7 @@ void RawInstrProfReader<IntPtrT>::createSymtab(InstrProfSymtab &Symtab) {
 template <class IntPtrT>
 std::error_code
 RawInstrProfReader<IntPtrT>::readHeader(const RawInstrProf::Header &Header) {
-  Version = swap(Header.Version);
-  if (GET_VERSION(Version) != RawInstrProf::Version)
+  if (swap(Header.Version) != RawInstrProf::Version)
     return error(instrprof_error::unsupported_version);
 
   CountersDelta = swap(Header.CountersDelta);
@@ -412,9 +393,6 @@ RawInstrProfReader<IntPtrT>::readValueProfilingData(InstrProfRecord &Record) {
   if (VDataPtrOrErr.getError())
     return VDataPtrOrErr.getError();
 
-  // Note that besides deserialization, this also performs the conversion for
-  // indirect call targets.  The function pointers from the raw profile are
-  // remapped into function name hashes.
   VDataPtrOrErr.get()->deserializeTo(Record, &Symtab->getAddrHashMap());
   CurValueDataSize = VDataPtrOrErr.get()->getSize();
   return success();
@@ -492,10 +470,10 @@ data_type InstrProfLookupTrait::ReadData(StringRef K, const unsigned char *D,
       return data_type();
     uint64_t Hash = endian::readNext<uint64_t, little, unaligned>(D);
 
-    // Initialize number of counters for GET_VERSION(FormatVersion) == 1.
+    // Initialize number of counters for FormatVersion == 1.
     uint64_t CountsSize = N / sizeof(uint64_t) - 1;
     // If format version is different then read the number of counters.
-    if (GET_VERSION(FormatVersion) != IndexedInstrProf::ProfVersion::Version1) {
+    if (FormatVersion != IndexedInstrProf::ProfVersion::Version1) {
       if (D + sizeof(uint64_t) > End)
         return data_type();
       CountsSize = endian::readNext<uint64_t, little, unaligned>(D);
@@ -512,7 +490,7 @@ data_type InstrProfLookupTrait::ReadData(StringRef K, const unsigned char *D,
     DataBuffer.emplace_back(K, Hash, std::move(CounterBuffer));
 
     // Read value profiling data.
-    if (GET_VERSION(FormatVersion) > IndexedInstrProf::ProfVersion::Version2 &&
+    if (FormatVersion > IndexedInstrProf::ProfVersion::Version2 &&
         !readValueProfilingData(D, End)) {
       DataBuffer.clear();
       return data_type();
@@ -592,14 +570,15 @@ IndexedInstrProfReader::readSummary(IndexedInstrProf::ProfVersion Version,
     for (unsigned I = 0; I < SummarySize / sizeof(uint64_t); I++)
       Dst[I] = endian::byte_swap<uint64_t, little>(Src[I]);
 
-    // initialize InstrProfSummary using the SummaryData from disk.
-    this->Summary = llvm::make_unique<InstrProfSummary>(*(SummaryData.get()));
+    // initialize ProfileSummary using the SummaryData from disk.
+    this->Summary = llvm::make_unique<ProfileSummary>(*(SummaryData.get()));
     return Cur + SummarySize;
   } else {
     // For older version of profile data, we need to compute on the fly:
     using namespace IndexedInstrProf;
-    this->Summary =
-        llvm::make_unique<InstrProfSummary>(ProfileSummary::DefaultCutoffs);
+    std::vector<uint32_t> Cutoffs(&SummaryCutoffs[0],
+                                  &SummaryCutoffs[NumSummaryCutoffs]);
+    this->Summary = llvm::make_unique<ProfileSummary>(Cutoffs);
     this->Summary->computeDetailedSummary();
     return Cur;
   }
@@ -624,8 +603,7 @@ std::error_code IndexedInstrProfReader::readHeader() {
 
   // Read the version.
   uint64_t FormatVersion = endian::byte_swap<uint64_t, little>(Header->Version);
-  if (GET_VERSION(FormatVersion) >
-      IndexedInstrProf::ProfVersion::CurrentVersion)
+  if (FormatVersion > IndexedInstrProf::ProfVersion::CurrentVersion)
     return error(instrprof_error::unsupported_version);
 
   Cur = readSummary((IndexedInstrProf::ProfVersion)FormatVersion, Cur);

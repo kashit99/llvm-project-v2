@@ -36,12 +36,8 @@ int convertForTestingMain(int argc, const char *argv[]) {
   cl::ParseCommandLineOptions(argc, argv, "LLVM code coverage tool\n");
 
   auto ObjErr = llvm::object::ObjectFile::createObjectFile(InputSourceFile);
-  if (!ObjErr) {
-    std::string Buf;
-    raw_string_ostream OS(Buf);
-    logAllUnhandledErrors(ObjErr.takeError(), OS, "");
-    OS.flush();
-    errs() << "error: " << Buf;
+  if (auto Err = ObjErr.getError()) {
+    errs() << "error: " << Err.message() << "\n";
     return 1;
   }
   ObjectFile *OF = ObjErr.get().getBinary();

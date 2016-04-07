@@ -90,10 +90,8 @@ class RegisterVariableTestCase(TestBase):
 
     mydir = TestBase.compute_mydir(__file__)
 
-
     @expectedFailureAll(compiler="clang", compiler_version=['<', '3.5'])
-    @expectedFailureAll(compiler="gcc", compiler_version=['>=', '4.8.2'])
-    @expectedFailureAll(oslist="linux", archs="i386")
+    @expectedFailureAll(compiler="gcc", compiler_version=['=', '4.8.2'])
     def test_and_run_command(self):
         """Test expressions on register values."""
 

@@ -34,7 +34,13 @@ if (CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
       set(CLANG_MAIN_INCLUDE_DIR "${CLANG_MAIN_SRC_DIR}/include")
   endif()
 
-  list(APPEND CMAKE_MODULE_PATH "${LLDB_PATH_TO_LLVM_BUILD}/lib${LLVM_LIBDIR_SUFFIX}/cmake/llvm")
+  if (LLDB_PATH_TO_SWIFT_SOURCE)
+      get_filename_component(SWIFT_MAIN_SRC_DIR ${LLDB_PATH_TO_SWIFT_SOURCE}
+                             ABSOLUTE)
+  endif()
+
+  list(APPEND CMAKE_MODULE_PATH "${LLDB_PATH_TO_LLVM_BUILD}/share/llvm/cmake")
+  list(APPEND CMAKE_MODULE_PATH "${LLDB_PATH_TO_SWIFT_SOURCE}/cmake/modules")
 
   if (LLDB_PATH_TO_LLVM_BUILD)
     get_filename_component(PATH_TO_LLVM_BUILD ${LLDB_PATH_TO_LLVM_BUILD}
@@ -52,6 +58,12 @@ if (CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             "directory of Clang build or install site.")
   endif()
 
+
+  get_filename_component(PATH_TO_SWIFT_BUILD ${LLDB_PATH_TO_SWIFT_BUILD}
+                         ABSOLUTE)
+
+  get_filename_component(PATH_TO_CMARK_BUILD ${LLDB_PATH_TO_CMARK_BUILD}
+                         ABSOLUTE)
 
   # These variables are used by add_llvm_library.
   set(LLVM_RUNTIME_OUTPUT_INTDIR ${CMAKE_BINARY_DIR}/${CMAKE_CFG_INTDIR}/bin)
@@ -73,23 +85,32 @@ if (CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     message("-- Found PythonInterp: ${PYTHON_EXECUTABLE}")
   endif()
   # Import CMake library targets from LLVM and Clang.
-  include("${LLDB_PATH_TO_LLVM_BUILD}/lib${LLVM_LIBDIR_SUFFIX}/cmake/llvm/LLVMConfig.cmake")
-  if (EXISTS "${LLDB_PATH_TO_CLANG_BUILD}/lib${LLVM_LIBDIR_SUFFIX}/cmake/clang/ClangConfig.cmake")
-      include("${LLDB_PATH_TO_CLANG_BUILD}/lib${LLVM_LIBDIR_SUFFIX}/cmake/clang/ClangConfig.cmake")
+  include("${LLDB_PATH_TO_LLVM_BUILD}/lib/cmake/llvm/LLVMConfig.cmake")
+  if (EXISTS "${LLDB_PATH_TO_CLANG_BUILD}/lib/cmake/clang/ClangConfig.cmake")
+      include("${LLDB_PATH_TO_CLANG_BUILD}/lib/cmake/clang/ClangConfig.cmake")
   endif()
 
   set(PACKAGE_VERSION "${LLVM_PACKAGE_VERSION}")
 
   set(LLVM_BINARY_DIR ${CMAKE_BINARY_DIR})
 
+  set(CLANG_MAIN_INCLUDE_DIR "${CLANG_MAIN_SRC_DIR}/include")
+
+  set(SWIFT_MAIN_INCLUDE_DIR "${SWIFT_MAIN_SRC_DIR}/include")
+
   set(CMAKE_INCLUDE_CURRENT_DIR ON)
   include_directories("${PATH_TO_LLVM_BUILD}/include"
+                      "${PATH_TO_LLVM_BUILD}/tools/clang/include"
                       "${LLVM_MAIN_INCLUDE_DIR}"
                       "${PATH_TO_CLANG_BUILD}/include"
                       "${CLANG_MAIN_INCLUDE_DIR}"
+                      "${PATH_TO_SWIFT_BUILD}/include"
+                      "${SWIFT_MAIN_INCLUDE_DIR}"
                       "${CMAKE_CURRENT_SOURCE_DIR}/source")
   link_directories("${PATH_TO_LLVM_BUILD}/lib${LLVM_LIBDIR_SUFFIX}"
-                   "${PATH_TO_CLANG_BUILD}/lib${LLVM_LIBDIR_SUFFIX}")
+                   "${PATH_TO_CLANG_BUILD}/lib${LLVM_LIBDIR_SUFFIX}"
+                   "${PATH_TO_SWIFT_BUILD}/lib${LLVM_LIBDIR_SUFFIX}"
+                   "${PATH_TO_CMARK_BUILD}/src")
 
   set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
   set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib${LLVM_LIBDIR_SUFFIX})

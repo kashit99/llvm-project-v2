@@ -50,7 +50,7 @@ namespace {
 
     void getAnalysisUsage(AnalysisUsage &AU) const override {
       AU.addRequiredTransitive<AAResultsWrapperPass>();
-      AU.addRequiredTransitive<MemoryDependenceWrapperPass>();
+      AU.addRequiredTransitive<MemoryDependenceAnalysis>();
       AU.setPreservesAll();
     }
 
@@ -79,7 +79,7 @@ namespace {
 char MemDepPrinter::ID = 0;
 INITIALIZE_PASS_BEGIN(MemDepPrinter, "print-memdeps",
                       "Print MemDeps of function", false, true)
-INITIALIZE_PASS_DEPENDENCY(MemoryDependenceWrapperPass)
+INITIALIZE_PASS_DEPENDENCY(MemoryDependenceAnalysis)
 INITIALIZE_PASS_END(MemDepPrinter, "print-memdeps",
                       "Print MemDeps of function", false, true)
 
@@ -92,7 +92,7 @@ const char *const MemDepPrinter::DepTypeStr[]
 
 bool MemDepPrinter::runOnFunction(Function &F) {
   this->F = &F;
-  MemoryDependenceResults &MDA = getAnalysis<MemoryDependenceWrapperPass>().getMemDep();
+  MemoryDependenceAnalysis &MDA = getAnalysis<MemoryDependenceAnalysis>();
 
   // All this code uses non-const interfaces because MemDep is not
   // const-friendly, though nothing is actually modified.
@@ -107,11 +107,11 @@ bool MemDepPrinter::runOnFunction(Function &F) {
       Deps[Inst].insert(std::make_pair(getInstTypePair(Res),
                                        static_cast<BasicBlock *>(nullptr)));
     } else if (auto CS = CallSite(Inst)) {
-      const MemoryDependenceResults::NonLocalDepInfo &NLDI =
+      const MemoryDependenceAnalysis::NonLocalDepInfo &NLDI =
         MDA.getNonLocalCallDependency(CS);
 
       DepSet &InstDeps = Deps[Inst];
-      for (MemoryDependenceResults::NonLocalDepInfo::const_iterator
+      for (MemoryDependenceAnalysis::NonLocalDepInfo::const_iterator
            I = NLDI.begin(), E = NLDI.end(); I != E; ++I) {
         const MemDepResult &Res = I->getResult();
         InstDeps.insert(std::make_pair(getInstTypePair(Res), I->getBB()));

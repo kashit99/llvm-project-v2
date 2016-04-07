@@ -145,10 +145,10 @@ CommandInterpreter::GetPromptOnQuit () const
 }
 
 void
-CommandInterpreter::SetPromptOnQuit (bool b)
+CommandInterpreter::SetPromptOnQuit (bool enable)
 {
     const uint32_t idx = ePropertyPromptOnQuit;
-    m_collection_sp->SetPropertyAtIndexAsBoolean (nullptr, idx, b);
+    m_collection_sp->SetPropertyAtIndexAsBoolean (nullptr, idx, enable);
 }
 
 void
@@ -347,11 +347,14 @@ CommandInterpreter::Initialize ()
         AddAlias ("p", cmd_obj_sp, "--")->SetHelpLong("");
         AddAlias ("print", cmd_obj_sp, "--")->SetHelpLong("");
         AddAlias ("call", cmd_obj_sp, "--")->SetHelpLong("");
+
         if (auto po = AddAlias ("po", cmd_obj_sp, "-O --"))
         {
             po->SetHelp("Evaluate an expression in the current program context, using user defined variables and variables currently in scope, and display the result of evaluation in a language-specific manner.");
             po->SetHelpLong("");
         }
+
+        AddAlias ("repl", cmd_obj_sp, "--repl --");
     }
     
     cmd_obj_sp = GetCommandSPExact ("process kill", false);
@@ -698,6 +701,7 @@ CommandInterpreter::LoadCommandDictionary ()
             list_regex_cmd_ap->AddRegexCommand("^\\*?(0x[[:xdigit:]]+)[[:space:]]*$", "source list --address %1") &&
             list_regex_cmd_ap->AddRegexCommand("^-[[:space:]]*$", "source list --reverse") &&
             list_regex_cmd_ap->AddRegexCommand("^-([[:digit:]]+)[[:space:]]*$", "source list --reverse --count %1") &&
+            list_regex_cmd_ap->AddRegexCommand("^([^.]+)\\.([^.]+)$", "source list --file \"%1.%2\"") &&
             list_regex_cmd_ap->AddRegexCommand("^(.+)$", "source list --name \"%1\"") &&
             list_regex_cmd_ap->AddRegexCommand("^$", "source list"))
         {

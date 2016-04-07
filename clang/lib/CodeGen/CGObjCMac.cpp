@@ -22,9 +22,9 @@
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/RecordLayout.h"
 #include "clang/AST/StmtObjC.h"
-#include "clang/Basic/CodeGenOptions.h"
 #include "clang/Basic/LangOptions.h"
 #include "clang/CodeGen/CGFunctionInfo.h"
+#include "clang/Frontend/CodeGenOptions.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallPtrSet.h"
@@ -244,8 +244,9 @@ public:
     Params.push_back(Ctx.getPointerDiffType()->getCanonicalTypeUnqualified());
     Params.push_back(Ctx.BoolTy);
     llvm::FunctionType *FTy =
-        Types.GetFunctionType(
-          Types.arrangeBuiltinFunctionDeclaration(IdType, Params));
+        Types.GetFunctionType(Types.arrangeLLVMFunctionInfo(
+            IdType, false, false, Params, FunctionType::ExtInfo(),
+            RequiredArgs::All));
     return CGM.CreateRuntimeFunction(FTy, "objc_getProperty");
   }
 
@@ -263,8 +264,9 @@ public:
     Params.push_back(Ctx.BoolTy);
     Params.push_back(Ctx.BoolTy);
     llvm::FunctionType *FTy =
-        Types.GetFunctionType(
-          Types.arrangeBuiltinFunctionDeclaration(Ctx.VoidTy, Params));
+        Types.GetFunctionType(Types.arrangeLLVMFunctionInfo(
+            Ctx.VoidTy, false, false, Params, FunctionType::ExtInfo(),
+            RequiredArgs::All));
     return CGM.CreateRuntimeFunction(FTy, "objc_setProperty");
   }
 
@@ -288,8 +290,9 @@ public:
     Params.push_back(IdType);
     Params.push_back(Ctx.getPointerDiffType()->getCanonicalTypeUnqualified());
     llvm::FunctionType *FTy =
-        Types.GetFunctionType(
-          Types.arrangeBuiltinFunctionDeclaration(Ctx.VoidTy, Params));
+        Types.GetFunctionType(Types.arrangeLLVMFunctionInfo(
+            Ctx.VoidTy, false, false, Params, FunctionType::ExtInfo(),
+            RequiredArgs::All));
     const char *name;
     if (atomic && copy)
       name = "objc_setProperty_atomic_copy";
@@ -314,8 +317,9 @@ public:
     Params.push_back(Ctx.BoolTy);
     Params.push_back(Ctx.BoolTy);
     llvm::FunctionType *FTy =
-        Types.GetFunctionType(
-          Types.arrangeBuiltinFunctionDeclaration(Ctx.VoidTy, Params));
+        Types.GetFunctionType(Types.arrangeLLVMFunctionInfo(
+            Ctx.VoidTy, false, false, Params, FunctionType::ExtInfo(),
+            RequiredArgs::All));
     return CGM.CreateRuntimeFunction(FTy, "objc_copyStruct");
   }
   
@@ -332,8 +336,10 @@ public:
     Params.push_back(Ctx.VoidPtrTy);
     Params.push_back(Ctx.VoidPtrTy);
     llvm::FunctionType *FTy =
-        Types.GetFunctionType(
-          Types.arrangeBuiltinFunctionDeclaration(Ctx.VoidTy, Params));
+      Types.GetFunctionType(Types.arrangeLLVMFunctionInfo(Ctx.VoidTy, false, false,
+                                                          Params,
+                                                          FunctionType::ExtInfo(),
+                                                          RequiredArgs::All));
     return CGM.CreateRuntimeFunction(FTy, "objc_copyCppObjectAtomic");
   }
   
@@ -344,23 +350,10 @@ public:
     SmallVector<CanQualType,1> Params;
     Params.push_back(Ctx.getCanonicalParamType(Ctx.getObjCIdType()));
     llvm::FunctionType *FTy =
-        Types.GetFunctionType(
-          Types.arrangeBuiltinFunctionDeclaration(Ctx.VoidTy, Params));
+        Types.GetFunctionType(Types.arrangeLLVMFunctionInfo(
+            Ctx.VoidTy, false, false, Params, FunctionType::ExtInfo(),
+            RequiredArgs::All));
     return CGM.CreateRuntimeFunction(FTy, "objc_enumerationMutation");
-  }
-
-  llvm::Constant *getLookUpClassFn() {
-    CodeGen::CodeGenTypes &Types = CGM.getTypes();
-    ASTContext &Ctx = CGM.getContext();
-    // Class objc_lookUpClass (const char *)
-    SmallVector<CanQualType,1> Params;
-    Params.push_back(
-      Ctx.getCanonicalType(Ctx.getPointerType(Ctx.CharTy.withConst())));
-    llvm::FunctionType *FTy =
-        Types.GetFunctionType(Types.arrangeBuiltinFunctionDeclaration(
-                                Ctx.getCanonicalType(Ctx.getObjCClassType()),
-                                Params));
-    return CGM.CreateRuntimeFunction(FTy, "objc_lookUpClass");
   }
 
   /// GcReadWeakFn -- LLVM objc_read_weak (id *src) function.
@@ -583,6 +576,7 @@ public:
     return CGM.CreateRuntimeFunction(
       llvm::FunctionType::get(CGM.Int32Ty, params, false),
       "objc_exception_match");
+
   }
 
   /// SetJmpFn - LLVM _setjmp function.
@@ -606,6 +600,7 @@ public:
 /// modern abi
 class ObjCNonFragileABITypesHelper : public ObjCCommonTypesHelper {
 public:
+
   // MethodListnfABITy - LLVM for struct _method_list_t
   llvm::StructType *MethodListnfABITy;
 
@@ -995,12 +990,6 @@ protected:
   /// defined. The return value has type ProtocolPtrTy.
   llvm::Constant *GetProtocolRef(const ObjCProtocolDecl *PD);
 
-  /// Return a reference to the given Class using runtime calls rather than
-  /// by a symbol reference.
-  llvm::Value *EmitClassRefViaRuntime(CodeGenFunction &CGF,
-                                      const ObjCInterfaceDecl *ID,
-                                      ObjCCommonTypesHelper &ObjCTypes);
-
 public:
   /// CreateMetadataVar - Create a global variable with internal
   /// linkage for use by the Objective-C runtime.
@@ -1269,9 +1258,9 @@ public:
 
   /// GetClassGlobal - Return the global variable for the Objective-C
   /// class of the given name.
-  llvm::Constant *GetClassGlobal(StringRef Name,
-                                       bool ForDefinition,
-                                       bool Weak = false) override {
+  llvm::Constant *GetClassGlobal(const std::string &Name,
+                                 bool ForDefinition,
+                                 bool Weak) override {
     llvm_unreachable("CGObjCMac::GetClassGlobal");
   }
 };
@@ -1372,7 +1361,8 @@ private:
   
   /// GetClassGlobal - Return the global variable for the Objective-C
   /// class of the given name.
-  llvm::Constant *GetClassGlobal(StringRef Name, bool ForDefinition,
+  llvm::Constant *GetClassGlobal(const std::string &Name,
+                                 bool ForDefinition,
                                  bool Weak) override;
 
   /// EmitClassRef - Return a Value*, of type ObjCTypes.ClassPtrTy,
@@ -1521,15 +1511,12 @@ public:
   llvm::Constant *GetSetStructFunction() override {
     return ObjCTypes.getCopyStructFn();
   }
-
   llvm::Constant *GetGetStructFunction() override {
     return ObjCTypes.getCopyStructFn();
   }
-
   llvm::Constant *GetCppAtomicObjectSetFunction() override {
     return ObjCTypes.getCppAtomicObjectFunction();
   }
-
   llvm::Constant *GetCppAtomicObjectGetFunction() override {
     return ObjCTypes.getCppAtomicObjectFunction();
   }
@@ -2045,7 +2032,6 @@ namespace {
     bool IsDisordered = false;
 
     llvm::SmallVector<IvarInfo, 8> IvarsInfo;
-
   public:
     IvarLayoutBuilder(CodeGenModule &CGM, CharUnits instanceBegin,
                       CharUnits instanceEnd, bool forStrongLayout)
@@ -2081,7 +2067,7 @@ namespace {
       printf("\n");
     }
   };
-} // end anonymous namespace
+}
 
 llvm::Constant *CGObjCCommonMac::BuildGCBlockLayout(CodeGenModule &CGM,
                                                 const CGBlockInfo &blockInfo) {
@@ -2159,6 +2145,7 @@ void IvarLayoutBuilder::visitBlock(const CGBlockInfo &blockInfo) {
     }
   }
 }
+
 
 /// getBlockCaptureLifetime - This routine returns life time of the captured
 /// block variable for the purpose of block layout meta-data generation. FQT is
@@ -2647,6 +2634,7 @@ llvm::Constant *CGObjCCommonMac::BuildRCBlockLayout(CodeGenModule &CGM,
   return getBitmapBlockLayout(false);
 }
 
+
 llvm::Constant *CGObjCCommonMac::BuildByrefLayout(CodeGen::CodeGenModule &CGM,
                                                   QualType T) {
   assert(CGM.getLangOpts().getGC() == LangOptions::NonGC);
@@ -2692,25 +2680,6 @@ llvm::Constant *CGObjCCommonMac::GetProtocolRef(const ObjCProtocolDecl *PD) {
     return GetOrEmitProtocol(PD);
   
   return GetOrEmitProtocolRef(PD);
-}
-
-llvm::Value *CGObjCCommonMac::EmitClassRefViaRuntime(
-               CodeGenFunction &CGF,
-               const ObjCInterfaceDecl *ID,
-               ObjCCommonTypesHelper &ObjCTypes) {
-  llvm::Constant *lookUpClassFn = ObjCTypes.getLookUpClassFn();
-
-  llvm::Value *className =
-      CGF.CGM.GetAddrOfConstantCString(ID->getObjCRuntimeNameAsString())
-        .getPointer();
-  ASTContext &ctx = CGF.CGM.getContext();
-  className =
-      CGF.Builder.CreateBitCast(className,
-                                CGF.ConvertType(
-                                  ctx.getPointerType(ctx.CharTy.withConst())));
-  llvm::CallInst *call = CGF.Builder.CreateCall(lookUpClassFn, className);
-  call->setDoesNotThrow();
-  return call;
 }
 
 /*
@@ -3675,7 +3644,6 @@ llvm::Constant *CGObjCMac::GetOptimizedPropertySetFunction(bool atomic,
 llvm::Constant *CGObjCMac::GetGetStructFunction() {
   return ObjCTypes.getCopyStructFn();
 }
-
 llvm::Constant *CGObjCMac::GetSetStructFunction() {
   return ObjCTypes.getCopyStructFn();
 }
@@ -3683,7 +3651,6 @@ llvm::Constant *CGObjCMac::GetSetStructFunction() {
 llvm::Constant *CGObjCMac::GetCppAtomicObjectGetFunction() {
   return ObjCTypes.getCppAtomicObjectFunction();
 }
-
 llvm::Constant *CGObjCMac::GetCppAtomicObjectSetFunction() {
   return ObjCTypes.getCppAtomicObjectFunction();
 }
@@ -3781,7 +3748,7 @@ namespace {
     void emitWriteHazard();
     void emitHazardsInNewBlocks();
   };
-} // end anonymous namespace
+}
 
 /// Create the fragile-ABI read and write hazards based on the current
 /// state of the function, which is presumed to be immediately prior
@@ -4402,6 +4369,7 @@ void CGObjCMac::EmitObjCWeakAssign(CodeGen::CodeGenFunction &CGF,
   llvm::Value *args[] = { src, dst.getPointer() };
   CGF.EmitNounwindRuntimeCall(ObjCTypes.getGcAssignWeakFn(),
                               args, "weakassign");
+  return;
 }
 
 /// EmitObjCGlobalAssign - Code gen for assigning to a __strong object.
@@ -4427,6 +4395,7 @@ void CGObjCMac::EmitObjCGlobalAssign(CodeGen::CodeGenFunction &CGF,
   else
     CGF.EmitNounwindRuntimeCall(ObjCTypes.getGcAssignThreadLocalFn(),
                                 args, "threadlocalassign");
+  return;
 }
 
 /// EmitObjCIvarAssign - Code gen for assigning to a __strong object.
@@ -4448,6 +4417,7 @@ void CGObjCMac::EmitObjCIvarAssign(CodeGen::CodeGenFunction &CGF,
   dst = CGF.Builder.CreateBitCast(dst, ObjCTypes.PtrObjectPtrTy);
   llvm::Value *args[] = { src, dst.getPointer(), ivarOffset };
   CGF.EmitNounwindRuntimeCall(ObjCTypes.getGcAssignIvarFn(), args);
+  return;
 }
 
 /// EmitObjCStrongCastAssign - Code gen for assigning to a __strong cast object.
@@ -4468,6 +4438,7 @@ void CGObjCMac::EmitObjCStrongCastAssign(CodeGen::CodeGenFunction &CGF,
   llvm::Value *args[] = { src, dst.getPointer() };
   CGF.EmitNounwindRuntimeCall(ObjCTypes.getGcAssignStrongCastFn(),
                               args, "strongassign");
+  return;
 }
 
 void CGObjCMac::EmitGCMemmoveCollectable(CodeGen::CodeGenFunction &CGF,
@@ -4673,11 +4644,6 @@ llvm::Value *CGObjCMac::EmitClassRefFromId(CodeGenFunction &CGF,
 
 llvm::Value *CGObjCMac::EmitClassRef(CodeGenFunction &CGF,
                                      const ObjCInterfaceDecl *ID) {
-  // If the class has the objc_runtime_visible attribute, we need to
-  // use the Objective-C runtime to get the class.
-  if (ID->hasAttr<ObjCRuntimeVisibleAttr>())
-    return EmitClassRefViaRuntime(CGF, ID, ObjCTypes);
-
   return EmitClassRefFromId(CGF, ID->getIdentifier());
 }
 
@@ -5299,6 +5265,7 @@ ObjCCommonTypesHelper::ObjCCommonTypesHelper(CodeGen::CodeGenModule &cgm)
   // struct _objc_cache *
   CacheTy = llvm::StructType::create(VMContext, "struct._objc_cache");
   CachePtrTy = llvm::PointerType::getUnqual(CacheTy);
+    
 }
 
 ObjCTypesHelper::ObjCTypesHelper(CodeGen::CodeGenModule &cgm)
@@ -5484,6 +5451,7 @@ ObjCTypesHelper::ObjCTypesHelper(CodeGen::CodeGenModule &cgm)
     llvm::StructType::create("struct._objc_exception_data",
                              llvm::ArrayType::get(CGM.Int32Ty,SetJmpBufferSize),
                              StackPtrTy, nullptr);
+
 }
 
 ObjCNonFragileABITypesHelper::ObjCNonFragileABITypesHelper(CodeGen::CodeGenModule &cgm)
@@ -6890,9 +6858,10 @@ CGObjCNonFragileABIMac::GenerateMessageSend(CodeGen::CodeGenFunction &CGF,
                       false, CallArgs, Method, Class, ObjCTypes);
 }
 
-llvm::Constant *CGObjCNonFragileABIMac::GetClassGlobal(StringRef Name,
-                                                       bool ForDefinition,
-                                                       bool Weak) {
+llvm::Constant *
+CGObjCNonFragileABIMac::GetClassGlobal(const std::string &Name,
+                                       bool ForDefinition,
+                                       bool Weak) {
   llvm::GlobalValue::LinkageTypes L =
       Weak ? llvm::GlobalValue::ExternalWeakLinkage
            : llvm::GlobalValue::ExternalLinkage;
@@ -6938,11 +6907,6 @@ llvm::Value *CGObjCNonFragileABIMac::EmitClassRefFromId(CodeGenFunction &CGF,
 
 llvm::Value *CGObjCNonFragileABIMac::EmitClassRef(CodeGenFunction &CGF,
                                                   const ObjCInterfaceDecl *ID) {
-  // If the class has the objc_runtime_visible attribute, we need to
-  // use the Objective-C runtime to get the class.
-  if (ID->hasAttr<ObjCRuntimeVisibleAttr>())
-    return EmitClassRefViaRuntime(CGF, ID, ObjCTypes);
-
   return EmitClassRefFromId(CGF, ID->getIdentifier(), ID->isWeakImported(), ID);
 }
 

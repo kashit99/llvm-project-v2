@@ -468,9 +468,6 @@ class BitsInit final : public TypedInit, public FoldingSetNode,
   BitsInit &operator=(const BitsInit &Other) = delete;
 
 public:
-  // Do not use sized deallocation due to trailing objects.
-  void operator delete(void *p) { ::operator delete(p); }
-
   static bool classof(const Init *I) {
     return I->getKind() == IK_BitsInit;
   }
@@ -604,9 +601,6 @@ private:
   ListInit &operator=(const ListInit &Other) = delete;
 
 public:
-  // Do not use sized deallocation due to trailing objects.
-  void operator delete(void *p) { ::operator delete(p); }
-
   static bool classof(const Init *I) {
     return I->getKind() == IK_ListInit;
   }
@@ -1313,14 +1307,9 @@ public:
   }
 
   bool isSubClassOf(StringRef Name) const {
-    for (const auto &SCPair : SuperClasses) {
-      if (const auto *SI = dyn_cast<StringInit>(SCPair.first->getNameInit())) {
-        if (SI->getValue() == Name)
-          return true;
-      } else if (SCPair.first->getNameInitAsString() == Name) {
+    for (const auto &SCPair : SuperClasses)
+      if (SCPair.first->getNameInitAsString() == Name)
         return true;
-      }
-    }
     return false;
   }
 

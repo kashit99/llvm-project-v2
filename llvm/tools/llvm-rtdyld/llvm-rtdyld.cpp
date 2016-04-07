@@ -254,9 +254,9 @@ uint8_t *TrivialMemoryManager::allocateDataSection(uintptr_t Size,
 
 static const char *ProgramName;
 
-static void ErrorAndExit(const Twine &Msg) {
+static int Error(const Twine &Msg) {
   errs() << ProgramName << ": error: " << Msg << "\n";
-  exit(1);
+  return 1;
 }
 
 static void loadDylibs() {
@@ -290,18 +290,13 @@ static int printLineInfoForInput(bool LoadObjects, bool UseDebugObj) {
     ErrorOr<std::unique_ptr<MemoryBuffer>> InputBuffer =
         MemoryBuffer::getFileOrSTDIN(File);
     if (std::error_code EC = InputBuffer.getError())
-      ErrorAndExit("unable to read input: '" + EC.message() + "'");
+      return Error("unable to read input: '" + EC.message() + "'");
 
-    Expected<std::unique_ptr<ObjectFile>> MaybeObj(
+    ErrorOr<std::unique_ptr<ObjectFile>> MaybeObj(
       ObjectFile::createObjectFile((*InputBuffer)->getMemBufferRef()));
 
-    if (!MaybeObj) {
-      std::string Buf;
-      raw_string_ostream OS(Buf);
-      logAllUnhandledErrors(MaybeObj.takeError(), OS, "");
-      OS.flush();
-      ErrorAndExit("unable to create object file: '" + Buf + "'");
-    }
+    if (std::error_code EC = MaybeObj.getError())
+      return Error("unable to create object file: '" + EC.message() + "'");
 
     ObjectFile &Obj = **MaybeObj;
 
@@ -314,7 +309,7 @@ static int printLineInfoForInput(bool LoadObjects, bool UseDebugObj) {
         Dyld.loadObject(Obj);
 
       if (Dyld.hasError())
-        ErrorAndExit(Dyld.getErrorString());
+        return Error(Dyld.getErrorString());
 
       // Resolve all the relocations we can.
       Dyld.resolveRelocations();
@@ -335,11 +330,7 @@ static int printLineInfoForInput(bool LoadObjects, bool UseDebugObj) {
     // Use symbol info to iterate functions in the object.
     for (const auto &P : SymAddr) {
       object::SymbolRef Sym = P.first;
-      ErrorOr<SymbolRef::Type> TypeOrErr = Sym.getType();
-      if (!TypeOrErr)
-        continue;
-      SymbolRef::Type Type = *TypeOrErr;
-      if (Type == object::SymbolRef::ST_Function) {
+      if (Sym.getType() == object::SymbolRef::ST_Function) {
         ErrorOr<StringRef> Name = Sym.getName();
         if (!Name)
           continue;
@@ -405,24 +396,19 @@ static int executeInput() {
     ErrorOr<std::unique_ptr<MemoryBuffer>> InputBuffer =
         MemoryBuffer::getFileOrSTDIN(File);
     if (std::error_code EC = InputBuffer.getError())
-      ErrorAndExit("unable to read input: '" + EC.message() + "'");
-    Expected<std::unique_ptr<ObjectFile>> MaybeObj(
+      return Error("unable to read input: '" + EC.message() + "'");
+    ErrorOr<std::unique_ptr<ObjectFile>> MaybeObj(
       ObjectFile::createObjectFile((*InputBuffer)->getMemBufferRef()));
 
-    if (!MaybeObj) {
-      std::string Buf;
-      raw_string_ostream OS(Buf);
-      logAllUnhandledErrors(MaybeObj.takeError(), OS, "");
-      OS.flush();
-      ErrorAndExit("unable to create object file: '" + Buf + "'");
-    }
+    if (std::error_code EC = MaybeObj.getError())
+      return Error("unable to create object file: '" + EC.message() + "'");
 
     ObjectFile &Obj = **MaybeObj;
 
     // Load the object file
     Dyld.loadObject(Obj);
     if (Dyld.hasError()) {
-      ErrorAndExit(Dyld.getErrorString());
+      return Error(Dyld.getErrorString());
     }
   }
 
@@ -433,7 +419,7 @@ static int executeInput() {
   // Get the address of the entry point (_main by default).
   void *MainAddress = Dyld.getSymbolLocalAddress(EntryPoint);
   if (!MainAddress)
-    ErrorAndExit("no definition for '" + EntryPoint + "'");
+    return Error("no definition for '" + EntryPoint + "'");
 
   // Invalidate the instruction cache for each loaded function.
   for (auto &FM : MemMgr.FunctionMemory) {
@@ -442,7 +428,7 @@ static int executeInput() {
     // setExecutable will call InvalidateInstructionCache.
     std::string ErrorStr;
     if (!sys::Memory::setExecutable(FM, &ErrorStr))
-      ErrorAndExit("unable to mark function executable: '" + ErrorStr + "'");
+      return Error("unable to mark function executable: '" + ErrorStr + "'");
   }
 
   // Dispatch to _main().
@@ -462,12 +448,12 @@ static int checkAllExpressions(RuntimeDyldChecker &Checker) {
     ErrorOr<std::unique_ptr<MemoryBuffer>> CheckerFileBuf =
         MemoryBuffer::getFileOrSTDIN(CheckerFileName);
     if (std::error_code EC = CheckerFileBuf.getError())
-      ErrorAndExit("unable to read input '" + CheckerFileName + "': " +
+      return Error("unable to read input '" + CheckerFileName + "': " +
                    EC.message());
 
     if (!Checker.checkAllRulesInBuffer("# rtdyld-check:",
                                        CheckerFileBuf.get().get()))
-      ErrorAndExit("some checks in '" + CheckerFileName + "' failed");
+      return Error("some checks in '" + CheckerFileName + "' failed");
   }
   return 0;
 }
@@ -616,7 +602,7 @@ static int linkAndVerify() {
 
   // Check for missing triple.
   if (TripleName == "")
-    ErrorAndExit("-triple required when running in -verify mode.");
+    return Error("-triple required when running in -verify mode.");
 
   // Look up the target and build the disassembler.
   Triple TheTriple(Triple::normalize(TripleName));
@@ -624,29 +610,29 @@ static int linkAndVerify() {
   const Target *TheTarget =
     TargetRegistry::lookupTarget("", TheTriple, ErrorStr);
   if (!TheTarget)
-    ErrorAndExit("Error accessing target '" + TripleName + "': " + ErrorStr);
+    return Error("Error accessing target '" + TripleName + "': " + ErrorStr);
 
   TripleName = TheTriple.getTriple();
 
   std::unique_ptr<MCSubtargetInfo> STI(
     TheTarget->createMCSubtargetInfo(TripleName, MCPU, ""));
   if (!STI)
-    ErrorAndExit("Unable to create subtarget info!");
+    return Error("Unable to create subtarget info!");
 
   std::unique_ptr<MCRegisterInfo> MRI(TheTarget->createMCRegInfo(TripleName));
   if (!MRI)
-    ErrorAndExit("Unable to create target register info!");
+    return Error("Unable to create target register info!");
 
   std::unique_ptr<MCAsmInfo> MAI(TheTarget->createMCAsmInfo(*MRI, TripleName));
   if (!MAI)
-    ErrorAndExit("Unable to create target asm info!");
+    return Error("Unable to create target asm info!");
 
   MCContext Ctx(MAI.get(), MRI.get(), nullptr);
 
   std::unique_ptr<MCDisassembler> Disassembler(
     TheTarget->createMCDisassembler(*STI, Ctx));
   if (!Disassembler)
-    ErrorAndExit("Unable to create disassembler!");
+    return Error("Unable to create disassembler!");
 
   std::unique_ptr<MCInstrInfo> MII(TheTarget->createMCInstrInfo());
 
@@ -673,25 +659,20 @@ static int linkAndVerify() {
         MemoryBuffer::getFileOrSTDIN(Filename);
 
     if (std::error_code EC = InputBuffer.getError())
-      ErrorAndExit("unable to read input: '" + EC.message() + "'");
+      return Error("unable to read input: '" + EC.message() + "'");
 
-    Expected<std::unique_ptr<ObjectFile>> MaybeObj(
+    ErrorOr<std::unique_ptr<ObjectFile>> MaybeObj(
       ObjectFile::createObjectFile((*InputBuffer)->getMemBufferRef()));
 
-    if (!MaybeObj) {
-      std::string Buf;
-      raw_string_ostream OS(Buf);
-      logAllUnhandledErrors(MaybeObj.takeError(), OS, "");
-      OS.flush();
-      ErrorAndExit("unable to create object file: '" + Buf + "'");
-    }
+    if (std::error_code EC = MaybeObj.getError())
+      return Error("unable to create object file: '" + EC.message() + "'");
 
     ObjectFile &Obj = **MaybeObj;
 
     // Load the object file
     Dyld.loadObject(Obj);
     if (Dyld.hasError()) {
-      ErrorAndExit(Dyld.getErrorString());
+      return Error(Dyld.getErrorString());
     }
   }
 
@@ -707,7 +688,7 @@ static int linkAndVerify() {
 
   int ErrorCode = checkAllExpressions(Checker);
   if (Dyld.hasError())
-    ErrorAndExit("RTDyld reported an error applying relocations:\n  " +
+    return Error("RTDyld reported an error applying relocations:\n  " +
                  Dyld.getErrorString());
 
   return ErrorCode;

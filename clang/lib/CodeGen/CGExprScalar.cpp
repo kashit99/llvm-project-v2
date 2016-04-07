@@ -21,8 +21,8 @@
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/RecordLayout.h"
 #include "clang/AST/StmtVisitor.h"
-#include "clang/Basic/CodeGenOptions.h"
 #include "clang/Basic/TargetInfo.h"
+#include "clang/Frontend/CodeGenOptions.h"
 #include "llvm/IR/CFG.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DataLayout.h"
@@ -1652,14 +1652,13 @@ ScalarExprEmitter::EmitScalarPrePostIncDec(const UnaryOperator *E, LValue LV,
       llvm::Value *True = CGF.EmitToMemory(Builder.getTrue(), type);
       if (isPre) {
         Builder.CreateStore(True, LV.getAddress(), LV.isVolatileQualified())
-          ->setAtomic(llvm::AtomicOrdering::SequentiallyConsistent);
+          ->setAtomic(llvm::SequentiallyConsistent);
         return Builder.getTrue();
       }
       // For atomic bool increment, we just store true and return it for
       // preincrement, do an atomic swap with true for postincrement
-      return Builder.CreateAtomicRMW(
-          llvm::AtomicRMWInst::Xchg, LV.getPointer(), True,
-          llvm::AtomicOrdering::SequentiallyConsistent);
+        return Builder.CreateAtomicRMW(llvm::AtomicRMWInst::Xchg,
+            LV.getPointer(), True, llvm::SequentiallyConsistent);
     }
     // Special case for atomic increment / decrement on integers, emit
     // atomicrmw instructions.  We skip this if we want to be doing overflow
@@ -1676,7 +1675,7 @@ ScalarExprEmitter::EmitScalarPrePostIncDec(const UnaryOperator *E, LValue LV,
       llvm::Value *amt = CGF.EmitToMemory(
           llvm::ConstantInt::get(ConvertType(type), 1, true), type);
       llvm::Value *old = Builder.CreateAtomicRMW(aop,
-          LV.getPointer(), amt, llvm::AtomicOrdering::SequentiallyConsistent);
+          LV.getPointer(), amt, llvm::SequentiallyConsistent);
       return isPre ? Builder.CreateBinOp(op, old, amt) : old;
     }
     value = EmitLoadOfLValue(LV, E->getExprLoc());
@@ -2158,7 +2157,7 @@ LValue ScalarExprEmitter::EmitCompoundAssignLValue(
                                  E->getExprLoc()),
             LHSTy);
         Builder.CreateAtomicRMW(aop, LHSLV.getPointer(), amt,
-            llvm::AtomicOrdering::SequentiallyConsistent);
+            llvm::SequentiallyConsistent);
         return LHSLV;
       }
     }
@@ -3367,11 +3366,9 @@ Value *ScalarExprEmitter::VisitVAArgExpr(VAArgExpr *VE) {
 
   llvm::Type *ArgTy = ConvertType(VE->getType());
 
-  // If EmitVAArg fails, emit an error.
-  if (!ArgPtr.isValid()) {
-    CGF.ErrorUnsupported(VE, "va_arg expression");
-    return llvm::UndefValue::get(ArgTy);
-  }
+  // If EmitVAArg fails, we fall back to the LLVM instruction.
+  if (!ArgPtr.isValid())
+    return Builder.CreateVAArg(ArgValue.getPointer(), ArgTy);
 
   // FIXME Volatility.
   llvm::Value *Val = Builder.CreateLoad(ArgPtr);

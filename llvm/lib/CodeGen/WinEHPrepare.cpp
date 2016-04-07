@@ -254,19 +254,13 @@ static void calculateCXXStateNumbers(WinEHFuncInfo &FuncInfo,
       FuncInfo.FuncletBaseStateMap[CatchPad] = CatchLow;
       for (const User *U : CatchPad->users()) {
         const auto *UserI = cast<Instruction>(U);
-        if (auto *InnerCatchSwitch = dyn_cast<CatchSwitchInst>(UserI)) {
-          BasicBlock *UnwindDest = InnerCatchSwitch->getUnwindDest();
-          if (!UnwindDest || UnwindDest == CatchSwitch->getUnwindDest())
+        if (auto *InnerCatchSwitch = dyn_cast<CatchSwitchInst>(UserI))
+          if (InnerCatchSwitch->getUnwindDest() == CatchSwitch->getUnwindDest())
             calculateCXXStateNumbers(FuncInfo, UserI, CatchLow);
-        }
-        if (auto *InnerCleanupPad = dyn_cast<CleanupPadInst>(UserI)) {
-          BasicBlock *UnwindDest = getCleanupRetUnwindDest(InnerCleanupPad);
-          // If a nested cleanup pad reports a null unwind destination and the
-          // enclosing catch pad doesn't it must be post-dominated by an
-          // unreachable instruction.
-          if (!UnwindDest || UnwindDest == CatchSwitch->getUnwindDest())
+        if (auto *InnerCleanupPad = dyn_cast<CleanupPadInst>(UserI))
+          if (getCleanupRetUnwindDest(InnerCleanupPad) ==
+              CatchSwitch->getUnwindDest())
             calculateCXXStateNumbers(FuncInfo, UserI, CatchLow);
-        }
       }
     }
     int CatchHigh = FuncInfo.getLastStateNumber();
@@ -363,19 +357,13 @@ static void calculateSEHStateNumbers(WinEHFuncInfo &FuncInfo,
     // outside the __try.
     for (const User *U : CatchPad->users()) {
       const auto *UserI = cast<Instruction>(U);
-      if (auto *InnerCatchSwitch = dyn_cast<CatchSwitchInst>(UserI)) {
-        BasicBlock *UnwindDest = InnerCatchSwitch->getUnwindDest();
-        if (!UnwindDest || UnwindDest == CatchSwitch->getUnwindDest())
+      if (auto *InnerCatchSwitch = dyn_cast<CatchSwitchInst>(UserI))
+        if (InnerCatchSwitch->getUnwindDest() == CatchSwitch->getUnwindDest())
           calculateSEHStateNumbers(FuncInfo, UserI, ParentState);
-      }
-      if (auto *InnerCleanupPad = dyn_cast<CleanupPadInst>(UserI)) {
-        BasicBlock *UnwindDest = getCleanupRetUnwindDest(InnerCleanupPad);
-        // If a nested cleanup pad reports a null unwind destination and the
-        // enclosing catch pad doesn't it must be post-dominated by an
-        // unreachable instruction.
-        if (!UnwindDest || UnwindDest == CatchSwitch->getUnwindDest())
+      if (auto *InnerCleanupPad = dyn_cast<CleanupPadInst>(UserI))
+        if (getCleanupRetUnwindDest(InnerCleanupPad) ==
+            CatchSwitch->getUnwindDest())
           calculateSEHStateNumbers(FuncInfo, UserI, ParentState);
-      }
     }
   } else {
     auto *CleanupPad = cast<CleanupPadInst>(FirstNonPHI);
@@ -787,7 +775,7 @@ void WinEHPrepare::cloneCommonBlocks(Function &F) {
       // Loop over all instructions, fixing each one as we find it...
       for (Instruction &I : *BB)
         RemapInstruction(&I, VMap,
-                         RF_IgnoreMissingLocals | RF_NoModuleLevelChanges);
+                         RF_IgnoreMissingEntries | RF_NoModuleLevelChanges);
 
     // Catchrets targeting cloned blocks need to be updated separately from
     // the loop above because they are not in the current funclet.
@@ -948,11 +936,10 @@ void WinEHPrepare::removeImplausibleInstructions(Function &F) {
         if (FuncletBundleOperand == FuncletPad)
           continue;
 
-        // Skip call sites which are nounwind intrinsics or inline asm.
+        // Skip call sites which are nounwind intrinsics.
         auto *CalledFn =
             dyn_cast<Function>(CS.getCalledValue()->stripPointerCasts());
-        if (CalledFn && ((CalledFn->isIntrinsic() && CS.doesNotThrow()) ||
-                         CS.isInlineAsm()))
+        if (CalledFn && CalledFn->isIntrinsic() && CS.doesNotThrow())
           continue;
 
         // This call site was not part of this funclet, remove it.

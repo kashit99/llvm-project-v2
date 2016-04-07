@@ -248,9 +248,8 @@ GoUserExpression::GoUserExpression(ExecutionContextScope &exe_scope, const char 
 }
 
 bool
-GoUserExpression::Parse(DiagnosticManager &diagnostic_manager, ExecutionContext &exe_ctx,
-                        lldb_private::ExecutionPolicy execution_policy, bool keep_result_in_memory,
-                        bool generate_debug_info)
+GoUserExpression::Parse(DiagnosticManager &diagnostic_manager, ExecutionContext &exe_ctx, lldb_private::ExecutionPolicy execution_policy,
+                        bool keep_result_in_memory, bool generate_debug_info, uint32_t line_offset)
 {
     InstallContext(exe_ctx);
     m_interpreter.reset(new GoInterpreter(exe_ctx, GetUserText()));
@@ -733,7 +732,7 @@ GoPersistentExpressionState::GoPersistentExpressionState() : PersistentExpressio
 }
 
 ConstString
-GoPersistentExpressionState::GetNextPersistentVariableName()
+GoPersistentExpressionState::GetNextPersistentVariableName(bool is_error)
 {
     char name_cstr[256];
     // We can't use the same variable format as clang.

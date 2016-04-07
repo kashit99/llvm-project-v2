@@ -23,7 +23,7 @@
 #include "clang/AST/Mangle.h"
 #include "clang/AST/RecordLayout.h"
 #include "clang/AST/StmtCXX.h"
-#include "clang/Basic/CodeGenOptions.h"
+#include "clang/Frontend/CodeGenOptions.h"
 #include "llvm/ADT/StringExtras.h"
 using namespace clang;
 using namespace CodeGen;
@@ -164,7 +164,7 @@ bool CodeGenModule::TryEmitDefinitionAsAlias(GlobalDecl AliasDecl,
     // members with attribute "AlwaysInline" and expect no reference to
     // be generated. It is desirable to reenable this optimisation after
     // corresponding LLVM changes.
-    addReplacement(MangledName, Aliasee);
+    Replacements[MangledName] = Aliasee;
     return false;
   }
 

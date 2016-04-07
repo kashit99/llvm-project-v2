@@ -25,8 +25,15 @@ class MipsRegisterInfo : public MipsGenRegisterInfo {
 public:
   MipsRegisterInfo();
 
+  /// getRegisterNumbering - Given the enum value for some register, e.g.
+  /// Mips::RA, return the number that it corresponds to (e.g. 31).
+  static unsigned getRegisterNumbering(unsigned RegEnum);
+
   /// Get PIC indirect call register
   static unsigned getPICCallReg();
+
+  /// Adjust the Mips stack frame.
+  void adjustMipsStackFrame(MachineFunction &MF) const;
 
   /// Code Generation virtual methods...
   const TargetRegisterClass *getPointerRegClass(const MachineFunction &MF,
@@ -49,6 +56,9 @@ public:
   void eliminateFrameIndex(MachineBasicBlock::iterator II,
                            int SPAdj, unsigned FIOperandNum,
                            RegScavenger *RS = nullptr) const override;
+
+  void processFunctionBeforeFrameFinalized(MachineFunction &MF,
+                                       RegScavenger *RS = nullptr) const;
 
   // Stack realignment queries.
   bool canRealignStack(const MachineFunction &MF) const override;

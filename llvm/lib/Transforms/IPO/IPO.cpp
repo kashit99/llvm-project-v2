@@ -18,7 +18,6 @@
 #include "llvm/InitializePasses.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/Transforms/IPO.h"
-#include "llvm/Transforms/IPO/FunctionAttrs.h"
 
 using namespace llvm;
 
@@ -42,7 +41,7 @@ void llvm::initializeIPO(PassRegistry &Registry) {
   initializeLowerBitSetsPass(Registry);
   initializeMergeFunctionsPass(Registry);
   initializePartialInlinerPass(Registry);
-  initializePostOrderFunctionAttrsLegacyPassPass(Registry);
+  initializePostOrderFunctionAttrsPass(Registry);
   initializeReversePostOrderFunctionAttrsPass(Registry);
   initializePruneEHPass(Registry);
   initializeStripDeadPrototypesLegacyPassPass(Registry);
@@ -54,7 +53,6 @@ void llvm::initializeIPO(PassRegistry &Registry) {
   initializeEliminateAvailableExternallyPass(Registry);
   initializeSampleProfileLoaderPass(Registry);
   initializeFunctionImportPassPass(Registry);
-  initializeWholeProgramDevirtPass(Registry);
 }
 
 void LLVMInitializeIPO(LLVMPassRegistryRef R) {
@@ -74,7 +72,7 @@ void LLVMAddDeadArgEliminationPass(LLVMPassManagerRef PM) {
 }
 
 void LLVMAddFunctionAttrsPass(LLVMPassManagerRef PM) {
-  unwrap(PM)->add(createPostOrderFunctionAttrsLegacyPass());
+  unwrap(PM)->add(createPostOrderFunctionAttrsPass());
 }
 
 void LLVMAddFunctionInliningPass(LLVMPassManagerRef PM) {

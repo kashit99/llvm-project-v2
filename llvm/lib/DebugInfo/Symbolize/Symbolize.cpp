@@ -31,10 +31,7 @@
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
-#include <algorithm>
-#include <cassert>
-#include <cstdlib>
-#include <cstring>
+#include <stdlib.h>
 
 #if defined(_MSC_VER)
 #include <Windows.h>
@@ -119,12 +116,11 @@ void LLVMSymbolizer::flush() {
   Modules.clear();
 }
 
-namespace {
-
 // For Path="/path/to/foo" and Basename="foo" assume that debug info is in
 // /path/to/foo.dSYM/Contents/Resources/DWARF/foo.
 // For Path="/path/to/bar.dSYM" and Basename="foo" assume that debug info is in
 // /path/to/bar.dSYM/Contents/Resources/DWARF/foo.
+static
 std::string getDarwinDWARFResourceForPath(
     const std::string &Path, const std::string &Basename) {
   SmallString<16> ResourceName = StringRef(Path);
@@ -136,7 +132,7 @@ std::string getDarwinDWARFResourceForPath(
   return ResourceName.str();
 }
 
-bool checkFileCRC(StringRef Path, uint32_t CRCHash) {
+static bool checkFileCRC(StringRef Path, uint32_t CRCHash) {
   ErrorOr<std::unique_ptr<MemoryBuffer>> MB =
       MemoryBuffer::getFileOrSTDIN(Path);
   if (!MB)
@@ -144,9 +140,9 @@ bool checkFileCRC(StringRef Path, uint32_t CRCHash) {
   return !zlib::isAvailable() || CRCHash == zlib::crc32(MB.get()->getBuffer());
 }
 
-bool findDebugBinary(const std::string &OrigPath,
-                     const std::string &DebuglinkName, uint32_t CRCHash,
-                     std::string &Result) {
+static bool findDebugBinary(const std::string &OrigPath,
+                            const std::string &DebuglinkName, uint32_t CRCHash,
+                            std::string &Result) {
   std::string OrigRealPath = OrigPath;
 #if defined(HAVE_REALPATH)
   if (char *RP = realpath(OrigPath.c_str(), nullptr)) {
@@ -181,8 +177,8 @@ bool findDebugBinary(const std::string &OrigPath,
   return false;
 }
 
-bool getGNUDebuglinkContents(const ObjectFile *Obj, std::string &DebugName,
-                             uint32_t &CRCHash) {
+static bool getGNUDebuglinkContents(const ObjectFile *Obj, std::string &DebugName,
+                                    uint32_t &CRCHash) {
   if (!Obj)
     return false;
   for (const SectionRef &Section : Obj->sections()) {
@@ -209,6 +205,7 @@ bool getGNUDebuglinkContents(const ObjectFile *Obj, std::string &DebugName,
   return false;
 }
 
+static
 bool darwinDsymMatchesBinary(const MachOObjectFile *DbgObj,
                              const MachOObjectFile *Obj) {
   ArrayRef<uint8_t> dbg_uuid = DbgObj->getUuid();
@@ -217,8 +214,6 @@ bool darwinDsymMatchesBinary(const MachOObjectFile *DbgObj,
     return false;
   return !memcmp(dbg_uuid.data(), bin_uuid.data(), dbg_uuid.size());
 }
-
-} // end anonymous namespace
 
 ObjectFile *LLVMSymbolizer::lookUpDsymFile(const std::string &ExePath,
     const MachOObjectFile *MachExeObj, const std::string &ArchName) {
@@ -296,9 +291,8 @@ LLVMSymbolizer::getOrCreateObject(const std::string &Path,
   const auto &I = BinaryForPath.find(Path);
   Binary *Bin = nullptr;
   if (I == BinaryForPath.end()) {
-    Expected<OwningBinary<Binary>> BinOrErr = createBinary(Path);
-    if (!BinOrErr) {
-      auto EC = errorToErrorCode(BinOrErr.takeError());
+    ErrorOr<OwningBinary<Binary>> BinOrErr = createBinary(Path);
+    if (auto EC = BinOrErr.getError()) {
       BinaryForPath.insert(std::make_pair(Path, EC));
       return EC;
     }
@@ -389,15 +383,13 @@ LLVMSymbolizer::getOrCreateModuleInfo(const std::string &ModuleName) {
   return InsertResult.first->second->get();
 }
 
-namespace {
-
 // Undo these various manglings for Win32 extern "C" functions:
 // cdecl       - _foo
 // stdcall     - _foo@12
 // fastcall    - @foo@12
 // vectorcall  - foo@@12
 // These are all different linkage names for 'foo'.
-StringRef demanglePE32ExternCFunc(StringRef SymbolName) {
+static StringRef demanglePE32ExternCFunc(StringRef SymbolName) {
   // Remove any '_' or '@' prefix.
   char Front = SymbolName.empty() ? '\0' : SymbolName[0];
   if (Front == '_' || Front == '@')
@@ -419,8 +411,6 @@ StringRef demanglePE32ExternCFunc(StringRef SymbolName) {
 
   return SymbolName;
 }
-
-} // end anonymous namespace
 
 #if !defined(_MSC_VER)
 // Assume that __cxa_demangle is provided by libcxxabi (except for Windows).

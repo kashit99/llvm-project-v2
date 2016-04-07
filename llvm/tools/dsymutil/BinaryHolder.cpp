@@ -196,8 +196,8 @@ BinaryHolder::GetObjectFiles(StringRef Filename, sys::TimeValue Timestamp) {
   CurrentObjectFiles.clear();
   for (auto MemBuf : *ErrOrMemBufferRefs) {
     auto ErrOrObjectFile = object::ObjectFile::createObjectFile(MemBuf);
-    if (!ErrOrObjectFile)
-      return errorToErrorCode(ErrOrObjectFile.takeError());
+    if (auto Err = ErrOrObjectFile.getError())
+      return Err;
 
     Objects.push_back(ErrOrObjectFile->get());
     CurrentObjectFiles.push_back(std::move(*ErrOrObjectFile));

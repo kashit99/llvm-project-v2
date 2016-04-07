@@ -398,22 +398,22 @@ entry:
 }
 
 ; CHECK: {{\.data|\.section.+data}}
-; CHECK-NOT: .p2align
+; CHECK-NOT: .align
 ; CHECK: arr1:
-; CHECK-IOS: .p2align 3
-; CHECK-DARWIN: .p2align 2
-; CHECK-EABI-NOT: .p2align
-; CHECK-GNUEABI-NOT: .p2align
+; CHECK-IOS: .align 3
+; CHECK-DARWIN: .align 2
+; CHECK-EABI-NOT: .align
+; CHECK-GNUEABI-NOT: .align
 ; CHECK: arr2:
 ; CHECK: {{\.section.+foo,bar}}
-; CHECK-NOT: .p2align
+; CHECK-NOT: .align
 ; CHECK: arr3:
-; CHECK-NOT: .p2align
+; CHECK-NOT: .align
 ; CHECK: arr4:
 ; CHECK: {{\.data|\.section.+data}}
-; CHECK-NOT: .p2align
+; CHECK-NOT: .align
 ; CHECK: arr5:
-; CHECK-NOT: .p2align
+; CHECK-NOT: .align
 ; CHECK: arr6:
 ; CHECK-NOT: arr7:
 

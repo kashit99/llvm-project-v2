@@ -8,10 +8,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/CodeGen/BackendUtil.h"
-#include "clang/Basic/CodeGenOptions.h"
 #include "clang/Basic/Diagnostic.h"
 #include "clang/Basic/LangOptions.h"
 #include "clang/Basic/TargetOptions.h"
+#include "clang/Frontend/CodeGenOptions.h"
 #include "clang/Frontend/FrontendDiagnostic.h"
 #include "clang/Frontend/Utils.h"
 #include "llvm/ADT/StringExtras.h"
@@ -22,10 +22,10 @@
 #include "llvm/CodeGen/RegAllocRegistry.h"
 #include "llvm/CodeGen/SchedulerRegistry.h"
 #include "llvm/IR/DataLayout.h"
+#include "llvm/IR/ModuleSummaryIndex.h"
 #include "llvm/IR/IRPrintingPasses.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
-#include "llvm/IR/ModuleSummaryIndex.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/MC/SubtargetFeature.h"
 #include "llvm/Object/ModuleSummaryIndexObjectFile.h"
@@ -42,7 +42,6 @@
 #include "llvm/Transforms/Instrumentation.h"
 #include "llvm/Transforms/ObjCARC.h"
 #include "llvm/Transforms/Scalar.h"
-#include "llvm/Transforms/Scalar/GVN.h"
 #include "llvm/Transforms/Utils/SymbolRewriter.h"
 #include <memory>
 using namespace clang;
@@ -190,7 +189,6 @@ static void addSanitizerCoveragePass(const PassManagerBuilder &Builder,
   Opts.TraceBB = CGOpts.SanitizeCoverageTraceBB;
   Opts.TraceCmp = CGOpts.SanitizeCoverageTraceCmp;
   Opts.Use8bitCounters = CGOpts.SanitizeCoverage8bitCounters;
-  Opts.TracePC = CGOpts.SanitizeCoverageTracePC;
   PM.add(createSanitizerCoverageModulePass(Opts));
 }
 
@@ -432,20 +430,12 @@ void EmitAssemblyHelper::CreatePasses(ModuleSummaryIndex *ModuleSummary) {
       MPM->add(createStripSymbolsPass(true));
   }
 
-  if (CodeGenOpts.hasProfileClangInstr()) {
+  if (CodeGenOpts.ProfileInstrGenerate) {
     InstrProfOptions Options;
     Options.NoRedZone = CodeGenOpts.DisableRedZone;
     Options.InstrProfileOutput = CodeGenOpts.InstrProfileOutput;
     MPM->add(createInstrProfilingPass(Options));
   }
-  if (CodeGenOpts.hasProfileIRInstr()) {
-    if (!CodeGenOpts.InstrProfileOutput.empty())
-      PMBuilder.PGOInstrGen = CodeGenOpts.InstrProfileOutput;
-    else
-      PMBuilder.PGOInstrGen = "default.profraw";
-  }
-  if (CodeGenOpts.hasProfileIRUse())
-    PMBuilder.PGOInstrUse = CodeGenOpts.ProfileInstrumentUsePath;
 
   if (!CodeGenOpts.SampleProfileFile.empty())
     MPM->add(createSampleProfileLoaderPass(CodeGenOpts.SampleProfileFile));
@@ -569,7 +559,19 @@ TargetMachine *EmitAssemblyHelper::CreateTargetMachine(bool MustCreateTM) {
   Options.DataSections = CodeGenOpts.DataSections;
   Options.UniqueSectionNames = CodeGenOpts.UniqueSectionNames;
   Options.EmulatedTLS = CodeGenOpts.EmulatedTLS;
-  Options.DebuggerTuning = CodeGenOpts.getDebuggerTuning();
+  switch (CodeGenOpts.getDebuggerTuning()) {
+  case CodeGenOptions::DebuggerKindGDB:
+    Options.DebuggerTuning = llvm::DebuggerKind::GDB;
+    break;
+  case CodeGenOptions::DebuggerKindLLDB:
+    Options.DebuggerTuning = llvm::DebuggerKind::LLDB;
+    break;
+  case CodeGenOptions::DebuggerKindSCE:
+    Options.DebuggerTuning = llvm::DebuggerKind::SCE;
+    break;
+  default:
+    break;
+  }
 
   Options.MCOptions.MCRelaxAll = CodeGenOpts.RelaxAll;
   Options.MCOptions.MCSaveTempLabels = CodeGenOpts.SaveTempLabels;
@@ -711,22 +713,22 @@ void EmitAssemblyHelper::EmitAssembly(BackendAction Action,
 void clang::EmitBackendOutput(DiagnosticsEngine &Diags,
                               const CodeGenOptions &CGOpts,
                               const clang::TargetOptions &TOpts,
-                              const LangOptions &LOpts, const llvm::DataLayout &TDesc,
+                              const LangOptions &LOpts, StringRef TDesc,
                               Module *M, BackendAction Action,
                               raw_pwrite_stream *OS) {
   EmitAssemblyHelper AsmHelper(Diags, CGOpts, TOpts, LOpts, M);
 
   AsmHelper.EmitAssembly(Action, OS);
 
-  // Verify clang's TargetInfo DataLayout against the LLVM TargetMachine's
-  // DataLayout.
-  if (AsmHelper.TM) {
+  // If an optional clang TargetInfo description string was passed in, use it to
+  // verify the LLVM TargetMachine's DataLayout.
+  if (AsmHelper.TM && !TDesc.empty()) {
     std::string DLDesc = M->getDataLayout().getStringRepresentation();
-    if (DLDesc != TDesc.getStringRepresentation()) {
+    if (DLDesc != TDesc) {
       unsigned DiagID = Diags.getCustomDiagID(
           DiagnosticsEngine::Error, "backend data layout '%0' does not match "
                                     "expected target description '%1'");
-      Diags.Report(DiagID) << DLDesc << TDesc.getStringRepresentation();
+      Diags.Report(DiagID) << DLDesc << TDesc;
     }
   }
 }

@@ -93,9 +93,7 @@ MemoryBufferRef ArchiveFile::getMember(const Archive::Symbol *Sym) {
 void ObjectFile::parse() {
   // Parse a memory buffer as a COFF file.
   auto BinOrErr = createBinary(MB);
-  if (!BinOrErr)
-    error(errorToErrorCode(BinOrErr.takeError()),
-                           "Failed to parse object file");
+  error(BinOrErr, "Failed to parse object file");
   std::unique_ptr<Binary> Bin = std::move(*BinOrErr);
 
   if (auto *Obj = dyn_cast<COFFObjectFile>(Bin.get())) {

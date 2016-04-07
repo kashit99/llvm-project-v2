@@ -49,7 +49,7 @@ emitSPUpdate(MachineBasicBlock &MBB,
 }
 
 
-MachineBasicBlock::iterator Thumb1FrameLowering::
+void Thumb1FrameLowering::
 eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
                               MachineBasicBlock::iterator I) const {
   const Thumb1InstrInfo &TII =
@@ -80,7 +80,7 @@ eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
       }
     }
   }
-  return MBB.erase(I);
+  MBB.erase(I);
 }
 
 void Thumb1FrameLowering::emitPrologue(MachineFunction &MF,
@@ -637,7 +637,7 @@ restoreCalleeSavedRegisters(MachineBasicBlock &MBB,
         Reg = ARM::PC;
         (*MIB).setDesc(TII.get(ARM::tPOP_RET));
         if (MI != MBB.end())
-          MIB.copyImplicitOps(*MI);
+          MIB.copyImplicitOps(&*MI);
         MI = MBB.erase(MI);
       } else
         // LR may only be popped into PC, as part of return sequence.

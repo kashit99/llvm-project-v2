@@ -332,23 +332,24 @@ class TemplateDecl : public NamedDecl {
   void anchor() override;
 protected:
   // This is probably never used.
-  TemplateDecl(Kind DK, DeclContext *DC, SourceLocation L, DeclarationName Name)
-      : NamedDecl(DK, DC, L, Name), TemplatedDecl(nullptr, false),
-        TemplateParams(nullptr) {}
+  TemplateDecl(Kind DK, DeclContext *DC, SourceLocation L,
+               DeclarationName Name)
+    : NamedDecl(DK, DC, L, Name), TemplatedDecl(nullptr),
+      TemplateParams(nullptr) {}
 
   // Construct a template decl with the given name and parameters.
   // Used when there is not templated element (tt-params).
-  TemplateDecl(Kind DK, DeclContext *DC, SourceLocation L, DeclarationName Name,
-               TemplateParameterList *Params)
-      : NamedDecl(DK, DC, L, Name), TemplatedDecl(nullptr, false),
-        TemplateParams(Params) {}
+  TemplateDecl(Kind DK, DeclContext *DC, SourceLocation L,
+               DeclarationName Name, TemplateParameterList *Params)
+    : NamedDecl(DK, DC, L, Name), TemplatedDecl(nullptr),
+      TemplateParams(Params) {}
 
   // Construct a template decl with name, parameters, and templated element.
-  TemplateDecl(Kind DK, DeclContext *DC, SourceLocation L, DeclarationName Name,
-               TemplateParameterList *Params, NamedDecl *Decl)
-      : NamedDecl(DK, DC, L, Name), TemplatedDecl(Decl, false),
-        TemplateParams(Params) {}
-
+  TemplateDecl(Kind DK, DeclContext *DC, SourceLocation L,
+               DeclarationName Name, TemplateParameterList *Params,
+               NamedDecl *Decl)
+    : NamedDecl(DK, DC, L, Name), TemplatedDecl(Decl),
+      TemplateParams(Params) { }
 public:
   /// Get the list of template parameters
   TemplateParameterList *getTemplateParameters() const {
@@ -356,7 +357,7 @@ public:
   }
 
   /// Get the underlying, templated declaration.
-  NamedDecl *getTemplatedDecl() const { return TemplatedDecl.getPointer(); }
+  NamedDecl *getTemplatedDecl() const { return TemplatedDecl; }
 
   // Implement isa/cast/dyncast/etc.
   static bool classof(const Decl *D) { return classofKind(D->getKind()); }
@@ -366,30 +367,20 @@ public:
 
   SourceRange getSourceRange() const override LLVM_READONLY {
     return SourceRange(TemplateParams->getTemplateLoc(),
-                       TemplatedDecl.getPointer()->getSourceRange().getEnd());
+                       TemplatedDecl->getSourceRange().getEnd());
   }
 
-  /// Whether this is a (C++ Concepts TS) function or variable concept.
-  bool isConcept() const { return TemplatedDecl.getInt(); }
-  void setConcept() { TemplatedDecl.setInt(true); }
-
 protected:
-  /// \brief The named declaration from which this template was instantiated.
-  /// (or null).
-  ///
-  /// The boolean value will be true to indicate that this template
-  /// (function or variable) is a concept.
-  llvm::PointerIntPair<NamedDecl *, 1, bool> TemplatedDecl;
-
+  NamedDecl *TemplatedDecl;
   TemplateParameterList* TemplateParams;
 
 public:
   /// \brief Initialize the underlying templated declaration and
   /// template parameters.
   void init(NamedDecl *templatedDecl, TemplateParameterList* templateParams) {
-    assert(!TemplatedDecl.getPointer() && "TemplatedDecl already set!");
+    assert(!TemplatedDecl && "TemplatedDecl already set!");
     assert(!TemplateParams && "TemplateParams already set!");
-    TemplatedDecl.setPointer(templatedDecl);
+    TemplatedDecl = templatedDecl;
     TemplateParams = templateParams;
   }
 };
@@ -898,7 +889,7 @@ public:
 
   /// Get the underlying function declaration of the template.
   FunctionDecl *getTemplatedDecl() const {
-    return static_cast<FunctionDecl *>(TemplatedDecl.getPointer());
+    return static_cast<FunctionDecl*>(TemplatedDecl);
   }
 
   /// Returns whether this template declaration defines the primary
@@ -1991,7 +1982,7 @@ public:
 
   /// \brief Get the underlying class declarations of the template.
   CXXRecordDecl *getTemplatedDecl() const {
-    return static_cast<CXXRecordDecl *>(TemplatedDecl.getPointer());
+    return static_cast<CXXRecordDecl *>(TemplatedDecl);
   }
 
   /// \brief Returns whether this template declaration defines the primary
@@ -2254,7 +2245,7 @@ protected:
 public:
   /// Get the underlying function declaration of the template.
   TypeAliasDecl *getTemplatedDecl() const {
-    return static_cast<TypeAliasDecl *>(TemplatedDecl.getPointer());
+    return static_cast<TypeAliasDecl*>(TemplatedDecl);
   }
 
 
@@ -2817,7 +2808,7 @@ public:
 
   /// \brief Get the underlying variable declarations of the template.
   VarDecl *getTemplatedDecl() const {
-    return static_cast<VarDecl *>(TemplatedDecl.getPointer());
+    return static_cast<VarDecl *>(TemplatedDecl);
   }
 
   /// \brief Returns whether this template declaration defines the primary

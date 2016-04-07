@@ -17,12 +17,9 @@
 #include "CGBuilder.h"
 #include "CodeGenModule.h"
 #include "CodeGenTypes.h"
-#include "clang/Basic/CodeGenOptions.h"
+#include "clang/Frontend/CodeGenOptions.h"
 #include "llvm/ADT/StringMap.h"
-#include "llvm/ProfileData/InstrProfReader.h"
 #include "llvm/Support/MemoryBuffer.h"
-
-#include <array>
 #include <memory>
 
 namespace clang {
@@ -35,12 +32,10 @@ private:
   std::string FuncName;
   llvm::GlobalVariable *FuncNameVar;
 
-  std::array <unsigned, llvm::IPVK_Last + 1> NumValueSites;
   unsigned NumRegionCounters;
   uint64_t FunctionHash;
   std::unique_ptr<llvm::DenseMap<const Stmt *, unsigned>> RegionCounterMap;
   std::unique_ptr<llvm::DenseMap<const Stmt *, uint64_t>> StmtCountMap;
-  std::unique_ptr<llvm::InstrProfRecord> ProfRecord;
   std::vector<uint64_t> RegionCounts;
   uint64_t CurrentRegionCount;
   /// \brief A flag that is set to true when this function doesn't need
@@ -49,8 +44,8 @@ private:
 
 public:
   CodeGenPGO(CodeGenModule &CGM)
-      : CGM(CGM), NumValueSites({{0}}), NumRegionCounters(0),
-        FunctionHash(0), CurrentRegionCount(0), SkipCoverageMapping(false) {}
+      : CGM(CGM), NumRegionCounters(0), FunctionHash(0), CurrentRegionCount(0),
+        SkipCoverageMapping(false) {}
 
   /// Whether or not we have PGO region data for the current function. This is
   /// false both when we have no data at all and when our data has been
@@ -92,9 +87,6 @@ public:
   /// for an unused declaration.
   void emitEmptyCounterMapping(const Decl *D, StringRef FuncName,
                                llvm::GlobalValue::LinkageTypes Linkage);
-  // Insert instrumentation or attach profile metadata at value sites
-  void valueProfile(CGBuilderTy &Builder, uint32_t ValueKind,
-                    llvm::Instruction *ValueSite, llvm::Value *ValuePtr);
 private:
   void setFuncName(llvm::Function *Fn);
   void setFuncName(StringRef Name, llvm::GlobalValue::LinkageTypes Linkage);

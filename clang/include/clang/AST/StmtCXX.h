@@ -127,7 +127,7 @@ public:
 /// can be extracted using getLoopVariable and getRangeInit.
 class CXXForRangeStmt : public Stmt {
   SourceLocation ForLoc;
-  enum { RANGE, BEGINSTMT, ENDSTMT, COND, INC, LOOPVAR, BODY, END };
+  enum { RANGE, BEGINEND, COND, INC, LOOPVAR, BODY, END };
   // SubExprs[RANGE] is an expression or declstmt.
   // SubExprs[COND] and SubExprs[INC] are expressions.
   Stmt *SubExprs[END];
@@ -137,7 +137,7 @@ class CXXForRangeStmt : public Stmt {
 
   friend class ASTStmtReader;
 public:
-  CXXForRangeStmt(DeclStmt *Range, DeclStmt *Begin, DeclStmt *End,
+  CXXForRangeStmt(DeclStmt *Range, DeclStmt *BeginEnd,
                   Expr *Cond, Expr *Inc, DeclStmt *LoopVar, Stmt *Body,
                   SourceLocation FL, SourceLocation CAL, SourceLocation CL,
                   SourceLocation RPL);
@@ -152,10 +152,9 @@ public:
 
 
   DeclStmt *getRangeStmt() { return cast<DeclStmt>(SubExprs[RANGE]); }
-  DeclStmt *getBeginStmt() {
-    return cast_or_null<DeclStmt>(SubExprs[BEGINSTMT]);
+  DeclStmt *getBeginEndStmt() {
+    return cast_or_null<DeclStmt>(SubExprs[BEGINEND]);
   }
-  DeclStmt *getEndStmt() { return cast_or_null<DeclStmt>(SubExprs[ENDSTMT]); }
   Expr *getCond() { return cast_or_null<Expr>(SubExprs[COND]); }
   Expr *getInc() { return cast_or_null<Expr>(SubExprs[INC]); }
   DeclStmt *getLoopVarStmt() { return cast<DeclStmt>(SubExprs[LOOPVAR]); }
@@ -164,11 +163,8 @@ public:
   const DeclStmt *getRangeStmt() const {
     return cast<DeclStmt>(SubExprs[RANGE]);
   }
-  const DeclStmt *getBeginStmt() const {
-    return cast_or_null<DeclStmt>(SubExprs[BEGINSTMT]);
-  }
-  const DeclStmt *getEndStmt() const {
-    return cast_or_null<DeclStmt>(SubExprs[ENDSTMT]);
+  const DeclStmt *getBeginEndStmt() const {
+    return cast_or_null<DeclStmt>(SubExprs[BEGINEND]);
   }
   const Expr *getCond() const {
     return cast_or_null<Expr>(SubExprs[COND]);
@@ -183,8 +179,7 @@ public:
 
   void setRangeInit(Expr *E) { SubExprs[RANGE] = reinterpret_cast<Stmt*>(E); }
   void setRangeStmt(Stmt *S) { SubExprs[RANGE] = S; }
-  void setBeginStmt(Stmt *S) { SubExprs[BEGINSTMT] = S; }
-  void setEndStmt(Stmt *S) { SubExprs[ENDSTMT] = S; }
+  void setBeginEndStmt(Stmt *S) { SubExprs[BEGINEND] = S; }
   void setCond(Expr *E) { SubExprs[COND] = reinterpret_cast<Stmt*>(E); }
   void setInc(Expr *E) { SubExprs[INC] = reinterpret_cast<Stmt*>(E); }
   void setLoopVarStmt(Stmt *S) { SubExprs[LOOPVAR] = S; }

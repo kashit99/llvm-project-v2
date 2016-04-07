@@ -87,24 +87,15 @@ public:
   /// unprofitable.
   bool isLdStPairSuppressed(const MachineInstr *MI) const;
 
-  /// Return true if this is an unscaled load/store.
-  bool isUnscaledLdSt(unsigned Opc) const;
-
-  /// Return true if this is an unscaled load/store.
-  bool isUnscaledLdSt(MachineInstr *MI) const;
-
-  /// Return true if this is a load/store that can be potentially paired/merged.
-  bool isCandidateToMergeOrPair(MachineInstr *MI) const;
-
   /// Hint that pairing the given load or store is unprofitable.
   void suppressLdStPair(MachineInstr *MI) const;
 
   bool getMemOpBaseRegImmOfs(MachineInstr *LdSt, unsigned &BaseReg,
-                             int64_t &Offset,
+                             unsigned &Offset,
                              const TargetRegisterInfo *TRI) const override;
 
   bool getMemOpBaseRegImmOfsWidth(MachineInstr *LdSt, unsigned &BaseReg,
-                                  int64_t &Offset, unsigned &Width,
+                                  int &Offset, int &Width,
                                   const TargetRegisterInfo *TRI) const;
 
   bool enableClusterLoads() const override { return true; }
@@ -204,8 +195,6 @@ private:
   void instantiateCondBranch(MachineBasicBlock &MBB, DebugLoc DL,
                              MachineBasicBlock *TBB,
                              ArrayRef<MachineOperand> Cond) const;
-  bool substituteCmpInstr(MachineInstr *CmpInstr,
-                          unsigned SrcReg, const MachineRegisterInfo *MRI) const;
 };
 
 /// emitFrameOffset - Emit instructions as needed to set DestReg to SrcReg

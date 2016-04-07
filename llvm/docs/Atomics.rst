@@ -8,13 +8,17 @@ LLVM Atomic Instructions and Concurrency Guide
 Introduction
 ============
 
-LLVM supports instructions which are well-defined in the presence of threads and
-asynchronous signals.
+Historically, LLVM has not had very strong support for concurrency; some minimal
+intrinsics were provided, and ``volatile`` was used in some cases to achieve
+rough semantics in the presence of concurrency.  However, this is changing;
+there are now new instructions which are well-defined in the presence of threads
+and asynchronous signals, and the model for existing instructions has been
+clarified in the IR.
 
 The atomic instructions are designed specifically to provide readable IR and
 optimized code generation for the following:
 
-* The C++11 ``<atomic>`` header.  (`C++11 draft available here
+* The new C++11 ``<atomic>`` header.  (`C++11 draft available here
   <http://www.open-std.org/jtc1/sc22/wg21/>`_.) (`C11 draft available here
   <http://www.open-std.org/jtc1/sc22/wg14/>`_.)
 
@@ -367,7 +371,7 @@ Predicates for optimizer writers to query:
   that they return true for any operation which is volatile or at least
   Monotonic.
 
-* ``isStrongerThan`` / ``isAtLeastOrStrongerThan``: These are predicates on
+* ``isAtLeastAcquire()``/``isAtLeastRelease()``: These are predicates on
   orderings. They can be useful for passes that are aware of atomics, for
   example to do DSE across a single atomic access, but not across a
   release-acquire pair (see MemoryDependencyAnalysis for an example of this)

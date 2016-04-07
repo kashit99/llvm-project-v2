@@ -13,7 +13,6 @@ add_lld_library(lldELF
   LinkerScript.cpp
   MarkLive.cpp
   OutputSections.cpp
-  ScriptParser.cpp
   SymbolTable.cpp
   Symbols.cpp
   Target.cpp

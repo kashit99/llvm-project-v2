@@ -3397,10 +3397,8 @@ CFGBlock *CFGBuilder::VisitCXXForRangeStmt(CXXForRangeStmt *S) {
   // Create local scopes and destructors for range, begin and end variables.
   if (Stmt *Range = S->getRangeStmt())
     addLocalScopeForStmt(Range);
-  if (Stmt *Begin = S->getBeginStmt())
-    addLocalScopeForStmt(Begin);
-  if (Stmt *End = S->getEndStmt())
-    addLocalScopeForStmt(End);
+  if (Stmt *BeginEnd = S->getBeginEndStmt())
+    addLocalScopeForStmt(BeginEnd);
   addAutomaticObjDtors(ScopePos, save_scope_pos.get(), S);
 
   LocalScope::const_iterator ContinueScopePos = ScopePos;
@@ -3491,8 +3489,7 @@ CFGBlock *CFGBuilder::VisitCXXForRangeStmt(CXXForRangeStmt *S) {
 
   // Add the initialization statements.
   Block = createBlock();
-  addStmt(S->getBeginStmt());
-  addStmt(S->getEndStmt());
+  addStmt(S->getBeginEndStmt());
   return addStmt(S->getRangeStmt());
 }
 

@@ -11,7 +11,6 @@
 #define LLVM_TRANSFORMS_INSTCOMBINE_INSTCOMBINEWORKLIST_H
 
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/Instruction.h"
 #include "llvm/Support/Compiler.h"
@@ -64,7 +63,7 @@ public:
   void AddInitialGroup(ArrayRef<Instruction *> List) {
     assert(Worklist.empty() && "Worklist must be empty to add initial group");
     Worklist.reserve(List.size()+16);
-    WorklistMap.reserve(List.size());
+    WorklistMap.resize(List.size());
     DEBUG(dbgs() << "IC: ADDING: " << List.size() << " instrs to worklist\n");
     unsigned Idx = 0;
     for (Instruction *I : reverse(List)) {

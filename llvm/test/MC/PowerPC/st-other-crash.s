@@ -9,8 +9,7 @@
 // CHECK-NEXT:    Size: 0
 // CHECK-NEXT:    Binding: Local (0x0)
 // CHECK-NEXT:    Type: None (0x0)
-// CHECK-NEXT:    Other [ (0x40)
-// CHECK-NEXT:    ]
+// CHECK-NEXT:    Other: 64
 // CHECK-NEXT:    Section: .group
 // CHECK-NEXT:  }
 

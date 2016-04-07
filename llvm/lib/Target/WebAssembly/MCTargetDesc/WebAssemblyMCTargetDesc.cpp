@@ -40,20 +40,6 @@ static MCAsmInfo *createMCAsmInfo(const MCRegisterInfo & /*MRI*/,
   return new WebAssemblyMCAsmInfo(TT);
 }
 
-static MCCodeGenInfo *createMCCodeGenInfo(const Triple & /*TT*/,
-                                          Reloc::Model /*RM*/,
-                                          CodeModel::Model CM,
-                                          CodeGenOpt::Level OL) {
-  CodeModel::Model M = (CM == CodeModel::Default || CM == CodeModel::JITDefault)
-                           ? CodeModel::Large
-                           : CM;
-  if (M != CodeModel::Large)
-    report_fatal_error("Non-large code models are not supported yet");
-  MCCodeGenInfo *CGI = new MCCodeGenInfo();
-  CGI->initMCCodeGenInfo(Reloc::PIC_, CM, OL);
-  return CGI;
-}
-
 static MCInstrInfo *createMCInstrInfo() {
   MCInstrInfo *X = new MCInstrInfo();
   InitWebAssemblyMCInstrInfo(X);
@@ -71,14 +57,14 @@ static MCInstPrinter *createMCInstPrinter(const Triple & /*T*/,
                                           const MCAsmInfo &MAI,
                                           const MCInstrInfo &MII,
                                           const MCRegisterInfo &MRI) {
-  assert(SyntaxVariant == 0 && "WebAssembly only has one syntax variant");
+  assert(SyntaxVariant == 0);
   return new WebAssemblyInstPrinter(MAI, MII, MRI);
 }
 
 static MCCodeEmitter *createCodeEmitter(const MCInstrInfo &MCII,
                                         const MCRegisterInfo & /*MRI*/,
-                                        MCContext & /*Ctx*/) {
-  return createWebAssemblyMCCodeEmitter(MCII);
+                                        MCContext &Ctx) {
+  return createWebAssemblyMCCodeEmitter(MCII, Ctx);
 }
 
 static MCAsmBackend *createAsmBackend(const Target & /*T*/,
@@ -112,9 +98,6 @@ extern "C" void LLVMInitializeWebAssemblyTargetMC() {
 
     // Register the MC instruction info.
     TargetRegistry::RegisterMCInstrInfo(*T, createMCInstrInfo);
-
-    // Register the MC codegen info.
-    TargetRegistry::RegisterMCCodeGenInfo(*T, createMCCodeGenInfo);
 
     // Register the MC register info.
     TargetRegistry::RegisterMCRegInfo(*T, createMCRegisterInfo);

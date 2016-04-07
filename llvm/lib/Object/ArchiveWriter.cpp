@@ -231,14 +231,11 @@ writeSymbolTable(raw_fd_ostream &Out, object::Archive::Kind Kind,
   LLVMContext Context;
   for (unsigned MemberNum = 0, N = Members.size(); MemberNum < N; ++MemberNum) {
     MemoryBufferRef MemberBuffer = Buffers[MemberNum];
-    Expected<std::unique_ptr<object::SymbolicFile>> ObjOrErr =
+    ErrorOr<std::unique_ptr<object::SymbolicFile>> ObjOrErr =
         object::SymbolicFile::createSymbolicFile(
             MemberBuffer, sys::fs::file_magic::unknown, &Context);
-    if (!ObjOrErr) {
-      // FIXME: check only for "not an object file" errors.
-      consumeError(ObjOrErr.takeError());
-      continue;
-    }
+    if (!ObjOrErr)
+      continue;  // FIXME: check only for "not an object file" errors.
     object::SymbolicFile &Obj = *ObjOrErr.get();
 
     if (!HeaderStartOffset) {

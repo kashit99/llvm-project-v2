@@ -45,9 +45,7 @@ class PointerEmbeddedInt {
     Mask = static_cast<uintptr_t>(-1) << Bits
   };
 
-  struct RawValueTag {
-    explicit RawValueTag() = default;
-  };
+  static constexpr const struct RawValueTag {} RawValue = RawValueTag();
 
   friend class PointerLikeTypeTraits<PointerEmbeddedInt>;
 
@@ -68,7 +66,7 @@ public:
     return *this;
   }
 
-  // Note that this implicit conversion additionally allows all of the basic
+  // Note that this imilict conversion additionally allows all of the basic
   // comparison operators to work transparently, etc.
   operator IntT() const {
     if (std::is_signed<IntT>::value)
@@ -88,10 +86,10 @@ public:
     return reinterpret_cast<void *>(P.Value);
   }
   static inline T getFromVoidPointer(void *P) {
-    return T(reinterpret_cast<uintptr_t>(P), typename T::RawValueTag());
+    return T(reinterpret_cast<uintptr_t>(P), T::RawValue);
   }
   static inline T getFromVoidPointer(const void *P) {
-    return T(reinterpret_cast<uintptr_t>(P), typename T::RawValueTag());
+    return T(reinterpret_cast<uintptr_t>(P), T::RawValue);
   }
 
   enum { NumLowBitsAvailable = T::Shift };

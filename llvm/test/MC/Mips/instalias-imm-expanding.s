@@ -22,7 +22,8 @@ text_label:
 # CHECK: lui    $1, 1                   # encoding: [0x01,0x00,0x01,0x3c]
 # CHECK: add    $4, $4, $1              # encoding: [0x20,0x20,0x81,0x00]
   add $4, 0xFFFFFFFF
-# CHECK: addi   $4, $4, -1              # encoding: [0xff,0xff,0x84,0x20]
+# CHECK: addiu  $1, $zero, -1           # encoding: [0xff,0xff,0x01,0x24]
+# CHECK: add    $4, $4, $1              # encoding: [0x20,0x20,0x81,0x00]
 
   add $4, $5, -0x80000000
 # CHECK: lui    $4, 32768               # encoding: [0x00,0x80,0x04,0x3c]
@@ -42,7 +43,8 @@ text_label:
 # CHECK: lui    $4, 1                   # encoding: [0x01,0x00,0x04,0x3c]
 # CHECK: add    $4, $4, $5              # encoding: [0x20,0x20,0x85,0x00]
   add $4, $5, 0xFFFFFFFF
-# CHECK: addi   $4, $5, -1              # encoding: [0xff,0xff,0xa4,0x20]
+# CHECK: addiu  $4, $zero, -1           # encoding: [0xff,0xff,0x04,0x24]
+# CHECK: add    $4, $4, $5              # encoding: [0x20,0x20,0x85,0x00]
 
   addu $4, -0x80000000
 # CHECK: lui    $1, 32768               # encoding: [0x00,0x80,0x01,0x3c]
@@ -62,7 +64,8 @@ text_label:
 # CHECK: lui    $1, 1                   # encoding: [0x01,0x00,0x01,0x3c]
 # CHECK: addu   $4, $4, $1              # encoding: [0x21,0x20,0x81,0x00]
   addu $4, 0xFFFFFFFF
-# CHECK: addiu  $4, $4, -1              # encoding: [0xff,0xff,0x84,0x24]
+# CHECK: addiu  $1, $zero, -1           # encoding: [0xff,0xff,0x01,0x24]
+# CHECK: addu   $4, $4, $1              # encoding: [0x21,0x20,0x81,0x00]
 
   addu $4, $5, -0x80000000
 # CHECK: lui    $4, 32768               # encoding: [0x00,0x80,0x04,0x3c]
@@ -82,7 +85,8 @@ text_label:
 # CHECK: lui    $4, 1                   # encoding: [0x01,0x00,0x04,0x3c]
 # CHECK: addu   $4, $4, $5              # encoding: [0x21,0x20,0x85,0x00]
   addu $4, $5, 0xFFFFFFFF
-# CHECK: addiu  $4, $5, -1              # encoding: [0xff,0xff,0xa4,0x24]
+# CHECK: addiu  $4, $zero, -1           # encoding: [0xff,0xff,0x04,0x24]
+# CHECK: addu   $4, $4, $5              # encoding: [0x21,0x20,0x85,0x00]
 
   and $4, -0x80000000
 # CHECK: lui    $1, 32768               # encoding: [0x00,0x80,0x01,0x3c]
@@ -204,7 +208,8 @@ text_label:
 # CHECK: lui    $4, 1                   # encoding: [0x01,0x00,0x04,0x3c]
 # CHECK: slt    $4, $4, $5              # encoding: [0x2a,0x20,0x85,0x00]
   slt $4, $5, 0xFFFFFFFF
-# CHECK: slti   $4, $5, -1              # encoding: [0xff,0xff,0xa4,0x28]
+# CHECK: addiu  $4, $zero, -1           # encoding: [0xff,0xff,0x04,0x24]
+# CHECK: slt    $4, $4, $5              # encoding: [0x2a,0x20,0x85,0x00]
 
   sltu $4, $5, -0x80000000
 # CHECK: lui    $4, 32768               # encoding: [0x00,0x80,0x04,0x3c]
@@ -223,7 +228,8 @@ text_label:
 # CHECK: lui    $4, 1                   # encoding: [0x01,0x00,0x04,0x3c]
 # CHECK: sltu   $4, $4, $5              # encoding: [0x2b,0x20,0x85,0x00]
   sltu $4, $5, 0xFFFFFFFF
-# CHECK: sltiu  $4, $5, -1              # encoding: [0xff,0xff,0xa4,0x2c]
+# CHECK: addiu  $4, $zero, -1           # encoding: [0xff,0xff,0x04,0x24]
+# CHECK: sltu   $4, $4, $5              # encoding: [0x2b,0x20,0x85,0x00]
 
   xor $4, -0x80000000
 # CHECK: lui    $1, 32768               # encoding: [0x00,0x80,0x01,0x3c]

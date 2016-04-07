@@ -204,7 +204,6 @@ def OverloadedShiftOpParentheses: DiagGroup<"overloaded-shift-op-parentheses">;
 def DanglingElse: DiagGroup<"dangling-else">;
 def DanglingField : DiagGroup<"dangling-field">;
 def DistributedObjectModifiers : DiagGroup<"distributed-object-modifiers">;
-def ExpansionToDefined : DiagGroup<"expansion-to-defined">;
 def FlagEnum : DiagGroup<"flag-enum">;
 def IncrementBool : DiagGroup<"increment-bool", [DeprecatedIncrementBool]>;
 def InfiniteRecursion : DiagGroup<"infinite-recursion">;
@@ -617,7 +616,6 @@ def Most : DiagGroup<"most", [
     CharSubscript,
     Comment,
     DeleteNonVirtualDtor,
-    ForLoopAnalysis,
     Format,
     Implicit,
     InfiniteRecursion,
@@ -785,8 +783,6 @@ def Microsoft : DiagGroup<"microsoft",
      MicrosoftConstInit, MicrosoftVoidPseudoDtor, MicrosoftAnonTag,
      MicrosoftCommentPaste, MicrosoftEndOfFile]>;
 
-def ClangClPch : DiagGroup<"clang-cl-pch">;
-
 def ObjCNonUnifiedException : DiagGroup<"objc-nonunified-exceptions">;
 
 def ObjCProtocolMethodImpl : DiagGroup<"objc-protocol-method-implementation">;
@@ -819,7 +815,6 @@ def ASM : DiagGroup<"asm", [
 def SourceUsesOpenMP : DiagGroup<"source-uses-openmp">;
 def OpenMPClauses : DiagGroup<"openmp-clauses">;
 def OpenMPLoopForm : DiagGroup<"openmp-loop-form">;
-def OpenMPTarget : DiagGroup<"openmp-target">;
 
 // Backend warnings.
 def BackendInlineAsm : DiagGroup<"inline-asm">;
@@ -851,5 +846,3 @@ def FutureCompat : DiagGroup<"future-compat">;
 def InvalidOrNonExistentDirectory : DiagGroup<"invalid-or-nonexistent-directory">;
 
 def OptionIgnored : DiagGroup<"option-ignored">;
-
-def UnknownArgument : DiagGroup<"unknown-argument">;

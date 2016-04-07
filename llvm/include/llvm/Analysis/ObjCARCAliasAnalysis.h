@@ -24,6 +24,7 @@
 #define LLVM_ANALYSIS_OBJCARCALIASANALYSIS_H
 
 #include "llvm/Analysis/AliasAnalysis.h"
+#include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/Pass.h"
 
 namespace llvm {
@@ -41,7 +42,8 @@ class ObjCARCAAResult : public AAResultBase<ObjCARCAAResult> {
   const DataLayout &DL;
 
 public:
-  explicit ObjCARCAAResult(const DataLayout &DL) : AAResultBase(), DL(DL) {}
+  explicit ObjCARCAAResult(const DataLayout &DL, const TargetLibraryInfo &TLI)
+      : AAResultBase(TLI), DL(DL) {}
   ObjCARCAAResult(ObjCARCAAResult &&Arg)
       : AAResultBase(std::move(Arg)), DL(Arg.DL) {}
 
@@ -61,14 +63,20 @@ public:
 };
 
 /// Analysis pass providing a never-invalidated alias analysis result.
-class ObjCARCAA : public AnalysisInfoMixin<ObjCARCAA> {
-  friend AnalysisInfoMixin<ObjCARCAA>;
-  static char PassID;
-
+class ObjCARCAA {
 public:
   typedef ObjCARCAAResult Result;
 
-  ObjCARCAAResult run(Function &F, AnalysisManager<Function> &AM);
+  /// \brief Opaque, unique identifier for this analysis pass.
+  static void *ID() { return (void *)&PassID; }
+
+  ObjCARCAAResult run(Function &F, AnalysisManager<Function> *AM);
+
+  /// \brief Provide access to a name for this pass for debugging purposes.
+  static StringRef name() { return "ObjCARCAA"; }
+
+private:
+  static char PassID;
 };
 
 /// Legacy wrapper pass to provide the ObjCARCAAResult object.

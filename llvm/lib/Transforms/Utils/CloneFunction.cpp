@@ -119,15 +119,6 @@ void llvm::CloneFunctionInto(Function *NewFunc, const Function *OldFunc,
           .addAttributes(NewFunc->getContext(), AttributeSet::FunctionIndex,
                          OldAttrs.getFnAttributes()));
 
-  SmallVector<std::pair<unsigned, MDNode *>, 1> MDs;
-  OldFunc->getAllMetadata(MDs);
-  for (auto MD : MDs)
-    NewFunc->setMetadata(
-        MD.first,
-        MapMetadata(MD.second, VMap,
-                    ModuleLevelChanges ? RF_None : RF_NoModuleLevelChanges,
-                    TypeMapper, Materializer));
-
   // Loop over all of the basic blocks in the function, cloning them as
   // appropriate.  Note that we save BE this way in order to handle cloning of
   // recursive functions into themselves.
@@ -196,8 +187,8 @@ static void AddOperand(DICompileUnit *CU, DISubprogramArray SPs,
 
 // Clone the module-level debug info associated with OldFunc. The cloned data
 // will point to NewFunc instead.
-static void CloneDebugInfoMetadata(Function *NewFunc, const Function *OldFunc,
-                                   ValueToValueMapTy &VMap) {
+void llvm::CloneDebugInfoMetadata(Function *NewFunc, const Function *OldFunc,
+                                  ValueToValueMapTy &VMap) {
   DebugInfoFinder Finder;
   Finder.processModule(*OldFunc->getParent());
 
@@ -538,8 +529,7 @@ void llvm::CloneAndPruneIntoFromInst(Function *NewFunc, const Function *OldFunc,
           PN->setIncomingBlock(pred, MappedBlock);
         } else {
           PN->removeIncomingValue(pred, false);
-          --pred;  // Revisit the next entry.
-          --e;
+          --pred, --e;  // Revisit the next entry.
         }
       } 
     }
@@ -694,7 +684,7 @@ void llvm::remapInstructionsInBlocks(
   for (auto *BB : Blocks)
     for (auto &Inst : *BB)
       RemapInstruction(&Inst, VMap,
-                       RF_NoModuleLevelChanges | RF_IgnoreMissingLocals);
+                       RF_NoModuleLevelChanges | RF_IgnoreMissingEntries);
 }
 
 /// \brief Clones a loop \p OrigLoop.  Returns the loop and the blocks in \p

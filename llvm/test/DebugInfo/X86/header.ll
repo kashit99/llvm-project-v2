@@ -5,7 +5,7 @@
 ; CHECK:       .text
 ; CHECK-NEXT: .file	"<stdin>"
 ; CHECK-NEXT: .globl	f
-; CHECK-NEXT: .p2align	4, 0x90
+; CHECK-NEXT: .align	16, 0x90
 ; CHECK-NEXT: .type	f,@function
 ; CHECK-NEXT: f:                                      # @f
 
@@ -17,7 +17,7 @@ define void @f() !dbg !4 {
 !llvm.dbg.cu = !{!0}
 !llvm.module.flags = !{!7, !8}
 
-!0 = distinct !DICompileUnit(language: DW_LANG_C99, file: !1, producer: "foo", isOptimized: true, runtimeVersion: 0, emissionKind: FullDebug, enums: !2, retainedTypes: !2, subprograms: !3, globals: !2, imports: !2)
+!0 = distinct !DICompileUnit(language: DW_LANG_C99, file: !1, producer: "foo", isOptimized: true, runtimeVersion: 0, emissionKind: 1, enums: !2, retainedTypes: !2, subprograms: !3, globals: !2, imports: !2)
 !1 = !DIFile(filename: "/foo/test.c", directory: "/foo")
 !2 = !{}
 !3 = !{!4}

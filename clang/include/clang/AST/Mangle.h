@@ -14,7 +14,6 @@
 #ifndef LLVM_CLANG_AST_MANGLE_H
 #define LLVM_CLANG_AST_MANGLE_H
 
-#include "clang/AST/Decl.h"
 #include "clang/AST/Type.h"
 #include "clang/Basic/ABI.h"
 #include "llvm/ADT/DenseMap.h"

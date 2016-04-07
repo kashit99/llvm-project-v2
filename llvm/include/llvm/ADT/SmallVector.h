@@ -356,7 +356,6 @@ class SmallVectorImpl : public SmallVectorTemplateBase<T, isPodLike<T>::value> {
   SmallVectorImpl(const SmallVectorImpl&) = delete;
 public:
   typedef typename SuperClass::iterator iterator;
-  typedef typename SuperClass::const_iterator const_iterator;
   typedef typename SuperClass::size_type size_type;
 
 protected:
@@ -460,10 +459,7 @@ public:
     append(IL);
   }
 
-  iterator erase(const_iterator CI) {
-    // Just cast away constness because this is a non-const member function.
-    iterator I = const_cast<iterator>(CI);
-
+  iterator erase(iterator I) {
     assert(I >= this->begin() && "Iterator to erase is out of bounds.");
     assert(I < this->end() && "Erasing at past-the-end iterator.");
 
@@ -475,11 +471,7 @@ public:
     return(N);
   }
 
-  iterator erase(const_iterator CS, const_iterator CE) {
-    // Just cast away constness because this is a non-const member function.
-    iterator S = const_cast<iterator>(CS);
-    iterator E = const_cast<iterator>(CE);
-
+  iterator erase(iterator S, iterator E) {
     assert(S >= this->begin() && "Range to erase is out of bounds.");
     assert(S <= E && "Trying to erase invalid range.");
     assert(E <= this->end() && "Trying to erase past the end.");

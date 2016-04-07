@@ -773,6 +773,7 @@ Scalar::Promote(Scalar::Type type)
                  success = true;
                  break;
 
+
              case e_sint256:
              case e_uint256:
                  m_integer = llvm::APInt(BITWIDTH_INT256, NUM_OF_WORDS_INT256, ((const type256 *)m_integer.getRawData()));

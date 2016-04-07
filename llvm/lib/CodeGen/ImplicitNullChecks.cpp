@@ -46,9 +46,10 @@
 
 using namespace llvm;
 
-static cl::opt<int> PageSize("imp-null-check-page-size",
-                             cl::desc("The page size of the target in bytes"),
-                             cl::init(4096));
+static cl::opt<unsigned> PageSize("imp-null-check-page-size",
+                                  cl::desc("The page size of the target in "
+                                           "bytes"),
+                                  cl::init(4096));
 
 #define DEBUG_TYPE "implicit-null-checks"
 
@@ -106,11 +107,6 @@ public:
   }
 
   bool runOnMachineFunction(MachineFunction &MF) override;
-
-  MachineFunctionProperties getRequiredProperties() const override {
-    return MachineFunctionProperties().set(
-        MachineFunctionProperties::Property::AllVRegsAllocated);
-  }
 };
 
 /// \brief Detect re-ordering hazards and dependencies.
@@ -328,8 +324,7 @@ bool ImplicitNullChecks::analyzeBlockForNullChecks(
   for (auto MII = NotNullSucc->begin(), MIE = NotNullSucc->end(); MII != MIE;
        ++MII) {
     MachineInstr *MI = &*MII;
-    unsigned BaseReg;
-    int64_t Offset;
+    unsigned BaseReg, Offset;
     if (TII->getMemOpBaseRegImmOfs(MI, BaseReg, Offset, TRI))
       if (MI->mayLoad() && !MI->isPredicable() && BaseReg == PointerReg &&
           Offset < PageSize && MI->getDesc().getNumDefs() <= 1 &&

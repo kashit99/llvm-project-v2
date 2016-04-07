@@ -159,15 +159,15 @@ public:
 
   SizeOffsetType compute(Value *V);
 
-  static bool knownSize(const SizeOffsetType &SizeOffset) {
+  bool knownSize(SizeOffsetType &SizeOffset) {
     return SizeOffset.first.getBitWidth() > 1;
   }
 
-  static bool knownOffset(const SizeOffsetType &SizeOffset) {
+  bool knownOffset(SizeOffsetType &SizeOffset) {
     return SizeOffset.second.getBitWidth() > 1;
   }
 
-  static bool bothKnown(const SizeOffsetType &SizeOffset) {
+  bool bothKnown(SizeOffsetType &SizeOffset) {
     return knownSize(SizeOffset) && knownOffset(SizeOffset);
   }
 

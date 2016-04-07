@@ -49,9 +49,7 @@ CGIOperandList::CGIOperandList(Record *R) : TheDef(R) {
 
   unsigned MIOperandNo = 0;
   std::set<std::string> OperandNames;
-  unsigned e = InDI->getNumArgs() + OutDI->getNumArgs();
-  OperandList.reserve(e);
-  for (unsigned i = 0; i != e; ++i){
+  for (unsigned i = 0, e = InDI->getNumArgs()+OutDI->getNumArgs(); i != e; ++i){
     Init *ArgInit;
     std::string ArgName;
     if (i < NumDefs) {
@@ -324,7 +322,6 @@ CodeGenInstruction::CodeGenInstruction(Record *R)
   isExtractSubreg = R->getValueAsBit("isExtractSubreg");
   isInsertSubreg = R->getValueAsBit("isInsertSubreg");
   isConvergent = R->getValueAsBit("isConvergent");
-  hasNoSchedulingInfo = R->getValueAsBit("hasNoSchedulingInfo");
 
   bool Unset;
   mayLoad      = R->getValueAsBitOrUnset("mayLoad", Unset);

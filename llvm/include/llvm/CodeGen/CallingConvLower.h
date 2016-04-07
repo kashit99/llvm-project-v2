@@ -195,7 +195,6 @@ class CCState {
 private:
   CallingConv::ID CallingConv;
   bool IsVarArg;
-  bool AnalyzingMustTailForwardedRegs = false;
   MachineFunction &MF;
   const TargetRegisterInfo &TRI;
   SmallVectorImpl<CCValAssign> &Locs;
@@ -417,13 +416,8 @@ public:
     unsigned Result = StackOffset;
     StackOffset += Size;
     MaxStackArgAlign = std::max(Align, MaxStackArgAlign);
-    ensureMaxAlignment(Align);
+    MF.getFrameInfo()->ensureMaxAlignment(Align);
     return Result;
-  }
-
-  void ensureMaxAlignment(unsigned Align) {
-    if (!AnalyzingMustTailForwardedRegs)
-      MF.getFrameInfo()->ensureMaxAlignment(Align);
   }
 
   /// Version of AllocateStack with extra register to be shadowed.
@@ -512,14 +506,6 @@ public:
   void analyzeMustTailForwardedRegisters(
       SmallVectorImpl<ForwardedRegister> &Forwards, ArrayRef<MVT> RegParmTypes,
       CCAssignFn Fn);
-
-  /// Returns true if the results of the two calling conventions are compatible.
-  /// This is usually part of the check for tailcall eligibility.
-  static bool resultsCompatible(CallingConv::ID CalleeCC,
-                                CallingConv::ID CallerCC, MachineFunction &MF,
-                                LLVMContext &C,
-                                const SmallVectorImpl<ISD::InputArg> &Ins,
-                                CCAssignFn CalleeFn, CCAssignFn CallerFn);
 
 private:
   /// MarkAllocated - Mark a register and all of its aliases as allocated.

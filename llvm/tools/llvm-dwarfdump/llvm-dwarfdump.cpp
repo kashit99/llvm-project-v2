@@ -96,10 +96,9 @@ static void DumpInput(StringRef Filename) {
   error(Filename, BuffOrErr.getError());
   std::unique_ptr<MemoryBuffer> Buff = std::move(BuffOrErr.get());
 
-  Expected<std::unique_ptr<Binary>> BinOrErr =
+  ErrorOr<std::unique_ptr<Binary>> BinOrErr =
       object::createBinary(Buff->getMemBufferRef());
-  if (!BinOrErr)
-    error(Filename, errorToErrorCode(BinOrErr.takeError()));
+  error(Filename, BinOrErr.getError());
 
   if (auto *Obj = dyn_cast<ObjectFile>(BinOrErr->get()))
     DumpObjectFile(*Obj, Filename);

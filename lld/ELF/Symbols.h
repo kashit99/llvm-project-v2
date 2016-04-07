@@ -46,8 +46,6 @@ struct Symbol {
 
 // The base class for real symbol classes.
 class SymbolBody {
-  void init();
-
 public:
   enum Kind {
     DefinedFirst,
@@ -58,22 +56,19 @@ public:
     DefinedSyntheticKind,
     DefinedLast = DefinedSyntheticKind,
     UndefinedElfKind,
-    UndefinedBitcodeKind,
-    LazyArchiveKind,
-    LazyObjectKind,
+    UndefinedKind,
+    LazyKind
   };
 
   Kind kind() const { return static_cast<Kind>(SymbolKind); }
 
   bool isWeak() const { return Binding == llvm::ELF::STB_WEAK; }
   bool isUndefined() const {
-    return SymbolKind == UndefinedBitcodeKind || SymbolKind == UndefinedElfKind;
+    return SymbolKind == UndefinedKind || SymbolKind == UndefinedElfKind;
   }
   bool isDefined() const { return SymbolKind <= DefinedLast; }
   bool isCommon() const { return SymbolKind == DefinedCommonKind; }
-  bool isLazy() const {
-    return SymbolKind == LazyArchiveKind || SymbolKind == LazyObjectKind;
-  }
+  bool isLazy() const { return SymbolKind == LazyKind; }
   bool isShared() const { return SymbolKind == SharedKind; }
   bool isLocal() const { return Binding == llvm::ELF::STB_LOCAL; }
   bool isUsedInRegularObj() const { return IsUsedInRegularObj; }
@@ -107,9 +102,7 @@ public:
   template <class ELFT>
   typename ELFT::uint getVA(typename ELFT::uint Addend = 0) const;
 
-  template <class ELFT> typename ELFT::uint getGotOffset() const;
   template <class ELFT> typename ELFT::uint getGotVA() const;
-  template <class ELFT> typename ELFT::uint getGotPltOffset() const;
   template <class ELFT> typename ELFT::uint getGotPltVA() const;
   template <class ELFT> typename ELFT::uint getPltVA() const;
   template <class ELFT> typename ELFT::uint getThunkVA() const;
@@ -132,7 +125,14 @@ public:
 
 protected:
   SymbolBody(Kind K, StringRef Name, uint8_t Binding, uint8_t StOther,
-             uint8_t Type);
+             uint8_t Type)
+      : SymbolKind(K), MustBeInDynSym(false), NeedsCopyOrPltAddr(false),
+        Type(Type), Binding(Binding), StOther(StOther),
+        Name({Name.data(), Name.size()}) {
+    assert(!isLocal());
+    IsUsedInRegularObj =
+        K != SharedKind && K != LazyKind && K != DefinedBitcodeKind;
+  }
 
   SymbolBody(Kind K, uint32_t NameOffset, uint8_t StOther, uint8_t Type);
 
@@ -151,8 +151,6 @@ public:
   // True if the linker has to generate a copy relocation for this shared
   // symbol or if the symbol should point to its plt entry.
   unsigned NeedsCopyOrPltAddr : 1;
-
-  unsigned CanKeepUndefined : 1;
 
   // The following fields have the same meaning as the ELF symbol attributes.
   uint8_t Type;    // symbol type
@@ -284,26 +282,31 @@ public:
   const OutputSectionBase<ELFT> &Section;
 };
 
-class UndefinedBitcode : public SymbolBody {
-public:
-  UndefinedBitcode(StringRef N, bool IsWeak, uint8_t StOther);
+// Undefined symbol.
+class Undefined : public SymbolBody {
+  typedef SymbolBody::Kind Kind;
+  bool CanKeepUndefined;
 
-  static bool classof(const SymbolBody *S) {
-    return S->kind() == UndefinedBitcodeKind;
-  }
+protected:
+  Undefined(Kind K, StringRef N, uint8_t Binding, uint8_t StOther,
+            uint8_t Type);
+  Undefined(Kind K, uint32_t NameOffset, uint8_t StOther, uint8_t Type);
+
+public:
+  Undefined(StringRef N, bool IsWeak, uint8_t StOther, bool CanKeepUndefined);
+
+  static bool classof(const SymbolBody *S) { return S->isUndefined(); }
+
+  bool canKeepUndefined() const { return CanKeepUndefined; }
 };
 
-template <class ELFT> class UndefinedElf : public SymbolBody {
+template <class ELFT> class UndefinedElf : public Undefined {
   typedef typename ELFT::uint uintX_t;
   typedef typename ELFT::Sym Elf_Sym;
 
 public:
   UndefinedElf(StringRef N, const Elf_Sym &Sym);
   UndefinedElf(const Elf_Sym &Sym);
-  UndefinedElf(StringRef Name, uint8_t Binding, uint8_t StOther, uint8_t Type,
-               bool CanKeepUndefined);
-
-  bool canKeepUndefined() const { return CanKeepUndefined; }
 
   uintX_t Size;
 
@@ -342,49 +345,20 @@ public:
 // the same name, it will ask the Lazy to load a file.
 class Lazy : public SymbolBody {
 public:
-  Lazy(SymbolBody::Kind K, StringRef Name)
-      : SymbolBody(K, Name, llvm::ELF::STB_GLOBAL, llvm::ELF::STV_DEFAULT,
-                   /* Type */ 0) {}
+  Lazy(ArchiveFile *F, const llvm::object::Archive::Symbol S)
+      : SymbolBody(LazyKind, S.getName(), llvm::ELF::STB_GLOBAL,
+                   llvm::ELF::STV_DEFAULT, /* Type */ 0),
+        File(F), Sym(S) {}
 
-  static bool classof(const SymbolBody *S) { return S->isLazy(); }
+  static bool classof(const SymbolBody *S) { return S->kind() == LazyKind; }
 
   // Returns an object file for this symbol, or a nullptr if the file
   // was already returned.
-  std::unique_ptr<InputFile> getFile();
-};
-
-// LazyArchive symbols represents symbols in archive files.
-class LazyArchive : public Lazy {
-public:
-  LazyArchive(ArchiveFile *F, const llvm::object::Archive::Symbol S)
-      : Lazy(LazyArchiveKind, S.getName()), File(F), Sym(S) {}
-
-  static bool classof(const SymbolBody *S) {
-    return S->kind() == LazyArchiveKind;
-  }
-
-  std::unique_ptr<InputFile> getFile();
+  std::unique_ptr<InputFile> getMember();
 
 private:
   ArchiveFile *File;
   const llvm::object::Archive::Symbol Sym;
-};
-
-// LazyObject symbols represents symbols in object files between
-// --start-lib and --end-lib options.
-class LazyObject : public Lazy {
-public:
-  LazyObject(StringRef Name, MemoryBufferRef M)
-      : Lazy(LazyObjectKind, Name), MBRef(M) {}
-
-  static bool classof(const SymbolBody *S) {
-    return S->kind() == LazyObjectKind;
-  }
-
-  std::unique_ptr<InputFile> getFile();
-
-private:
-  MemoryBufferRef MBRef;
 };
 
 // Some linker-generated symbols need to be created as

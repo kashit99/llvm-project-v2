@@ -2655,9 +2655,6 @@ StringRef FunctionType::getNameForCallConv(CallingConv CC) {
   case CC_IntelOclBicc: return "intel_ocl_bicc";
   case CC_SpirFunction: return "spir_function";
   case CC_SpirKernel: return "spir_kernel";
-  case CC_Swift: return "swiftcall";
-  case CC_PreserveMost: return "preserve_most";
-  case CC_PreserveAll: return "preserve_all";
   }
 
   llvm_unreachable("Invalid calling convention.");
@@ -2674,7 +2671,7 @@ FunctionProtoType::FunctionProtoType(QualType result, ArrayRef<QualType> params,
       NumParams(params.size()),
       NumExceptions(epi.ExceptionSpec.Exceptions.size()),
       ExceptionSpecType(epi.ExceptionSpec.Type),
-      HasExtParameterInfos(epi.ExtParameterInfos != nullptr),
+      HasAnyConsumedParams(epi.ConsumedParameters != nullptr),
       Variadic(epi.Variadic), HasTrailingReturn(epi.HasTrailingReturn) {
   assert(NumParams == params.size() && "function has too many parameters");
 
@@ -2740,11 +2737,10 @@ FunctionProtoType::FunctionProtoType(QualType result, ArrayRef<QualType> params,
     slot[0] = epi.ExceptionSpec.SourceDecl;
   }
 
-  if (epi.ExtParameterInfos) {
-    ExtParameterInfo *extParamInfos =
-      const_cast<ExtParameterInfo *>(getExtParameterInfosBuffer());
+  if (epi.ConsumedParameters) {
+    bool *consumedParams = const_cast<bool *>(getConsumedParamsBuffer());
     for (unsigned i = 0; i != NumParams; ++i)
-      extParamInfos[i] = epi.ExtParameterInfos[i];
+      consumedParams[i] = epi.ConsumedParameters[i];
   }
 }
 
@@ -2864,9 +2860,9 @@ void FunctionProtoType::Profile(llvm::FoldingSetNodeID &ID, QualType Result,
              epi.ExceptionSpec.Type == EST_Unevaluated) {
     ID.AddPointer(epi.ExceptionSpec.SourceDecl->getCanonicalDecl());
   }
-  if (epi.ExtParameterInfos) {
+  if (epi.ConsumedParameters) {
     for (unsigned i = 0; i != NumParams; ++i)
-      ID.AddInteger(epi.ExtParameterInfos[i].getOpaqueValue());
+      ID.AddBoolean(epi.ConsumedParameters[i]);
   }
   epi.ExtInfo.Profile(ID);
   ID.AddBoolean(epi.HasTrailingReturn);
@@ -2935,24 +2931,6 @@ void DependentDecltypeType::Profile(llvm::FoldingSetNodeID &ID,
   E->Profile(ID, Context, true);
 }
 
-UnaryTransformType::UnaryTransformType(QualType BaseType,
-                                       QualType UnderlyingType,
-                                       UTTKind UKind,
-                                       QualType CanonicalType)
-  : Type(UnaryTransform, CanonicalType, BaseType->isDependentType(),
-         BaseType->isInstantiationDependentType(),
-         BaseType->isVariablyModifiedType(),
-         BaseType->containsUnexpandedParameterPack())
-  , BaseType(BaseType), UnderlyingType(UnderlyingType), UKind(UKind)
-{}
-
-DependentUnaryTransformType::DependentUnaryTransformType(const ASTContext &C,
-                                                         QualType BaseType,
-                                                         UTTKind UKind)
-   : UnaryTransformType(BaseType, C.DependentTy, UKind, QualType())
-{}
-
-
 TagType::TagType(TypeClass TC, const TagDecl *D, QualType can)
   : Type(TC, can, D->isDependentType(), 
          /*InstantiationDependent=*/D->isDependentType(),
@@ -2968,6 +2946,17 @@ static TagDecl *getInterestingTagDecl(TagDecl *decl) {
   // If there's no definition (not even in progress), return what we have.
   return decl;
 }
+
+UnaryTransformType::UnaryTransformType(QualType BaseType,
+                                       QualType UnderlyingType,
+                                       UTTKind UKind,
+                                       QualType CanonicalType)
+  : Type(UnaryTransform, CanonicalType, UnderlyingType->isDependentType(),
+         UnderlyingType->isInstantiationDependentType(),
+         UnderlyingType->isVariablyModifiedType(),
+         BaseType->containsUnexpandedParameterPack())
+  , BaseType(BaseType), UnderlyingType(UnderlyingType), UKind(UKind)
+{}
 
 TagDecl *TagType::getDecl() const {
   return getInterestingTagDecl(decl);
@@ -3005,11 +2994,8 @@ bool AttributedType::isQualifier() const {
   case AttributedType::attr_stdcall:
   case AttributedType::attr_thiscall:
   case AttributedType::attr_pascal:
-  case AttributedType::attr_swiftcall:
   case AttributedType::attr_vectorcall:
   case AttributedType::attr_inteloclbicc:
-  case AttributedType::attr_preserve_most:
-  case AttributedType::attr_preserve_all:
   case AttributedType::attr_ms_abi:
   case AttributedType::attr_sysv_abi:
   case AttributedType::attr_ptr32:
@@ -3061,14 +3047,11 @@ bool AttributedType::isCallingConv() const {
   case attr_fastcall:
   case attr_stdcall:
   case attr_thiscall:
-  case attr_swiftcall:
   case attr_vectorcall:
   case attr_pascal:
   case attr_ms_abi:
   case attr_sysv_abi:
   case attr_inteloclbicc:
-  case attr_preserve_most:
-  case attr_preserve_all:
     return true;
   }
   llvm_unreachable("invalid attr kind");

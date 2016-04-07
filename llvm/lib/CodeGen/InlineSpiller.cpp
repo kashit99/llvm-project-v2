@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "Spiller.h"
+#include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/ADT/TinyPtrVector.h"
@@ -71,7 +72,7 @@ class HoistSpillHelper {
   // Map from pair of (StackSlot and Original VNI) to a set of spills which
   // have the same stackslot and have equal values defined by Original VNI.
   // These spills are mergeable and are hoist candiates.
-  typedef DenseMap<std::pair<int, VNInfo *>, SmallPtrSet<MachineInstr *, 16>>
+  typedef MapVector<std::pair<int, VNInfo *>, SmallPtrSet<MachineInstr *, 16>>
       MergeableSpillsMap;
   MergeableSpillsMap MergeableSpills;
 
@@ -1271,10 +1272,17 @@ void HoistSpillHelper::runHoistSpills(
     unsigned NumChildren = Children.size();
     for (unsigned i = 0; i != NumChildren; ++i) {
       MachineDomTreeNode *Child = Children[i];
+      if (SpillsInSubTreeMap.find(Child) == SpillsInSubTreeMap.end())
+        continue;
+      // SpillsInSubTreeMap[*RIt].second += SpillsInSubTreeMap[Child].second
+      // should be placed before getting the begin and end iterators of
+      // SpillsInSubTreeMap[Child].first, or else the iterators may be
+      // invalidated when SpillsInSubTreeMap[*RIt] is seen the first time
+      // and the map grows and then the original buckets in the map are moved.
+      SpillsInSubTreeMap[*RIt].second += SpillsInSubTreeMap[Child].second;
       auto BI = SpillsInSubTreeMap[Child].first.begin();
       auto EI = SpillsInSubTreeMap[Child].first.end();
       SpillsInSubTreeMap[*RIt].first.insert(BI, EI);
-      SpillsInSubTreeMap[*RIt].second += SpillsInSubTreeMap[Child].second;
       SpillsInSubTreeMap.erase(Child);
     }
 

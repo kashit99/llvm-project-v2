@@ -21,16 +21,9 @@
 using namespace llvm;
 
 #ifndef LLVM_BUILD_GLOBAL_ISEL
-AArch64RegisterBankInfo::AArch64RegisterBankInfo(const TargetRegisterInfo &TRI)
-    : RegisterBankInfo() {
-  llvm_unreachable("This API shouldn't be useful outside of GlobalISel");
-}
+#error "You shouldn't build this"
+#endif
 
-unsigned AArch64RegisterBankInfo::copyCost(const RegisterBank &A,
-                                           const RegisterBank &B) const {
-  return 0;
-}
-#else
 AArch64RegisterBankInfo::AArch64RegisterBankInfo(const TargetRegisterInfo &TRI)
     : RegisterBankInfo(AArch64::NumRegisterBanks) {
   // Initialize the GPR bank.
@@ -58,6 +51,15 @@ AArch64RegisterBankInfo::AArch64RegisterBankInfo(const TargetRegisterInfo &TRI)
   assert(RBFPR.getSize() == 512 &&
          "FPRs should hold up to 512-bit via QQQQ sequence");
 
+  // Initialize the CCR bank.
+  createRegisterBank(AArch64::CCRRegBankID, "CCR");
+  addRegBankCoverage(AArch64::CCRRegBankID, AArch64::CCRRegClassID, TRI);
+  const RegisterBank &RBCCR = getRegBank(AArch64::CCRRegBankID);
+  (void)RBCCR;
+  assert(RBCCR.contains(*TRI.getRegClass(AArch64::CCRRegClassID)) &&
+         "Class not added?");
+  assert(RBCCR.getSize() == 32 && "CCR should hold up to 32-bit");
+
   verify(TRI);
 }
 
@@ -70,4 +72,40 @@ unsigned AArch64RegisterBankInfo::copyCost(const RegisterBank &A,
   // * build_sequence cost.
   return 0;
 }
-#endif
+
+const RegisterBank &AArch64RegisterBankInfo::getRegBankFromRegClass(
+    const TargetRegisterClass &RC) const {
+  switch (RC.getID()) {
+  case AArch64::FPR8RegClassID:
+  case AArch64::FPR16RegClassID:
+  case AArch64::FPR32RegClassID:
+  case AArch64::FPR64RegClassID:
+  case AArch64::FPR128RegClassID:
+  case AArch64::FPR128_loRegClassID:
+  case AArch64::DDRegClassID:
+  case AArch64::DDDRegClassID:
+  case AArch64::DDDDRegClassID:
+  case AArch64::QQRegClassID:
+  case AArch64::QQQRegClassID:
+  case AArch64::QQQQRegClassID:
+    return getRegBank(AArch64::FPRRegBankID);
+  case AArch64::GPR32commonRegClassID:
+  case AArch64::GPR32RegClassID:
+  case AArch64::GPR32spRegClassID:
+  case AArch64::GPR32sponlyRegClassID:
+  case AArch64::GPR32allRegClassID:
+  case AArch64::GPR64commonRegClassID:
+  case AArch64::GPR64RegClassID:
+  case AArch64::GPR64spRegClassID:
+  case AArch64::GPR64sponlyRegClassID:
+  case AArch64::GPR64allRegClassID:
+  case AArch64::tcGPR64RegClassID:
+  case AArch64::WSeqPairsClassRegClassID:
+  case AArch64::XSeqPairsClassRegClassID:
+    return getRegBank(AArch64::FPRRegBankID);
+  case AArch64::CCRRegClassID:
+    return getRegBank(AArch64::CCRRegBankID);
+  default:
+    llvm_unreachable("Register class not supported");
+  }
+}

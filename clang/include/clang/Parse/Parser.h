@@ -2201,8 +2201,19 @@ private:
   SourceLocation SkipExtendedMicrosoftTypeAttributes();
   void ParseMicrosoftInheritanceClassAttributes(ParsedAttributes &attrs);
   void ParseBorlandTypeAttributes(ParsedAttributes &attrs);
-  void ParseOpenCLAttributes(ParsedAttributes &attrs);
+  void ParseOpenCLKernelAttributes(ParsedAttributes &attrs);
   void ParseOpenCLQualifiers(ParsedAttributes &Attrs);
+  /// \brief Parses opencl_unroll_hint attribute if language is OpenCL v2.0
+  /// or higher.
+  /// \return false if error happens.
+  bool MaybeParseOpenCLUnrollHintAttribute(ParsedAttributes &Attrs) {
+    if (getLangOpts().OpenCL)
+      return ParseOpenCLUnrollHintAttribute(Attrs);
+    return true;
+  }
+  /// \brief Parses opencl_unroll_hint attribute.
+  /// \return false if error happens.
+  bool ParseOpenCLUnrollHintAttribute(ParsedAttributes &Attrs);
   void ParseNullabilityTypeSpecifiers(ParsedAttributes &attrs);
 
   VersionTuple ParseVersionTuple(SourceRange &Range);
@@ -2417,7 +2428,7 @@ private:
       ParsingDeclRAIIObject *DiagsFromTParams = nullptr);
   DeclGroupPtrTy ParseCXXClassMemberDeclarationWithPragmas(
       AccessSpecifier &AS, ParsedAttributesWithRange &AccessAttrs,
-      DeclSpec::TST TagType, Decl *TagDecl);
+      DeclSpec::TST TagType, Decl *Tag);
   void ParseConstructorInitializer(Decl *ConstructorDecl);
   MemInitResult ParseMemInitializer(Decl *ConstructorDecl);
   void HandleMemberFunctionDeclDelays(Declarator& DeclaratorInfo,
@@ -2445,8 +2456,17 @@ private:
 
   //===--------------------------------------------------------------------===//
   // OpenMP: Directives and clauses.
+  /// Parse clauses for '#pragma omp declare simd'.
+  DeclGroupPtrTy ParseOMPDeclareSimdClauses(DeclGroupPtrTy Ptr,
+                                            CachedTokens &Toks,
+                                            SourceLocation Loc);
   /// \brief Parses declarative OpenMP directives.
-  DeclGroupPtrTy ParseOpenMPDeclarativeDirective();
+  DeclGroupPtrTy ParseOpenMPDeclarativeDirectiveWithExtDecl(
+      AccessSpecifier &AS, ParsedAttributesWithRange &Attrs,
+      DeclSpec::TST TagType = DeclSpec::TST_unspecified,
+      Decl *TagDecl = nullptr);
+  /// \brief Parse 'omp declare reduction' construct.
+  DeclGroupPtrTy ParseOpenMPDeclareReductionDirective(AccessSpecifier AS);
   /// \brief Parses simple list of variables.
   ///
   /// \param Kind Kind of the directive.
@@ -2504,6 +2524,10 @@ private:
                                       OpenMPClauseKind Kind);
 
 public:
+  /// Parses simple expression in parens for single-expression clauses of OpenMP
+  /// constructs.
+  /// \param RLoc Returned location of right paren.
+  ExprResult ParseOpenMPParensExpr(StringRef ClauseName, SourceLocation &RLoc);
   bool ParseUnqualifiedId(CXXScopeSpec &SS, bool EnteringContext,
                           bool AllowDestructorName,
                           bool AllowConstructorName,

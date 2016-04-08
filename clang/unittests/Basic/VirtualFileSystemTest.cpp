@@ -29,7 +29,7 @@ struct DummyFile : public vfs::File {
             bool IsVolatile) override {
     llvm_unreachable("unimplemented");
   }
-  virtual std::error_code close() override { return std::error_code(); }
+  std::error_code close() override { return std::error_code(); }
 };
 
 class DummyFileSystem : public vfs::FileSystem {
@@ -348,7 +348,6 @@ TEST(VirtualFileSystemTest, BasicRealFSRecursiveIteration) {
   ASSERT_FALSE(EC);
   ASSERT_NE(vfs::recursive_directory_iterator(), I);
 
-
   std::vector<std::string> Contents;
   for (auto E = vfs::recursive_directory_iterator(); !EC && I != E;
        I.increment(EC)) {
@@ -663,7 +662,7 @@ public:
   getFromYAMLRawString(StringRef Content,
                        IntrusiveRefCntPtr<vfs::FileSystem> ExternalFS) {
     std::unique_ptr<MemoryBuffer> Buffer = MemoryBuffer::getMemBuffer(Content);
-    return getVFSFromYAML(std::move(Buffer), CountingDiagHandler, this,
+    return getVFSFromYAML(std::move(Buffer), CountingDiagHandler, "", this,
                           ExternalFS);
   }
 

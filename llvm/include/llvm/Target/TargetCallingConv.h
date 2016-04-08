@@ -18,7 +18,7 @@
 #include "llvm/Support/DataTypes.h"
 #include "llvm/Support/MathExtras.h"
 #include <string>
-#include <limits.h>
+#include <climits>
 
 namespace llvm {
 
@@ -64,6 +64,7 @@ namespace ISD {
     static const uint64_t One            = 1ULL; ///< 1 of this type, for shifts
 
     uint64_t Flags;
+
   public:
     ArgFlagsTy() : Flags(0) { }
 
@@ -86,10 +87,10 @@ namespace ISD {
     void setInAlloca() { Flags |= One << InAllocaOffs; }
 
     bool isSwiftSelf() const { return Flags & SwiftSelf; }
-    void setSwiftSelf() { Flags = One << SwiftSelfOffs; }
+    void setSwiftSelf() { Flags |= One << SwiftSelfOffs; }
 
     bool isSwiftError() const { return Flags & SwiftError; }
-    void setSwiftError() { Flags = One << SwiftErrorOffs; }
+    void setSwiftError() { Flags |= One << SwiftErrorOffs; }
 
     bool isNest()      const { return Flags & Nest; }
     void setNest()     { Flags |= One << NestOffs; }
@@ -205,8 +206,8 @@ namespace ISD {
       ArgVT = argvt;
     }
   };
-}
+} // end namespace ISD
 
 } // end llvm namespace
 
-#endif
+#endif // LLVM_TARGET_TARGETCALLINGCONV_H

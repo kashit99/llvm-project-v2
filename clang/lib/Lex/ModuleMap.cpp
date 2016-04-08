@@ -89,16 +89,13 @@ ModuleMap::ModuleMap(SourceManager &SourceMgr, DiagnosticsEngine &Diags,
                      HeaderSearch &HeaderInfo)
     : SourceMgr(SourceMgr), Diags(Diags), LangOpts(LangOpts), Target(Target),
       HeaderInfo(HeaderInfo), BuiltinIncludeDir(nullptr),
-      CompilingModule(nullptr), SourceModule(nullptr), NumCreatedModules(0) {
+      SourceModule(nullptr), NumCreatedModules(0) {
   MMapLangOpts.LineComment = true;
 }
 
 ModuleMap::~ModuleMap() {
-  for (llvm::StringMap<Module *>::iterator I = Modules.begin(), 
-                                        IEnd = Modules.end();
-       I != IEnd; ++I) {
-    delete I->getValue();
-  }
+  for (auto &M : Modules)
+    delete M.getValue();
 }
 
 void ModuleMap::setTarget(const TargetInfo &Target) {
@@ -242,6 +239,7 @@ static Module *getTopLevelOrNull(Module *M) {
 }
 
 void ModuleMap::diagnoseHeaderInclusion(Module *RequestingModule,
+                                        bool RequestingModuleIsModuleInterface,
                                         SourceLocation FilenameLoc,
                                         StringRef Filename,
                                         const FileEntry *File) {
@@ -304,7 +302,7 @@ void ModuleMap::diagnoseHeaderInclusion(Module *RequestingModule,
   if (LangOpts.ModulesStrictDeclUse) {
     Diags.Report(FilenameLoc, diag::err_undeclared_use_of_module)
         << RequestingModule->getFullModuleName() << Filename;
-  } else if (RequestingModule) {
+  } else if (RequestingModule && RequestingModuleIsModuleInterface) {
     diag::kind DiagID = RequestingModule->getTopLevelModule()->IsFramework ?
         diag::warn_non_modular_include_in_framework_module :
         diag::warn_non_modular_include_in_module;
@@ -344,8 +342,8 @@ ModuleMap::KnownHeader ModuleMap::findModuleForHeader(const FileEntry *File) {
     ModuleMap::KnownHeader Result;
     // Iterate over all modules that 'File' is part of to find the best fit.
     for (KnownHeader &H : Known->second) {
-      // Prefer a header from the current module over all others.
-      if (H.getModule()->getTopLevelModule() == CompilingModule)
+      // Prefer a header from the source module over all others.
+      if (H.getModule()->getTopLevelModule() == SourceModule)
         return MakeResult(H);
       if (!Result || isBetterKnownHeader(H, Result))
         Result = H;
@@ -557,17 +555,11 @@ ModuleMap::findOrCreateModule(StringRef Name, Module *Parent, bool IsFramework,
   // Create a new module with this name.
   Module *Result = new Module(Name, SourceLocation(), Parent,
                               IsFramework, IsExplicit, NumCreatedModules++);
-  if (LangOpts.CurrentModule == Name) {
-    SourceModule = Result;
-    SourceModuleName = Name;
-  }
   if (!Parent) {
+    if (LangOpts.CurrentModule == Name)
+      SourceModule = Result;
     Modules[Name] = Result;
     ModuleScopeIDs[Result] = CurrentModuleScopeID;
-    if (!LangOpts.CurrentModule.empty() && !CompilingModule &&
-        Name == LangOpts.CurrentModule) {
-      CompilingModule = Result;
-    }
   }
   return std::make_pair(Result, true);
 }
@@ -711,9 +703,10 @@ Module *ModuleMap::inferFrameworkModule(const DirectoryEntry *FrameworkDir,
     ModuleScopeIDs[Result] = CurrentModuleScopeID;
   InferredModuleAllowedBy[Result] = ModuleMapFile;
   Result->IsInferred = true;
-  if (LangOpts.CurrentModule == ModuleName) {
-    SourceModule = Result;
-    SourceModuleName = ModuleName;
+  if (!Parent) {
+    if (LangOpts.CurrentModule == ModuleName)
+      SourceModule = Result;
+    Modules[ModuleName] = Result;
   }
 
   Result->IsSystem |= Attrs.IsSystem;
@@ -721,9 +714,6 @@ Module *ModuleMap::inferFrameworkModule(const DirectoryEntry *FrameworkDir,
   Result->ConfigMacrosExhaustive |= Attrs.IsExhaustive;
   Result->Directory = FrameworkDir;
 
-  if (!Parent)
-    Modules[ModuleName] = Result;
-  
   // umbrella header "umbrella-header-name"
   //
   // The "Headers/" component of the name is implied because this is
@@ -830,13 +820,18 @@ void ModuleMap::addHeader(Module *Mod, Module::Header Header,
   HeaderList.push_back(KH);
   Mod->Headers[headerRoleToKind(Role)].push_back(std::move(Header));
 
-  bool isCompilingModuleHeader = Mod->getTopLevelModule() == CompilingModule;
+  bool isCompilingModuleHeader =
+      LangOpts.CompilingModule && Mod->getTopLevelModule() == SourceModule;
   if (!Imported || isCompilingModuleHeader) {
     // When we import HeaderFileInfo, the external source is expected to
     // set the isModuleHeader flag itself.
     HeaderInfo.MarkFileModuleHeader(Header.Entry, Role,
                                     isCompilingModuleHeader);
   }
+
+  // Notify callbacks that we just added a new header.
+  for (const auto &Cb : Callbacks)
+    Cb->moduleMapAddHeader(*Header.Entry);
 }
 
 void ModuleMap::excludeHeader(Module *Mod, Module::Header Header) {
@@ -1306,7 +1301,9 @@ namespace {
     /// \brief The 'extern_c' attribute.
     AT_extern_c,
     /// \brief The 'exhaustive' attribute.
-    AT_exhaustive
+    AT_exhaustive,
+    // \brief The 'swift_infer_import_as_member' attribute.
+    AT_swift_infer_import_as_member,
   };
 }
 
@@ -1427,7 +1424,9 @@ void ModuleMapParser::parseModuleDecl() {
   
   // Parse the optional attribute list.
   Attributes Attrs;
-  parseOptionalAttributes(Attrs);
+  if (parseOptionalAttributes(Attrs))
+    return;
+
   
   // Parse the opening brace.
   if (!Tok.is(MMToken::LBrace)) {
@@ -2105,7 +2104,9 @@ void ModuleMapParser::parseConfigMacros() {
 
   // Parse the optional attributes.
   Attributes Attrs;
-  parseOptionalAttributes(Attrs);
+  if (parseOptionalAttributes(Attrs))
+    return;
+
   if (Attrs.IsExhaustive && !ActiveModule->Parent) {
     ActiveModule->ConfigMacrosExhaustive = true;
   }
@@ -2253,7 +2254,8 @@ void ModuleMapParser::parseInferredModuleDecl(bool Framework, bool Explicit) {
 
   // Parse optional attributes.
   Attributes Attrs;
-  parseOptionalAttributes(Attrs);
+  if (parseOptionalAttributes(Attrs))
+    return;
 
   if (ActiveModule) {
     // Note that we have an inferred submodule.
@@ -2379,6 +2381,7 @@ bool ModuleMapParser::parseOptionalAttributes(Attributes &Attrs) {
           .Case("exhaustive", AT_exhaustive)
           .Case("extern_c", AT_extern_c)
           .Case("system", AT_system)
+          .Case("swift_infer_import_as_member", AT_swift_infer_import_as_member)
           .Default(AT_unknown);
     switch (Attribute) {
     case AT_unknown:
@@ -2392,6 +2395,10 @@ bool ModuleMapParser::parseOptionalAttributes(Attributes &Attrs) {
 
     case AT_extern_c:
       Attrs.IsExternC = true;
+      break;
+
+    case AT_swift_infer_import_as_member:
+      Attrs.IsSwiftInferImportAsMember = true;
       break;
 
     case AT_exhaustive:

@@ -1,6 +1,6 @@
 ; RUN: opt < %s -sample-profile -sample-profile-file=%S/Inputs/cov-zero-samples.prof -sample-profile-check-record-coverage=100 -pass-remarks=sample-profile -o /dev/null 2>&1 | FileCheck %s
 ;
-; CHECK: remark: cov-zero-samples.cc:9:25: Applied 404065 samples from profile (offset: 2.1)
+; CHECK: remark: cov-zero-samples.cc:9:29: Applied 404065 samples from profile (offset: 2.1)
 ; CHECK: remark: cov-zero-samples.cc:10:9: Applied 443089 samples from profile (offset: 3)
 ; CHECK: remark: cov-zero-samples.cc:10:36: Applied 0 samples from profile (offset: 3.1)
 ; CHECK: remark: cov-zero-samples.cc:11:12: Applied 404066 samples from profile (offset: 4)
@@ -86,7 +86,7 @@ declare i32 @printf(i8*, ...)
 !llvm.module.flags = !{!15, !16}
 !llvm.ident = !{!17}
 
-!0 = distinct !DICompileUnit(language: DW_LANG_C_plus_plus, file: !1, producer: "clang version 3.8.0 (trunk 253667) (llvm/trunk 253670)", isOptimized: false, runtimeVersion: 0, emissionKind: 1, enums: !2, subprograms: !3, globals: !11)
+!0 = distinct !DICompileUnit(language: DW_LANG_C_plus_plus, file: !1, producer: "clang version 3.8.0 (trunk 253667) (llvm/trunk 253670)", isOptimized: false, runtimeVersion: 0, emissionKind: FullDebug, enums: !2, subprograms: !3, globals: !11)
 !1 = !DIFile(filename: "cov-zero-samples.cc", directory: ".")
 !2 = !{}
 !3 = !{!4, !8}

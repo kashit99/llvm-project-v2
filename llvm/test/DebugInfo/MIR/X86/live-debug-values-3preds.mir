@@ -1,4 +1,4 @@
-# RUN: llc -run-pass=livedebugvalues -march=x86-64 -o /dev/null %s | FileCheck %s
+# RUN: llc -run-pass=livedebugvalues -march=x86-64 -o /dev/null %s 2>&1 | FileCheck %s
 
 # Test the extension of debug ranges from 3 predecessors.
 # Generated from the source file LiveDebugValues-3preds.c:
@@ -101,7 +101,7 @@
   !llvm.module.flags = !{!14, !15}
   !llvm.ident = !{!16}
   
-  !0 = distinct !DICompileUnit(language: DW_LANG_C99, file: !1, producer: "clang version 3.8.0 (trunk 253049) ", isOptimized: true, runtimeVersion: 0, emissionKind: 1, enums: !2, subprograms: !3)
+  !0 = distinct !DICompileUnit(language: DW_LANG_C99, file: !1, producer: "clang version 3.8.0 (trunk 253049) ", isOptimized: true, runtimeVersion: 0, emissionKind: FullDebug, enums: !2, subprograms: !3)
   !1 = !DIFile(filename: "LiveDebugValues-3preds.c", directory: "/home/vt/julia/test/tvvikram")
   !2 = !{}
   !3 = !{!4}
@@ -159,6 +159,7 @@ name:            add
 alignment:       4
 exposesReturnsTwice: false
 hasInlineAsm:    false
+allVRegsAllocated: true
 isSSA:           false
 tracksRegLiveness: true
 tracksSubRegLiveness: false

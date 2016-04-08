@@ -533,8 +533,7 @@ bool CallAnalyzer::visitUnaryInstruction(UnaryInstruction &I) {
     COp = SimplifiedValues.lookup(Operand);
   if (COp) {
     const DataLayout &DL = F.getParent()->getDataLayout();
-    if (Constant *C = ConstantFoldInstOperands(I.getOpcode(), I.getType(),
-                                               COp, DL)) {
+    if (Constant *C = ConstantFoldInstOperands(&I, COp, DL)) {
       SimplifiedValues[&I] = C;
       return true;
     }
@@ -1398,7 +1397,7 @@ bool CallAnalyzer::analyzeCall(CallSite CS) {
 
 #if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
 /// \brief Dump stats about this call's analysis.
-void CallAnalyzer::dump() {
+LLVM_DUMP_METHOD void CallAnalyzer::dump() {
 #define DEBUG_PRINT_STAT(x) dbgs() << "      " #x ": " << x << "\n"
   DEBUG_PRINT_STAT(NumConstantArgs);
   DEBUG_PRINT_STAT(NumConstantOffsetPtrArgs);

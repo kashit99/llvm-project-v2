@@ -508,6 +508,10 @@ namespace llvm {
 
     unsigned getPrefLoopAlignment(MachineLoop *ML) const override;
 
+    bool shouldInsertFencesForAtomic(const Instruction *I) const override {
+      return true;
+    }
+
     Instruction* emitLeadingFence(IRBuilder<> &Builder, AtomicOrdering Ord,
                                   bool IsStore, bool IsLoad) const override;
     Instruction* emitTrailingFence(IRBuilder<> &Builder, AtomicOrdering Ord,
@@ -708,6 +712,16 @@ namespace llvm {
                                       bool isVarArg,
                                       const SmallVectorImpl<ISD::InputArg> &Ins,
                                       SelectionDAG& DAG) const;
+
+    bool
+    IsEligibleForTailCallOptimization_64SVR4(
+                                    SDValue Callee,
+                                    CallingConv::ID CalleeCC,
+                                    ImmutableCallSite *CS,
+                                    bool isVarArg,
+                                    const SmallVectorImpl<ISD::OutputArg> &Outs,
+                                    const SmallVectorImpl<ISD::InputArg> &Ins,
+                                    SelectionDAG& DAG) const;
 
     SDValue EmitTailCallLoadFPAndRetAddr(SelectionDAG & DAG,
                                          int SPDiff,

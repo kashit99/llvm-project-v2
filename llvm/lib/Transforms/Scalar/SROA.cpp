@@ -55,8 +55,8 @@
 #include "llvm/Transforms/Utils/Local.h"
 #include "llvm/Transforms/Utils/PromoteMemToReg.h"
 
-#if __cplusplus >= 201103L && !defined(NDEBUG)
-// We only use this for a debug check in C++11
+#ifndef NDEBUG
+// We only use this for a debug check.
 #include <random>
 #endif
 
@@ -681,7 +681,7 @@ private:
       // langref in a very strict sense. If we ever want to enable
       // SROAStrictInbounds, this code should be factored cleanly into
       // PtrUseVisitor, but it is easier to experiment with SROAStrictInbounds
-      // by writing out the code here where we have tho underlying allocation
+      // by writing out the code here where we have the underlying allocation
       // size readily available.
       APInt GEPOffset = Offset;
       const DataLayout &DL = GEPI.getModule()->getDataLayout();
@@ -1002,7 +1002,7 @@ AllocaSlices::AllocaSlices(const DataLayout &DL, AllocaInst &AI)
                               }),
                Slices.end());
 
-#if __cplusplus >= 201103L && !defined(NDEBUG)
+#ifndef NDEBUG
   if (SROARandomShuffleSlices) {
     std::mt19937 MT(static_cast<unsigned>(sys::TimeValue::now().msec()));
     std::shuffle(Slices.begin(), Slices.end(), MT);
@@ -3359,11 +3359,15 @@ bool SROA::presplitLoadsAndStores(AllocaInst &AI, AllocaSlices &AS) {
   for (auto &P : AS.partitions()) {
     for (Slice &S : P) {
       Instruction *I = cast<Instruction>(S.getUse()->getUser());
-      if (!S.isSplittable() ||S.endOffset() <= P.endOffset()) {
-        // If this was a load we have to track that it can't participate in any
-        // pre-splitting!
+      if (!S.isSplittable() || S.endOffset() <= P.endOffset()) {
+        // If this is a load we have to track that it can't participate in any
+        // pre-splitting. If this is a store of a load we have to track that
+        // that load also can't participate in any pre-splitting.
         if (auto *LI = dyn_cast<LoadInst>(I))
           UnsplittableLoads.insert(LI);
+        else if (auto *SI = dyn_cast<StoreInst>(I))
+          if (auto *LI = dyn_cast<LoadInst>(SI->getValueOperand()))
+            UnsplittableLoads.insert(LI);
         continue;
       }
       assert(P.endOffset() > S.beginOffset() &&
@@ -3390,9 +3394,9 @@ bool SROA::presplitLoadsAndStores(AllocaInst &AI, AllocaSlices &AS) {
         }
 
         Loads.push_back(LI);
-      } else if (auto *SI = dyn_cast<StoreInst>(S.getUse()->getUser())) {
-        if (!SI ||
-            S.getUse() != &SI->getOperandUse(SI->getPointerOperandIndex()))
+      } else if (auto *SI = dyn_cast<StoreInst>(I)) {
+        if (S.getUse() != &SI->getOperandUse(SI->getPointerOperandIndex()))
+          // Skip stores *of* pointers. FIXME: This shouldn't even be possible!
           continue;
         auto *StoredLoad = dyn_cast<LoadInst>(SI->getValueOperand());
         if (!StoredLoad || !StoredLoad->isSimple())
@@ -4224,9 +4228,9 @@ PreservedAnalyses SROA::runImpl(Function &F, DominatorTree &RunDT,
   return Changed ? PreservedAnalyses::none() : PreservedAnalyses::all();
 }
 
-PreservedAnalyses SROA::run(Function &F, AnalysisManager<Function> *AM) {
-  return runImpl(F, AM->getResult<DominatorTreeAnalysis>(F),
-                 AM->getResult<AssumptionAnalysis>(F));
+PreservedAnalyses SROA::run(Function &F, AnalysisManager<Function> &AM) {
+  return runImpl(F, AM.getResult<DominatorTreeAnalysis>(F),
+                 AM.getResult<AssumptionAnalysis>(F));
 }
 
 /// A legacy pass for the legacy pass manager that wraps the \c SROA pass.

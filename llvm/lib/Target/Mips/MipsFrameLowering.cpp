@@ -13,7 +13,6 @@
 
 #include "MipsFrameLowering.h"
 #include "MCTargetDesc/MipsBaseInfo.h"
-#include "MipsAnalyzeImmediate.h"
 #include "MipsInstrInfo.h"
 #include "MipsMachineFunction.h"
 #include "MipsTargetMachine.h"
@@ -144,7 +143,7 @@ uint64_t MipsFrameLowering::estimateStackSize(const MachineFunction &MF) const {
 }
 
 // Eliminate ADJCALLSTACKDOWN, ADJCALLSTACKUP pseudo instructions
-void MipsFrameLowering::
+MachineBasicBlock::iterator MipsFrameLowering::
 eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
                               MachineBasicBlock::iterator I) const {
   unsigned SP = STI.getABI().IsN64() ? Mips::SP_64 : Mips::SP;
@@ -157,5 +156,5 @@ eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
     STI.getInstrInfo()->adjustStackPtr(SP, Amount, MBB, I);
   }
 
-  MBB.erase(I);
+  return MBB.erase(I);
 }

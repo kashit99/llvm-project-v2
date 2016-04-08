@@ -3,6 +3,7 @@ add_subdirectory(Rewrite)
 set(LLVM_LINK_COMPONENTS
   BitReader
   Option
+  ProfileData
   Support
   )
 
@@ -13,7 +14,6 @@ add_clang_library(clangFrontend
   CacheTokens.cpp
   ChainedDiagnosticConsumer.cpp
   ChainedIncludesSource.cpp
-  CodeGenOptions.cpp
   CompilerInstance.cpp
   CompilerInvocation.cpp
   CreateInvocationFromCommandLine.cpp

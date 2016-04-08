@@ -84,7 +84,7 @@ public:
   typedef uint64_t offset_type;
 
   support::endianness ValueProfDataEndianness;
-  ProfileSummary *TheProfileSummary;
+  InstrProfSummary *TheProfileSummary;
 
   InstrProfRecordWriterTrait() : ValueProfDataEndianness(support::little) {}
   static hash_value_type ComputeHash(key_type_ref K) {
@@ -142,7 +142,7 @@ public:
 }
 
 InstrProfWriter::InstrProfWriter(bool Sparse)
-    : Sparse(Sparse), FunctionData(),
+    : Sparse(Sparse), FunctionData(), ProfileKind(PF_Unknown),
       InfoObj(new InstrProfRecordWriterTrait()) {}
 
 InstrProfWriter::~InstrProfWriter() { delete InfoObj; }
@@ -197,7 +197,7 @@ bool InstrProfWriter::shouldEncodeData(const ProfilingData &PD) {
 }
 
 static void setSummary(IndexedInstrProf::Summary *TheSummary,
-                       ProfileSummary &PS) {
+                       InstrProfSummary &PS) {
   using namespace IndexedInstrProf;
   std::vector<ProfileSummaryEntry> &Res = PS.getDetailedSummary();
   TheSummary->NumSummaryFields = Summary::NumKinds;
@@ -217,9 +217,7 @@ void InstrProfWriter::writeImpl(ProfOStream &OS) {
   OnDiskChainedHashTableGenerator<InstrProfRecordWriterTrait> Generator;
 
   using namespace IndexedInstrProf;
-  std::vector<uint32_t> Cutoffs(&SummaryCutoffs[0],
-                                &SummaryCutoffs[NumSummaryCutoffs]);
-  ProfileSummary PS(Cutoffs);
+  InstrProfSummary PS(ProfileSummary::DefaultCutoffs);
   InfoObj->TheProfileSummary = &PS;
 
   // Populate the hash table generator.
@@ -230,12 +228,14 @@ void InstrProfWriter::writeImpl(ProfOStream &OS) {
   IndexedInstrProf::Header Header;
   Header.Magic = IndexedInstrProf::Magic;
   Header.Version = IndexedInstrProf::ProfVersion::CurrentVersion;
+  if (ProfileKind == PF_IRLevel)
+    Header.Version |= VARIANT_MASK_IR_PROF;
   Header.Unused = 0;
   Header.HashType = static_cast<uint64_t>(IndexedInstrProf::HashType);
   Header.HashOffset = 0;
   int N = sizeof(IndexedInstrProf::Header) / sizeof(uint64_t);
 
-  // Only write out all the fields execpt 'HashOffset'. We need
+  // Only write out all the fields except 'HashOffset'. We need
   // to remember the offset of that field to allow back patching
   // later.
   for (int I = 0; I < N - 1; I++)
@@ -247,7 +247,7 @@ void InstrProfWriter::writeImpl(ProfOStream &OS) {
   OS.write(0);
 
   // Reserve space to write profile summary data.
-  uint32_t NumEntries = Cutoffs.size();
+  uint32_t NumEntries = ProfileSummary::DefaultCutoffs.size();
   uint32_t SummarySize = Summary::getSize(Summary::NumKinds, NumEntries);
   // Remember the summary offset.
   uint64_t SummaryOffset = OS.tell();
@@ -336,6 +336,8 @@ void InstrProfWriter::writeRecordInText(const InstrProfRecord &Func,
 }
 
 void InstrProfWriter::writeText(raw_fd_ostream &OS) {
+  if (ProfileKind == PF_IRLevel)
+    OS << "# IR level Instrumentation Flag\n:ir\n";
   InstrProfSymtab Symtab;
   for (const auto &I : FunctionData)
     if (shouldEncodeData(I.getValue()))

@@ -32,6 +32,7 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/TinyPtrVector.h"
 #include "llvm/Support/Allocator.h"
+#include "llvm/Support/Registry.h"
 #include <memory>
 #include <vector>
 
@@ -1024,9 +1025,19 @@ public:
   /// If \p OwnsTokens is false, this method assumes that the specified stream
   /// of tokens has a permanent owner somewhere, so they do not need to be
   /// copied. If it is true, it assumes the array of tokens is allocated with
-  /// \c new[] and must be freed.
+  /// \c new[] and the Preprocessor will delete[] it.
+private:
   void EnterTokenStream(const Token *Toks, unsigned NumToks,
                         bool DisableMacroExpansion, bool OwnsTokens);
+
+public:
+  void EnterTokenStream(std::unique_ptr<Token[]> Toks, unsigned NumToks,
+                        bool DisableMacroExpansion) {
+    EnterTokenStream(Toks.release(), NumToks, DisableMacroExpansion, true);
+  }
+  void EnterTokenStream(ArrayRef<Token> Toks, bool DisableMacroExpansion) {
+    EnterTokenStream(Toks.data(), Toks.size(), DisableMacroExpansion, false);
+  }
 
   /// \brief Pop the current lexer/macro exp off the top of the lexer stack.
   ///
@@ -1927,6 +1938,11 @@ public:
   virtual bool HandleComment(Preprocessor &PP, SourceRange Comment) = 0;
 };
 
+/// \brief Registry of pragma handlers added by plugins
+typedef llvm::Registry<PragmaHandler> PragmaHandlerRegistry;
+
 }  // end namespace clang
+
+extern template class llvm::Registry<clang::PragmaHandler>;
 
 #endif

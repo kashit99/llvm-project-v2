@@ -66,23 +66,6 @@ DILocation *DILocation::getImpl(LLVMContext &Context, unsigned Line,
                    Storage, Context.pImpl->DILocations);
 }
 
-unsigned DILocation::computeNewDiscriminator() const {
-  // FIXME: This seems completely wrong.
-  //
-  //  1. If two modules are generated in the same context, then the second
-  //     Module will get different discriminators than it would have if it were
-  //     generated in its own context.
-  //  2. If this function is called after round-tripping to bitcode instead of
-  //     before, it will give a different (and potentially incorrect!) return.
-  //
-  // The discriminator should instead be calculated from local information
-  // where it's actually needed.  This logic should be moved to
-  // AddDiscriminators::runOnFunction(), where it doesn't pollute the
-  // LLVMContext.
-  std::pair<const char *, unsigned> Key(getFilename().data(), getLine());
-  return ++getContext().pImpl->DiscriminatorTable[Key];
-}
-
 unsigned DINode::getFlag(StringRef Flag) {
   return StringSwitch<unsigned>(Flag)
 #define HANDLE_DI_FLAG(ID, NAME) .Case("DIFlag" #NAME, Flag##NAME)
@@ -322,6 +305,24 @@ DICompileUnit *DICompileUnit::getImpl(
                        Context, Storage, SourceLanguage, IsOptimized,
                        RuntimeVersion, EmissionKind, DWOId, Ops),
                    Storage);
+}
+
+Optional<DICompileUnit::DebugEmissionKind>
+DICompileUnit::getEmissionKind(StringRef Str) {
+  return StringSwitch<Optional<DebugEmissionKind>>(Str)
+      .Case("NoDebug", NoDebug)
+      .Case("FullDebug", FullDebug)
+      .Case("LineTablesOnly", LineTablesOnly)
+      .Default(None);
+}
+
+const char *DICompileUnit::EmissionKindString(DebugEmissionKind EK) {
+  switch (EK) {
+  case NoDebug:        return "NoDebug";
+  case FullDebug:      return "FullDebug";
+  case LineTablesOnly: return "LineTablesOnly";
+  }
+  return nullptr;
 }
 
 DISubprogram *DILocalScope::getSubprogram() const {

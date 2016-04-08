@@ -154,22 +154,18 @@ bool Attribute::hasAttribute(StringRef Kind) const {
   return pImpl && pImpl->hasAttribute(Kind);
 }
 
-/// This returns the alignment field of an attribute as a byte alignment value.
 unsigned Attribute::getAlignment() const {
   assert(hasAttribute(Attribute::Alignment) &&
          "Trying to get alignment from non-alignment attribute!");
   return pImpl->getValueAsInt();
 }
 
-/// This returns the stack alignment field of an attribute as a byte alignment
-/// value.
 unsigned Attribute::getStackAlignment() const {
   assert(hasAttribute(Attribute::StackAlignment) &&
          "Trying to get alignment from non-alignment attribute!");
   return pImpl->getValueAsInt();
 }
 
-/// This returns the number of dereferenceable bytes.
 uint64_t Attribute::getDereferenceableBytes() const {
   assert(hasAttribute(Attribute::Dereferenceable) &&
          "Trying to get dereferenceable bytes from "
@@ -393,7 +389,11 @@ bool AttributeImpl::operator<(const AttributeImpl &AI) const {
 
   if (isIntAttribute()) {
     if (AI.isEnumAttribute()) return false;
-    if (AI.isIntAttribute()) return getValueAsInt() < AI.getValueAsInt();
+    if (AI.isIntAttribute()) {
+      if (getKindAsEnum() == AI.getKindAsEnum())
+        return getValueAsInt() < AI.getValueAsInt();
+      return getKindAsEnum() < AI.getKindAsEnum();
+    }
     if (AI.isStringAttribute()) return true;
   }
 
@@ -486,7 +486,7 @@ AttributeSetNode *AttributeSetNode::get(LLVMContext &C,
   FoldingSetNodeID ID;
 
   SmallVector<Attribute, 8> SortedAttrs(Attrs.begin(), Attrs.end());
-  array_pod_sort(SortedAttrs.begin(), SortedAttrs.end());
+  std::sort(SortedAttrs.begin(), SortedAttrs.end());
 
   for (Attribute Attr : SortedAttrs)
     Attr.Profile(ID);
@@ -604,7 +604,7 @@ uint64_t AttributeSetImpl::Raw(unsigned Index) const {
   return 0;
 }
 
-void AttributeSetImpl::dump() const {
+LLVM_DUMP_METHOD void AttributeSetImpl::dump() const {
   AttributeSet(const_cast<AttributeSetImpl *>(this)).dump();
 }
 
@@ -1013,8 +1013,6 @@ bool AttributeSet::hasFnAttribute(Attribute::AttrKind Kind) const {
   return pImpl && pImpl->hasFnAttribute(Kind);
 }
 
-/// \brief Return true if the specified attribute is set for at least one
-/// parameter or for the return value.
 bool AttributeSet::hasAttrSomewhere(Attribute::AttrKind Attr) const {
   if (!pImpl) return false;
 
@@ -1065,7 +1063,6 @@ std::string AttributeSet::getAsString(unsigned Index,
   return ASN ? ASN->getAsString(InAttrGrp) : std::string("");
 }
 
-/// \brief The attributes for the specified index are returned.
 AttributeSetNode *AttributeSet::getAttributes(unsigned Index) const {
   if (!pImpl) return nullptr;
 
@@ -1093,9 +1090,6 @@ AttributeSet::iterator AttributeSet::end(unsigned Slot) const {
 // AttributeSet Introspection Methods
 //===----------------------------------------------------------------------===//
 
-/// \brief Return the number of slots used in this attribute list.  This is the
-/// number of arguments that have an attribute set on them (including the
-/// function itself).
 unsigned AttributeSet::getNumSlots() const {
   return pImpl ? pImpl->getNumAttributes() : 0;
 }
@@ -1117,7 +1111,7 @@ uint64_t AttributeSet::Raw(unsigned Index) const {
   return pImpl ? pImpl->Raw(Index) : 0;
 }
 
-void AttributeSet::dump() const {
+LLVM_DUMP_METHOD void AttributeSet::dump() const {
   dbgs() << "PAL[\n";
 
   for (unsigned i = 0, e = getNumSlots(); i < e; ++i) {
@@ -1398,14 +1392,14 @@ AttrBuilder &AttrBuilder::addRawValue(uint64_t Val) {
       continue;
     if (uint64_t A = (Val & AttributeImpl::getAttrMask(I))) {
       Attrs[I] = true;
-
+ 
       if (I == Attribute::Alignment)
         Alignment = 1ULL << ((A >> 16) - 1);
       else if (I == Attribute::StackAlignment)
         StackAlignment = 1ULL << ((A >> 26)-1);
     }
   }
-
+ 
   return *this;
 }
 

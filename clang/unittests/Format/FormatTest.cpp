@@ -7,9 +7,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "FormatTestUtils.h"
 #include "clang/Format/Format.h"
+
+#include "../Tooling/RewriterTestContext.h"
+#include "FormatTestUtils.h"
+
+#include "clang/Frontend/TextDiagnosticPrinter.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/MemoryBuffer.h"
 #include "gtest/gtest.h"
 
 #define DEBUG_TYPE "format-test"
@@ -291,10 +296,22 @@ TEST_F(FormatTest, FormatIfWithoutCompoundStatement) {
   verifyFormat("if (a)\n  if (b) {\n    f();\n  }\ng();");
 
   FormatStyle AllowsMergedIf = getLLVMStyle();
+  AllowsMergedIf.AlignEscapedNewlinesLeft = true;
   AllowsMergedIf.AllowShortIfStatementsOnASingleLine = true;
   verifyFormat("if (a)\n"
                "  // comment\n"
                "  f();",
+               AllowsMergedIf);
+  verifyFormat("{\n"
+               "  if (a)\n"
+               "  label:\n"
+               "    f();\n"
+               "}",
+               AllowsMergedIf);
+  verifyFormat("#define A \\\n"
+               "  if (a)  \\\n"
+               "  label:  \\\n"
+               "    f()",
                AllowsMergedIf);
   verifyFormat("if (a)\n"
                "  ;",
@@ -3992,6 +4009,12 @@ TEST_F(FormatTest, FunctionAnnotations) {
                "                << bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
   verifyFormat("TEST_F(ThisIsATestFixtureeeeeeeeeeeee,\n"
                "       ThisIsATestWithAReallyReallyReallyReallyLongName) {}");
+  verifyFormat("MACRO(abc).function() // wrap\n"
+               "    << abc;");
+  verifyFormat("MACRO(abc)->function() // wrap\n"
+               "    << abc;");
+  verifyFormat("MACRO(abc)::function() // wrap\n"
+               "    << abc;");
 }
 
 TEST_F(FormatTest, BreaksDesireably) {
@@ -4457,12 +4480,31 @@ TEST_F(FormatTest, AlignsAfterOpenBracket) {
                "    aaaaaaaaaaa aaaaaaaaa,\n"
                "    aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa);",
                Style);
-  verifyFormat("SomeLongVariableName->someFunction(\n"
-               "    foooooooo(\n"
-               "        aaaaaaaaaaaaaaa,\n"
-               "        aaaaaaaaaaaaaaaaaaaaa,\n"
-               "        aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa));",
+  verifyFormat("SomeLongVariableName->someFunction(foooooooo(\n"
+               "    aaaaaaaaaaaaaaa,\n"
+               "    aaaaaaaaaaaaaaaaaaaaa,\n"
+               "    aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa));",
                Style);
+  verifyFormat(
+      "aaaaaaaaaaaaaaaaaaaaaaaa(aaaaaaaaaaaaaaaaaaaaa(\n"
+      "    aaaaaaaaaaaaaaaaaaaa(aaaaaaaaaaaaaaaaa, aaaaaaaaaaaaaaaa)));",
+      Style);
+  verifyFormat(
+      "aaaaaaaaaaaaaaaaaaaaaaaa(aaaaaaaaaa.aaaaaaaaaa(\n"
+      "    aaaaaaaaaaaaaaaaaaaa(aaaaaaaaaaaaaaaaa, aaaaaaaaaaaaaaaa)));",
+      Style);
+  verifyFormat(
+      "aaaaaaaaaaaaaaaaaaaaaaaa(\n"
+      "    aaaaaaaaaaaaaaaaaaaaa(\n"
+      "        aaaaaaaaaaaaaaaaaaaa(aaaaaaaaaaaaaaaaa, aaaaaaaaaaaaaaaa)),\n"
+      "    aaaaaaaaaaaaaaaa);",
+      Style);
+  verifyFormat(
+      "aaaaaaaaaaaaaaaaaaaaaaaa(\n"
+      "    aaaaaaaaaaaaaaaaaaaaa(\n"
+      "        aaaaaaaaaaaaaaaaaaaa(aaaaaaaaaaaaaaaaa, aaaaaaaaaaaaaaaa)) &&\n"
+      "    aaaaaaaaaaaaaaaa);",
+      Style);
 }
 
 TEST_F(FormatTest, ParenthesesAndOperandAlignment) {
@@ -4707,6 +4749,10 @@ TEST_F(FormatTest, BreaksConditionalExpressionsAfterOperator) {
   verifyFormat("int i = aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa ?\n"
                "            /*bbbbbbbbbbbbbbb=*/bbbbbbbbbbbbbbbbbbbbbbbbb :\n"
                "            ccccccccccccccccccccccccccc;",
+               Style);
+  verifyFormat("return aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa ?\n"
+               "           aaaaa :\n"
+               "           bbbbbbbbbbbbbbb + cccccccccccccccc;",
                Style);
 }
 
@@ -5956,6 +6002,7 @@ TEST_F(FormatTest, FormatsCasts) {
   verifyFormat("my_int a = (my_int)(my_int)-1;");
   verifyFormat("my_int a = (ns::my_int)-2;");
   verifyFormat("case (my_int)ONE:");
+  verifyFormat("auto x = (X)this;");
 
   // FIXME: single value wrapped with paren will be treated as cast.
   verifyFormat("void f(int i = (kValue)*kMask) {}");
@@ -6160,6 +6207,8 @@ TEST_F(FormatTest, FormatsArrays) {
       "llvm::outs() << \"aaaaaaaaaaaa: \"\n"
       "             << (*aaaaaaaiaaaaaaa)[aaaaaaaaaaaaaaaaaaaaaaaaa]\n"
       "                                  [aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa];");
+  verifyFormat("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa[aaaaaaaaaaaaaaaaa][a]\n"
+               "    .aaaaaaaaaaaaaaaaaaaaaa();");
 
   verifyGoogleFormat("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa<int>\n"
                      "    aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa[aaaaaaaaaaaa];");
@@ -6642,7 +6691,7 @@ TEST_F(FormatTest, FormatsBracedListsInColumnLayout) {
                "                   bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb};");
 
   verifyNoCrash("a<,");
-  
+
   // No braced initializer here.
   verifyFormat("void f() {\n"
                "  struct Dummy {};\n"
@@ -8683,7 +8732,8 @@ TEST_F(FormatTest, ConfigurableSpacesInParentheses) {
   verifyFormat("#define x (( int )-1)", Spaces);
 
   // Run the first set of tests again with:
-  Spaces.SpacesInParentheses = false, Spaces.SpaceInEmptyParentheses = true;
+  Spaces.SpacesInParentheses = false;
+  Spaces.SpaceInEmptyParentheses = true;
   Spaces.SpacesInCStyleCastParentheses = true;
   verifyFormat("call(x, y, z);", Spaces);
   verifyFormat("call( );", Spaces);
@@ -9911,6 +9961,7 @@ TEST_F(FormatTest, ParsesConfiguration) {
               SpacesBeforeTrailingComments, 1234u);
   CHECK_PARSE("IndentWidth: 32", IndentWidth, 32u);
   CHECK_PARSE("ContinuationIndentWidth: 11", ContinuationIndentWidth, 11u);
+  CHECK_PARSE("CommentPragmas: '// abc$'", CommentPragmas, "// abc$");
 
   Style.PointerAlignment = FormatStyle::PAS_Middle;
   CHECK_PARSE("PointerAlignment: Left", PointerAlignment,
@@ -10069,6 +10120,7 @@ TEST_F(FormatTest, ParsesConfiguration) {
               "  - Regex: .*\n"
               "    Priority: 1",
               IncludeCategories, ExpectedCategories);
+  CHECK_PARSE("IncludeIsMainRegex: 'abc$'", IncludeIsMainRegex, "abc$");
 }
 
 TEST_F(FormatTest, ParsesConfigurationWithLanguages) {
@@ -10376,6 +10428,9 @@ TEST_F(FormatTest, BreakConstructorInitializersBeforeComma) {
 
   Style.ColumnLimit = 0;
   verifyFormat("SomeClass::Constructor()\n"
+               "    : a(a) {}",
+               Style);
+  verifyFormat("SomeClass::Constructor() noexcept\n"
                "    : a(a) {}",
                Style);
   verifyFormat("SomeClass::Constructor()\n"
@@ -11162,6 +11217,80 @@ TEST_F(FormatTest, FormatsTableGenCode) {
   FormatStyle Style = getLLVMStyle();
   Style.Language = FormatStyle::LK_TableGen;
   verifyFormat("include \"a.td\"\ninclude \"b.td\"", Style);
+}
+
+// Since this test case uses UNIX-style file path. We disable it for MS
+// compiler.
+#if !defined(_MSC_VER) && !defined(__MINGW32__)
+
+TEST(FormatStyle, GetStyleOfFile) {
+  vfs::InMemoryFileSystem FS;
+  // Test 1: format file in the same directory.
+  ASSERT_TRUE(
+      FS.addFile("/a/.clang-format", 0,
+                 llvm::MemoryBuffer::getMemBuffer("BasedOnStyle: LLVM")));
+  ASSERT_TRUE(
+      FS.addFile("/a/test.cpp", 0, llvm::MemoryBuffer::getMemBuffer("int i;")));
+  auto Style1 = getStyle("file", "/a/.clang-format", "Google", &FS);
+  ASSERT_EQ(Style1, getLLVMStyle());
+
+  // Test 2: fallback to default.
+  ASSERT_TRUE(
+      FS.addFile("/b/test.cpp", 0, llvm::MemoryBuffer::getMemBuffer("int i;")));
+  auto Style2 = getStyle("file", "/b/test.cpp", "Mozilla", &FS);
+  ASSERT_EQ(Style2, getMozillaStyle());
+
+  // Test 3: format file in parent directory.
+  ASSERT_TRUE(
+      FS.addFile("/c/.clang-format", 0,
+                 llvm::MemoryBuffer::getMemBuffer("BasedOnStyle: Google")));
+  ASSERT_TRUE(FS.addFile("/c/sub/sub/sub/test.cpp", 0,
+                         llvm::MemoryBuffer::getMemBuffer("int i;")));
+  auto Style3 = getStyle("file", "/c/sub/sub/sub/test.cpp", "LLVM", &FS);
+  ASSERT_EQ(Style3, getGoogleStyle());
+}
+
+#endif // _MSC_VER
+
+class ReplacementTest : public ::testing::Test {
+protected:
+  tooling::Replacement createReplacement(SourceLocation Start, unsigned Length,
+                                         llvm::StringRef ReplacementText) {
+    return tooling::Replacement(Context.Sources, Start, Length,
+                                ReplacementText);
+  }
+
+  RewriterTestContext Context;
+};
+
+TEST_F(ReplacementTest, FormatCodeAfterReplacements) {
+  // Column limit is 20.
+  std::string Code = "Type *a =\n"
+                     "    new Type();\n"
+                     "g(iiiii, 0, jjjjj,\n"
+                     "  0, kkkkk, 0, mm);\n"
+                     "int  bad     = format   ;";
+  std::string Expected = "auto a = new Type();\n"
+                         "g(iiiii, nullptr,\n"
+                         "  jjjjj, nullptr,\n"
+                         "  kkkkk, nullptr,\n"
+                         "  mm);\n"
+                         "int  bad     = format   ;";
+  FileID ID = Context.createInMemoryFile("format.cpp", Code);
+  tooling::Replacements Replaces;
+  Replaces.insert(tooling::Replacement(
+      Context.Sources, Context.getLocation(ID, 1, 1), 6, "auto "));
+  Replaces.insert(tooling::Replacement(
+      Context.Sources, Context.getLocation(ID, 3, 10), 1, "nullptr"));
+  Replaces.insert(tooling::Replacement(
+      Context.Sources, Context.getLocation(ID, 4, 3), 1, "nullptr"));
+  Replaces.insert(tooling::Replacement(
+      Context.Sources, Context.getLocation(ID, 4, 13), 1, "nullptr"));
+
+  format::FormatStyle Style = format::getLLVMStyle();
+  Style.ColumnLimit = 20; // Set column limit to 20 to increase readibility.
+  EXPECT_EQ(Expected, applyAllReplacements(
+                          Code, formatReplacements(Code, Replaces, Style)));
 }
 
 } // end namespace

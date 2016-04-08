@@ -50,6 +50,11 @@ public:
   /// \param IsSystem Whether this is a module map from a system include path.
   virtual void moduleMapFileRead(SourceLocation FileStart,
                                  const FileEntry &File, bool IsSystem) {}
+
+  /// \brief Called when a header is added during module map parsing.
+  ///
+  /// \param File The header file itself.
+  virtual void moduleMapAddHeader(const FileEntry &File) {}
 };
   
 class ModuleMap {
@@ -70,15 +75,10 @@ class ModuleMap {
   /// These are always simple C language options.
   LangOptions MMapLangOpts;
 
-  // The module that we are building; related to \c LangOptions::CurrentModule.
-  Module *CompilingModule;
-
-public:
-  // The module that the .cc source file is associated with.
+  // The module that the main source file is associated with (the module
+  // named LangOpts::CurrentModule, if we've loaded it).
   Module *SourceModule;
-  std::string SourceModuleName;
 
-private:
   /// \brief The unshadowed top-level modules that are known.
   llvm::StringMap<Module *> Modules;
 
@@ -176,6 +176,9 @@ private:
 
     /// \brief Whether this is an exhaustive set of configuration macros.
     unsigned IsExhaustive : 1;
+
+    /// \brief Whether this is a module who has its swift_names inferred.
+    unsigned IsSwiftInferImportAsMember : 1;
   };
 
   /// \brief A directory for which framework modules can be inferred.
@@ -327,12 +330,18 @@ public:
   ///
   /// \param RequestingModule The module including a file.
   ///
+  /// \param RequestingModuleIsModuleInterface \c true if the inclusion is in
+  ///        the interface of RequestingModule, \c false if it's in the
+  ///        implementation of RequestingModule. Value is ignored and
+  ///        meaningless if RequestingModule is nullptr.
+  ///
   /// \param FilenameLoc The location of the inclusion's filename.
   ///
   /// \param Filename The included filename as written.
   ///
   /// \param File The included file.
   void diagnoseHeaderInclusion(Module *RequestingModule,
+                               bool RequestingModuleIsModuleInterface,
                                SourceLocation FilenameLoc, StringRef Filename,
                                const FileEntry *File);
 

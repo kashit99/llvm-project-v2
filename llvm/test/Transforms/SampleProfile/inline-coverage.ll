@@ -16,7 +16,7 @@
 ;    12    }
 ;
 ; CHECK: remark: coverage.cc:10:12: inlined hot callee '_Z3fool' with 172746 samples into 'main'
-; CHECK: remark: coverage.cc:9:19: Applied 23478 samples from profile (offset: 2.1)
+; CHECK: remark: coverage.cc:9:21: Applied 23478 samples from profile (offset: 2.1)
 ; CHECK: remark: coverage.cc:10:16: Applied 23478 samples from profile (offset: 3)
 ; CHECK: remark: coverage.cc:4:10: Applied 31878 samples from profile (offset: 1)
 ; CHECK: remark: coverage.cc:11:10: Applied 0 samples from profile (offset: 4)
@@ -90,7 +90,7 @@ for.end:                                          ; preds = %for.cond
 !llvm.module.flags = !{!13, !14}
 !llvm.ident = !{!15}
 
-!0 = distinct !DICompileUnit(language: DW_LANG_C_plus_plus, file: !1, producer: "clang version 3.8.0 (trunk 251738) (llvm/trunk 251737)", isOptimized: false, runtimeVersion: 0, emissionKind: 1, enums: !2, subprograms: !3)
+!0 = distinct !DICompileUnit(language: DW_LANG_C_plus_plus, file: !1, producer: "clang version 3.8.0 (trunk 251738) (llvm/trunk 251737)", isOptimized: false, runtimeVersion: 0, emissionKind: FullDebug, enums: !2, subprograms: !3)
 !1 = !DIFile(filename: "coverage.cc", directory: ".")
 !2 = !{}
 !3 = !{!4, !9}

@@ -123,9 +123,13 @@
 // PR24003: -momit-leaf-frame-pointer
 // PR24003: -Os
 
-// RUN: %clang_cl /Zs /Oy -- %s 2>&1
+// RUN: %clang_cl --target=i686-pc-win32 -Werror /Oy- /O2 -### -- %s 2>&1 | FileCheck -check-prefix=Oy_2 %s
+// Oy_2: -momit-leaf-frame-pointer
+// Oy_2: -O2
 
-// RUN: %clang_cl --target=i686-pc-win32 /Oy- -### -- %s 2>&1 | FileCheck -check-prefix=Oy_ %s
+// RUN: %clang_cl /Zs -Werror /Oy -- %s 2>&1
+
+// RUN: %clang_cl --target=i686-pc-win32 -Werror /Oy- -### -- %s 2>&1 | FileCheck -check-prefix=Oy_ %s
 // Oy_: -mdisable-fp-elim
 
 // RUN: %clang_cl /Qvec -### -- %s 2>&1 | FileCheck -check-prefix=Qvec %s
@@ -207,6 +211,15 @@
 // RUN: %clang_cl /FI asdf.h -### -- %s 2>&1 | FileCheck -check-prefix=FI_ %s
 // FI_: "-include" "asdf.h"
 
+// RUN: %clang_cl /TP /c -### -- %s 2>&1 | FileCheck -check-prefix=NO-GX %s
+// NO-GX-NOT: "-fcxx-exceptions" "-fexceptions"
+
+// RUN: %clang_cl /TP /c /GX -### -- %s 2>&1 | FileCheck -check-prefix=GX %s
+// GX: "-fcxx-exceptions" "-fexceptions"
+
+// RUN: %clang_cl /TP /c /GX /GX- -### -- %s 2>&1 | FileCheck -check-prefix=GX_ %s
+// GX_-NOT: "-fcxx-exceptions" "-fexceptions"
+
 // We forward any unrecognized -W diagnostic options to cc1.
 // RUN: %clang_cl -Wunused-pragmas -### -- %s 2>&1 | FileCheck -check-prefix=WJoined %s
 // WJoined: "-cc1"
@@ -234,8 +247,10 @@
 // RUN:    /bigobj \
 // RUN:    /cgthreads4 \
 // RUN:    /cgthreads8 \
+// RUN:    /d2FastFail \
 // RUN:    /d2Zi+ \
 // RUN:    /errorReport:foo \
+// RUN:    /FC \
 // RUN:    /Fdfoo \
 // RUN:    /FS \
 // RUN:    /Gd \
@@ -375,11 +390,15 @@
 
 // RUN: %clang_cl /Zi /c -### -- %s 2>&1 | FileCheck -check-prefix=Zi %s
 // Zi: "-gcodeview"
-// Zi: "-debug-info-kind=line-tables-only"
+// Zi: "-debug-info-kind=limited"
 
 // RUN: %clang_cl /Z7 /c -### -- %s 2>&1 | FileCheck -check-prefix=Z7 %s
 // Z7: "-gcodeview"
-// Z7: "-debug-info-kind=line-tables-only"
+// Z7: "-debug-info-kind=limited"
+
+// RUN: %clang_cl -gline-tables-only /Z7 /c -### -- %s 2>&1 | FileCheck -check-prefix=Z7GMLT %s
+// Z7GMLT: "-gcodeview"
+// Z7GMLT: "-debug-info-kind=line-tables-only"
 
 // RUN: %clang_cl /c -### -- %s 2>&1 | FileCheck -check-prefix=BreproDefault %s
 // BreproDefault: "-mincremental-linker-compatible"
@@ -433,6 +452,7 @@
 // RUN:     -fno-ms-compatibility \
 // RUN:     -fms-extensions \
 // RUN:     -fno-ms-extensions \
+// RUN:     -isystem=some/path \
 // RUN:     -mllvm -disable-llvm-optzns \
 // RUN:     -Wunused-variable \
 // RUN:     -fmacro-backtrace-limit=0 \

@@ -76,10 +76,14 @@ bool Sema::CanUseDecl(NamedDecl *D, bool TreatUnavailableAsInvalid) {
 
 static void DiagnoseUnusedOfDecl(Sema &S, NamedDecl *D, SourceLocation Loc) {
   // Warn if this is used but marked unused.
-  if (D->hasAttr<UnusedAttr>()) {
-    const Decl *DC = cast_or_null<Decl>(S.getCurObjCLexicalContext());
-    if (DC && !DC->hasAttr<UnusedAttr>())
-      S.Diag(Loc, diag::warn_used_but_marked_unused) << D->getDeclName();
+  if (const auto *A = D->getAttr<UnusedAttr>()) {
+    // [[maybe_unused]] should not diagnose uses, but __attribute__((unused))
+    // should diagnose them.
+    if (A->getSemanticSpelling() != UnusedAttr::CXX11_maybe_unused) {
+      const Decl *DC = cast_or_null<Decl>(S.getCurObjCLexicalContext());
+      if (DC && !DC->hasAttr<UnusedAttr>())
+        S.Diag(Loc, diag::warn_used_but_marked_unused) << D->getDeclName();
+    }
   }
 }
 
@@ -367,6 +371,19 @@ bool Sema::DiagnoseUseOfDecl(NamedDecl *D, SourceLocation Loc,
     if (getLangOpts().CPlusPlus14 && FD->getReturnType()->isUndeducedType() &&
         DeduceReturnType(FD, Loc))
       return true;
+  }
+
+  // [OpenMP 4.0], 2.15 declare reduction Directive, Restrictions
+  // Only the variables omp_in and omp_out are allowed in the combiner.
+  // Only the variables omp_priv and omp_orig are allowed in the
+  // initializer-clause.
+  auto *DRD = dyn_cast<OMPDeclareReductionDecl>(CurContext);
+  if (LangOpts.OpenMP && DRD && !CurContext->containsDecl(D) &&
+      isa<VarDecl>(D)) {
+    Diag(Loc, diag::err_omp_wrong_var_in_declare_reduction)
+        << getCurFunction()->HasOMPDeclareReductionCombiner;
+    Diag(D->getLocation(), diag::note_entity_declared_at) << D;
+    return true;
   }
   DiagnoseAvailabilityOfDecl(*this, D, Loc, UnknownObjCClass,
                              ObjCPropertyAccess);
@@ -1365,10 +1382,13 @@ Sema::CreateGenericSelectionExpr(SourceLocation KeyLoc,
 
   // Decay and strip qualifiers for the controlling expression type, and handle
   // placeholder type replacement. See committee discussion from WG14 DR423.
-  ExprResult R = DefaultFunctionArrayLvalueConversion(ControllingExpr);
-  if (R.isInvalid())
-    return ExprError();
-  ControllingExpr = R.get();
+  {
+    EnterExpressionEvaluationContext Unevaluated(*this, Sema::Unevaluated);
+    ExprResult R = DefaultFunctionArrayLvalueConversion(ControllingExpr);
+    if (R.isInvalid())
+      return ExprError();
+    ControllingExpr = R.get();
+  }
 
   // The controlling expression is an unevaluated operand, so side effects are
   // likely unintended.
@@ -2837,6 +2857,7 @@ ExprResult Sema::BuildDeclarationNameExpr(
     // Unresolved using declarations are dependent.
     case Decl::EnumConstant:
     case Decl::UnresolvedUsingValue:
+    case Decl::OMPDeclareReduction:
       valueKind = VK_RValue;
       break;
 
@@ -2874,6 +2895,7 @@ ExprResult Sema::BuildDeclarationNameExpr(
     case Decl::Var:
     case Decl::VarTemplateSpecialization:
     case Decl::VarTemplatePartialSpecialization:
+    case Decl::OMPCapturedExpr:
       // In C, "extern void blah;" is valid and is an r-value.
       if (!getLangOpts().CPlusPlus &&
           !type.hasQualifiers() &&
@@ -3294,7 +3316,14 @@ ExprResult Sema::ActOnNumericConstant(const Token &Tok, Scope *UDLScope) {
 
   if (Literal.isFloatingLiteral()) {
     QualType Ty;
-    if (Literal.isFloat)
+    if (Literal.isHalf){
+      if (getOpenCLOptions().cl_khr_fp16)
+        Ty = Context.HalfTy;
+      else {
+        Diag(Tok.getLocation(), diag::err_half_const_requires_fp16);
+        return ExprError();
+      }
+    } else if (Literal.isFloat)
       Ty = Context.FloatTy;
     else if (!Literal.isLong)
       Ty = Context.DoubleTy;
@@ -4148,10 +4177,16 @@ ExprResult Sema::ActOnOMPArraySectionExpr(Expr *Base, SourceLocation LBLoc,
     ExprResult Result = CheckPlaceholderExpr(LowerBound);
     if (Result.isInvalid())
       return ExprError();
+    Result = DefaultLvalueConversion(Result.get());
+    if (Result.isInvalid())
+      return ExprError();
     LowerBound = Result.get();
   }
   if (Length && Length->getType()->isNonOverloadPlaceholderType()) {
     ExprResult Result = CheckPlaceholderExpr(Length);
+    if (Result.isInvalid())
+      return ExprError();
+    Result = DefaultLvalueConversion(Result.get());
     if (Result.isInvalid())
       return ExprError();
     Length = Result.get();
@@ -4260,6 +4295,13 @@ ExprResult Sema::ActOnOMPArraySectionExpr(Expr *Base, SourceLocation LBLoc,
     return ExprError();
   }
 
+  if (!Base->getType()->isSpecificPlaceholderType(
+          BuiltinType::OMPArraySection)) {
+    ExprResult Result = DefaultFunctionArrayLvalueConversion(Base);
+    if (Result.isInvalid())
+      return ExprError();
+    Base = Result.get();
+  }
   return new (Context)
       OMPArraySectionExpr(Base, LowerBound, Length, Context.OMPArraySectionTy,
                           VK_LValue, OK_Ordinary, ColonLoc, RBLoc);
@@ -5002,6 +5044,14 @@ static FunctionDecl *rewriteBuiltinFunctionDecl(Sema *Sema, ASTContext &Context,
   return OverloadDecl;
 }
 
+static bool isNumberOfArgsValidForCall(Sema &S, const FunctionDecl *Callee,
+                                       std::size_t NumArgs) {
+  if (S.TooManyArguments(Callee->getNumParams(), NumArgs,
+                         /*PartialOverloading=*/false))
+    return Callee->isVariadic();
+  return Callee->getMinRequiredArguments() <= NumArgs;
+}
+
 /// ActOnCallExpr - Handle a call to Fn with the specified array of arguments.
 /// This provides the location of the left/right parens and a list of comma
 /// locations.
@@ -5039,8 +5089,6 @@ Sema::ActOnCallExpr(Scope *S, Expr *Fn, SourceLocation LParenLoc,
 
     // Determine whether this is a dependent call inside a C++ template,
     // in which case we won't do any semantic analysis now.
-    // FIXME: Will need to cache the results of name lookup (including ADL) in
-    // Fn.
     bool Dependent = false;
     if (Fn->isTypeDependent())
       Dependent = true;
@@ -5133,7 +5181,14 @@ Sema::ActOnCallExpr(Scope *S, Expr *Fn, SourceLocation LParenLoc,
                                            Fn->getLocStart()))
       return ExprError();
 
-    if (FD->hasAttr<EnableIfAttr>()) {
+    // CheckEnableIf assumes that the we're passing in a sane number of args for
+    // FD, but that doesn't always hold true here. This is because, in some
+    // cases, we'll emit a diag about an ill-formed function call, but then
+    // we'll continue on as if the function call wasn't ill-formed. So, if the
+    // number of args looks incorrect, don't do enable_if checks; we should've
+    // already emitted an error about the bad call.
+    if (FD->hasAttr<EnableIfAttr>() &&
+        isNumberOfArgsValidForCall(*this, FD, ArgExprs.size())) {
       if (const EnableIfAttr *Attr = CheckEnableIf(FD, ArgExprs, true)) {
         Diag(Fn->getLocStart(),
              isa<CXXMethodDecl>(FD) ?
@@ -6426,6 +6481,18 @@ OpenCLCheckVectorConditional(Sema &S, ExprResult &Cond,
   return OpenCLConvertScalarsToVectors(S, LHS, RHS, CondTy, QuestionLoc);
 }
 
+/// \brief Return true if the Expr is block type
+static bool checkBlockType(Sema &S, const Expr *E) {
+  if (const CallExpr *CE = dyn_cast<CallExpr>(E)) {
+    QualType Ty = CE->getCallee()->getType();
+    if (Ty->isBlockPointerType()) {
+      S.Diag(E->getExprLoc(), diag::err_opencl_ternary_with_block);
+      return true;
+    }
+  }
+  return false;
+}
+
 /// Note that LHS is not null here, even if this is the gnu "x ?: y" extension.
 /// In that case, LHS = cond.
 /// C99 6.5.15
@@ -6474,6 +6541,13 @@ QualType Sema::CheckConditionalOperands(ExprResult &Cond, ExprResult &LHS,
 
   QualType LHSTy = LHS.get()->getType();
   QualType RHSTy = RHS.get()->getType();
+
+  // OpenCL v2.0 s6.12.5 - Blocks cannot be used as expressions of the ternary
+  // selection operator (?:).
+  if (getLangOpts().OpenCL &&
+      (checkBlockType(*this, LHS.get()) | checkBlockType(*this, RHS.get()))) {
+    return QualType();
+  }
 
   // If both operands have arithmetic type, do the usual arithmetic conversions
   // to find a common type: C99 6.5.15p3,5.
@@ -6817,8 +6891,23 @@ ExprResult Sema::ActOnConditionalOp(SourceLocation QuestionLoc,
     // doesn't handle dependent types properly, so make sure any TypoExprs have
     // been dealt with before checking the operands.
     ExprResult CondResult = CorrectDelayedTyposInExpr(CondExpr);
-    if (!CondResult.isUsable()) return ExprError();
+    ExprResult LHSResult = CorrectDelayedTyposInExpr(LHSExpr);
+    ExprResult RHSResult = CorrectDelayedTyposInExpr(RHSExpr);
+
+    if (!CondResult.isUsable())
+      return ExprError();
+
+    if (LHSExpr) {
+      if (!LHSResult.isUsable())
+        return ExprError();
+    }
+
+    if (!RHSResult.isUsable())
+      return ExprError();
+
     CondExpr = CondResult.get();
+    LHSExpr = LHSResult.get();
+    RHSExpr = RHSResult.get();
   }
 
   // If this is the gnu "x ?: y" extension, analyze the types as though the LHS
@@ -9822,6 +9911,67 @@ QualType Sema::CheckAssignmentOperands(Expr *LHSExpr, ExprResult &RHS,
           ? LHSType : LHSType.getUnqualifiedType());
 }
 
+// Only ignore explicit casts to void.
+static bool IgnoreCommaOperand(const Expr *E) {
+  E = E->IgnoreParens();
+
+  if (const CastExpr *CE = dyn_cast<CastExpr>(E)) {
+    if (CE->getCastKind() == CK_ToVoid) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+// Look for instances where it is likely the comma operator is confused with
+// another operator.  There is a whitelist of acceptable expressions for the
+// left hand side of the comma operator, otherwise emit a warning.
+void Sema::DiagnoseCommaOperator(const Expr *LHS, SourceLocation Loc) {
+  // No warnings in macros
+  if (Loc.isMacroID())
+    return;
+
+  // Don't warn in template instantiations.
+  if (!ActiveTemplateInstantiations.empty())
+    return;
+
+  // Scope isn't fine-grained enough to whitelist the specific cases, so
+  // instead, skip more than needed, then call back into here with the
+  // CommaVisitor in SemaStmt.cpp.
+  // The whitelisted locations are the initialization and increment portions
+  // of a for loop.  The additional checks are on the condition of
+  // if statements, do/while loops, and for loops.
+  const unsigned ForIncrementFlags =
+      Scope::ControlScope | Scope::ContinueScope | Scope::BreakScope;
+  const unsigned ForInitFlags = Scope::ControlScope | Scope::DeclScope;
+  const unsigned ScopeFlags = getCurScope()->getFlags();
+  if ((ScopeFlags & ForIncrementFlags) == ForIncrementFlags ||
+      (ScopeFlags & ForInitFlags) == ForInitFlags)
+    return;
+
+  // If there are multiple comma operators used together, get the RHS of the
+  // of the comma operator as the LHS.
+  while (const BinaryOperator *BO = dyn_cast<BinaryOperator>(LHS)) {
+    if (BO->getOpcode() != BO_Comma)
+      break;
+    LHS = BO->getRHS();
+  }
+
+  // Only allow some expressions on LHS to not warn.
+  if (IgnoreCommaOperand(LHS))
+    return;
+
+  Diag(Loc, diag::warn_comma_operator);
+  Diag(LHS->getLocStart(), diag::note_cast_to_void)
+      << LHS->getSourceRange()
+      << FixItHint::CreateInsertion(LHS->getLocStart(),
+                                    LangOpts.CPlusPlus ? "static_cast<void>("
+                                                       : "(void)(")
+      << FixItHint::CreateInsertion(PP.getLocForEndOfToken(LHS->getLocEnd()),
+                                    ")");
+}
+
 // C99 6.5.17
 static QualType CheckCommaOperands(Sema &S, ExprResult &LHS, ExprResult &RHS,
                                    SourceLocation Loc) {
@@ -9850,6 +10000,9 @@ static QualType CheckCommaOperands(Sema &S, ExprResult &LHS, ExprResult &RHS,
       S.RequireCompleteType(Loc, RHS.get()->getType(),
                             diag::err_incomplete_type);
   }
+
+  if (!S.getDiagnostics().isIgnored(diag::warn_comma_operator, Loc))
+    S.DiagnoseCommaOperator(LHS.get(), Loc);
 
   return RHS.get()->getType();
 }
@@ -10223,6 +10376,14 @@ QualType Sema::CheckAddressOfOperand(ExprResult &OrigOp, SourceLocation OpLoc) {
   // If the operand has type "type", the result has type "pointer to type".
   if (op->getType()->isObjCObjectType())
     return Context.getObjCObjectPointerType(op->getType());
+
+  // OpenCL v2.0 s6.12.5 - The unary operators & cannot be used with a block.
+  if (getLangOpts().OpenCL && OrigOp.get()->getType()->isBlockPointerType()) {
+    Diag(OpLoc, diag::err_typecheck_unary_expr) << OrigOp.get()->getType()
+                                                << op->getSourceRange();
+    return QualType();
+  }
+
   return Context.getPointerType(op->getType());
 }
 
@@ -10264,7 +10425,15 @@ static QualType CheckIndirectionOperand(Sema &S, Expr *Op, ExprValueKind &VK,
   }
 
   if (const PointerType *PT = OpTy->getAs<PointerType>())
+  {
     Result = PT->getPointeeType();
+    // OpenCL v2.0 s6.12.5 - The unary operators * cannot be used with a block.
+    if (S.getLangOpts().OpenCLVersion >= 200 && Result->isBlockPointerType()) {
+      S.Diag(OpLoc, diag::err_opencl_dereferencing) << OpTy
+                                                    << Op->getSourceRange();
+      return QualType();
+    }
+  }
   else if (const ObjCObjectPointerType *OPT =
              OpTy->getAs<ObjCObjectPointerType>())
     Result = OPT->getPointeeType();
@@ -11872,9 +12041,8 @@ ExprResult Sema::ActOnBlockStmtExpr(SourceLocation CaretLoc,
   return Result;
 }
 
-ExprResult Sema::ActOnVAArg(SourceLocation BuiltinLoc,
-                                        Expr *E, ParsedType Ty,
-                                        SourceLocation RPLoc) {
+ExprResult Sema::ActOnVAArg(SourceLocation BuiltinLoc, Expr *E, ParsedType Ty,
+                            SourceLocation RPLoc) {
   TypeSourceInfo *TInfo;
   GetTypeFromParser(Ty, &TInfo);
   return BuildVAArgExpr(BuiltinLoc, E, TInfo, RPLoc);
@@ -11885,6 +12053,15 @@ ExprResult Sema::BuildVAArgExpr(SourceLocation BuiltinLoc,
                                 SourceLocation RPLoc) {
   Expr *OrigExpr = E;
   bool IsMS = false;
+
+  // CUDA device code does not support varargs.
+  if (getLangOpts().CUDA && getLangOpts().CUDAIsDevice) {
+    if (const FunctionDecl *F = dyn_cast<FunctionDecl>(CurContext)) {
+      CUDAFunctionTarget T = IdentifyCUDATarget(F);
+      if (T == CFT_Global || T == CFT_Device || T == CFT_HostDevice)
+        return ExprError(Diag(E->getLocStart(), diag::err_va_arg_in_device));
+    }
+  }
 
   // It might be a __builtin_ms_va_list. (But don't ever mark a va_arg()
   // as Microsoft ABI on an actual Microsoft platform, where
@@ -12606,7 +12783,7 @@ static bool IsPotentiallyEvaluatedContext(Sema &SemaRef) {
 /// \brief Mark a function referenced, and check whether it is odr-used
 /// (C++ [basic.def.odr]p2, C99 6.9p3)
 void Sema::MarkFunctionReferenced(SourceLocation Loc, FunctionDecl *Func,
-                                  bool OdrUse) {
+                                  bool MightBeOdrUse) {
   assert(Func && "No function?");
 
   Func->setReferenced();
@@ -12619,8 +12796,8 @@ void Sema::MarkFunctionReferenced(SourceLocation Loc, FunctionDecl *Func,
   // We (incorrectly) mark overload resolution as an unevaluated context, so we
   // can just check that here. Skip the rest of this function if we've already
   // marked the function as used.
-  if (Func->isUsed(/*CheckUsedAttr=*/false) ||
-      !IsPotentiallyEvaluatedContext(*this)) {
+  bool OdrUse = MightBeOdrUse && IsPotentiallyEvaluatedContext(*this);
+  if (Func->isUsed(/*CheckUsedAttr=*/false) || !OdrUse) {
     // C++11 [temp.inst]p3:
     //   Unless a function template specialization has been explicitly
     //   instantiated or explicitly specialized, the function template
@@ -12709,8 +12886,6 @@ void Sema::MarkFunctionReferenced(SourceLocation Loc, FunctionDecl *Func,
   if (FPT && isUnresolvedExceptionSpec(FPT->getExceptionSpecType()))
     ResolveExceptionSpec(Loc, FPT);
 
-  if (!OdrUse) return;
-
   // Implicit instantiation of function templates and member functions of
   // class templates.
   if (Func->isImplicitlyInstantiable()) {
@@ -12758,9 +12933,11 @@ void Sema::MarkFunctionReferenced(SourceLocation Loc, FunctionDecl *Func,
     // Walk redefinitions, as some of them may be instantiable.
     for (auto i : Func->redecls()) {
       if (!i->isUsed(false) && i->isImplicitlyInstantiable())
-        MarkFunctionReferenced(Loc, i);
+        MarkFunctionReferenced(Loc, i, OdrUse);
     }
   }
+
+  if (!OdrUse) return;
 
   // Keep track of used but undefined functions.
   if (!Func->isDefined()) {
@@ -13044,7 +13221,7 @@ static bool captureInCapturedRegion(CapturedRegionScopeInfo *RSI,
   // Using an LValue reference type is consistent with Lambdas (see below).
   if (S.getLangOpts().OpenMP) {
     ByRef = S.IsOpenMPCapturedByRef(Var, RSI);
-    if (S.IsOpenMPCapturedVar(Var))
+    if (S.IsOpenMPCapturedDecl(Var))
       DeclRefType = DeclRefType.getUnqualifiedType();
   }
 
@@ -13085,7 +13262,7 @@ static bool captureInCapturedRegion(CapturedRegionScopeInfo *RSI,
 
 /// \brief Create a field within the lambda class for the variable
 /// being captured.
-static void addAsFieldToClosureType(Sema &S, LambdaScopeInfo *LSI, VarDecl *Var,
+static void addAsFieldToClosureType(Sema &S, LambdaScopeInfo *LSI, 
                                     QualType FieldType, QualType DeclRefType,
                                     SourceLocation Loc,
                                     bool RefersToCapturedVariable) {
@@ -13179,7 +13356,7 @@ static bool captureInLambda(LambdaScopeInfo *LSI,
 
   // Capture this variable in the lambda.
   if (BuildAndDiagnose)
-    addAsFieldToClosureType(S, LSI, Var, CaptureType, DeclRefType, Loc,
+    addAsFieldToClosureType(S, LSI, CaptureType, DeclRefType, Loc,
                             RefersToCapturedVariable);
     
   // Compute the type of a reference to this captured variable.
@@ -13235,7 +13412,7 @@ bool Sema::tryCaptureVariable(
   // Capture global variables if it is required to use private copy of this
   // variable.
   bool IsGlobal = !Var->hasLocalStorage();
-  if (IsGlobal && !(LangOpts.OpenMP && IsOpenMPCapturedVar(Var)))
+  if (IsGlobal && !(LangOpts.OpenMP && IsOpenMPCapturedDecl(Var)))
     return true;
 
   // Walk up the stack to determine whether we can capture the variable,
@@ -13317,14 +13494,14 @@ bool Sema::tryCaptureVariable(
         // just break here. Similarly, global variables that are captured in a
         // target region should not be captured outside the scope of the region.
         if (RSI->CapRegionKind == CR_OpenMP) {
-          auto isTargetCap = isOpenMPTargetCapturedVar(Var, OpenMPLevel);
+          auto isTargetCap = isOpenMPTargetCapturedDecl(Var, OpenMPLevel);
           // When we detect target captures we are looking from inside the
           // target region, therefore we need to propagate the capture from the
           // enclosing region. Therefore, the capture is not initially nested.
           if (isTargetCap)
             FunctionScopesIndex--;
 
-          if (isTargetCap || isOpenMPPrivateVar(Var, OpenMPLevel)) {
+          if (isTargetCap || isOpenMPPrivateDecl(Var, OpenMPLevel)) {
             Nested = !isTargetCap;
             DeclRefType = DeclRefType.getUnqualifiedType();
             CaptureType = Context.getLValueReferenceType(DeclRefType);
@@ -13341,8 +13518,9 @@ bool Sema::tryCaptureVariable(
         Diag(ExprLoc, diag::err_lambda_impcap) << Var->getDeclName();
         Diag(Var->getLocation(), diag::note_previous_decl) 
           << Var->getDeclName();
-        Diag(cast<LambdaScopeInfo>(CSI)->Lambda->getLocStart(),
-             diag::note_lambda_decl);
+        if (cast<LambdaScopeInfo>(CSI)->Lambda)
+          Diag(cast<LambdaScopeInfo>(CSI)->Lambda->getLocStart(),
+               diag::note_lambda_decl);
         // FIXME: If we error out because an outer lambda can not implicitly
         // capture a variable that an inner lambda explicitly captures, we
         // should have the inner lambda do the explicit capture - because
@@ -13635,13 +13813,16 @@ void Sema::MarkVariableReferenced(SourceLocation Loc, VarDecl *Var) {
 }
 
 static void MarkExprReferenced(Sema &SemaRef, SourceLocation Loc,
-                               Decl *D, Expr *E, bool OdrUse) {
+                               Decl *D, Expr *E, bool MightBeOdrUse) {
+  if (SemaRef.isInOpenMPDeclareTargetContext())
+    SemaRef.checkDeclIsAllowedInOpenMPTarget(E, D);
+
   if (VarDecl *Var = dyn_cast<VarDecl>(D)) {
     DoMarkVarDeclReferenced(SemaRef, Loc, Var, E);
     return;
   }
 
-  SemaRef.MarkAnyDeclReferenced(Loc, D, OdrUse);
+  SemaRef.MarkAnyDeclReferenced(Loc, D, MightBeOdrUse);
 
   // If this is a call to a method via a cast, also mark the method in the
   // derived class used in case codegen can devirtualize the call.
@@ -13663,7 +13844,7 @@ static void MarkExprReferenced(Sema &SemaRef, SourceLocation Loc,
   CXXMethodDecl *DM = MD->getCorrespondingMethodInClass(MostDerivedClassDecl);
   if (!DM || DM->isPure())
     return;
-  SemaRef.MarkAnyDeclReferenced(Loc, DM, OdrUse);
+  SemaRef.MarkAnyDeclReferenced(Loc, DM, MightBeOdrUse);
 } 
 
 /// \brief Perform reference-marking and odr-use handling for a DeclRefExpr.
@@ -13686,30 +13867,31 @@ void Sema::MarkMemberReferenced(MemberExpr *E) {
   //   overload resolution when referred to from a potentially-evaluated
   //   expression, is odr-used, unless it is a pure virtual function and its
   //   name is not explicitly qualified.
-  bool OdrUse = true;
+  bool MightBeOdrUse = true;
   if (E->performsVirtualDispatch(getLangOpts())) {
     if (CXXMethodDecl *Method = dyn_cast<CXXMethodDecl>(E->getMemberDecl()))
       if (Method->isPure())
-        OdrUse = false;
+        MightBeOdrUse = false;
   }
   SourceLocation Loc = E->getMemberLoc().isValid() ?
                             E->getMemberLoc() : E->getLocStart();
-  MarkExprReferenced(*this, Loc, E->getMemberDecl(), E, OdrUse);
+  MarkExprReferenced(*this, Loc, E->getMemberDecl(), E, MightBeOdrUse);
 }
 
 /// \brief Perform marking for a reference to an arbitrary declaration.  It
 /// marks the declaration referenced, and performs odr-use checking for
 /// functions and variables. This method should not be used when building a
 /// normal expression which refers to a variable.
-void Sema::MarkAnyDeclReferenced(SourceLocation Loc, Decl *D, bool OdrUse) {
-  if (OdrUse) {
+void Sema::MarkAnyDeclReferenced(SourceLocation Loc, Decl *D,
+                                 bool MightBeOdrUse) {
+  if (MightBeOdrUse) {
     if (auto *VD = dyn_cast<VarDecl>(D)) {
       MarkVariableReferenced(Loc, VD);
       return;
     }
   }
   if (auto *FD = dyn_cast<FunctionDecl>(D)) {
-    MarkFunctionReferenced(Loc, FD, OdrUse);
+    MarkFunctionReferenced(Loc, FD, MightBeOdrUse);
     return;
   }
   D->setReferenced();

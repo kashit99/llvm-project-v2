@@ -151,6 +151,7 @@ bool ContinuationIndenter::mustBreak(const LineState &State) {
     return true;
   if ((startsNextParameter(Current, Style) || Previous.is(tok::semi) ||
        (Previous.is(TT_TemplateCloser) && Current.is(TT_StartOfName) &&
+        Style.Language == FormatStyle::LK_Cpp &&
         // FIXME: This is a temporary workaround for the case where clang-format
         // sets BreakBeforeParameter to avoid bin packing and this creates a
         // completely unnecessary line break after a template type that isn't
@@ -355,7 +356,17 @@ void ContinuationIndenter::addTokenOnCurrentLine(LineState &State, bool DryRun,
       Previous.isOneOf(tok::l_paren, TT_TemplateOpener, tok::l_square) &&
       State.Column > getNewLineColumn(State) &&
       (!Previous.Previous ||
-       !Previous.Previous->isOneOf(tok::kw_for, tok::kw_while, tok::kw_switch)))
+       !Previous.Previous->isOneOf(tok::kw_for, tok::kw_while,
+                                   tok::kw_switch)) &&
+      // Don't do this for simple (no expressions) one-argument function calls
+      // as that feels like needlessly wasting whitespace, e.g.:
+      //
+      //   caaaaaaaaaaaall(
+      //       caaaaaaaaaaaall(
+      //           caaaaaaaaaaaall(
+      //               caaaaaaaaaaaaaaaaaaaaaaall(aaaaaaaaaaaaaa, aaaaaaaaa))));
+      Current.FakeLParens.size() > 0 &&
+      Current.FakeLParens.back() > prec::Unknown)
     State.Stack.back().NoLineBreak = true;
 
   if (Style.AlignAfterOpenBracket != FormatStyle::BAS_DontAlign &&
@@ -846,7 +857,7 @@ void ContinuationIndenter::moveStatePastFakeLParens(LineState &State,
     // there is a line-break right after the operator.
     // Exclude relational operators, as there, it is always more desirable to
     // have the LHS 'left' of the RHS.
-    if (Previous && Previous->getPrecedence() > prec::Assignment &&
+    if (Previous && Previous->getPrecedence() != prec::Assignment &&
         Previous->isOneOf(TT_BinaryOperator, TT_ConditionalExpr) &&
         Previous->getPrecedence() != prec::Relational) {
       bool BreakBeforeOperator =

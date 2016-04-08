@@ -54,6 +54,25 @@ static cl::opt<unsigned>
 
 void MachineFunctionInitializer::anchor() {}
 
+void MachineFunctionProperties::print(raw_ostream &ROS) const {
+  // Leave this function even in NDEBUG as an out-of-line anchor.
+#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
+  for (BitVector::size_type i = 0; i < Properties.size(); ++i) {
+    bool HasProperty = Properties[i];
+    switch(static_cast<Property>(i)) {
+      case Property::IsSSA:
+        ROS << (HasProperty ? "SSA, " : "Post SSA, ");
+        break;
+      case Property::AllVRegsAllocated:
+        ROS << (HasProperty ? "AllVRegsAllocated" : "HasVRegs");
+        break;
+      default:
+        break;
+    }
+  }
+#endif
+}
+
 //===----------------------------------------------------------------------===//
 // MachineFunction implementation
 //===----------------------------------------------------------------------===//
@@ -69,6 +88,8 @@ MachineFunction::MachineFunction(const Function *F, const TargetMachine &TM,
                                  unsigned FunctionNum, MachineModuleInfo &mmi)
     : Fn(F), Target(TM), STI(TM.getSubtargetImpl(*F)), Ctx(mmi.getContext()),
       MMI(mmi) {
+  // Assume the function starts in SSA form.
+  Properties.set(MachineFunctionProperties::Property::IsSSA);
   if (STI->getRegisterInfo())
     RegInfo = new (Allocator) MachineRegisterInfo(this);
   else
@@ -358,7 +379,7 @@ const char *MachineFunction::createExternalSymbolName(StringRef Name) {
 }
 
 #if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
-void MachineFunction::dump() const {
+LLVM_DUMP_METHOD void MachineFunction::dump() const {
   print(dbgs());
 }
 #endif
@@ -370,10 +391,12 @@ StringRef MachineFunction::getName() const {
 
 void MachineFunction::print(raw_ostream &OS, SlotIndexes *Indexes) const {
   OS << "# Machine code for function " << getName() << ": ";
+  OS << "Properties: <";
+  getProperties().print(OS);
+  OS << "> : ";
   if (RegInfo) {
-    OS << (RegInfo->isSSA() ? "SSA" : "Post SSA");
     if (!RegInfo->tracksLiveness())
-      OS << ", not tracking liveness";
+      OS << "not tracking liveness";
   }
   OS << '\n';
 
@@ -819,7 +842,7 @@ void MachineJumpTableInfo::print(raw_ostream &OS) const {
 }
 
 #if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
-void MachineJumpTableInfo::dump() const { print(dbgs()); }
+LLVM_DUMP_METHOD void MachineJumpTableInfo::dump() const { print(dbgs()); }
 #endif
 
 
@@ -852,6 +875,8 @@ MachineConstantPoolEntry::getSectionKind(const DataLayout *DL) const {
     return SectionKind::getMergeableConst8();
   case 16:
     return SectionKind::getMergeableConst16();
+  case 32:
+    return SectionKind::getMergeableConst32();
   default:
     return SectionKind::getReadOnly();
   }
@@ -895,17 +920,17 @@ static bool CanShareConstantPoolEntry(const Constant *A, const Constant *B,
   // the constant folding APIs to do this so that we get the benefit of
   // DataLayout.
   if (isa<PointerType>(A->getType()))
-    A = ConstantFoldInstOperands(Instruction::PtrToInt, IntTy,
-                                 const_cast<Constant *>(A), DL);
+    A = ConstantFoldCastOperand(Instruction::PtrToInt,
+                                const_cast<Constant *>(A), IntTy, DL);
   else if (A->getType() != IntTy)
-    A = ConstantFoldInstOperands(Instruction::BitCast, IntTy,
-                                 const_cast<Constant *>(A), DL);
+    A = ConstantFoldCastOperand(Instruction::BitCast, const_cast<Constant *>(A),
+                                IntTy, DL);
   if (isa<PointerType>(B->getType()))
-    B = ConstantFoldInstOperands(Instruction::PtrToInt, IntTy,
-                                 const_cast<Constant *>(B), DL);
+    B = ConstantFoldCastOperand(Instruction::PtrToInt,
+                                const_cast<Constant *>(B), IntTy, DL);
   else if (B->getType() != IntTy)
-    B = ConstantFoldInstOperands(Instruction::BitCast, IntTy,
-                                 const_cast<Constant *>(B), DL);
+    B = ConstantFoldCastOperand(Instruction::BitCast, const_cast<Constant *>(B),
+                                IntTy, DL);
 
   return A == B;
 }
@@ -966,5 +991,5 @@ void MachineConstantPool::print(raw_ostream &OS) const {
 }
 
 #if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
-void MachineConstantPool::dump() const { print(dbgs()); }
+LLVM_DUMP_METHOD void MachineConstantPool::dump() const { print(dbgs()); }
 #endif

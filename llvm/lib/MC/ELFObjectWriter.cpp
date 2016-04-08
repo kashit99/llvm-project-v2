@@ -35,13 +35,13 @@
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/StringSaver.h"
 #include <vector>
+
 using namespace llvm;
 
 #undef  DEBUG_TYPE
 #define DEBUG_TYPE "reloc-info"
 
 namespace {
-
 typedef DenseMap<const MCSectionELF *, uint32_t> SectionIndexMapTy;
 
 class ELFObjectWriter;
@@ -232,7 +232,7 @@ class ELFObjectWriter : public MCObjectWriter {
                       uint32_t GroupSymbolIndex, uint64_t Offset, uint64_t Size,
                       const MCSectionELF &Section);
   };
-}
+} // end anonymous namespace
 
 void ELFObjectWriter::align(unsigned Alignment) {
   uint64_t Padding = OffsetToAlignment(getStream().tell(), Alignment);
@@ -375,9 +375,24 @@ uint64_t ELFObjectWriter::SymbolValue(const MCSymbol &Sym,
 
 void ELFObjectWriter::executePostLayoutBinding(MCAssembler &Asm,
                                                const MCAsmLayout &Layout) {
+  // Section symbols are used as definitions for undefined symbols with matching
+  // names. If there are multiple sections with the same name, the first one is
+  // used.
+  for (const MCSection &Sec : Asm) {
+    const MCSymbol *Begin = Sec.getBeginSymbol();
+    if (!Begin)
+      continue;
+
+    const MCSymbol *Alias = Asm.getContext().lookupSymbol(Begin->getName());
+    if (!Alias || !Alias->isUndefined())
+      continue;
+
+    Renames.insert(
+        std::make_pair(cast<MCSymbolELF>(Alias), cast<MCSymbolELF>(Begin)));
+  }
+
   // The presence of symbol versions causes undefined symbols and
   // versions declared with @@@ to be renamed.
-
   for (const MCSymbol &A : Asm.symbols()) {
     const auto &Alias = cast<MCSymbolELF>(A);
     // Not an alias.
@@ -713,7 +728,6 @@ void ELFObjectWriter::recordRelocation(MCAssembler &Asm,
   }
   ELFRelocationEntry Rec(FixupOffset, SymA, Type, Addend);
   Relocations[&FixupSection].push_back(Rec);
-  return;
 }
 
 bool ELFObjectWriter::isInSymtab(const MCAsmLayout &Layout,

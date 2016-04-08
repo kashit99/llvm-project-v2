@@ -427,6 +427,10 @@ added in the future:
 
     - On X86-64 the callee preserves all general purpose registers, except for
       RDI and RAX.
+"``swiftcc``" - This calling convention is used for Swift language.
+    - On X86-64 RCX and R8 are available for additional integer returns, and
+      XMM2 and XMM3 are available for additional FP/vector returns.
+    - On iOS platforms, we use AAPCS-VFP calling convention.
 "``cc <n>``" - Numbered convention
     Any calling convention may be specified by number, allowing
     target-specific calling conventions to be used. Target specific
@@ -760,6 +764,25 @@ some can only be checked when producing an object file:
 * No global value in the expression can be a declaration, since that
   would require a relocation, which is not possible.
 
+.. _langref_ifunc:
+
+IFuncs
+-------
+
+IFuncs, like as aliases, don't create any new data or func. They are just a new
+symbol that dynamic linker resolves at runtime by calling a resolver function.
+
+IFuncs have a name and a resolver that is a function called by dynamic linker
+that returns address of another function associated with the name.
+
+IFunc may have an optional :ref:`linkage type <linkage>` and an optional
+:ref:`visibility style <visibility>`.
+
+Syntax::
+
+    @<Name> = [Linkage] [Visibility] ifunc <IFuncTy>, <ResolverTy>* @<Resolver>
+
+
 .. _langref_comdats:
 
 Comdats
@@ -907,8 +930,7 @@ Currently, only the following parameter attributes are defined:
 ``zeroext``
     This indicates to the code generator that the parameter or return
     value should be zero-extended to the extent required by the target's
-    ABI (which is usually 32-bits, but is 8-bits for a i1 on x86-64) by
-    the caller (for a parameter) or the callee (for a return value).
+    ABI by the caller (for a parameter) or the callee (for a return value).
 ``signext``
     This indicates to the code generator that the parameter or return
     value should be sign-extended to the extent required by the target's
@@ -1065,10 +1087,23 @@ Currently, only the following parameter attributes are defined:
     parameter.
 
 ``swifterror``
-    This indicates that the parameter is a pointer type. That pointer holds a
-    pointer to the error object. We can only load and store from the parameter
-    to get the pointer to the error object. This is not a valid attribute for
-    return values and can only be applied to one parameter.
+    This attribute is motivated to model and optimize Swift error handling. It
+    can be applied to a parameter with pointer to pointer type or a
+    pointer-sized alloca. At the call site, the actual argument that corresponds
+    to a ``swifterror`` parameter has to come from a ``swifterror`` alloca. A
+    ``swifterror`` value (either the parameter or the alloca) can only be loaded
+    and stored from, or used as a ``swifterror`` argument. This is not a valid
+    attribute for return values and can only be applied to one parameter.
+
+    These constraints allow the calling convention to optimize access to
+    ``swifterror`` variables by associating them with a specific register at
+    call boundaries rather than placing them in memory. Since this does change
+    the calling convention, a function which uses the ``swifterror`` attribute
+    on a parameter is not ABI-compatible with one which does not.
+
+    These constraints also allow LLVM to assume that a ``swifterror`` argument
+    does not alias any other memory visible within a function and that a
+    ``swifterror`` alloca passed as an argument does not escape.
 
 .. _gc:
 
@@ -1250,10 +1285,26 @@ example:
     function call are also considered to be cold; and, thus, given low
     weight.
 ``convergent``
-    This attribute indicates that the callee is dependent on a convergent
-    thread execution pattern under certain parallel execution models.
-    Transformations that are execution model agnostic may not make the execution
-    of a convergent operation control dependent on any additional values.
+    In some parallel execution models, there exist operations that cannot be
+    made control-dependent on any additional values.  We call such operations
+    ``convergent``, and mark them with this attribute.
+
+    The ``convergent`` attribute may appear on functions or call/invoke
+    instructions.  When it appears on a function, it indicates that calls to
+    this function should not be made control-dependent on additional values.
+    For example, the intrinsic ``llvm.cuda.syncthreads`` is ``convergent``, so
+    calls to this intrinsic cannot be made control-dependent on additional
+    values.
+
+    When it appears on a call/invoke, the ``convergent`` attribute indicates
+    that we should treat the call as though we're calling a convergent
+    function.  This is particularly useful on indirect calls; without this we
+    may treat such calls as though the target is non-convergent.
+
+    The optimizer may remove the ``convergent`` attribute on functions when it
+    can prove that the function does not execute any convergent operations.
+    Similarly, the optimizer may remove ``convergent`` on calls/invokes when it
+    can prove that the call/invoke cannot call a convergent function.
 ``inaccessiblememonly``
     This attribute indicates that the function may only access memory that
     is not accessible by the module being compiled. This is a weaker form
@@ -1522,13 +1573,15 @@ operand bundle to not miscompile programs containing it.
   ways before control is transferred to the callee or invokee.
 - Calls and invokes with operand bundles have unknown read / write
   effect on the heap on entry and exit (even if the call target is
-  ``readnone`` or ``readonly``), unless they're overriden with
+  ``readnone`` or ``readonly``), unless they're overridden with
   callsite specific attributes.
 - An operand bundle at a call site cannot change the implementation
   of the called function.  Inter-procedural optimizations work as
   usual as long as they take into account the first two properties.
 
 More specific types of operand bundles are described below.
+
+.. _deopt_opbundles:
 
 Deoptimization Operand Bundles
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -1612,6 +1665,18 @@ it is undefined behavior to execute a ``call`` or ``invoke`` which:
 
 Similarly, if no funclet EH pads have been entered-but-not-yet-exited,
 executing a ``call`` or ``invoke`` with a ``"funclet"`` bundle is undefined behavior.
+
+GC Transition Operand Bundles
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+GC transition operand bundles are characterized by the
+``"gc-transition"`` operand bundle tag. These operand bundles mark a
+call as a transition between a function with one GC strategy to a
+function with a different GC strategy. If coordinating the transition
+between GC strategies requires additional code generation at the call
+site, these bundles may contain any values that are needed by the
+generated code.  For more details, see :ref:`GC Transitions
+<gc_transition_args>`.
 
 .. _moduleasm:
 
@@ -3130,7 +3195,7 @@ the same register to an output and an input. If this is not safe (e.g. if the
 assembly contains two instructions, where the first writes to one output, and
 the second reads an input and writes to a second output), then the "``&``"
 modifier must be used (e.g. "``=&r``") to specify that the output is an
-"early-clobber" output. Marking an ouput as "early-clobber" ensures that LLVM
+"early-clobber" output. Marking an output as "early-clobber" ensures that LLVM
 will not use the same register for any inputs (other than an input tied to this
 output).
 
@@ -3803,7 +3868,7 @@ references to them from instructions).
 
     !0 = !DICompileUnit(language: DW_LANG_C99, file: !1, producer: "clang",
                         isOptimized: true, flags: "-O2", runtimeVersion: 2,
-                        splitDebugFilename: "abc.debug", emissionKind: 1,
+                        splitDebugFilename: "abc.debug", emissionKind: FullDebug,
                         enums: !2, retainedTypes: !3, subprograms: !4,
                         globals: !5, imports: !6, macros: !7, dwoId: 0x0abcd)
 
@@ -4552,6 +4617,17 @@ For example:
 .. code-block:: llvm
 
    !0 = !{!"llvm.loop.unroll.full"}
+
+'``llvm.loop.licm_versioning.disable``' Metadata
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+This metadata indicates that the loop should not be versioned for the purpose
+of enabling loop-invariant code motion (LICM). The metadata has a single operand
+which is the string ``llvm.loop.licm_versioning.disable``. For example:
+
+.. code-block:: llvm
+
+   !0 = !{!"llvm.loop.licm_versioning.disable"}
 
 '``llvm.mem``'
 ^^^^^^^^^^^^^^^
@@ -7055,13 +7131,13 @@ Arguments:
 There are three arguments to the '``cmpxchg``' instruction: an address
 to operate on, a value to compare to the value currently be at that
 address, and a new value to place at that address if the compared values
-are equal. The type of '<cmp>' must be an integer type whose bit width
-is a power of two greater than or equal to eight and less than or equal
-to a target-specific size limit. '<cmp>' and '<new>' must have the same
-type, and the type of '<pointer>' must be a pointer to that type. If the
-``cmpxchg`` is marked as ``volatile``, then the optimizer is not allowed
-to modify the number or order of execution of this ``cmpxchg`` with
-other :ref:`volatile operations <volatile>`.
+are equal. The type of '<cmp>' must be an integer or pointer type whose
+bit width is a power of two greater than or equal to eight and less 
+than or equal to a target-specific size limit. '<cmp>' and '<new>' must
+have the same type, and the type of '<pointer>' must be a pointer to 
+that type. If the ``cmpxchg`` is marked as ``volatile``, then the 
+optimizer is not allowed to modify the number or order of execution of
+this ``cmpxchg`` with other :ref:`volatile operations <volatile>`.
 
 The success and failure :ref:`ordering <ordering>` arguments specify how this
 ``cmpxchg`` synchronizes with other atomic operations. Both ordering parameters
@@ -7102,11 +7178,11 @@ Example:
 .. code-block:: llvm
 
     entry:
-      %orig = atomic load i32, i32* %ptr unordered                ; yields i32
+      %orig = load atomic i32, i32* %ptr unordered, align 4                      ; yields i32
       br label %loop
 
     loop:
-      %cmp = phi i32 [ %orig, %entry ], [%old, %loop]
+      %cmp = phi i32 [ %orig, %entry ], [%value_loaded, %loop]
       %squared = mul i32 %cmp, %cmp
       %val_success = cmpxchg i32* %ptr, i32 %cmp, i32 %squared acq_rel monotonic ; yields  { i32, i1 }
       %value_loaded = extractvalue { i32, i1 } %val_success, 0
@@ -7988,7 +8064,7 @@ Arguments:
 
 The '``icmp``' instruction takes three operands. The first operand is
 the condition code indicating the kind of comparison to perform. It is
-not a value, just a keyword. The possible condition code are:
+not a value, just a keyword. The possible condition codes are:
 
 #. ``eq``: equal
 #. ``ne``: not equal
@@ -8085,7 +8161,7 @@ Arguments:
 
 The '``fcmp``' instruction takes three operands. The first operand is
 the condition code indicating the kind of comparison to perform. It is
-not a value, just a keyword. The possible condition code are:
+not a value, just a keyword. The possible condition codes are:
 
 #. ``false``: no comparison, always returns false
 #. ``oeq``: ordered and equal
@@ -10470,8 +10546,8 @@ Overview:
 """""""""
 
 The '``llvm.bitreverse``' family of intrinsics is used to reverse the
-bitpattern of an integer value; for example ``0b1234567`` becomes
-``0b7654321``.
+bitpattern of an integer value; for example ``0b10110110`` becomes
+``0b01101101``.
 
 Semantics:
 """"""""""
@@ -10569,7 +10645,7 @@ targets support all bit widths or vector types, however.
       declare i32  @llvm.ctlz.i32 (i32  <src>, i1 <is_zero_undef>)
       declare i64  @llvm.ctlz.i64 (i64  <src>, i1 <is_zero_undef>)
       declare i256 @llvm.ctlz.i256(i256 <src>, i1 <is_zero_undef>)
-      declase <2 x i32> @llvm.ctlz.v2i32(<2 x i32> <src>, i1 <is_zero_undef>)
+      declare <2 x i32> @llvm.ctlz.v2i32(<2 x i32> <src>, i1 <is_zero_undef>)
 
 Overview:
 """""""""
@@ -10616,7 +10692,7 @@ support all bit widths or vector types, however.
       declare i32  @llvm.cttz.i32 (i32  <src>, i1 <is_zero_undef>)
       declare i64  @llvm.cttz.i64 (i64  <src>, i1 <is_zero_undef>)
       declare i256 @llvm.cttz.i256(i256 <src>, i1 <is_zero_undef>)
-      declase <2 x i32> @llvm.cttz.v2i32(<2 x i32> <src>, i1 <is_zero_undef>)
+      declare <2 x i32> @llvm.cttz.v2i32(<2 x i32> <src>, i1 <is_zero_undef>)
 
 Overview:
 """""""""
@@ -10991,7 +11067,7 @@ Examples of non-canonical encodings:
 - Many normal decimal floating point numbers have non-canonical alternative
   encodings.
 - Some machines, like GPUs or ARMv7 NEON, do not support subnormal values.
-  These are treated as non-canonical encodings of zero and with be flushed to
+  These are treated as non-canonical encodings of zero and will be flushed to
   a zero of the same sign by this operation.
 
 Note that per IEEE-754-2008 6.2, systems that support signaling NaNs with
@@ -11486,7 +11562,7 @@ The '``llvm.masked.scatter``' intrinsics is designed for writing selected vector
 
 ::
 
-       ;; This instruction unconditionaly stores data vector in multiple addresses
+       ;; This instruction unconditionally stores data vector in multiple addresses
        call @llvm.masked.scatter.v8i32 (<8 x i32> %value, <8 x i32*> %ptrs, i32 4,  <8 x i1>  <true, true, .. true>)
 
        ;; It is equivalent to a list of scalar stores
@@ -12060,8 +12136,9 @@ Overview:
 """""""""
 
 The ``llvm.donothing`` intrinsic doesn't perform any operation. It's one of only
-two intrinsics (besides ``llvm.experimental.patchpoint``) that can be called
-with an invoke instruction.
+three intrinsics (besides ``llvm.experimental.patchpoint`` and
+``llvm.experimental.gc.statepoint``) that can be called with an invoke
+instruction.
 
 Arguments:
 """"""""""
@@ -12073,6 +12150,122 @@ Semantics:
 
 This intrinsic does nothing, and it's removed by optimizers and ignored
 by codegen.
+
+'``llvm.experimental.deoptimize``' Intrinsic
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Syntax:
+"""""""
+
+::
+
+      declare type @llvm.experimental.deoptimize(...) [ "deopt"(...) ]
+
+Overview:
+"""""""""
+
+This intrinsic, together with :ref:`deoptimization operand bundles
+<deopt_opbundles>`, allow frontends to express transfer of control and
+frame-local state from the currently executing (typically more specialized,
+hence faster) version of a function into another (typically more generic, hence
+slower) version.
+
+In languages with a fully integrated managed runtime like Java and JavaScript
+this intrinsic can be used to implement "uncommon trap" or "side exit" like
+functionality.  In unmanaged languages like C and C++, this intrinsic can be
+used to represent the slow paths of specialized functions.
+
+
+Arguments:
+""""""""""
+
+The intrinsic takes an arbitrary number of arguments, whose meaning is
+decided by the :ref:`lowering strategy<deoptimize_lowering>`.
+
+Semantics:
+""""""""""
+
+The ``@llvm.experimental.deoptimize`` intrinsic executes an attached
+deoptimization continuation (denoted using a :ref:`deoptimization
+operand bundle <deopt_opbundles>`) and returns the value returned by
+the deoptimization continuation.  Defining the semantic properties of
+the continuation itself is out of scope of the language reference --
+as far as LLVM is concerned, the deoptimization continuation can
+invoke arbitrary side effects, including reading from and writing to
+the entire heap.
+
+Deoptimization continuations expressed using ``"deopt"`` operand bundles always
+continue execution to the end of the physical frame containing them, so all
+calls to ``@llvm.experimental.deoptimize`` must be in "tail position":
+
+   - ``@llvm.experimental.deoptimize`` cannot be invoked.
+   - The call must immediately precede a :ref:`ret <i_ret>` instruction.
+   - The ``ret`` instruction must return the value produced by the
+     ``@llvm.experimental.deoptimize`` call if there is one, or void.
+
+Note that the above restrictions imply that the return type for a call to
+``@llvm.experimental.deoptimize`` will match the return type of its immediate
+caller.
+
+The inliner composes the ``"deopt"`` continuations of the caller into the
+``"deopt"`` continuations present in the inlinee, and also updates calls to this
+intrinsic to return directly from the frame of the function it inlined into.
+
+.. _deoptimize_lowering:
+
+Lowering:
+"""""""""
+
+Calls to ``@llvm.experimental.deoptimize`` are lowered to calls to the
+symbol ``__llvm_deoptimize`` (it is the frontend's responsibility to
+ensure that this symbol is defined).  The call arguments to
+``@llvm.experimental.deoptimize`` are lowered as if they were formal
+arguments of the specified types, and not as varargs.
+
+
+'``llvm.experimental.guard``' Intrinsic
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Syntax:
+"""""""
+
+::
+
+      declare void @llvm.experimental.guard(i1, ...) [ "deopt"(...) ]
+
+Overview:
+"""""""""
+
+This intrinsic, together with :ref:`deoptimization operand bundles
+<deopt_opbundles>`, allows frontends to express guards or checks on
+optimistic assumptions made during compilation.  The semantics of
+``@llvm.experimental.guard`` is defined in terms of
+``@llvm.experimental.deoptimize`` -- its body is defined to be
+equivalent to:
+
+.. code-block:: llvm
+
+	define void @llvm.experimental.guard(i1 %pred, <args...>) {
+	  %realPred = and i1 %pred, undef
+	  br i1 %realPred, label %continue, label %leave
+
+	leave:
+	  call void @llvm.experimental.deoptimize(<args...>) [ "deopt"() ]
+	  ret void
+
+	continue:
+	  ret void
+	}
+
+In words, ``@llvm.experimental.guard`` executes the attached
+``"deopt"`` continuation if (but **not** only if) its first argument
+is ``false``.  Since the optimizer is allowed to replace the ``undef``
+with an arbitrary value, it can optimize guard to fail "spuriously",
+i.e. without the original condition being false (hence the "not only
+if"); and this allows for "check widening" type optimizations.
+
+``@llvm.experimental.guard`` cannot be invoked.
+
 
 Stack Map Intrinsics
 --------------------

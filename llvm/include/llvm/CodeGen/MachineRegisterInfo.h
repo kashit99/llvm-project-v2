@@ -16,7 +16,10 @@
 
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/IndexedMap.h"
+#include "llvm/ADT/PointerUnion.h"
 #include "llvm/ADT/iterator_range.h"
+// PointerUnion needs to have access to the full RegisterBank type.
+#include "llvm/CodeGen/GlobalISel/RegisterBank.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineInstrBundle.h"
 #include "llvm/Target/TargetRegisterInfo.h"
@@ -25,6 +28,10 @@
 
 namespace llvm {
 class PSetIterator;
+
+/// Convenient type to represent either a register class or a register bank.
+typedef PointerUnion<const TargetRegisterClass *, const RegisterBank *>
+    RegClassOrRegBank;
 
 /// MachineRegisterInfo - Keep track of information for virtual and physical
 /// registers, including vreg register classes, use/def chains for registers,
@@ -40,12 +47,8 @@ public:
   };
 
 private:
-  const MachineFunction *MF;
+  MachineFunction *MF;
   Delegate *TheDelegate;
-
-  /// IsSSA - True when the machine function is in SSA form and virtual
-  /// registers have a single def.
-  bool IsSSA;
 
   /// TracksLiveness - True while register liveness is being tracked accurately.
   /// Basic block live-in lists, kill flags, and implicit defs may not be
@@ -59,8 +62,9 @@ private:
   ///
   /// Each element in this list contains the register class of the vreg and the
   /// start of the use/def list for the register.
-  IndexedMap<std::pair<const TargetRegisterClass*, MachineOperand*>,
-             VirtReg2IndexFunctor> VRegInfo;
+  IndexedMap<std::pair<RegClassOrRegBank, MachineOperand *>,
+             VirtReg2IndexFunctor>
+      VRegInfo;
 
   /// RegAllocHints - This vector records register allocation hints for virtual
   /// registers. For each virtual register, it keeps a register and hint type
@@ -105,6 +109,18 @@ private:
   /// started.
   BitVector ReservedRegs;
 
+  typedef DenseMap<unsigned, unsigned> VRegToSizeMap;
+  /// Map generic virtual registers to their actual size.
+  mutable std::unique_ptr<VRegToSizeMap> VRegToSize;
+
+  /// Accessor for VRegToSize. This accessor should only be used
+  /// by global-isel related work.
+  VRegToSizeMap &getVRegToSize() const {
+    if (!VRegToSize)
+      VRegToSize.reset(new VRegToSizeMap);
+    return *VRegToSize.get();
+  }
+
   /// Keep track of the physical registers that are live in to the function.
   /// Live in values are typically arguments in registers.  LiveIn values are
   /// allowed to have virtual registers associated with them, stored in the
@@ -114,7 +130,7 @@ private:
   MachineRegisterInfo(const MachineRegisterInfo&) = delete;
   void operator=(const MachineRegisterInfo&) = delete;
 public:
-  explicit MachineRegisterInfo(const MachineFunction *MF);
+  explicit MachineRegisterInfo(MachineFunction *MF);
 
   const TargetRegisterInfo *getTargetRegisterInfo() const {
     return MF->getSubtarget().getRegisterInfo();
@@ -148,10 +164,15 @@ public:
   // The TwoAddressInstructionPass and PHIElimination passes take the machine
   // function out of SSA form when they introduce multiple defs per virtual
   // register.
-  bool isSSA() const { return IsSSA; }
+  bool isSSA() const {
+    return MF->getProperties().hasProperty(
+        MachineFunctionProperties::Property::IsSSA);
+  }
 
   // leaveSSA - Indicates that the machine function is no longer in SSA form.
-  void leaveSSA() { IsSSA = false; }
+  void leaveSSA() {
+    MF->getProperties().clear(MachineFunctionProperties::Property::IsSSA);
+  }
 
   /// tracksLiveness - Returns true when tracking register liveness accurately.
   ///
@@ -375,8 +396,8 @@ public:
   /// specified register (it may be live-in).
   bool def_empty(unsigned RegNo) const { return def_begin(RegNo) == def_end(); }
 
-  /// hasOneDef - Return true if there is exactly one instruction defining the
-  /// specified register.
+  /// Return true if there is exactly one operand defining the specified
+  /// register.
   bool hasOneDef(unsigned RegNo) const {
     def_iterator DI = def_begin(RegNo);
     if (DI == def_end())
@@ -551,15 +572,61 @@ public:
   // Virtual Register Info
   //===--------------------------------------------------------------------===//
 
-  /// getRegClass - Return the register class of the specified virtual register.
+  /// Return the register class of the specified virtual register.
+  /// This shouldn't be used directly unless \p Reg has a register class.
+  /// \see getRegClassOrNull when this might happen.
   ///
   const TargetRegisterClass *getRegClass(unsigned Reg) const {
+    assert(VRegInfo[Reg].first.is<const TargetRegisterClass *>() &&
+           "Register class not set, wrong accessor");
+    return VRegInfo[Reg].first.get<const TargetRegisterClass *>();
+  }
+
+  /// Return the register class of \p Reg, or null if Reg has not been assigned
+  /// a register class yet.
+  ///
+  /// \note A null register class can only happen when these two
+  /// conditions are met:
+  /// 1. Generic virtual registers are created.
+  /// 2. The machine function has not completely been through the
+  ///    instruction selection process.
+  /// None of this condition is possible without GlobalISel for now.
+  /// In other words, if GlobalISel is not used or if the query happens after
+  /// the select pass, using getRegClass is safe.
+  const TargetRegisterClass *getRegClassOrNull(unsigned Reg) const {
+    const RegClassOrRegBank &Val = VRegInfo[Reg].first;
+    if (Val.is<const TargetRegisterClass *>())
+      return Val.get<const TargetRegisterClass *>();
+    return nullptr;
+  }
+
+  /// Return the register bank of \p Reg, or null if Reg has not been assigned
+  /// a register bank or has been assigned a register class.
+  /// \note It is possible to get the register bank from the register class via
+  /// RegisterBankInfo::getRegBankFromRegClass.
+  ///
+  const RegisterBank *getRegBankOrNull(unsigned Reg) const {
+    const RegClassOrRegBank &Val = VRegInfo[Reg].first;
+    if (Val.is<const RegisterBank *>())
+      return Val.get<const RegisterBank *>();
+    return nullptr;
+  }
+
+  /// Return the register bank or register class of \p Reg.
+  /// \note Before the register bank gets assigned (i.e., before the
+  /// RegBankSelect pass) \p Reg may not have either.
+  ///
+  const RegClassOrRegBank &getRegClassOrRegBank(unsigned Reg) const {
     return VRegInfo[Reg].first;
   }
 
   /// setRegClass - Set the register class of the specified virtual register.
   ///
   void setRegClass(unsigned Reg, const TargetRegisterClass *RC);
+
+  /// Set the register bank to \p RegBank for \p Reg.
+  ///
+  void setRegBank(unsigned Reg, const RegisterBank &RegBank);
 
   /// constrainRegClass - Constrain the register class of the specified virtual
   /// register to be a common subclass of RC and the current register class,
@@ -586,6 +653,19 @@ public:
   /// function with the specified register class.
   ///
   unsigned createVirtualRegister(const TargetRegisterClass *RegClass);
+
+  /// Get the size in bits of \p VReg or 0 if VReg is not a generic
+  /// (target independent) virtual register.
+  unsigned getSize(unsigned VReg) const;
+
+  /// Set the size in bits of \p VReg to \p Size.
+  /// Although the size should be set at build time, mir infrastructure
+  /// is not yet able to do it.
+  void setSize(unsigned VReg, unsigned Size);
+
+  /// Create and return a new generic virtual register with a size of \p Size.
+  /// \pre Size > 0.
+  unsigned createGenericVirtualRegister(unsigned Size);
 
   /// getNumVirtRegs - Return the number of virtual registers created.
   ///
@@ -820,10 +900,10 @@ public:
           advance();
         } while (Op && Op->getParent() == P);
       } else if (ByBundle) {
-        MachineInstr *P = getBundleStart(Op->getParent());
+        MachineInstr &P = getBundleStart(*Op->getParent());
         do {
           advance();
-        } while (Op && getBundleStart(Op->getParent()) == P);
+        } while (Op && &getBundleStart(*Op->getParent()) == &P);
       }
 
       return *this;
@@ -922,10 +1002,10 @@ public:
           advance();
         } while (Op && Op->getParent() == P);
       } else if (ByBundle) {
-        MachineInstr *P = getBundleStart(Op->getParent());
+        MachineInstr &P = getBundleStart(*Op->getParent());
         do {
           advance();
-        } while (Op && getBundleStart(Op->getParent()) == P);
+        } while (Op && &getBundleStart(*Op->getParent()) == &P);
       }
 
       return *this;
@@ -937,15 +1017,12 @@ public:
     // Retrieve a reference to the current operand.
     MachineInstr &operator*() const {
       assert(Op && "Cannot dereference end iterator!");
-      if (ByBundle) return *(getBundleStart(Op->getParent()));
+      if (ByBundle)
+        return getBundleStart(*Op->getParent());
       return *Op->getParent();
     }
 
-    MachineInstr *operator->() const {
-      assert(Op && "Cannot dereference end iterator!");
-      if (ByBundle) return getBundleStart(Op->getParent());
-      return Op->getParent();
-    }
+    MachineInstr *operator->() const { return &operator*(); }
   };
 };
 

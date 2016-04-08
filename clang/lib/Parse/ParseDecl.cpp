@@ -670,7 +670,7 @@ void Parser::ParseBorlandTypeAttributes(ParsedAttributes &attrs) {
   }
 }
 
-void Parser::ParseOpenCLAttributes(ParsedAttributes &attrs) {
+void Parser::ParseOpenCLKernelAttributes(ParsedAttributes &attrs) {
   // Treat these like attributes
   while (Tok.is(tok::kw___kernel)) {
     IdentifierInfo *AttrName = Tok.getIdentifierInfo();
@@ -1211,7 +1211,7 @@ void Parser::ParseLexedAttribute(LateParsedAttribute &LA,
   // Append the current token at the end of the new token stream so that it
   // doesn't get lost.
   LA.Toks.push_back(Tok);
-  PP.EnterTokenStream(LA.Toks.data(), LA.Toks.size(), true, false);
+  PP.EnterTokenStream(LA.Toks, true);
   // Consume the previously pushed token.
   ConsumeAnyToken(/*ConsumeCodeCompletionTok=*/true);
 
@@ -1426,8 +1426,8 @@ void Parser::handleDeclspecAlignBeforeClassKey(ParsedAttributesWithRange &Attrs,
   while (AL) {
     AttributeList *Next = AL->getNext();
 
-    // We only consider attributes using the appropriate '__declspec' spelling,
-    // this behavior doesn't extend to any other spellings.
+    // We only consider attributes using the appropriate '__declspec' spelling.
+    // This behavior doesn't extend to any other spellings.
     if (AL->getKind() == AttributeList::AT_Aligned &&
         AL->isDeclspecAttribute()) {
       // Stitch the attribute into the tag's attribute list.
@@ -1554,9 +1554,14 @@ Parser::ParseSimpleDeclaration(unsigned Context,
     ProhibitAttributes(Attrs);
     DeclEnd = Tok.getLocation();
     if (RequireSemi) ConsumeToken();
+    RecordDecl *AnonRecord = nullptr;
     Decl *TheDecl = Actions.ParsedFreeStandingDeclSpec(getCurScope(), AS_none,
-                                                       DS);
+                                                       DS, AnonRecord);
     DS.complete(TheDecl);
+    if (AnonRecord) {
+      Decl* decls[] = {AnonRecord, TheDecl};
+      return Actions.BuildDeclaratorGroup(decls, /*TypeMayContainAuto=*/false);
+    }
     return Actions.ConvertDeclToDeclGroup(TheDecl);
   }
 
@@ -3103,7 +3108,7 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
 
     // OpenCL single token adornments.
     case tok::kw___kernel:
-      ParseOpenCLAttributes(DS.getAttributes());
+      ParseOpenCLKernelAttributes(DS.getAttributes());
       continue;
 
     // Nullability type specifiers.
@@ -3544,8 +3549,10 @@ void Parser::ParseStructDeclaration(
   // If there are no declarators, this is a free-standing declaration
   // specifier. Let the actions module cope with it.
   if (Tok.is(tok::semi)) {
+    RecordDecl *AnonRecord = nullptr;
     Decl *TheDecl = Actions.ParsedFreeStandingDeclSpec(getCurScope(), AS_none,
-                                                       DS);
+                                                       DS, AnonRecord);
+    assert(!AnonRecord && "Did not expect anonymous struct or union here");
     DS.complete(TheDecl);
     return;
   }
@@ -3648,12 +3655,12 @@ void Parser::ParseStructUnionBody(SourceLocation RecordLoc,
 
     if (Tok.is(tok::annot_pragma_openmp)) {
       // Result can be ignored, because it must be always empty.
-      auto Res = ParseOpenMPDeclarativeDirective();
-      assert(!Res);
-      // Silence possible warnings.
-      (void)Res;
+      AccessSpecifier AS = AS_none;
+      ParsedAttributesWithRange Attrs(AttrFactory);
+      (void)ParseOpenMPDeclarativeDirectiveWithExtDecl(AS, Attrs);
       continue;
     }
+
     if (!Tok.is(tok::at)) {
       auto CFieldCallback = [&](ParsingFieldDeclarator &FD) {
         // Install the declarator into the current TagDecl.
@@ -4948,7 +4955,7 @@ void Parser::ParseDeclaratorInternal(Declarator &D,
   // Member pointers get special handling, since there's no place for the
   // scope spec in the generic path below.
   if (getLangOpts().CPlusPlus &&
-      (Tok.is(tok::coloncolon) ||
+      (Tok.is(tok::coloncolon) || Tok.is(tok::kw_decltype) ||
        (Tok.is(tok::identifier) &&
         (NextToken().is(tok::coloncolon) || NextToken().is(tok::less))) ||
        Tok.is(tok::annot_cxxscope))) {
@@ -4992,7 +4999,8 @@ void Parser::ParseDeclaratorInternal(Declarator &D,
   tok::TokenKind Kind = Tok.getKind();
 
   if (D.getDeclSpec().isTypeSpecPipe() && !isPipeDeclerator(D)) {
-    DeclSpec &DS = D.getMutableDeclSpec();
+    DeclSpec DS(AttrFactory);
+    ParseTypeQualifierListOpt(DS);
 
     D.AddTypeInfo(
         DeclaratorChunk::getPipe(DS.getTypeQualifiers(), DS.getPipeLoc()),
@@ -6033,6 +6041,9 @@ void Parser::ParseBracketDeclarator(Declarator &D) {
                                             T.getCloseLocation()),
                   attrs, T.getCloseLocation());
     return;
+  } else if (Tok.getKind() == tok::code_completion) {
+    Actions.CodeCompleteBracketDeclarator(getCurScope());
+    return cutOffParsing();
   }
 
   // If valid, this location is the position where we read the 'static' keyword.

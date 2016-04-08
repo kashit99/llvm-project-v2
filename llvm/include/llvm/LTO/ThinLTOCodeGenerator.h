@@ -90,6 +90,20 @@ public:
 
   /**
    * \defgroup Cache controlling options
+   *
+   * These entry points control the ThinLTO cache. The cache is intended to
+   * support incremental build, and thus needs to be persistent accross build.
+   * The client enabled the cache by supplying a path to an existing directory.
+   * The code generator will use this to store objects files that may be reused
+   * during a subsequent build.
+   * To avoid filling the disk space, a few knobs are provided:
+   *  - The pruning interval limit the frequency at which the garbage collector
+   *    will try to scan the cache directory to prune it from expired entries.
+   *    Setting to -1 disable the pruning (default).
+   *  - The pruning expiration time indicates to the garbage collector how old
+   *    an entry needs to be to be removed.
+   *  - Finally, the garbage collector can be instructed to prune the cache till
+   *    the occupied space goes below a threshold.
    * @{
    */
 
@@ -101,7 +115,7 @@ public:
   };
 
   /// Provide a path to a directory where to store the cached files for
-  /// incremental build
+  /// incremental build.
   void setCacheDir(std::string Path) { CacheOptions.Path = std::move(Path); }
 
   /// Cache policy: interval (seconds) between two prune of the cache. Set to a
@@ -154,6 +168,13 @@ public:
   void setCodeGenOptLevel(CodeGenOpt::Level CGOptLevel) {
     TMBuilder.CGOptLevel = CGOptLevel;
   }
+
+  /// Disable CodeGen, only run the stages till codegen and stop. The output
+  /// will be bitcode.
+  void disableCodeGen(bool Disable) { DisableCodeGen = Disable; }
+
+  /// Perform CodeGen only: disable all other stages.
+  void setCodeGenOnly(bool CGOnly) { CodeGenOnly = CGOnly; }
 
   /**@}*/
 
@@ -214,6 +235,14 @@ private:
 
   /// Path to a directory to save the temporary bitcode files.
   std::string SaveTempsDir;
+
+  /// Flag to enable/disable CodeGen. When set to true, the process stops after
+  /// optimizations and a bitcode is produced.
+  bool DisableCodeGen = false;
+
+  /// Flag to indicate that only the CodeGen will be performed, no cross-module
+  /// importing or optimization.
+  bool CodeGenOnly = false;
 };
 }
 #endif

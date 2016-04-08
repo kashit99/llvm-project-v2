@@ -14,10 +14,10 @@
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/RecursiveASTVisitor.h"
+#include "clang/Basic/CodeGenOptions.h"
 #include "clang/Basic/Diagnostic.h"
 #include "clang/Basic/TargetInfo.h"
 #include "clang/CodeGen/BackendUtil.h"
-#include "clang/Frontend/CodeGenOptions.h"
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/Lex/HeaderSearch.h"
 #include "clang/Lex/Preprocessor.h"
@@ -33,6 +33,7 @@
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/TargetRegistry.h"
+
 #include <memory>
 
 using namespace clang;
@@ -162,7 +163,7 @@ public:
     Ctx = &Context;
     VMContext.reset(new llvm::LLVMContext());
     M.reset(new llvm::Module(MainFileName, *VMContext));
-    M->setDataLayout(Ctx->getTargetInfo().getDataLayoutString());
+    M->setDataLayout(Ctx->getTargetInfo().getDataLayout());
     Builder.reset(new CodeGen::CodeGenModule(
         *Ctx, HeaderSearchOpts, PreprocessorOpts, CodeGenOpts, *M, Diags));
 
@@ -235,7 +236,7 @@ public:
       return;
 
     M->setTargetTriple(Ctx.getTargetInfo().getTriple().getTriple());
-    M->setDataLayout(Ctx.getTargetInfo().getDataLayoutString());
+    M->setDataLayout(Ctx.getTargetInfo().getDataLayout());
 
     // PCH files don't have a signature field in the control block,
     // but LLVM detects DWO CUs by looking for a non-zero DWO id.
@@ -281,15 +282,15 @@ public:
       llvm::SmallString<0> Buffer;
       llvm::raw_svector_ostream OS(Buffer);
       clang::EmitBackendOutput(Diags, CodeGenOpts, TargetOpts, LangOpts,
-                               Ctx.getTargetInfo().getDataLayoutString(),
-                               M.get(), BackendAction::Backend_EmitLL, &OS);
+                               Ctx.getTargetInfo().getDataLayout(), M.get(),
+                               BackendAction::Backend_EmitLL, &OS);
       llvm::dbgs() << Buffer;
     });
 
     // Use the LLVM backend to emit the pch container.
     clang::EmitBackendOutput(Diags, CodeGenOpts, TargetOpts, LangOpts,
-                             Ctx.getTargetInfo().getDataLayoutString(),
-                             M.get(), BackendAction::Backend_EmitObj, OS);
+                             Ctx.getTargetInfo().getDataLayout(), M.get(),
+                             BackendAction::Backend_EmitObj, OS);
 
     // Make sure the pch container hits disk.
     OS->flush();

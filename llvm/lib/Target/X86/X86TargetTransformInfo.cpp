@@ -983,10 +983,10 @@ int X86TTIImpl::getMemoryOpCost(unsigned Opcode, Type *Src, unsigned Alignment,
   // Each load/store unit costs 1.
   int Cost = LT.first * 1;
 
-  // On Sandybridge 256bit load/stores are double pumped
-  // (but not on Haswell).
-  if (LT.second.getSizeInBits() > 128 && !ST->hasAVX2())
-    Cost*=2;
+  // This isn't exactly right. We're using slow unaligned 32-byte accesses as a
+  // proxy for a double-pumped AVX memory interface such as on Sandybridge.
+  if (LT.second.getStoreSize() == 32 && ST->isUnalignedMem32Slow())
+    Cost *= 2;
 
   return Cost;
 }
@@ -1171,7 +1171,7 @@ int X86TTIImpl::getIntImmCost(const APInt &Imm, Type *Ty) {
     int64_t Val = Tmp.getSExtValue();
     Cost += getIntImmCost(Val);
   }
-  // We need at least one instruction to materialze the constant.
+  // We need at least one instruction to materialize the constant.
   return std::max(1, Cost);
 }
 
@@ -1438,7 +1438,8 @@ bool X86TTIImpl::isLegalMaskedLoad(Type *DataTy) {
   int DataWidth = isa<PointerType>(ScalarTy) ?
     DL.getPointerSizeInBits() : ScalarTy->getPrimitiveSizeInBits();
 
-  return (DataWidth >= 32 && ST->hasAVX2());
+  return (DataWidth >= 32 && ST->hasAVX()) ||
+         (DataWidth >= 8 && ST->hasBWI());
 }
 
 bool X86TTIImpl::isLegalMaskedStore(Type *DataType) {

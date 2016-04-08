@@ -1027,7 +1027,7 @@ void ARMFrameLowering::emitPopInst(MachineBasicBlock &MBB,
       for (unsigned i = 0, e = Regs.size(); i < e; ++i)
         MIB.addReg(Regs[i], getDefRegState(true));
       if (DeleteRet && MI != MBB.end()) {
-        MIB.copyImplicitOps(&*MI);
+        MIB.copyImplicitOps(*MI);
         MI->eraseFromParent();
       }
       MI = MIB;
@@ -1726,10 +1726,9 @@ void ARMFrameLowering::determineCalleeSaves(MachineFunction &MF,
   }
 }
 
-
-void ARMFrameLowering::
-eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
-                              MachineBasicBlock::iterator I) const {
+MachineBasicBlock::iterator ARMFrameLowering::eliminateCallFramePseudoInstr(
+    MachineFunction &MF, MachineBasicBlock &MBB,
+    MachineBasicBlock::iterator I) const {
   const ARMBaseInstrInfo &TII =
       *static_cast<const ARMBaseInstrInfo *>(MF.getSubtarget().getInstrInfo());
   if (!hasReservedCallFrame(MF)) {
@@ -1769,7 +1768,7 @@ eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
       }
     }
   }
-  MBB.erase(I);
+  return MBB.erase(I);
 }
 
 /// Get the minimum constant for ARM that is greater than or equal to the

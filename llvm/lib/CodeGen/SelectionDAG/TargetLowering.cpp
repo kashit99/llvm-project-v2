@@ -124,7 +124,7 @@ void TargetLowering::softenSetCCOperands(SelectionDAG &DAG, EVT VT,
                                          SDValue &NewLHS, SDValue &NewRHS,
                                          ISD::CondCode &CCCode,
                                          SDLoc dl) const {
-  assert((VT == MVT::f32 || VT == MVT::f64 || VT == MVT::f128)
+  assert((VT == MVT::f32 || VT == MVT::f64 || VT == MVT::f128 || VT == MVT::ppcf128)
          && "Unsupported setcc type!");
 
   // Expand into one or more soft-fp libcall(s).
@@ -134,53 +134,65 @@ void TargetLowering::softenSetCCOperands(SelectionDAG &DAG, EVT VT,
   case ISD::SETEQ:
   case ISD::SETOEQ:
     LC1 = (VT == MVT::f32) ? RTLIB::OEQ_F32 :
-          (VT == MVT::f64) ? RTLIB::OEQ_F64 : RTLIB::OEQ_F128;
+          (VT == MVT::f64) ? RTLIB::OEQ_F64 :
+          (VT == MVT::f128) ? RTLIB::OEQ_F128 : RTLIB::OEQ_PPCF128;
     break;
   case ISD::SETNE:
   case ISD::SETUNE:
     LC1 = (VT == MVT::f32) ? RTLIB::UNE_F32 :
-          (VT == MVT::f64) ? RTLIB::UNE_F64 : RTLIB::UNE_F128;
+          (VT == MVT::f64) ? RTLIB::UNE_F64 :
+          (VT == MVT::f128) ? RTLIB::UNE_F128 : RTLIB::UNE_PPCF128;
     break;
   case ISD::SETGE:
   case ISD::SETOGE:
     LC1 = (VT == MVT::f32) ? RTLIB::OGE_F32 :
-          (VT == MVT::f64) ? RTLIB::OGE_F64 : RTLIB::OGE_F128;
+          (VT == MVT::f64) ? RTLIB::OGE_F64 :
+          (VT == MVT::f128) ? RTLIB::OGE_F128 : RTLIB::OGE_PPCF128;
     break;
   case ISD::SETLT:
   case ISD::SETOLT:
     LC1 = (VT == MVT::f32) ? RTLIB::OLT_F32 :
-          (VT == MVT::f64) ? RTLIB::OLT_F64 : RTLIB::OLT_F128;
+          (VT == MVT::f64) ? RTLIB::OLT_F64 :
+          (VT == MVT::f128) ? RTLIB::OLT_F128 : RTLIB::OLT_PPCF128;
     break;
   case ISD::SETLE:
   case ISD::SETOLE:
     LC1 = (VT == MVT::f32) ? RTLIB::OLE_F32 :
-          (VT == MVT::f64) ? RTLIB::OLE_F64 : RTLIB::OLE_F128;
+          (VT == MVT::f64) ? RTLIB::OLE_F64 :
+          (VT == MVT::f128) ? RTLIB::OLE_F128 : RTLIB::OLE_PPCF128;
     break;
   case ISD::SETGT:
   case ISD::SETOGT:
     LC1 = (VT == MVT::f32) ? RTLIB::OGT_F32 :
-          (VT == MVT::f64) ? RTLIB::OGT_F64 : RTLIB::OGT_F128;
+          (VT == MVT::f64) ? RTLIB::OGT_F64 :
+          (VT == MVT::f128) ? RTLIB::OGT_F128 : RTLIB::OGT_PPCF128;
     break;
   case ISD::SETUO:
     LC1 = (VT == MVT::f32) ? RTLIB::UO_F32 :
-          (VT == MVT::f64) ? RTLIB::UO_F64 : RTLIB::UO_F128;
+          (VT == MVT::f64) ? RTLIB::UO_F64 :
+          (VT == MVT::f128) ? RTLIB::UO_F128 : RTLIB::UO_PPCF128;
     break;
   case ISD::SETO:
     LC1 = (VT == MVT::f32) ? RTLIB::O_F32 :
-          (VT == MVT::f64) ? RTLIB::O_F64 : RTLIB::O_F128;
+          (VT == MVT::f64) ? RTLIB::O_F64 :
+          (VT == MVT::f128) ? RTLIB::O_F128 : RTLIB::O_PPCF128;
     break;
   case ISD::SETONE:
     // SETONE = SETOLT | SETOGT
     LC1 = (VT == MVT::f32) ? RTLIB::OLT_F32 :
-          (VT == MVT::f64) ? RTLIB::OLT_F64 : RTLIB::OLT_F128;
+          (VT == MVT::f64) ? RTLIB::OLT_F64 :
+          (VT == MVT::f128) ? RTLIB::OLT_F128 : RTLIB::OLT_PPCF128;
     LC2 = (VT == MVT::f32) ? RTLIB::OGT_F32 :
-          (VT == MVT::f64) ? RTLIB::OGT_F64 : RTLIB::OGT_F128;
+          (VT == MVT::f64) ? RTLIB::OGT_F64 :
+          (VT == MVT::f128) ? RTLIB::OGT_F128 : RTLIB::OGT_PPCF128;
     break;
   case ISD::SETUEQ:
     LC1 = (VT == MVT::f32) ? RTLIB::UO_F32 :
-          (VT == MVT::f64) ? RTLIB::UO_F64 : RTLIB::UO_F128;
+          (VT == MVT::f64) ? RTLIB::UO_F64 :
+          (VT == MVT::f128) ? RTLIB::UO_F64 : RTLIB::UO_PPCF128;
     LC2 = (VT == MVT::f32) ? RTLIB::OEQ_F32 :
-          (VT == MVT::f64) ? RTLIB::OEQ_F64 : RTLIB::OEQ_F128;
+          (VT == MVT::f64) ? RTLIB::OEQ_F64 :
+          (VT == MVT::f128) ? RTLIB::OEQ_F128 : RTLIB::OEQ_PPCF128;
     break;
   default:
     // Invert CC for unordered comparisons
@@ -188,19 +200,23 @@ void TargetLowering::softenSetCCOperands(SelectionDAG &DAG, EVT VT,
     switch (CCCode) {
     case ISD::SETULT:
       LC1 = (VT == MVT::f32) ? RTLIB::OGE_F32 :
-            (VT == MVT::f64) ? RTLIB::OGE_F64 : RTLIB::OGE_F128;
+            (VT == MVT::f64) ? RTLIB::OGE_F64 :
+            (VT == MVT::f128) ? RTLIB::OGE_F128 : RTLIB::OGE_PPCF128;
       break;
     case ISD::SETULE:
       LC1 = (VT == MVT::f32) ? RTLIB::OGT_F32 :
-            (VT == MVT::f64) ? RTLIB::OGT_F64 : RTLIB::OGT_F128;
+            (VT == MVT::f64) ? RTLIB::OGT_F64 :
+            (VT == MVT::f128) ? RTLIB::OGT_F128 : RTLIB::OGT_PPCF128;
       break;
     case ISD::SETUGT:
       LC1 = (VT == MVT::f32) ? RTLIB::OLE_F32 :
-            (VT == MVT::f64) ? RTLIB::OLE_F64 : RTLIB::OLE_F128;
+            (VT == MVT::f64) ? RTLIB::OLE_F64 :
+            (VT == MVT::f128) ? RTLIB::OLE_F128 : RTLIB::OLE_PPCF128;
       break;
     case ISD::SETUGE:
       LC1 = (VT == MVT::f32) ? RTLIB::OLT_F32 :
-            (VT == MVT::f64) ? RTLIB::OLT_F64 : RTLIB::OLT_F128;
+            (VT == MVT::f64) ? RTLIB::OLT_F64 :
+            (VT == MVT::f128) ? RTLIB::OLT_F128 : RTLIB::OLT_PPCF128;
       break;
     default: llvm_unreachable("Do not know how to soften this setcc!");
     }
@@ -409,7 +425,7 @@ bool TargetLowering::SimplifyDemandedBits(SDValue Op,
     NewMask = APInt::getAllOnesValue(BitWidth);
   } else if (DemandedMask == 0) {
     // Not demanding any bits from Op.
-    if (Op.getOpcode() != ISD::UNDEF)
+    if (!Op.isUndef())
       return TLO.CombineTo(Op, TLO.DAG.getUNDEF(Op.getValueType()));
     return false;
   } else if (Depth == 6) {        // Limit search depth.
@@ -2254,8 +2270,10 @@ void TargetLowering::LowerAsmOperandForConstraint(SDValue Op,
         C = dyn_cast<ConstantSDNode>(Op.getOperand(0));
         GA = dyn_cast<GlobalAddressSDNode>(Op.getOperand(1));
       }
-      if (!C || !GA)
-        C = nullptr, GA = nullptr;
+      if (!C || !GA) {
+        C = nullptr;
+        GA = nullptr;
+      }
     }
 
     // If we find a valid operand, map to the TargetXXX version so that the
@@ -3089,6 +3107,102 @@ bool TargetLowering::expandFP_TO_SINT(SDNode *Node, SDValue &Result,
   Result = DAG.getSelectCC(dl, Exponent, DAG.getConstant(0, dl, IntVT),
       DAG.getConstant(0, dl, NVT), Ret, ISD::SETLT);
   return true;
+}
+
+SDValue TargetLowering::scalarizeVectorLoad(LoadSDNode *LD,
+                                            SelectionDAG &DAG) const {
+  SDLoc SL(LD);
+  SDValue Chain = LD->getChain();
+  SDValue BasePTR = LD->getBasePtr();
+  EVT SrcVT = LD->getMemoryVT();
+  ISD::LoadExtType ExtType = LD->getExtensionType();
+
+  unsigned NumElem = SrcVT.getVectorNumElements();
+
+  EVT SrcEltVT = SrcVT.getScalarType();
+  EVT DstEltVT = LD->getValueType(0).getScalarType();
+
+  unsigned Stride = SrcEltVT.getSizeInBits() / 8;
+  assert(SrcEltVT.isByteSized());
+
+  EVT PtrVT = BasePTR.getValueType();
+
+  SmallVector<SDValue, 8> Vals;
+  SmallVector<SDValue, 8> LoadChains;
+
+  for (unsigned Idx = 0; Idx < NumElem; ++Idx) {
+    SDValue ScalarLoad = DAG.getExtLoad(
+      ExtType, SL, DstEltVT,
+      Chain, BasePTR, LD->getPointerInfo().getWithOffset(Idx * Stride),
+      SrcEltVT,
+      LD->isVolatile(), LD->isNonTemporal(), LD->isInvariant(),
+      MinAlign(LD->getAlignment(), Idx * Stride), LD->getAAInfo());
+
+    BasePTR = DAG.getNode(ISD::ADD, SL, PtrVT, BasePTR,
+                          DAG.getConstant(Stride, SL, PtrVT));
+
+    Vals.push_back(ScalarLoad.getValue(0));
+    LoadChains.push_back(ScalarLoad.getValue(1));
+  }
+
+  SDValue NewChain = DAG.getNode(ISD::TokenFactor, SL, MVT::Other, LoadChains);
+  SDValue Value = DAG.getNode(ISD::BUILD_VECTOR, SL, LD->getValueType(0), Vals);
+
+  return DAG.getMergeValues({ Value, NewChain }, SL);
+}
+
+// FIXME: This relies on each element having a byte size, otherwise the stride
+// is 0 and just overwrites the same location. ExpandStore currently expects
+// this broken behavior.
+SDValue TargetLowering::scalarizeVectorStore(StoreSDNode *ST,
+                                             SelectionDAG &DAG) const {
+  SDLoc SL(ST);
+
+  SDValue Chain = ST->getChain();
+  SDValue BasePtr = ST->getBasePtr();
+  SDValue Value = ST->getValue();
+  EVT StVT = ST->getMemoryVT();
+
+  unsigned Alignment = ST->getAlignment();
+  bool isVolatile = ST->isVolatile();
+  bool isNonTemporal = ST->isNonTemporal();
+  AAMDNodes AAInfo = ST->getAAInfo();
+
+  // The type of the data we want to save
+  EVT RegVT = Value.getValueType();
+  EVT RegSclVT = RegVT.getScalarType();
+
+  // The type of data as saved in memory.
+  EVT MemSclVT = StVT.getScalarType();
+
+  EVT PtrVT = BasePtr.getValueType();
+
+  // Store Stride in bytes
+  unsigned Stride = MemSclVT.getSizeInBits() / 8;
+  EVT IdxVT = getVectorIdxTy(DAG.getDataLayout());
+  unsigned NumElem = StVT.getVectorNumElements();
+
+  // Extract each of the elements from the original vector and save them into
+  // memory individually.
+  SmallVector<SDValue, 8> Stores;
+  for (unsigned Idx = 0; Idx < NumElem; ++Idx) {
+    SDValue Elt = DAG.getNode(ISD::EXTRACT_VECTOR_ELT, SL, RegSclVT, Value,
+                              DAG.getConstant(Idx, SL, IdxVT));
+
+    SDValue Ptr = DAG.getNode(ISD::ADD, SL, PtrVT, BasePtr,
+                              DAG.getConstant(Idx * Stride, SL, PtrVT));
+
+    // This scalar TruncStore may be illegal, but we legalize it later.
+    SDValue Store = DAG.getTruncStore(
+      Chain, SL, Elt, Ptr,
+      ST->getPointerInfo().getWithOffset(Idx * Stride), MemSclVT,
+      isVolatile, isNonTemporal, MinAlign(Alignment, Idx * Stride),
+      AAInfo);
+
+    Stores.push_back(Store);
+  }
+
+  return DAG.getNode(ISD::TokenFactor, SL, MVT::Other, Stores);
 }
 
 //===----------------------------------------------------------------------===//

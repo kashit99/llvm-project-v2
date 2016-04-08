@@ -19,7 +19,6 @@ namespace elf {
 class Lazy;
 template <class ELFT> class OutputSectionBase;
 struct Symbol;
-class Undefined;
 
 // SymbolTable is a bucket of all known symbols, including defined,
 // undefined, or lazy symbols (the last one is symbols in archive
@@ -68,7 +67,7 @@ public:
 private:
   Symbol *insert(SymbolBody *New);
   void addLazy(Lazy *New);
-  void addMemberFile(Undefined *Undef, Lazy *L);
+  void addMemberFile(SymbolBody *Undef, Lazy *L);
   void resolve(SymbolBody *Body);
   std::string conflictMsg(SymbolBody *Old, SymbolBody *New);
 
@@ -90,6 +89,7 @@ private:
   // The symbol table owns all file objects.
   std::vector<std::unique_ptr<ArchiveFile>> ArchiveFiles;
   std::vector<std::unique_ptr<ObjectFile<ELFT>>> ObjectFiles;
+  std::vector<std::unique_ptr<LazyObjectFile>> LazyObjectFiles;
   std::vector<std::unique_ptr<SharedFile<ELFT>>> SharedFiles;
   std::vector<std::unique_ptr<BitcodeFile>> BitcodeFiles;
 

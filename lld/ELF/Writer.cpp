@@ -58,6 +58,7 @@ private:
   std::vector<Phdr> createPhdrs();
   void assignAddresses();
   void assignFileOffsets();
+  void assignFileOffsetsBinary();
   void setPhdrs();
   void fixHeaders();
   void fixSectionAlignments();
@@ -65,6 +66,7 @@ private:
   void openFile();
   void writeHeader();
   void writeSections();
+  void writeSectionsBinary();
   void writeBuildId();
 
   std::unique_ptr<FileOutputBuffer> Buffer;
@@ -90,7 +92,7 @@ StringRef elf::getOutputSectionName(InputSectionBase<ELFT> *S) {
   StringRef Name = S->getSectionName();
   for (StringRef V : {".text.", ".rodata.", ".data.rel.ro.", ".data.", ".bss.",
                       ".init_array.", ".fini_array.", ".ctors.", ".dtors.",
-                      ".tbss.", ".gcc_except_table.", ".tdata."})
+                      ".tbss.", ".gcc_except_table.", ".tdata.", ".ARM.exidx."})
     if (Name.startswith(V))
       return V.drop_back();
   return Name;
@@ -268,7 +270,12 @@ template <class ELFT> void Writer<ELFT>::run() {
       fixSectionAlignments();
       assignAddresses();
     }
-    assignFileOffsets();
+
+    if (!Config->OFormatBinary)
+      assignFileOffsets();
+    else
+      assignFileOffsetsBinary();
+
     setPhdrs();
     fixAbsoluteSymbols();
   }
@@ -276,8 +283,12 @@ template <class ELFT> void Writer<ELFT>::run() {
   openFile();
   if (HasError)
     return;
-  writeHeader();
-  writeSections();
+  if (!Config->OFormatBinary) {
+    writeHeader();
+    writeSections();
+  } else {
+    writeSectionsBinary();
+  }
   writeBuildId();
   if (HasError)
     return;
@@ -519,16 +530,17 @@ static Symbol *addOptionalSynthetic(StringRef Name,
     return nullptr;
   if (!S->isUndefined() && !S->isShared())
     return S->symbol();
-  return Symtab<ELFT>::X->addSynthetic(Name, Sec, Val);
+  return Symtab<ELFT>::X->addSynthetic(Name, Sec, Val, STV_HIDDEN);
 }
 
 template <class ELFT>
 static void addSynthetic(StringRef Name, OutputSectionBase<ELFT> *Sec,
-                                 typename ELFT::uint Val) {
+                         typename ELFT::uint Val) {
   SymbolBody *S = Symtab<ELFT>::X->find(Name);
   if (!S || S->isUndefined() || S->isShared())
-    Symtab<ELFT>::X->addSynthetic(Name, Sec, Val);
+    Symtab<ELFT>::X->addSynthetic(Name, Sec, Val, STV_HIDDEN);
 }
+
 // The beginning and the ending of .rel[a].plt section are marked
 // with __rel[a]_iplt_{start,end} symbols if it is a statically linked
 // executable. The runtime needs these symbols in order to resolve
@@ -554,7 +566,8 @@ template <class ELFT> void Writer<ELFT>::addReservedSymbols() {
     // so that it points to an absolute address which is relative to GOT.
     // See "Global Data Symbols" in Chapter 6 in the following document:
     // ftp://www.linux-mips.org/pub/linux/mips/doc/ABI/mipsabi.pdf
-    Symtab<ELFT>::X->addSynthetic("_gp", Out<ELFT>::Got, MipsGPOffset);
+    Symtab<ELFT>::X->addSynthetic("_gp", Out<ELFT>::Got, MipsGPOffset,
+                                  STV_HIDDEN);
 
     // On MIPS O32 ABI, _gp_disp is a magic symbol designates offset between
     // start of function and 'gp' pointer into GOT.
@@ -595,6 +608,8 @@ template <class ELFT> void Writer<ELFT>::addReservedSymbols() {
   // If linker script do layout we do not need to create any standart symbols.
   if (ScriptConfig->HasContents)
     return;
+
+  ElfSym<ELFT>::EhdrStart = Symtab<ELFT>::X->addIgnored("__ehdr_start");
 
   auto Define = [this](StringRef S, DefinedRegular<ELFT> *&Sym1,
                        DefinedRegular<ELFT> *&Sym2) {
@@ -701,7 +716,8 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
   // Even the author of gold doesn't remember why gold behaves that way.
   // https://sourceware.org/ml/binutils/2002-03/msg00360.html
   if (Out<ELFT>::DynSymTab)
-    Symtab<ELFT>::X->addSynthetic("_DYNAMIC", Out<ELFT>::Dynamic, 0);
+    Symtab<ELFT>::X->addSynthetic("_DYNAMIC", Out<ELFT>::Dynamic, 0,
+                                  STV_HIDDEN);
 
   // Define __rel[a]_iplt_{start,end} symbols if needed.
   addRelIpltSymbols();
@@ -893,11 +909,11 @@ void Writer<ELFT>::addStartStopSymbols(OutputSectionBase<ELFT> *Sec) {
   StringRef Stop = Saver.save("__stop_" + S);
   if (SymbolBody *B = Symtab<ELFT>::X->find(Start))
     if (B->isUndefined())
-      Symtab<ELFT>::X->addSynthetic(Start, Sec, 0);
+      Symtab<ELFT>::X->addSynthetic(Start, Sec, 0, B->getVisibility());
   if (SymbolBody *B = Symtab<ELFT>::X->find(Stop))
     if (B->isUndefined())
-      Symtab<ELFT>::X->addSynthetic(Stop, Sec,
-                                    DefinedSynthetic<ELFT>::SectionEnd);
+      Symtab<ELFT>::X->addSynthetic(
+          Stop, Sec, DefinedSynthetic<ELFT>::SectionEnd, B->getVisibility());
 }
 
 template <class ELFT>
@@ -963,9 +979,13 @@ std::vector<PhdrEntry<ELFT>> Writer<ELFT>::createPhdrs() {
     if (!needsPtLoad(Sec))
       continue;
 
-    // If flags changed then we want new load segment.
+    // Segments are contiguous memory regions that has the same attributes
+    // (e.g. executable or writable). There is one phdr for each segment.
+    // Therefore, we need to create a new phdr when the next section has
+    // different flags or is loaded at a discontiguous address using AT linker
+    // script command.
     uintX_t NewFlags = Sec->getPhdrFlags();
-    if (Flags != NewFlags) {
+    if (Script<ELFT>::X->getLma(Sec->getName()) || Flags != NewFlags) {
       Load = AddHdr(PT_LOAD, NewFlags);
       Flags = NewFlags;
     }
@@ -1001,8 +1021,11 @@ std::vector<PhdrEntry<ELFT>> Writer<ELFT>::createPhdrs() {
 
   // PT_GNU_STACK is a special section to tell the loader to make the
   // pages for the stack non-executable.
-  if (!Config->ZExecStack)
-    AddHdr(PT_GNU_STACK, PF_R | PF_W);
+  if (!Config->ZExecStack) {
+    Phdr &Hdr = *AddHdr(PT_GNU_STACK, PF_R | PF_W);
+    if (Config->ZStackSize != uint64_t(-1))
+      Hdr.H.p_memsz = Config->ZStackSize;
+  }
 
   if (Note.First)
     Ret.push_back(std::move(Note));
@@ -1044,8 +1067,10 @@ template <class ELFT> void Writer<ELFT>::fixHeaders() {
 
 // Assign VAs (addresses at run-time) to output sections.
 template <class ELFT> void Writer<ELFT>::assignAddresses() {
-  uintX_t VA = Config->ImageBase + Out<ELFT>::ElfHeader->getSize() +
-               Out<ELFT>::ProgramHeaders->getSize();
+  uintX_t VA = Config->ImageBase;
+  if (!Config->OFormatBinary)
+    VA +=
+        Out<ELFT>::ElfHeader->getSize() + Out<ELFT>::ProgramHeaders->getSize();
 
   uintX_t ThreadBssOffset = 0;
   for (OutputSectionBase<ELFT> *Sec : OutputSections) {
@@ -1085,25 +1110,34 @@ static uintX_t getFileAlignment(uintX_t Off, OutputSectionBase<ELFT> *Sec) {
   return alignTo(Off, Target->PageSize, Sec->getVA());
 }
 
+template <class ELFT, class uintX_t>
+void setOffset(OutputSectionBase<ELFT> *Sec, uintX_t &Off) {
+  if (Sec->getType() == SHT_NOBITS) {
+    Sec->setFileOffset(Off);
+    return;
+  }
+
+  Off = getFileAlignment<ELFT>(Off, Sec);
+  Sec->setFileOffset(Off);
+  Off += Sec->getSize();
+}
+
+template <class ELFT> void Writer<ELFT>::assignFileOffsetsBinary() {
+  uintX_t Off = 0;
+  for (OutputSectionBase<ELFT> *Sec : OutputSections)
+    if (Sec->getFlags() & SHF_ALLOC)
+      setOffset(Sec, Off);
+  FileSize = alignTo(Off, sizeof(uintX_t));
+}
+
 // Assign file offsets to output sections.
 template <class ELFT> void Writer<ELFT>::assignFileOffsets() {
   uintX_t Off = 0;
+  setOffset(Out<ELFT>::ElfHeader, Off);
+  setOffset(Out<ELFT>::ProgramHeaders, Off);
 
-  auto Set = [&](OutputSectionBase<ELFT> *Sec) {
-    if (Sec->getType() == SHT_NOBITS) {
-      Sec->setFileOffset(Off);
-      return;
-    }
-
-    Off = getFileAlignment<ELFT>(Off, Sec);
-    Sec->setFileOffset(Off);
-    Off += Sec->getSize();
-  };
-
-  Set(Out<ELFT>::ElfHeader);
-  Set(Out<ELFT>::ProgramHeaders);
   for (OutputSectionBase<ELFT> *Sec : OutputSections)
-    Set(Sec);
+    setOffset(Sec, Off);
 
   SectionHeaderOff = alignTo(Off, sizeof(uintX_t));
   FileSize = SectionHeaderOff + (OutputSections.size() + 1) * sizeof(Elf_Shdr);
@@ -1128,7 +1162,11 @@ template <class ELFT> void Writer<ELFT>::setPhdrs() {
       H.p_align = Target->PageSize;
     else if (H.p_type == PT_GNU_RELRO)
       H.p_align = 1;
+
     H.p_paddr = H.p_vaddr;
+    if (H.p_type == PT_LOAD && First)
+      if (Expr LmaExpr = Script<ELFT>::X->getLma(First->getName()))
+        H.p_paddr = LmaExpr(H.p_vaddr);
 
     // The TLS pointer goes after PT_TLS. At least glibc will align it,
     // so round up the size to make sure the offsets are correct.
@@ -1166,6 +1204,10 @@ static uint16_t getELFType() {
 // to each section. This function fixes some predefined absolute
 // symbol values that depend on section address and size.
 template <class ELFT> void Writer<ELFT>::fixAbsoluteSymbols() {
+  // __ehdr_start is the location of program headers.
+  if (ElfSym<ELFT>::EhdrStart)
+    ElfSym<ELFT>::EhdrStart->Value = Out<ELFT>::ProgramHeaders->getVA();
+
   auto Set = [](DefinedRegular<ELFT> *S1, DefinedRegular<ELFT> *S2, uintX_t V) {
     if (S1)
       S1->Value = V;
@@ -1240,6 +1282,13 @@ template <class ELFT> void Writer<ELFT>::openFile() {
     error(EC, "failed to open " + Config->OutputFile);
   else
     Buffer = std::move(*BufferOrErr);
+}
+
+template <class ELFT> void Writer<ELFT>::writeSectionsBinary() {
+  uint8_t *Buf = Buffer->getBufferStart();
+  for (OutputSectionBase<ELFT> *Sec : OutputSections)
+    if (Sec->getFlags() & SHF_ALLOC)
+      Sec->writeTo(Buf + Sec->getFileOff());
 }
 
 // Write section contents to a mmap'ed file.

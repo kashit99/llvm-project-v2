@@ -256,6 +256,17 @@ static bool hasZOption(opt::InputArgList &Args, StringRef Key) {
   return false;
 }
 
+static Optional<StringRef>
+getZOptionValue(opt::InputArgList &Args, StringRef Key) {
+  for (auto *Arg : Args.filtered(OPT_z)) {
+    StringRef Value = Arg->getValue();
+    size_t Pos = Value.find("=");
+    if (Pos != StringRef::npos && Key == Value.substr(0, Pos))
+      return Value.substr(Pos + 1);
+  }
+  return None;
+}
+
 void LinkerDriver::main(ArrayRef<const char *> ArgsArr) {
   ELFOptTable Parser;
   opt::InputArgList Args = Parser.parse(ArgsArr.slice(1));
@@ -321,6 +332,16 @@ static UnresolvedPolicy getUnresolvedSymbolOption(opt::InputArgList &Args) {
     error("unknown --unresolved-symbols value: " + S);
   }
   return UnresolvedPolicy::Error;
+}
+
+static bool isOutputFormatBinary(opt::InputArgList &Args) {
+  if (auto *Arg = Args.getLastArg(OPT_oformat)) {
+    StringRef S = Arg->getValue();
+    if (S == "binary")
+      return true;
+    error("unknown --oformat value: " + S);
+  }
+  return false;
 }
 
 // Initializes Config members by the command line options.
@@ -395,6 +416,10 @@ void LinkerDriver::readConfigs(opt::InputArgList &Args) {
   Config->ZOrigin = hasZOption(Args, "origin");
   Config->ZRelro = !hasZOption(Args, "norelro");
 
+  if (Optional<StringRef> Value = getZOptionValue(Args, "stack-size"))
+    if (Value->getAsInteger(0, Config->ZStackSize))
+      error("invalid stack size: " + *Value);
+
   if (Config->Relocatable)
     Config->StripAll = false;
 
@@ -434,6 +459,8 @@ void LinkerDriver::readConfigs(opt::InputArgList &Args) {
       error("unknown --build-id style: " + S);
     }
   }
+
+  Config->OFormatBinary = isOutputFormatBinary(Args);
 
   for (auto *Arg : Args.filtered(OPT_undefined))
     Config->Undefined.push_back(Arg->getValue());

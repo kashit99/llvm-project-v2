@@ -119,6 +119,9 @@ def no_undefined_version: F<"no-undefined-version">,
 def o: JoinedOrSeparate<["-"], "o">, MetaVarName<"<path>">,
   HelpText<"Path to file to write output">;
 
+def oformat: Separate<["--"], "oformat">, MetaVarName<"<format>">,
+  HelpText<"Specify the binary format for the output object file">;
+
 def pie: F<"pie">, HelpText<"Create a position independent executable">;
 
 def print_gc_sections: F<"print-gc-sections">,
@@ -262,6 +265,8 @@ def rpath_link_eq: J<"rpath-link=">;
 def sort_common: F<"sort-common">;
 def warn_execstack: F<"warn-execstack">;
 def warn_shared_textrel: F<"warn-shared-textrel">;
+def EB : F<"EB">;
+def EL : F<"EL">;
 def G: JoinedOrSeparate<["-"], "G">;
 
 // Aliases for ignored options

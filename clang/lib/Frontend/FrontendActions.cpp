@@ -335,13 +335,8 @@ bool GenerateModuleFromModuleMapAction::BeginSourceFileAction(
   // Check whether we can build this module at all.
   clang::Module::Requirement Requirement;
   clang::Module::UnresolvedHeaderDirective MissingHeader;
-  clang::Module *ShadowingModule = nullptr;
   if (!Module->isAvailable(CI.getLangOpts(), CI.getTarget(), Requirement,
-                           MissingHeader, ShadowingModule)) {
-
-    assert(!ShadowingModule &&
-           "lookup of module by name should never find shadowed module");
-
+                           MissingHeader)) {
     if (MissingHeader.FileNameLoc.isValid()) {
       CI.getDiagnostics().Report(MissingHeader.FileNameLoc,
                                  diag::err_module_header_missing)

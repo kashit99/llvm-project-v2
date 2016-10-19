@@ -1157,6 +1157,20 @@ TypeResult Sema::actOnObjCTypeArgsAndProtocolQualifiers(
     ResultTL = ObjCObjectPointerTL.getPointeeLoc();
   }
 
+  if (auto OTPTL = ResultTL.getAs<ObjCTypeParamTypeLoc>()) {
+    // Protocol qualifier information.
+    if (OTPTL.getNumProtocols() > 0) {
+      assert(OTPTL.getNumProtocols() == Protocols.size());
+      OTPTL.setProtocolLAngleLoc(ProtocolLAngleLoc);
+      OTPTL.setProtocolRAngleLoc(ProtocolRAngleLoc);
+      for (unsigned i = 0, n = Protocols.size(); i != n; ++i)
+        OTPTL.setProtocolLoc(i, ProtocolLocs[i]);
+    }
+
+    // We're done. Return the completed type to the parser.
+    return CreateParsedType(Result, ResultTInfo);
+  }
+
   auto ObjCObjectTL = ResultTL.castAs<ObjCObjectTypeLoc>();
 
   // Type argument information.
@@ -3359,9 +3373,25 @@ static PointerDeclaratorKind classifyPointerDeclarator(Sema &S,
     if (auto recordType = type->getAs<RecordType>()) {
       RecordDecl *recordDecl = recordType->getDecl();
 
+      bool isCFError = false;
+      if (S.CFError) {
+        // If we already know about CFError, test it directly.
+        isCFError = (S.CFError == recordDecl);
+      } else {
+        // Check whether this is CFError, which we identify based on its bridge
+        // to NSError.
+        if (recordDecl->getTagKind() == TTK_Struct && numNormalPointers > 0) {
+          if (auto bridgeAttr = recordDecl->getAttr<ObjCBridgeAttr>()) {
+            if (bridgeAttr->getBridgedType() == S.getNSErrorIdent()) {
+              S.CFError = recordDecl;
+              isCFError = true;
+            }
+          }
+        }
+      }
+
       // If this is CFErrorRef*, report it as such.
-      if (numNormalPointers == 2 && numTypeSpecifierPointers < 2 &&
-          S.isCFError(recordDecl)) {
+      if (isCFError && numNormalPointers == 2 && numTypeSpecifierPointers < 2) {
         return PointerDeclaratorKind::CFErrorRefPointer;
       }
       break;
@@ -3383,26 +3413,6 @@ static PointerDeclaratorKind classifyPointerDeclarator(Sema &S,
   default:
     return PointerDeclaratorKind::MultiLevelPointer;
   }
-}
-
-bool Sema::isCFError(RecordDecl *recordDecl) {
-  // If we already know about CFError, test it directly.
-  if (CFError) {
-    return (CFError == recordDecl);
-  }
-
-  // Check whether this is CFError, which we identify based on being
-  // bridged to NSError.
-  if (recordDecl->getTagKind() == TTK_Struct) {
-    if (auto bridgeAttr = recordDecl->getAttr<ObjCBridgeAttr>()) {
-      if (bridgeAttr->getBridgedType() == getNSErrorIdent()) {
-        CFError = recordDecl;
-        return true;
-      }
-    }
-  }
-
-  return false;
 }
 
 static FileID getNullabilityCompletenessCheckFileID(Sema &S,
@@ -5797,47 +5807,24 @@ static bool handleMSPointerTypeQualifierAttr(TypeProcessingState &State,
   return false;
 }
 
-/// Rebuild an attributed type without the nullability attribute on it.
-static QualType rebuildAttributedTypeWithoutNullability(ASTContext &ctx,
-                                                        QualType type) {
-  auto attributed = dyn_cast<AttributedType>(type.getTypePtr());
-  if (!attributed) return type;
-
-  // Skip the nullability attribute; we're done.
-  if (attributed->getImmediateNullability()) {
-    return attributed->getModifiedType();
-  }
-
-  // Build the modified type.
-  auto modified = rebuildAttributedTypeWithoutNullability(
-                    ctx, attributed->getModifiedType());
-  assert(modified.getTypePtr() != attributed->getModifiedType().getTypePtr());
-  return ctx.getAttributedType(attributed->getAttrKind(), modified,
-                                   attributed->getEquivalentType());
-}
-
 bool Sema::checkNullabilityTypeSpecifier(QualType &type,
                                          NullabilityKind nullability,
                                          SourceLocation nullabilityLoc,
-                                         bool isContextSensitive,
-                                         bool implicit,
-                                         bool overrideExisting) {
-  if (!implicit) {
-    // We saw a nullability type specifier. If this is the first one for
-    // this file, note that.
-    FileID file = getNullabilityCompletenessCheckFileID(*this, nullabilityLoc);
-    if (!file.isInvalid()) {
-      FileNullability &fileNullability = NullabilityMap[file];
-      if (!fileNullability.SawTypeNullability) {
-        // If we have already seen a pointer declarator without a nullability
-        // annotation, complain about it.
-        if (fileNullability.PointerLoc.isValid()) {
-          Diag(fileNullability.PointerLoc, diag::warn_nullability_missing)
-            << static_cast<unsigned>(fileNullability.PointerKind);
-        }
-
-        fileNullability.SawTypeNullability = true;
+                                         bool isContextSensitive) {
+  // We saw a nullability type specifier. If this is the first one for
+  // this file, note that.
+  FileID file = getNullabilityCompletenessCheckFileID(*this, nullabilityLoc);
+  if (!file.isInvalid()) {
+    FileNullability &fileNullability = NullabilityMap[file];
+    if (!fileNullability.SawTypeNullability) {
+      // If we have already seen a pointer declarator without a nullability
+      // annotation, complain about it.
+      if (fileNullability.PointerLoc.isValid()) {
+        Diag(fileNullability.PointerLoc, diag::warn_nullability_missing)
+          << static_cast<unsigned>(fileNullability.PointerKind);
       }
+
+      fileNullability.SawTypeNullability = true;
     }
   }
 
@@ -5848,9 +5835,6 @@ bool Sema::checkNullabilityTypeSpecifier(QualType &type,
     if (auto existingNullability = attributed->getImmediateNullability()) {
       // Duplicated nullability.
       if (nullability == *existingNullability) {
-        if (implicit)
-          break;
-
         Diag(nullabilityLoc, diag::warn_nullability_duplicate)
           << DiagNullabilityKind(nullability, isContextSensitive)
           << FixItHint::CreateRemoval(nullabilityLoc);
@@ -5858,16 +5842,11 @@ bool Sema::checkNullabilityTypeSpecifier(QualType &type,
         break;
       } 
 
-      if (!overrideExisting) {
-        // Conflicting nullability.
-        Diag(nullabilityLoc, diag::err_nullability_conflicting)
-          << DiagNullabilityKind(nullability, isContextSensitive)
-          << DiagNullabilityKind(*existingNullability, false);
-        return true;
-      }
-
-      // Rebuild the attributed type, dropping the existing nullability.
-      type  = rebuildAttributedTypeWithoutNullability(Context, type);
+      // Conflicting nullability.
+      Diag(nullabilityLoc, diag::err_nullability_conflicting)
+        << DiagNullabilityKind(nullability, isContextSensitive)
+        << DiagNullabilityKind(*existingNullability, false);
+      return true;
     }
 
     desugared = attributed->getModifiedType();
@@ -5878,7 +5857,7 @@ bool Sema::checkNullabilityTypeSpecifier(QualType &type,
   // have nullability specifiers on them, which means we cannot
   // provide a useful Fix-It.
   if (auto existingNullability = desugared->getNullability(Context)) {
-    if (nullability != *existingNullability && !implicit) {
+    if (nullability != *existingNullability) {
       Diag(nullabilityLoc, diag::err_nullability_conflicting)
         << DiagNullabilityKind(nullability, isContextSensitive)
         << DiagNullabilityKind(*existingNullability, false);
@@ -5902,17 +5881,14 @@ bool Sema::checkNullabilityTypeSpecifier(QualType &type,
 
   // If this definitely isn't a pointer type, reject the specifier.
   if (!desugared->canHaveNullability()) {
-    if (!implicit) {
-      Diag(nullabilityLoc, diag::err_nullability_nonpointer)
-        << DiagNullabilityKind(nullability, isContextSensitive) << type;
-    }
+    Diag(nullabilityLoc, diag::err_nullability_nonpointer)
+      << DiagNullabilityKind(nullability, isContextSensitive) << type;
     return true;
   }
   
   // For the context-sensitive keywords/Objective-C property
   // attributes, require that the type be a single-level pointer.
   if (isContextSensitive) {
-    // Make sure that the pointee isn't itself a pointer type.
     QualType pointeeType = desugared->getPointeeType();
     if (pointeeType->isAnyPointerType() ||
         pointeeType->isObjCObjectPointerType() ||
@@ -5936,6 +5912,13 @@ bool Sema::checkNullabilityTypeSpecifier(QualType &type,
 }
 
 bool Sema::checkObjCKindOfType(QualType &type, SourceLocation loc) {
+  if (isa<ObjCTypeParamType>(type)) {
+    // Build the attributed type to record where __kindof occurred.
+    type = Context.getAttributedType(AttributedType::attr_objc_kindof,
+                                     type, type);
+    return false;
+  }
+
   // Find out if it's an Objective-C object or object pointer type;
   const ObjCObjectPointerType *ptrType = type->getAs<ObjCObjectPointerType>();
   const ObjCObjectType *objType = ptrType ? ptrType->getObjectType() 
@@ -6664,8 +6647,7 @@ static void processTypeAttrs(TypeProcessingState &state, QualType &type,
               type,
               mapNullabilityAttrKind(attr.getKind()),
               attr.getLoc(),
-              attr.isContextSensitiveKeywordAttribute(),
-              /*implicit=*/false)) {
+              attr.isContextSensitiveKeywordAttribute())) {
           attr.setInvalid();
         }
 

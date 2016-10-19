@@ -547,21 +547,6 @@ def fno_profile_instr_use : Flag<["-"], "fno-profile-instr-use">,
 def fno_profile_use : Flag<["-"], "fno-profile-use">,
     Alias<fno_profile_instr_use>;
 
-def fapinotes : Flag<["-"], "fapinotes">, Group<f_clang_Group>,
-  Flags<[CC1Option]>, HelpText<"Enable external API notes support">;
-def fapinotes_modules : Flag<["-"], "fapinotes-modules">, Group<f_clang_Group>,
-  Flags<[CC1Option]>, HelpText<"Enable module-based external API notes support">;
-def fno_apinotes : Flag<["-"], "fno-apinotes">, Group<f_clang_Group>,
-  Flags<[CC1Option]>, HelpText<"Disable external API notes support">;
-def fno_apinotes_modules : Flag<["-"], "fno-apinotes-modules">, Group<f_clang_Group>,
-  Flags<[CC1Option]>, HelpText<"Disable module-based external API notes support">;
-def fapinotes_cache_path : Joined<["-"], "fapinotes-cache-path=">,
-  Group<i_Group>, Flags<[DriverOption, CC1Option]>, MetaVarName<"<directory>">,
-  HelpText<"Specify the API notes cache path">;
-def fapinotes_swift_version : Joined<["-"], "fapinotes-swift-version=">,
-  Group<f_clang_Group>, Flags<[CC1Option]>, MetaVarName<"<version>">,
-  HelpText<"Specify the Swift version to use when filtering API notes">;
-
 def fblocks : Flag<["-"], "fblocks">, Group<f_Group>, Flags<[CC1Option]>,
   HelpText<"Enable the 'blocks' language feature">;
 def fbootclasspath_EQ : Joined<["-"], "fbootclasspath=">, Group<f_Group>;
@@ -1376,8 +1361,6 @@ def help : Flag<["-", "--"], "help">, Flags<[CC1Option,CC1AsOption]>,
   HelpText<"Display available options">;
 def index_header_map : Flag<["-"], "index-header-map">, Flags<[CC1Option]>,
   HelpText<"Make the next included directory (-I or -F) an indexer header map">;
-def iapinotes_modules : JoinedOrSeparate<["-"], "iapinotes-modules">, Group<clang_i_Group>, Flags<[CC1Option]>,
-  HelpText<"Add directory to the API notes search path referenced by module name">, MetaVarName<"<directory>">;
 def idirafter : JoinedOrSeparate<["-"], "idirafter">, Group<clang_i_Group>, Flags<[CC1Option]>,
   HelpText<"Add directory to AFTER include search path">;
 def iframework : JoinedOrSeparate<["-"], "iframework">, Group<clang_i_Group>, Flags<[CC1Option]>,

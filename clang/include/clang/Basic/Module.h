@@ -147,9 +147,6 @@ public:
   /// will be false to indicate that this (sub)module is not available.
   SmallVector<Requirement, 2> Requirements;
 
-  /// \brief A module with the same name that shadows this module.
-  Module *ShadowingModule = nullptr;
-
   /// \brief Whether this module is missing a feature from \c Requirements.
   unsigned IsMissingRequirement : 1;
 
@@ -182,9 +179,6 @@ public:
 
   /// \brief Whether this is an inferred submodule (module * { ... }).
   unsigned IsInferred : 1;
-
-  /// \brief Whether this is a module who has its swift_names inferred.
-  unsigned IsSwiftInferImportAsMember : 1;
 
   /// \brief Whether we should infer submodules for this module based on 
   /// the headers.
@@ -327,20 +321,13 @@ public:
   ///
   /// \param Target The target options used for the current translation unit.
   ///
-  /// \param Req If this module is unavailable because of a missing requirement,
-  /// this parameter will be set to one of the requirements that is not met for
-  /// use of this module.
-  ///
-  /// \param MissingHeader If this module is unavailable because of a missing
-  /// header, this parameter will be set to one of the missing headers.
-  ///
-  /// \param ShadowingModule If this module is unavailable because it is
-  /// shadowed, this parameter will be set to the shadowing module.
+  /// \param Req If this module is unavailable, this parameter
+  /// will be set to one of the requirements that is not met for use of
+  /// this module.
   bool isAvailable(const LangOptions &LangOpts, 
                    const TargetInfo &Target,
                    Requirement &Req,
-                   UnresolvedHeaderDirective &MissingHeader,
-                   Module *&ShadowingModule) const;
+                   UnresolvedHeaderDirective &MissingHeader) const;
 
   /// \brief Determine whether this module is a submodule.
   bool isSubModule() const { return Parent != nullptr; }

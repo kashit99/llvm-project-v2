@@ -27,7 +27,6 @@
 #include "clang/AST/NSAPI.h"
 #include "clang/AST/PrettyPrinter.h"
 #include "clang/AST/TypeLoc.h"
-#include "clang/APINotes/APINotesManager.h"
 #include "clang/Basic/ExpressionTraits.h"
 #include "clang/Basic/LangOptions.h"
 #include "clang/Basic/Module.h"
@@ -303,7 +302,6 @@ public:
   ASTConsumer &Consumer;
   DiagnosticsEngine &Diags;
   SourceManager &SourceMgr;
-  api_notes::APINotesManager APINotes;
 
   /// \brief Flag indicating whether or not to collect detailed statistics.
   bool CollectStats;
@@ -1412,24 +1410,6 @@ public:
     }
   };
 
-  /// Do a check to make sure \p Name looks like a legal swift_name
-  /// attribute for the decl \p D. Raise a diagnostic if the name is invalid
-  /// for the given declaration.
-  ///
-  /// For a function, this will validate a compound Swift name,
-  /// e.g. <code>init(foo:bar:baz:)</code> or <code>controllerForName(_:)</code>,
-  /// and the function will output the number of parameter names, and whether
-  /// this is a single-arg initializer.
-  ///
-  /// For a type, enum constant, property, or variable declaration, this will
-  /// validate either a simple identifier, or a qualified
-  /// <code>context.identifier</code> name.
-  ///
-  /// \returns true if the name is a valid swift name for \p D, false otherwise.
-  bool DiagnoseSwiftName(Decl *D, StringRef Name,
-                         SourceLocation ArgLoc,
-                         IdentifierInfo *AttrName);
-
 private:
   bool RequireCompleteTypeImpl(SourceLocation Loc, QualType T,
                                TypeDiagnoser *Diagnoser);
@@ -2288,9 +2268,6 @@ public:
                                 unsigned AttrSpellingListIndex);
   OptimizeNoneAttr *mergeOptimizeNoneAttr(Decl *D, SourceRange Range,
                                           unsigned AttrSpellingListIndex);
-  SwiftNameAttr *mergeSwiftNameAttr(Decl *D, SourceRange Range,
-                                    StringRef Name, bool Override,
-                                    unsigned AttrSpellingListIndex);
   InternalLinkageAttr *mergeInternalLinkageAttr(Decl *D, SourceRange Range,
                                                 IdentifierInfo *Ident,
                                                 unsigned AttrSpellingListIndex);
@@ -3099,12 +3076,6 @@ public:
 
   void checkUnusedDeclAttributes(Declarator &D);
 
-  /// Map any API notes provided for this declaration to attributes on the
-  /// declaration.
-  ///
-  /// Triggered by declaration-attribute processing.
-  void ProcessAPINotes(Decl *D);
-
   /// Determine if type T is a valid subject for a nonnull and similar
   /// attributes. By default, we look through references (the behavior used by
   /// nonnull), but if the second parameter is true, then we treat a reference
@@ -3156,15 +3127,10 @@ public:
   /// method) or an Objective-C property attribute, rather than as an
   /// underscored type specifier.
   ///
-  /// \param overrideExisting Whether to override an existing, locally-specified
-  /// nullability specifier rather than complaining about the conflict.
-  ///
   /// \returns true if nullability cannot be applied, false otherwise.
   bool checkNullabilityTypeSpecifier(QualType &type, NullabilityKind nullability,
                                      SourceLocation nullabilityLoc,
-                                     bool isContextSensitive,
-                                     bool implicit,
-                                     bool overrideExisting = false);
+                                     bool isContextSensitive);
 
   /// \brief Stmt attributes - this routine is the top level dispatcher.
   StmtResult ProcessStmtAttributes(Stmt *Stmt, AttributeList *Attrs,
@@ -7864,12 +7830,6 @@ public:
     RTC_Unknown
   };
 
-  /// Check whether the declared result type of the given Objective-C
-  /// method declaration is compatible with the method's class.
-  ResultTypeCompatibilityKind
-  checkRelatedResultTypeCompatibility(const ObjCMethodDecl *Method,
-                                      const ObjCInterfaceDecl *CurrentClass);
-
   void CheckObjCMethodOverrides(ObjCMethodDecl *ObjCMethod,
                                 ObjCInterfaceDecl *CurrentClass,
                                 ResultTypeCompatibilityKind RTC);
@@ -9711,7 +9671,6 @@ private:
                  VariadicCallType CallType);
 
   bool CheckObjCString(Expr *Arg);
-  ExprResult CheckOSLogFormatStringArg(Expr *Arg);
 
   ExprResult CheckBuiltinFunctionCall(FunctionDecl *FDecl,
                                       unsigned BuiltinID, CallExpr *TheCall);
@@ -9734,7 +9693,6 @@ private:
   bool SemaBuiltinVAStartARM(CallExpr *Call);
   bool SemaBuiltinUnorderedCompare(CallExpr *TheCall);
   bool SemaBuiltinFPClassification(CallExpr *TheCall, unsigned NumArgs);
-  bool SemaBuiltinOSLogFormat(CallExpr *TheCall);
 
 public:
   // Used by C++ template instantiation.
@@ -9770,7 +9728,6 @@ public:
     FST_Kprintf,
     FST_FreeBSDKPrintf,
     FST_OSTrace,
-    FST_OSLog,
     FST_Unknown
   };
   static FormatStringType GetFormatStringType(const FormatAttr *Format);
@@ -9906,7 +9863,6 @@ public:
 
   /// The struct behind the CFErrorRef pointer.
   RecordDecl *CFError = nullptr;
-  bool isCFError(RecordDecl *D);
 
   /// Retrieve the identifier "NSError".
   IdentifierInfo *getNSErrorIdent();

@@ -3274,9 +3274,7 @@ CodeGenModule::GetAddrOfConstantString(const StringLiteral *Literal) {
       std::string str = 
         StringClass.empty() ? "OBJC_CLASS_$_NSConstantString" 
                             : "OBJC_CLASS_$_" + StringClass;
-      GV = getObjCRuntime().GetClassGlobal(str,
-                                           /*ForDefinition=*/false,
-                                           /*Weak=*/false);
+      GV = getObjCRuntime().GetClassGlobal(str);
       // Make sure the result is of the correct type.
       llvm::Type *PTy = llvm::PointerType::getUnqual(Ty);
       V = llvm::ConstantExpr::getBitCast(GV, PTy);

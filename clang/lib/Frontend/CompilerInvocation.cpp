@@ -586,6 +586,8 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
   Opts.RelaxAll = Args.hasArg(OPT_mrelax_all);
   Opts.IncrementalLinkerCompatible =
       Args.hasArg(OPT_mincremental_linker_compatible);
+  Opts.PIECopyRelocations =
+      Args.hasArg(OPT_mpie_copy_relocations);
   Opts.OmitLeafFramePointer = Args.hasArg(OPT_momit_leaf_frame_pointer);
   Opts.SaveTempLabels = Args.hasArg(OPT_msave_temp_labels);
   Opts.NoDwarfDirectoryAsm = Args.hasArg(OPT_fno_dwarf_directory_asm);
@@ -1082,6 +1084,7 @@ bool clang::ParseDiagnosticArgs(DiagnosticOptions &Opts, ArgList &Args,
 
 static void ParseFileSystemArgs(FileSystemOptions &Opts, ArgList &Args) {
   Opts.WorkingDir = Args.getLastArgValue(OPT_working_directory);
+  Opts.APINotesCachePath = Args.getLastArgValue(OPT_fapinotes_cache_path);
 }
 
 /// Parse the argument to the -ftest-module-file-extension
@@ -1511,6 +1514,18 @@ static void ParseHeaderSearchArgs(HeaderSearchOptions &Opts, ArgList &Args) {
 
   for (const Arg *A : Args.filtered(OPT_ivfsoverlay))
     Opts.AddVFSOverlayFile(A->getValue());
+}
+
+static void ParseAPINotesArgs(APINotesOptions &Opts, ArgList &Args,
+                              DiagnosticsEngine &diags) {
+  using namespace options;
+  if (const Arg *A = Args.getLastArg(OPT_fapinotes_swift_version)) {
+    if (Opts.SwiftVersion.tryParse(A->getValue()))
+      diags.Report(diag::err_drv_invalid_value)
+        << A->getAsString(Args) << A->getValue();
+  }
+  for (const Arg *A : Args.filtered(OPT_iapinotes_modules))
+    Opts.ModuleSearchPaths.push_back(A->getValue());
 }
 
 static bool isOpenCL(LangStandard::Kind LangStd) {
@@ -2015,6 +2030,8 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
   // is enabled.
   Opts.HalfArgsAndReturns = Args.hasArg(OPT_fallow_half_arguments_and_returns)
                             | Opts.NativeHalfArgsAndReturns;
+  Opts.APINotes = Args.hasArg(OPT_fapinotes);
+  Opts.APINotesModules = Args.hasArg(OPT_fapinotes_modules);
   Opts.GNUAsm = !Args.hasArg(OPT_fno_gnu_inline_asm);
 
   // __declspec is enabled by default for the PS4 by the driver, and also
@@ -2417,6 +2434,8 @@ bool CompilerInvocation::CreateFromArgs(CompilerInvocation &Res,
   Success &= ParseCodeGenArgs(Res.getCodeGenOpts(), Args, DashX, Diags,
                               Res.getTargetOpts());
   ParseHeaderSearchArgs(Res.getHeaderSearchOpts(), Args);
+  ParseAPINotesArgs(Res.getAPINotesOpts(), Args, Diags);
+
   if (DashX == IK_AST || DashX == IK_LLVM_IR) {
     // ObjCAAutoRefCount and Sanitize LangOpts are used to setup the
     // PassManager in BackendUtil.cpp. They need to be initializd no matter
@@ -2435,6 +2454,13 @@ bool CompilerInvocation::CreateFromArgs(CompilerInvocation &Res,
       Res.getPreprocessorOpts(), Diags);
     if (Res.getFrontendOpts().ProgramAction == frontend::RewriteObjC)
       LangOpts.ObjCExceptions = 1;
+
+    // -fapinotes and -fapinotes-modules requires -fapinotes-cache-path=<directory>.
+    if ((LangOpts.APINotes || LangOpts.APINotesModules) &&
+        Res.getFileSystemOpts().APINotesCachePath.empty()) {
+      Diags.Report(diag::err_no_apinotes_cache_path);
+      Success = false;
+    }
   }
 
   if (LangOpts.CUDA) {
@@ -2541,7 +2567,19 @@ std::string CompilerInvocation::getModuleHash() const {
   // Extend the signature with the module file extensions.
   const FrontendOptions &frontendOpts = getFrontendOpts();
   for (const auto &ext : frontendOpts.ModuleFileExtensions) {
-    code = ext->hashExtension(code);
+    code = hash_combine(code, ext->hashExtension(code));
+  }
+
+  // Extend the signature with the SWift version for API notes.
+  const APINotesOptions &apiNotesOpts = getAPINotesOpts();
+  if (apiNotesOpts.SwiftVersion) {
+    code = hash_combine(code, apiNotesOpts.SwiftVersion.getMajor());
+    if (auto minor = apiNotesOpts.SwiftVersion.getMinor())
+      code = hash_combine(code, *minor);
+    if (auto subminor = apiNotesOpts.SwiftVersion.getSubminor())
+      code = hash_combine(code, *subminor);
+    if (auto build = apiNotesOpts.SwiftVersion.getBuild())
+      code = hash_combine(code, *build);
   }
 
   // Darwin-specific hack: if we have a sysroot, use the contents and

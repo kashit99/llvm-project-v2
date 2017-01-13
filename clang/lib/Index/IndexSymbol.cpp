@@ -389,6 +389,20 @@ StringRef index::getSymbolSubKindString(SymbolSubKind K) {
   case SymbolSubKind::CXXMoveConstructor: return "cxx-move-ctor";
   case SymbolSubKind::AccessorGetter: return "acc-get";
   case SymbolSubKind::AccessorSetter: return "acc-set";
+  case SymbolSubKind::SwiftAccessorWillSet: return "acc-willset";
+  case SymbolSubKind::SwiftAccessorDidSet: return "acc-didset";
+  case SymbolSubKind::SwiftAccessorAddressor: return "acc-addr";
+  case SymbolSubKind::SwiftAccessorMutableAddressor: return "acc-mutaddr";
+  case SymbolSubKind::SwiftExtensionOfStruct: return "ext-struct";
+  case SymbolSubKind::SwiftExtensionOfClass: return "ext-class";
+  case SymbolSubKind::SwiftExtensionOfEnum: return "ext-enum";
+  case SymbolSubKind::SwiftExtensionOfProtocol: return "ext-protocol";
+  case SymbolSubKind::SwiftPrefixOperator: return "prefix-operator";
+  case SymbolSubKind::SwiftPostfixOperator: return "postfix-operator";
+  case SymbolSubKind::SwiftInfixOperator: return "infix-operator";
+  case SymbolSubKind::SwiftSubscript: return "subscript";
+  case SymbolSubKind::SwiftAssociatedType: return "associated-type";
+  case SymbolSubKind::SwiftGenericTypeParam: return "generic-type-param";
   }
   llvm_unreachable("invalid symbol subkind");
 }
@@ -398,6 +412,7 @@ StringRef index::getSymbolLanguageString(SymbolLanguage K) {
   case SymbolLanguage::C: return "C";
   case SymbolLanguage::ObjC: return "ObjC";
   case SymbolLanguage::CXX: return "C++";
+  case SymbolLanguage::Swift: return "Swift";
   }
   llvm_unreachable("invalid symbol language kind");
 }

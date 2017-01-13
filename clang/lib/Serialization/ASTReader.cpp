@@ -3245,11 +3245,8 @@ ASTReader::ReadASTBlock(ModuleFile &F, unsigned ClientLoadCapabilities) {
         for (unsigned I = 0, N = Record.size(); I != N; /**/) {
           unsigned GlobalID = getGlobalSubmoduleID(F, Record[I++]);
           SourceLocation Loc = ReadSourceLocation(F, Record, I);
-          if (GlobalID) {
+          if (GlobalID)
             ImportedModules.push_back(ImportedSubmodule(GlobalID, Loc));
-            if (DeserializationListener)
-              DeserializationListener->ModuleImportRead(GlobalID, Loc);
-          }
         }
       }
       break;
@@ -4620,7 +4617,6 @@ ASTReader::ReadSubmoduleBlock(ModuleFile &F, unsigned ClientLoadCapabilities) {
       bool IsExplicit = Record[Idx++];
       bool IsSystem = Record[Idx++];
       bool IsExternC = Record[Idx++];
-      bool IsSwiftInferImportAsMember = Record[Idx++];
       bool InferSubmodules = Record[Idx++];
       bool InferExplicitSubmodules = Record[Idx++];
       bool InferExportWildcard = Record[Idx++];
@@ -4665,7 +4661,6 @@ ASTReader::ReadSubmoduleBlock(ModuleFile &F, unsigned ClientLoadCapabilities) {
       CurrentModule->IsFromModuleFile = true;
       CurrentModule->IsSystem = IsSystem || CurrentModule->IsSystem;
       CurrentModule->IsExternC = IsExternC;
-      CurrentModule->IsSwiftInferImportAsMember = IsSwiftInferImportAsMember;
       CurrentModule->InferSubmodules = InferSubmodules;
       CurrentModule->InferExplicitSubmodules = InferExplicitSubmodules;
       CurrentModule->InferExportWildcard = InferExportWildcard;

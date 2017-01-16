@@ -2735,6 +2735,9 @@ def warn_mismatched_availability_override_unavail : Warning<
   InGroup<Availability>;
 def note_overridden_method : Note<
   "overridden method is here">;
+def warn_availability_swift_unavailable_deprecated_only : Warning<
+  "only 'unavailable' and 'deprecated' are supported for Swift availability">,
+  InGroup<Availability>;
 def note_protocol_method : Note<
   "protocol method is here">;
 
@@ -3103,6 +3106,9 @@ def warn_attribute_nonnull_no_pointers : Warning<
 def warn_attribute_nonnull_parm_no_args : Warning<
   "'nonnull' attribute when used on parameters takes no arguments">,
   InGroup<IgnoredAttributes>;
+def warn_attribute_noescape_non_pointer : Warning<
+  "'noescape' attribute ignored on parameter of non-pointer type %0">,
+  InGroup<IgnoredAttributes>;
 def note_declared_nonnull : Note<
   "declared %select{'returns_nonnull'|'nonnull'}0 here">;
 def warn_attribute_sentinel_named_arguments : Warning<
@@ -3224,6 +3230,68 @@ def err_objc_bridged_related_known_method : Error<
 
 def err_objc_attr_protocol_requires_definition : Error<
   "attribute %0 can only be applied to @protocol definitions, not forward declarations">;
+
+// Swift attributes
+def warn_attr_swift_name_decl_kind : Warning<
+  "%0 attribute cannot be applied to this declaration">,
+  InGroup<SwiftNameAttribute>;
+def warn_attr_swift_name_function : Warning<
+  "parameter of %0 attribute must be a Swift function name string">,
+  InGroup<SwiftNameAttribute>;
+def warn_attr_swift_name_function_no_prototype : Warning<
+  "%0 attribute can only be applied to function declarations with prototypes">,
+  InGroup<SwiftNameAttribute>;
+def warn_attr_swift_name_context_name_invalid_identifier : Warning<
+  "%0 attribute has invalid identifier for context name">,
+  InGroup<SwiftNameAttribute>;
+def warn_attr_swift_name_basename_invalid_identifier : Warning<
+  "%0 attribute has invalid identifier for base name">,
+  InGroup<SwiftNameAttribute>;
+def warn_attr_swift_name_parameter_invalid_identifier : Warning<
+  "%0 attribute has invalid identifier for parameter name">,
+  InGroup<SwiftNameAttribute>;
+def warn_attr_swift_name_missing_parameters : Warning<
+  "%0 attribute is missing parameter label clause">,
+  InGroup<SwiftNameAttribute>;
+def warn_attr_swift_name_subscript_not_accessor : Warning<
+  "%0 attribute for 'subscript' must be a getter or setter">,
+  InGroup<SwiftNameAttribute>;
+def warn_attr_swift_name_subscript_no_parameter : Warning<
+  "%0 attribute for 'subscript' must take at least one parameter">,
+  InGroup<SwiftNameAttribute>;
+def warn_attr_swift_name_subscript_getter_newValue : Warning<
+  "%0 attribute for 'subscript' getter cannot take a 'newValue:' parameter">,
+  InGroup<SwiftNameAttribute>;
+def warn_attr_swift_name_subscript_setter_no_newValue : Warning<
+  "%0 attribute for 'subscript' setter must take a 'newValue:' parameter">,
+  InGroup<SwiftNameAttribute>;
+def warn_attr_swift_name_subscript_setter_multiple_newValues : Warning<
+  "%0 attribute for 'subscript' setter cannot take multiple 'newValue:' parameters">,
+  InGroup<SwiftNameAttribute>;
+def warn_attr_swift_name_getter_parameters : Warning<
+  "%0 attribute for getter must not take any parameters besides 'self:'">,
+  InGroup<SwiftNameAttribute>;
+def warn_attr_swift_name_setter_parameters : Warning<
+  "%0 attribute for setter must take one parameter for new value">,
+  InGroup<SwiftNameAttribute>;
+def warn_attr_swift_name_multiple_selfs : Warning<
+  "%0 attribute cannot specify more than one 'self:' parameter">,
+  InGroup<SwiftNameAttribute>;
+def warn_attr_swift_name_static_subscript : Warning<
+  "%0 attribute for 'subscript' must take a 'self:' parameter">,
+  InGroup<SwiftNameAttribute>;
+def warn_attr_swift_name_num_params : Warning<
+  "too %select{few|many}0 parameters in %1 attribute (expected %2; got %3)">,
+  InGroup<SwiftNameAttribute>;
+def err_attr_swift_error_no_error_parameter : Error<
+  "%0 attribute can only be applied to a %select{function|method}1 "
+  "with an error parameter">;
+def err_attr_swift_error_return_type : Error<
+  "%0 attribute with '%1' convention can only be applied to a "
+  "%select{function|method}2 returning %select{an integral type|a pointer}3">;
+def warn_swift_newtype_attribute_non_typedef : Warning<
+  "'swift_newtype' attribute may be put on a typedef only; "
+  "attribute is ignored">, InGroup<DiagGroup<"swift-newtype-attribute">>;
 
 // Function Parameter Semantic Analysis.
 def err_param_with_void_type : Error<"argument may not have 'void' type">;
@@ -7978,6 +8046,14 @@ def err_nsconsumed_attribute_mismatch : Error<
 def err_nsreturns_retained_attribute_mismatch : Error<
   "overriding method has mismatched ns_returns_%select{not_retained|retained}0"
   " attributes">;
+
+def err_nserrordomain_not_tagdecl : Error<
+  "ns_error_domain attribute only valid on "
+  "%select{enums, structs, and unions|enums, structs, unions, and classes}0">;
+def err_nserrordomain_invalid_decl : Error<
+  "domain argument %0 does not refer to global constant">;
+def err_nserrordomain_requires_identifier : Error<
+  "domain argument must be an identifier">;
   
 def note_getter_unavailable : Note<
   "or because setter is declared here, but no getter method %0 is found">;
@@ -8235,6 +8311,13 @@ def ext_opencl_ext_vector_type_rgba_selector: ExtWarn<
   "vector component name '%0' is an OpenCL version 2.2 feature">,
   InGroup<OpenCLUnsupportedRGBA>;
 } // end of sema category
+
+let CategoryName = "API Notes Issue" in {
+
+def err_incompatible_replacement_type : Error<
+  "API notes replacement type %0 has a different size from original type %1">;
+
+}
 
 let CategoryName = "OpenMP Issue" in {
 // OpenMP support.

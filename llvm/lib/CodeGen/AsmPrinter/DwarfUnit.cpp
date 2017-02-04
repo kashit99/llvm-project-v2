@@ -665,8 +665,6 @@ DIE *DwarfUnit::getOrCreateContextDIE(const DIScope *Context) {
     return getOrCreateTypeDIE(T);
   if (auto *NS = dyn_cast<DINamespace>(Context))
     return getOrCreateNameSpace(NS);
-  if (auto *M = dyn_cast<DIModule>(Context))
-    return getOrCreateModule(M);
   if (auto *SP = dyn_cast<DISubprogram>(Context))
     return getOrCreateSubprogramDIE(SP);
   if (auto *M = dyn_cast<DIModule>(Context))
@@ -674,7 +672,7 @@ DIE *DwarfUnit::getOrCreateContextDIE(const DIScope *Context) {
   return getDIE(Context);
 }
 
-DIE *DwarfUnit::createTypeDIE(const DICompositeType *Ty) {
+DIE *DwarfTypeUnit::createTypeDIE(const DICompositeType *Ty) {
   auto *Context = resolve(Ty->getScope());
   DIE *ContextDIE = getOrCreateContextDIE(Context);
 
@@ -981,13 +979,6 @@ void DwarfUnit::constructTypeDIE(DIE &Buffer, const DICompositeType *CTy) {
   if (!Name.empty())
     addString(Buffer, dwarf::DW_AT_name, Name);
 
-  // For Swift, mangled names are put into DW_AT_linkage_name; human-readable
-  // names are emitted put into DW_AT_name and the accelerator table.
-  if ((CTy->getRuntimeLang() == dwarf::DW_LANG_Swift ||
-       CTy->getRuntimeLang() == dwarf::DW_LANG_PLI) &&
-      CTy->getRawIdentifier())
-    addString(Buffer, dwarf::DW_AT_linkage_name, CTy->getIdentifier());
-
   if (Tag == dwarf::DW_TAG_enumeration_type ||
       Tag == dwarf::DW_TAG_class_type || Tag == dwarf::DW_TAG_structure_type ||
       Tag == dwarf::DW_TAG_union_type) {
@@ -1010,7 +1001,8 @@ void DwarfUnit::constructTypeDIE(DIE &Buffer, const DICompositeType *CTy) {
     // No harm in adding the runtime language to the declaration.
     unsigned RLang = CTy->getRuntimeLang();
     if (RLang)
-      addUInt(Buffer, dwarf::DW_AT_APPLE_runtime_class, None, RLang);
+      addUInt(Buffer, dwarf::DW_AT_APPLE_runtime_class, dwarf::DW_FORM_data1,
+              RLang);
 
     // Add align info if available.
     if (uint32_t AlignInBytes = CTy->getAlignInBytes())
@@ -1576,4 +1568,14 @@ bool DwarfTypeUnit::isDwoUnit() const {
   // Since there are no skeleton type units, all type units are dwo type units
   // when split DWARF is being used.
   return DD->useSplitDwarf();
+}
+
+void DwarfTypeUnit::addGlobalName(StringRef Name, const DIE &Die,
+                                  const DIScope *Context) {
+  getCU().addGlobalNameForTypeUnit(Name, Context);
+}
+
+void DwarfTypeUnit::addGlobalType(const DIType *Ty, const DIE &Die,
+                                  const DIScope *Context) {
+  getCU().addGlobalTypeUnitType(Ty, Context);
 }

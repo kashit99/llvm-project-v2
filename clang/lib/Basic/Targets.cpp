@@ -303,10 +303,10 @@ protected:
     // DragonFly defines; list based off of gcc output
     Builder.defineMacro("__DragonFly__");
     Builder.defineMacro("__DragonFly_cc_version", "100001");
+    Builder.defineMacro("__unix__");
     Builder.defineMacro("__ELF__");
     Builder.defineMacro("__KPRINTF_ATTRIBUTE__");
     Builder.defineMacro("__tune_i386__");
-    DefineStd(Builder, "unix", Opts);
   }
 public:
   DragonFlyBSDTargetInfo(const llvm::Triple &Triple, const TargetOptions &Opts)
@@ -343,7 +343,7 @@ protected:
     Builder.defineMacro("__FreeBSD__", Twine(Release));
     Builder.defineMacro("__FreeBSD_cc_version", Twine(CCVersion));
     Builder.defineMacro("__KPRINTF_ATTRIBUTE__");
-    DefineStd(Builder, "unix", Opts);
+    Builder.defineMacro("__unix__");
     Builder.defineMacro("__ELF__");
 
     // On FreeBSD, wchar_t contains the number of the code point as
@@ -388,9 +388,9 @@ protected:
                     MacroBuilder &Builder) const override {
     // GNU/kFreeBSD defines; list based off of gcc output
 
-    DefineStd(Builder, "unix", Opts);
     Builder.defineMacro("__FreeBSD_kernel__");
     Builder.defineMacro("__GLIBC__");
+    Builder.defineMacro("__unix__");
     Builder.defineMacro("__ELF__");
     if (Opts.POSIXThreads)
       Builder.defineMacro("_REENTRANT");
@@ -410,8 +410,8 @@ protected:
                     MacroBuilder &Builder) const override {
     // Haiku defines; list based off of gcc output
     Builder.defineMacro("__HAIKU__");
+    Builder.defineMacro("__unix__");
     Builder.defineMacro("__ELF__");
-    DefineStd(Builder, "unix", Opts);
   }
 public:
   HaikuTargetInfo(const llvm::Triple &Triple, const TargetOptions &Opts)
@@ -440,8 +440,8 @@ protected:
     Builder.defineMacro("_EM_LSIZE", "4");
     Builder.defineMacro("_EM_FSIZE", "4");
     Builder.defineMacro("_EM_DSIZE", "8");
+    Builder.defineMacro("__unix__");
     Builder.defineMacro("__ELF__");
-    DefineStd(Builder, "unix", Opts);
   }
 public:
   MinixTargetInfo(const llvm::Triple &Triple, const TargetOptions &Opts)
@@ -455,7 +455,7 @@ protected:
   void getOSDefines(const LangOptions &Opts, const llvm::Triple &Triple,
                     MacroBuilder &Builder) const override {
     // Linux defines; list based off of gcc output
-    DefineStd(Builder, "unix", Opts);
+    Builder.defineMacro("__unix__");
     DefineStd(Builder, "linux", Opts);
     Builder.defineMacro("__gnu_linux__");
     Builder.defineMacro("__ELF__");
@@ -541,7 +541,7 @@ protected:
     // OpenBSD defines; list based off of gcc output
 
     Builder.defineMacro("__OpenBSD__");
-    DefineStd(Builder, "unix", Opts);
+    Builder.defineMacro("__unix__");
     Builder.defineMacro("__ELF__");
     if (Opts.POSIXThreads)
       Builder.defineMacro("_REENTRANT");
@@ -578,7 +578,7 @@ protected:
     // Bitrig defines; list based off of gcc output
 
     Builder.defineMacro("__Bitrig__");
-    DefineStd(Builder, "unix", Opts);
+    Builder.defineMacro("__unix__");
     Builder.defineMacro("__ELF__");
     if (Opts.POSIXThreads)
       Builder.defineMacro("_REENTRANT");
@@ -652,7 +652,7 @@ protected:
     Builder.defineMacro("__FreeBSD__", "9");
     Builder.defineMacro("__FreeBSD_cc_version", "900001");
     Builder.defineMacro("__KPRINTF_ATTRIBUTE__");
-    DefineStd(Builder, "unix", Opts);
+    Builder.defineMacro("__unix__");
     Builder.defineMacro("__ELF__");
     Builder.defineMacro("__ORBIS__");
   }
@@ -683,8 +683,8 @@ class SolarisTargetInfo : public OSTargetInfo<Target> {
 protected:
   void getOSDefines(const LangOptions &Opts, const llvm::Triple &Triple,
                     MacroBuilder &Builder) const override {
+    Builder.defineMacro("__unix__");
     DefineStd(Builder, "sun", Opts);
-    DefineStd(Builder, "unix", Opts);
     Builder.defineMacro("__ELF__");
     Builder.defineMacro("__svr4__");
     Builder.defineMacro("__SVR4");
@@ -786,7 +786,7 @@ protected:
     if (Opts.CPlusPlus)
       Builder.defineMacro("_GNU_SOURCE");
 
-    DefineStd(Builder, "unix", Opts);
+    Builder.defineMacro("__unix__");
     Builder.defineMacro("__ELF__");
     Builder.defineMacro("__native_client__");
   }
@@ -4455,7 +4455,7 @@ public:
     Builder.defineMacro("__CYGWIN__");
     Builder.defineMacro("__CYGWIN32__");
     addCygMingDefines(Opts, Builder);
-    DefineStd(Builder, "unix", Opts);
+    Builder.defineMacro("__unix__");
     if (Opts.CPlusPlus)
       Builder.defineMacro("_GNU_SOURCE");
   }
@@ -4750,7 +4750,7 @@ public:
     Builder.defineMacro("__CYGWIN__");
     Builder.defineMacro("__CYGWIN64__");
     addCygMingDefines(Opts, Builder);
-    DefineStd(Builder, "unix", Opts);
+    Builder.defineMacro("__unix__");
     if (Opts.CPlusPlus)
       Builder.defineMacro("_GNU_SOURCE");
 
@@ -5865,7 +5865,7 @@ public:
     Builder.defineMacro("_ARM_");
     Builder.defineMacro("__CYGWIN__");
     Builder.defineMacro("__CYGWIN32__");
-    DefineStd(Builder, "unix", Opts);
+    Builder.defineMacro("__unix__");
     if (Opts.CPlusPlus)
       Builder.defineMacro("_GNU_SOURCE");
   }
@@ -7037,6 +7037,15 @@ public:
     Builder.defineMacro("__zarch__");
     Builder.defineMacro("__LONG_DOUBLE_128__");
 
+    const std::string ISARev = llvm::StringSwitch<std::string>(CPU)
+                                   .Cases("arch8", "z10", "8")
+                                   .Cases("arch9", "z196", "9")
+                                   .Cases("arch10", "zEC12", "10")
+                                   .Cases("arch11", "z13", "11")
+                                   .Default("");
+    if (!ISARev.empty())
+      Builder.defineMacro("__ARCH__", ISARev);
+
     Builder.defineMacro("__GCC_HAVE_SYNC_COMPARE_AND_SWAP_1");
     Builder.defineMacro("__GCC_HAVE_SYNC_COMPARE_AND_SWAP_2");
     Builder.defineMacro("__GCC_HAVE_SYNC_COMPARE_AND_SWAP_4");
@@ -7044,6 +7053,8 @@ public:
 
     if (HasTransactionalExecution)
       Builder.defineMacro("__HTM__");
+    if (HasVector)
+      Builder.defineMacro("__VX__");
     if (Opts.ZVector)
       Builder.defineMacro("__VEC__", "10301");
   }
@@ -8029,8 +8040,8 @@ public:
 
   void getTargetDefines(const LangOptions &Opts,
                         MacroBuilder &Builder) const override {
-    DefineStd(Builder, "unix", Opts);
     defineCPUMacros(Builder, "le64", /*Tuning=*/false);
+    Builder.defineMacro("__unix__");
     Builder.defineMacro("__ELF__");
   }
   ArrayRef<Builtin::Info> getTargetBuiltins() const override {
@@ -8517,6 +8528,57 @@ public:
 
   bool validateAsmConstraint(const char *&Name,
                              TargetInfo::ConstraintInfo &Info) const override {
+    // There aren't any multi-character AVR specific constraints.
+    if (StringRef(Name).size() > 1) return false;
+
+    switch (*Name) {
+      default: return false;
+      case 'a': // Simple upper registers
+      case 'b': // Base pointer registers pairs
+      case 'd': // Upper register
+      case 'l': // Lower registers
+      case 'e': // Pointer register pairs
+      case 'q': // Stack pointer register
+      case 'r': // Any register
+      case 'w': // Special upper register pairs
+      case 't': // Temporary register
+      case 'x': case 'X': // Pointer register pair X
+      case 'y': case 'Y': // Pointer register pair Y
+      case 'z': case 'Z': // Pointer register pair Z
+        Info.setAllowsRegister();
+        return true;
+      case 'I': // 6-bit positive integer constant
+        Info.setRequiresImmediate(0, 63);
+        return true;
+      case 'J': // 6-bit negative integer constant
+        Info.setRequiresImmediate(-63, 0);
+        return true;
+      case 'K': // Integer constant (Range: 2)
+        Info.setRequiresImmediate(2);
+        return true;
+      case 'L': // Integer constant (Range: 0)
+        Info.setRequiresImmediate(0);
+        return true;
+      case 'M': // 8-bit integer constant
+        Info.setRequiresImmediate(0, 0xff);
+        return true;
+      case 'N': // Integer constant (Range: -1)
+        Info.setRequiresImmediate(-1);
+        return true;
+      case 'O': // Integer constant (Range: 8, 16, 24)
+        Info.setRequiresImmediate({8, 16, 24});
+        return true;
+      case 'P': // Integer constant (Range: 1)
+        Info.setRequiresImmediate(1);
+        return true;
+      case 'R': // Integer constant (Range: -6 to 5)
+        Info.setRequiresImmediate(-6, 5);
+        return true;
+      case 'G': // Floating point constant
+      case 'Q': // A memory address based on Y or Z pointer with displacement.
+        return true;
+    }
+
     return false;
   }
 

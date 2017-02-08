@@ -1834,12 +1834,6 @@ SDValue DAGCombiner::visitADDLike(SDValue N0, SDValue N1, SDNode *LocReference) 
     }
   }
 
-  // (add X, (adde Y, 0, Carry)) -> (adde X, Y, Carry)
-  if (N1.getOpcode() == ISD::ADDE && N1->hasOneUse() &&
-      isNullConstant(N1.getOperand(1)))
-    return DAG.getNode(ISD::ADDE, DL, DAG.getVTList(VT, MVT::Glue),
-                       N0, N1->getOperand(0), N1->getOperand(2));
-
   return SDValue();
 }
 
@@ -7871,6 +7865,18 @@ SDValue DAGCombiner::visitTRUNCATE(SDNode *N) {
   if (!VT.isVector() &&
       SimplifyDemandedBits(SDValue(N, 0)))
     return SDValue(N, 0);
+
+  // (trunc adde(X, Y, Carry)) -> (adde trunc(X), trunc(Y), Carry)
+  // When the adde's carry is not used.
+  if (N0.getOpcode() == ISD::ADDE && N0.hasOneUse() &&
+      !N0.getNode()->hasAnyUseOfValue(1) &&
+      (!LegalOperations || TLI.isOperationLegal(ISD::ADDE, VT))) {
+    SDLoc SL(N);
+    auto X = DAG.getNode(ISD::TRUNCATE, SL, VT, N0.getOperand(0));
+    auto Y = DAG.getNode(ISD::TRUNCATE, SL, VT, N0.getOperand(1));
+    return DAG.getNode(ISD::ADDE, SL, DAG.getVTList(VT, MVT::Glue),
+                       X, Y, N0.getOperand(2));
+  }
 
   return SDValue();
 }

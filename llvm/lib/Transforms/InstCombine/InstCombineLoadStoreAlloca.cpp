@@ -17,6 +17,7 @@
 #include "llvm/Analysis/Loads.h"
 #include "llvm/IR/ConstantRange.h"
 #include "llvm/IR/DataLayout.h"
+#include "llvm/IR/DebugInfo.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/MDBuilder.h"
@@ -608,7 +609,7 @@ static Instruction *unpackLoadToAggregate(InstCombiner &IC, LoadInst &LI) {
     // arrays of arbitrary size but this has a terrible impact on compile time.
     // The threshold here is chosen arbitrarily, maybe needs a little bit of
     // tuning.
-    if (NumElements > 1024)
+    if (NumElements > IC.MaxArraySizeForCombine)
       return nullptr;
 
     const DataLayout &DL = IC.getDataLayout();
@@ -1113,7 +1114,7 @@ static bool unpackStoreToAggregate(InstCombiner &IC, StoreInst &SI) {
     // arrays of arbitrary size but this has a terrible impact on compile time.
     // The threshold here is chosen arbitrarily, maybe needs a little bit of
     // tuning.
-    if (NumElements > 1024)
+    if (NumElements > IC.MaxArraySizeForCombine)
       return false;
 
     const DataLayout &DL = IC.getDataLayout();
@@ -1425,7 +1426,9 @@ bool InstCombiner::SimplifyStoreAtEndOfBlock(StoreInst &SI) {
                                    SI.getOrdering(),
                                    SI.getSynchScope());
   InsertNewInstBefore(NewSI, *BBI);
-  NewSI->setDebugLoc(OtherStore->getDebugLoc());
+  // The debug locations of the original instructions might differ; merge them.
+  NewSI->setDebugLoc(DILocation::getMergedLocation(SI.getDebugLoc(),
+                                                   OtherStore->getDebugLoc()));
 
   // If the two stores had AA tags, merge them.
   AAMDNodes AATags;

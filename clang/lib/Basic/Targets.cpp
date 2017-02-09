@@ -3881,6 +3881,12 @@ void X86TargetInfo::getTargetDefines(const LangOptions &Opts,
     Builder.defineMacro("__CLFLUSHOPT__");
   if (HasCLWB)
     Builder.defineMacro("__CLWB__");
+  if (HasMPX)
+    Builder.defineMacro("__MPX__");
+  if (HasSGX)
+    Builder.defineMacro("__SGX__");
+  if (HasPREFETCHWT1)
+    Builder.defineMacro("__PREFETCHWT1__");
 
   // Each case falls through to the previous one here.
   switch (SSELevel) {

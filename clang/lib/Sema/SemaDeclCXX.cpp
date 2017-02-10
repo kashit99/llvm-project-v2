@@ -647,6 +647,16 @@ bool Sema::MergeCXXFunctionDecl(FunctionDecl *New, FunctionDecl *Old,
     Invalid = true;
   }
 
+  // FIXME: It's not clear what should happen if multiple declarations of a
+  // deduction guide have different explicitness. For now at least we simply
+  // reject any case where the explicitness changes.
+  if (New->isDeductionGuide() &&
+      New->isExplicitSpecified() != Old->isExplicitSpecified()) {
+    Diag(New->getLocation(), diag::err_deduction_guide_explicit_mismatch)
+      << New->isExplicitSpecified();
+    Diag(Old->getLocation(), diag::note_previous_declaration);
+  }
+
   // C++11 [dcl.fct.default]p4: If a friend declaration specifies a default
   // argument expression, that declaration shall be a definition and shall be
   // the only declaration of the function or function template in the
@@ -8127,6 +8137,20 @@ struct BadSpecifierDiagnoser {
 /// grammar.
 void Sema::CheckDeductionGuideDeclarator(Declarator &D, QualType &R,
                                          StorageClass &SC) {
+  TemplateName GuidedTemplate = D.getName().TemplateName.get().get();
+  TemplateDecl *GuidedTemplateDecl = GuidedTemplate.getAsTemplateDecl();
+  assert(GuidedTemplateDecl && "missing template decl for deduction guide");
+
+  // C++ [temp.deduct.guide]p3:
+  //   A deduction-gide shall be declared in the same scope as the
+  //   corresponding class template.
+  if (!CurContext->getRedeclContext()->Equals(
+          GuidedTemplateDecl->getDeclContext()->getRedeclContext())) {
+    Diag(D.getIdentifierLoc(), diag::err_deduction_guide_wrong_scope)
+      << GuidedTemplateDecl;
+    Diag(GuidedTemplateDecl->getLocation(), diag::note_template_decl_here);
+  }
+
   auto &DS = D.getMutableDeclSpec();
   // We leave 'friend' and 'virtual' to be rejected in the normal way.
   if (DS.hasTypeSpecifier() || DS.getTypeQualifiers() ||
@@ -8182,11 +8206,44 @@ void Sema::CheckDeductionGuideDeclarator(Declarator &D, QualType &R,
            diag::err_deduction_guide_no_trailing_return_type);
       break;
     }
+
+    // Check that the return type is written as a specialization of
+    // the template specified as the deduction-guide's name.
+    ParsedType TrailingReturnType = Chunk.Fun.getTrailingReturnType();
+    TypeSourceInfo *TSI = nullptr;
+    QualType RetTy = GetTypeFromParser(TrailingReturnType, &TSI);
+    assert(TSI && "deduction guide has valid type but invalid return type?");
+    bool AcceptableReturnType = false;
+    bool MightInstantiateToSpecialization = false;
+    if (auto RetTST =
+            TSI->getTypeLoc().getAs<TemplateSpecializationTypeLoc>()) {
+      TemplateName SpecifiedName = RetTST.getTypePtr()->getTemplateName();
+      bool TemplateMatches =
+          Context.hasSameTemplateName(SpecifiedName, GuidedTemplate);
+      if (SpecifiedName.getKind() == TemplateName::Template && TemplateMatches)
+        AcceptableReturnType = true;
+      else {
+        // This could still instantiate to the right type, unless we know it
+        // names the wrong class template.
+        auto *TD = SpecifiedName.getAsTemplateDecl();
+        MightInstantiateToSpecialization = !(TD && isa<ClassTemplateDecl>(TD) &&
+                                             !TemplateMatches);
+      }
+    } else if (!RetTy.hasQualifiers() && RetTy->isDependentType()) {
+      MightInstantiateToSpecialization = true;
+    }
+
+    if (!AcceptableReturnType) {
+      Diag(TSI->getTypeLoc().getLocStart(),
+           diag::err_deduction_guide_bad_trailing_return_type)
+        << GuidedTemplate << TSI->getType() << MightInstantiateToSpecialization
+        << TSI->getTypeLoc().getSourceRange();
+    }
+
+    // Keep going to check that we don't have any inner declarator pieces (we
+    // could still have a function returning a pointer to a function).
     FoundFunction = true;
   }
-
-  // FIXME: Check that the return type can instantiate to a specialization of
-  // the template specified as the deduction-guide's name.
 
   if (D.isFunctionDefinition())
     Diag(D.getIdentifierLoc(), diag::err_deduction_guide_defines_function);
@@ -8556,7 +8613,7 @@ QualType Sema::BuildStdInitializerList(QualType Element, SourceLocation Loc) {
       CheckTemplateIdType(TemplateName(StdInitializerList), Loc, Args));
 }
 
-bool Sema::isInitListConstructor(const CXXConstructorDecl* Ctor) {
+bool Sema::isInitListConstructor(const FunctionDecl *Ctor) {
   // C++ [dcl.init.list]p2:
   //   A constructor is an initializer-list constructor if its first parameter
   //   is of type std::initializer_list<E> or reference to possibly cv-qualified
@@ -10143,7 +10200,7 @@ void Sema::CheckImplicitSpecialMemberDeclaration(Scope *S, FunctionDecl *FD) {
   R.resolveKind();
   R.suppressDiagnostics();
 
-  CheckFunctionDeclaration(S, FD, R, /*IsExplicitSpecialization*/false);
+  CheckFunctionDeclaration(S, FD, R, /*IsMemberSpecialization*/false);
 }
 
 CXXConstructorDecl *Sema::DeclareImplicitDefaultConstructor(
@@ -13478,13 +13535,13 @@ Decl *Sema::ActOnTemplatedFriendTag(Scope *S, SourceLocation FriendLoc,
                                     MultiTemplateParamsArg TempParamLists) {
   TagTypeKind Kind = TypeWithKeyword::getTagTypeKindForTypeSpec(TagSpec);
 
-  bool isExplicitSpecialization = false;
+  bool IsMemberSpecialization = false;
   bool Invalid = false;
 
   if (TemplateParameterList *TemplateParams =
           MatchTemplateParametersToScopeSpecifier(
               TagLoc, NameLoc, SS, nullptr, TempParamLists, /*friend*/ true,
-              isExplicitSpecialization, Invalid)) {
+              IsMemberSpecialization, Invalid)) {
     if (TemplateParams->size() > 0) {
       // This is a declaration of a class template.
       if (Invalid)
@@ -13499,7 +13556,7 @@ Decl *Sema::ActOnTemplatedFriendTag(Scope *S, SourceLocation FriendLoc,
       // The "template<>" header is extraneous.
       Diag(TemplateParams->getTemplateLoc(), diag::err_template_tag_noparams)
         << TypeWithKeyword::getTagTypeKindName(Kind) << Name;
-      isExplicitSpecialization = true;
+      IsMemberSpecialization = true;
     }
   }
 

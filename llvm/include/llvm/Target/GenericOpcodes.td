@@ -98,6 +98,14 @@ def G_VASTART : Instruction {
   let mayStore = 1;
 }
 
+def G_VAARG : Instruction {
+  let OutOperandList = (outs type0:$val);
+  let InOperandList = (ins type1:$list, unknown:$align);
+  let hasSideEffects = 0;
+  let mayLoad = 1;
+  let mayStore = 1;
+}
+
 //------------------------------------------------------------------------------
 // Binary ops.
 //------------------------------------------------------------------------------
@@ -108,13 +116,6 @@ def G_ADD : Instruction {
   let InOperandList = (ins type0:$src1, type0:$src2);
   let hasSideEffects = 0;
   let isCommutable = 1;
-}
-
-// Generic pointer offset.
-def G_GEP : Instruction {
-  let OutOperandList = (outs type0:$dst);
-  let InOperandList = (ins type0:$src1, type1:$src2);
-  let hasSideEffects = 0;
 }
 
 // Generic subtraction.
@@ -228,6 +229,19 @@ def G_FCMP : Instruction {
 def G_SELECT : Instruction {
   let OutOperandList = (outs type0:$dst);
   let InOperandList = (ins type1:$tst, type0:$src1, type0:$src2);
+  let hasSideEffects = 0;
+}
+
+// Generic pointer offset.
+def G_GEP : Instruction {
+  let OutOperandList = (outs type0:$dst);
+  let InOperandList = (ins type0:$src1, type1:$src2);
+  let hasSideEffects = 0;
+}
+
+def G_PTR_MASK : Instruction {
+  let OutOperandList = (outs type0:$dst);
+  let InOperandList = (ins type0:$src, unknown:$bits);
   let hasSideEffects = 0;
 }
 

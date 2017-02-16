@@ -8,7 +8,7 @@
 long global;
 
 int main() {
-  NSLog(@"Hello world.");
+  fprintf(stderr, "Hello world.\n");
   print_address("addr=", 1, &global);
   barrier_init(&barrier, 2);
 
@@ -28,11 +28,16 @@ int main() {
   });
 
   CFRunLoopRun();
-  NSLog(@"Done.");
+  fprintf(stderr, "Done.\n");
 }
 
 // CHECK: Hello world.
-// CHECK: addr=[[ADDR:0x[0-9,a-f]+]]
 // CHECK: WARNING: ThreadSanitizer: data race
-// CHECK: Location is global 'global' {{(of size 8 )?}}at [[ADDR]] (gcd-async-race.mm.tmp+0x{{[0-9,a-f]+}})
+// CHECK: Write of size 8
+// CHECK: Previous write of size 8
+// CHECK: Location is global
+// CHECK: Thread {{.*}} is a GCD worker thread
+// CHECK-NOT: failed to restore the stack
+// CHECK: Thread {{.*}} is a GCD worker thread
+// CHECK-NOT: failed to restore the stack
 // CHECK: Done.

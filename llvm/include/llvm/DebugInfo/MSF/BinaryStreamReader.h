@@ -7,12 +7,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_SUPPORT_BINARYSTREAMREADER_H
-#define LLVM_SUPPORT_BINARYSTREAMREADER_H
+#ifndef LLVM_DEBUGINFO_MSF_BINARYSTREAMREADER_H
+#define LLVM_DEBUGINFO_MSF_BINARYSTREAMREADER_H
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/DebugInfo/MSF/BinaryStream.h"
 #include "llvm/DebugInfo/MSF/BinaryStreamArray.h"
 #include "llvm/DebugInfo/MSF/BinaryStreamRef.h"
 #include "llvm/Support/Endian.h"
@@ -66,34 +65,11 @@ public:
     ArrayRef<uint8_t> Bytes;
     if (auto EC = readBytes(Bytes, sizeof(T)))
       return EC;
-    readIntegersImpl(Bytes, Dest);
+
+    Dest = llvm::support::endian::read<T, llvm::support::unaligned>(
+        Bytes.data(), Stream.getEndian());
     return Error::success();
   }
-
-  /// Read a list of integers into \p Dest and update the stream's offset.
-  /// The data is always copied from the stream's underlying into \p Dest.
-  /// Updates the stream's offset to point after the newly read data.  Use of
-  /// this method is more efficient than calling `readInteger` multiple times
-  /// because this performs bounds checking only once, and requires only a
-  /// single error check by the user.
-  ///
-  /// \returns a success error code if the data was successfully read, otherwise
-  /// returns an appropriate error code.
-  template <typename... Ts> Error readIntegers(Ts &... Dest) {
-    const size_t Size = sizeof_sum<Ts...>::value;
-    ArrayRef<uint8_t> Bytes;
-    if (auto EC = readBytes(Bytes, Size))
-      return EC;
-    readIntegersImpl(Bytes, Dest...);
-    return Error::success();
-  }
-
-  /// Read a \p ByteSize byte integer and store the result in \p Dest, updating
-  /// the reader's position if successful.
-  ///
-  /// \returns a success error code if the data was successfully read, otherwise
-  /// returns an appropriate error code.
-  Error readInteger(uint64_t &Dest, uint32_t ByteSize);
 
   /// Similar to readInteger.
   template <typename T> Error readEnum(T &Dest) {
@@ -152,8 +128,6 @@ public:
     ArrayRef<uint8_t> Buffer;
     if (auto EC = readBytes(Buffer, sizeof(T)))
       return EC;
-    assert(alignmentAdjustment(Buffer.data(), alignof(T)) == 0 &&
-           "Reading at invalid alignment!");
     Dest = reinterpret_cast<const T *>(Buffer.data());
     return Error::success();
   }
@@ -176,7 +150,7 @@ public:
     }
 
     if (NumElements > UINT32_MAX / sizeof(T))
-      return errorCodeToError(make_error_code(std::errc::no_buffer_space));
+      return make_error<msf::MSFError>(msf::msf_error_code::insufficient_buffer);
 
     if (auto EC = readBytes(Bytes, NumElements * sizeof(T)))
       return EC;
@@ -224,7 +198,8 @@ public:
       return errorCodeToError(
           make_error_code(std::errc::illegal_byte_sequence));
     if (Offset + Length > Stream.getLength())
-      return errorCodeToError(make_error_code(std::errc::no_buffer_space));
+      return make_error<msf::MSFError>(
+          msf::msf_error_code::insufficient_buffer);
     BinaryStreamRef View = Stream.slice(Offset, Length);
     Array = FixedStreamArray<T>(View);
     Offset += Length;
@@ -250,23 +225,9 @@ public:
   uint8_t peek() const;
 
 private:
-  template <typename T>
-  void readIntegersImpl(ArrayRef<uint8_t> Bytes, T &Dest) {
-    Dest = llvm::support::endian::read<T, llvm::support::unaligned>(
-        Bytes.data(), Stream.getEndian());
-  }
-
-  template <typename T, typename... Ts>
-  void readIntegersImpl(ArrayRef<uint8_t> Bytes, T &Dest, Ts &... Rest) {
-    auto Car = Bytes.take_front(sizeof(T));
-    auto Cdr = Bytes.drop_front(sizeof(T));
-    readIntegersImpl(Car, Dest);
-    readIntegersImpl(Cdr, Rest...);
-  }
-
   BinaryStreamRef Stream;
   uint32_t Offset;
 };
 } // namespace llvm
 
-#endif // LLVM_SUPPORT_BINARYSTREAMREADER_H
+#endif // LLVM_DEBUGINFO_MSF_BINARYSTREAMREADER_H

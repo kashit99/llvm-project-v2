@@ -7,8 +7,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_SUPPORT_BINARYSTREAMWRITER_H
-#define LLVM_SUPPORT_BINARYSTREAMWRITER_H
+#ifndef LLVM_DEBUGINFO_MSF_BINARYSTREAMWRITER_H
+#define LLVM_DEBUGINFO_MSF_BINARYSTREAMWRITER_H
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
@@ -48,29 +48,11 @@ public:
   /// \returns a success error code if the data was successfully written,
   /// otherwise returns an appropriate error code.
   template <typename T> Error writeInteger(T Value) {
-    return writeIntegers(Value);
-  }
-
-  /// Write a \p ByteSize byte integer to the stream, updating the writer's
-  /// position if successful.
-  ///
-  /// \returns a success error code if the data was successfully written,
-  /// otherwise returns an appropriate error code.
-  Error writeInteger(uint64_t Value, uint32_t ByteSize);
-
-  /// Write a list of integers into the underlying stream and update the
-  /// stream's offset. On success, updates the offset so that subsequent writes
-  /// occur at the next unwritten position.  Use of this method is more
-  /// efficient than calling `writeInteger` multiple times because this performs
-  /// bounds checking only once, and requires only a single error check by the
-  /// user.
-  ///
-  /// \returns a success error code if the data was successfully written,
-  /// otherwise returns an appropriate error code.
-  template <typename... Ts> Error writeIntegers(Ts... Ints) {
-    uint8_t Buffer[sizeof_sum<Ts...>::value];
-
-    writeIntegersImpl(Buffer, Ints...);
+    static_assert(std::is_integral<T>::value,
+                  "Cannot call writeInteger with non-integral value!");
+    uint8_t Buffer[sizeof(T)];
+    llvm::support::endian::write<T, llvm::support::unaligned>(
+        Buffer, Value, Stream.getEndian());
     return writeBytes(Buffer);
   }
 
@@ -143,7 +125,8 @@ public:
       return Error::success();
 
     if (Array.size() > UINT32_MAX / sizeof(T))
-      return errorCodeToError(make_error_code(std::errc::no_buffer_space));
+      return make_error<msf::MSFError>(
+          msf::msf_error_code::insufficient_buffer);
 
     return writeBytes(
         ArrayRef<uint8_t>(reinterpret_cast<const uint8_t *>(Array.data()),
@@ -173,27 +156,10 @@ public:
   uint32_t bytesRemaining() const { return getLength() - getOffset(); }
 
 protected:
-  template <typename T>
-  void writeIntegersImpl(MutableArrayRef<uint8_t> Buffer, T Value) {
-    static_assert(std::is_integral<T>::value,
-                  "Cannot call writeInteger with non-integral value!");
-    assert(Buffer.size() == sizeof(T));
-    llvm::support::endian::write<T, llvm::support::unaligned>(
-        Buffer.data(), Value, Stream.getEndian());
-  }
-
-  template <typename T, typename... Ts>
-  void writeIntegersImpl(MutableArrayRef<uint8_t> Buffer, T Car, Ts... Cdr) {
-    auto First = Buffer.take_front(sizeof(T));
-    auto Rest = Buffer.drop_front(sizeof(T));
-    writeIntegersImpl(First, Car);
-    writeIntegersImpl(Rest, Cdr...);
-  }
-
   WritableBinaryStreamRef Stream;
   uint32_t Offset = 0;
 };
 
 } // end namespace llvm
 
-#endif // LLVM_SUPPORT_BINARYSTREAMWRITER_H
+#endif // LLVM_DEBUGINFO_MSF_BINARYSTREAMWRITER_H

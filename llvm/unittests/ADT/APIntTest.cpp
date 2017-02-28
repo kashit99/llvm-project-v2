@@ -1505,3 +1505,39 @@ TEST(APIntTest, reverseBits) {
     }
   }
 }
+
+TEST(APIntTest, extractBits) {
+  APInt i32(32, 0x1234567);
+  EXPECT_EQ(0x3456, i32.extractBits(16, 4));
+
+  APInt i257(257, 0xFFFFFFFFFF0000FFull, true);
+  EXPECT_EQ(0xFFu, i257.extractBits(16, 0));
+  EXPECT_EQ((0xFFu >> 1), i257.extractBits(16, 1));
+  EXPECT_EQ(-1, i257.extractBits(32, 64).getSExtValue());
+  EXPECT_EQ(-1, i257.extractBits(128, 128).getSExtValue());
+  EXPECT_EQ(-1, i257.extractBits(66, 191).getSExtValue());
+  EXPECT_EQ(static_cast<int64_t>(0xFFFFFFFFFF80007Full),
+            i257.extractBits(128, 1).getSExtValue());
+  EXPECT_EQ(static_cast<int64_t>(0xFFFFFFFFFF80007Full),
+            i257.extractBits(129, 1).getSExtValue());
+}
+
+TEST(APIntTest, getLowBitsSet) {
+  APInt i128lo64 = APInt::getLowBitsSet(128, 64);
+  EXPECT_EQ(0u, i128lo64.countLeadingOnes());
+  EXPECT_EQ(64u, i128lo64.countLeadingZeros());
+  EXPECT_EQ(64u, i128lo64.getActiveBits());
+  EXPECT_EQ(0u, i128lo64.countTrailingZeros());
+  EXPECT_EQ(64u, i128lo64.countTrailingOnes());
+  EXPECT_EQ(64u, i128lo64.countPopulation());
+}
+
+TEST(APIntTest, getHighBitsSet) {
+  APInt i64hi32 = APInt::getHighBitsSet(64, 32);
+  EXPECT_EQ(32u, i64hi32.countLeadingOnes());
+  EXPECT_EQ(0u, i64hi32.countLeadingZeros());
+  EXPECT_EQ(64u, i64hi32.getActiveBits());
+  EXPECT_EQ(32u, i64hi32.countTrailingZeros());
+  EXPECT_EQ(0u, i64hi32.countTrailingOnes());
+  EXPECT_EQ(32u, i64hi32.countPopulation());
+}

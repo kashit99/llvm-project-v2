@@ -10,7 +10,6 @@
 #include "llvm/DebugInfo/PDB/Native/InfoStreamBuilder.h"
 
 #include "llvm/DebugInfo/MSF/BinaryStreamWriter.h"
-#include "llvm/DebugInfo/MSF/BinaryStreamWriter.h"
 #include "llvm/DebugInfo/MSF/MSFBuilder.h"
 #include "llvm/DebugInfo/MSF/MappedBlockStream.h"
 #include "llvm/DebugInfo/PDB/Native/InfoStream.h"

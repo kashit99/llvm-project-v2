@@ -24,28 +24,6 @@ Error BinaryStreamWriter::writeBytes(ArrayRef<uint8_t> Buffer) {
   return Error::success();
 }
 
-Error BinaryStreamWriter::writeInteger(uint64_t Value, uint32_t ByteSize) {
-  assert(ByteSize == 1 || ByteSize == 2 || ByteSize == 4 || ByteSize == 8);
-  uint8_t Bytes[8];
-  MutableArrayRef<uint8_t> Buffer(Bytes);
-  Buffer = Buffer.take_front(ByteSize);
-  switch (ByteSize) {
-  case 1:
-    Buffer[0] = static_cast<uint8_t>(Value);
-    break;
-  case 2:
-    llvm::support::endian::write16(Buffer.data(), Value, Stream.getEndian());
-    break;
-  case 4:
-    llvm::support::endian::write32(Buffer.data(), Value, Stream.getEndian());
-    break;
-  case 8:
-    llvm::support::endian::write64(Buffer.data(), Value, Stream.getEndian());
-    break;
-  }
-  return writeBytes(Buffer);
-}
-
 Error BinaryStreamWriter::writeCString(StringRef Str) {
   if (auto EC = writeFixedString(Str))
     return EC;

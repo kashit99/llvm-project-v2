@@ -10,8 +10,10 @@
 #include "llvm/DebugInfo/MSF/BinaryStreamReader.h"
 
 #include "llvm/DebugInfo/MSF/BinaryStreamRef.h"
+#include "llvm/DebugInfo/MSF/MSFError.h"
 
 using namespace llvm;
+using namespace llvm::msf;
 
 BinaryStreamReader::BinaryStreamReader(BinaryStreamRef S)
     : Stream(S), Offset(0) {}
@@ -28,30 +30,6 @@ Error BinaryStreamReader::readBytes(ArrayRef<uint8_t> &Buffer, uint32_t Size) {
   if (auto EC = Stream.readBytes(Offset, Size, Buffer))
     return EC;
   Offset += Size;
-  return Error::success();
-}
-
-Error BinaryStreamReader::readInteger(uint64_t &Dest, uint32_t ByteSize) {
-  assert(ByteSize == 1 || ByteSize == 2 || ByteSize == 4 || ByteSize == 8);
-  ArrayRef<uint8_t> Bytes;
-
-  if (auto EC = readBytes(Bytes, ByteSize))
-    return EC;
-  switch (ByteSize) {
-  case 1:
-    Dest = Bytes[0];
-    return Error::success();
-  case 2:
-    Dest = llvm::support::endian::read16(Bytes.data(), Stream.getEndian());
-    return Error::success();
-  case 4:
-    Dest = llvm::support::endian::read32(Bytes.data(), Stream.getEndian());
-    return Error::success();
-  case 8:
-    Dest = llvm::support::endian::read64(Bytes.data(), Stream.getEndian());
-    return Error::success();
-  }
-  llvm_unreachable("Unreachable!");
   return Error::success();
 }
 
@@ -96,7 +74,7 @@ Error BinaryStreamReader::readStreamRef(BinaryStreamRef &Ref) {
 
 Error BinaryStreamReader::readStreamRef(BinaryStreamRef &Ref, uint32_t Length) {
   if (bytesRemaining() < Length)
-    return errorCodeToError(make_error_code(std::errc::no_buffer_space));
+    return make_error<MSFError>(msf_error_code::insufficient_buffer);
   Ref = Stream.slice(Offset, Length);
   Offset += Length;
   return Error::success();
@@ -104,7 +82,7 @@ Error BinaryStreamReader::readStreamRef(BinaryStreamRef &Ref, uint32_t Length) {
 
 Error BinaryStreamReader::skip(uint32_t Amount) {
   if (Amount > bytesRemaining())
-    return errorCodeToError(make_error_code(std::errc::no_buffer_space));
+    return make_error<MSFError>(msf_error_code::insufficient_buffer);
   Offset += Amount;
   return Error::success();
 }

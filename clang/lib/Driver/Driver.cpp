@@ -79,7 +79,8 @@ Driver::Driver(StringRef ClangExecutable, StringRef DefaultTargetTriple,
     llvm::sys::path::append(P, ClangResourceDir);
   } else {
     StringRef ClangLibdirSuffix(CLANG_LIBDIR_SUFFIX);
-    llvm::sys::path::append(P, "..", Twine("lib") + ClangLibdirSuffix, "clang",
+    P = llvm::sys::path::parent_path(Dir);
+    llvm::sys::path::append(P, Twine("lib") + ClangLibdirSuffix, "clang",
                             CLANG_VERSION_STRING);
   }
   ResourceDir = P.str();
@@ -2352,8 +2353,12 @@ void Driver::BuildActions(Compilation &C, DerivedArgList &Args,
   Arg *FinalPhaseArg;
   phases::ID FinalPhase = getFinalPhase(Args, &FinalPhaseArg);
 
-  if (FinalPhase == phases::Link && Args.hasArg(options::OPT_emit_llvm)) {
-    Diag(clang::diag::err_drv_emit_llvm_link);
+  if (FinalPhase == phases::Link) {
+    if (Args.hasArg(options::OPT_emit_llvm))
+      Diag(clang::diag::err_drv_emit_llvm_link);
+    if (IsCLMode() && LTOMode != LTOK_None &&
+        !Args.getLastArgValue(options::OPT_fuse_ld_EQ).equals_lower("lld"))
+      Diag(clang::diag::err_drv_lto_without_lld);
   }
 
   // Reject -Z* at the top level, these options should never have been exposed

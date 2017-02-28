@@ -7,11 +7,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_SUPPORT_BINARYSTREAMREF_H
-#define LLVM_SUPPORT_BINARYSTREAMREF_H
+#ifndef LLVM_DEBUGINFO_MSF_BINARYSTREAMREF_H
+#define LLVM_DEBUGINFO_MSF_BINARYSTREAMREF_H
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/DebugInfo/MSF/BinaryStream.h"
+#include "llvm/DebugInfo/MSF/MSFError.h"
 #include "llvm/Support/Error.h"
 #include <algorithm>
 #include <cstdint>
@@ -98,9 +99,11 @@ public:
   Error readBytes(uint32_t Offset, uint32_t Size,
                   ArrayRef<uint8_t> &Buffer) const {
     if (ViewOffset + Offset < Offset)
-      return errorCodeToError(make_error_code(std::errc::no_buffer_space));
+      return make_error<msf::MSFError>(
+          msf::msf_error_code::insufficient_buffer);
     if (Size + Offset > Length)
-      return errorCodeToError(make_error_code(std::errc::no_buffer_space));
+      return make_error<msf::MSFError>(
+          msf::msf_error_code::insufficient_buffer);
     return Stream->readBytes(ViewOffset + Offset, Size, Buffer);
   }
 
@@ -112,7 +115,8 @@ public:
   Error readLongestContiguousChunk(uint32_t Offset,
                                    ArrayRef<uint8_t> &Buffer) const {
     if (Offset >= Length)
-      return errorCodeToError(make_error_code(std::errc::no_buffer_space));
+      return make_error<msf::MSFError>(
+          msf::msf_error_code::insufficient_buffer);
 
     if (auto EC = Stream->readLongestContiguousChunk(Offset, Buffer))
       return EC;
@@ -149,7 +153,8 @@ public:
   /// data, and an appropriate error code otherwise.
   Error writeBytes(uint32_t Offset, ArrayRef<uint8_t> Data) const {
     if (Data.size() + Offset > Length)
-      return errorCodeToError(make_error_code(std::errc::no_buffer_space));
+      return make_error<msf::MSFError>(
+          msf::msf_error_code::insufficient_buffer);
     return Stream->writeBytes(ViewOffset + Offset, Data);
   }
 
@@ -161,4 +166,4 @@ public:
 
 } // end namespace llvm
 
-#endif // LLVM_SUPPORT_BINARYSTREAMREF_H
+#endif // LLVM_DEBUGINFO_MSF_BINARYSTREAMREF_H

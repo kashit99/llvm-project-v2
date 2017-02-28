@@ -1390,6 +1390,20 @@ void CodeGenFunction::EmitDestructorBody(FunctionArgList &Args) {
   const CXXDestructorDecl *Dtor = cast<CXXDestructorDecl>(CurGD.getDecl());
   CXXDtorType DtorType = CurGD.getDtorType();
 
+  // For an abstract class, non-base destructors are never used (and can't
+  // be emitted in general, because vbase dtors may not have been validated
+  // by Sema), but the Itanium ABI doesn't make them optional and Clang may
+  // in fact emit references to them from other compilations, so emit them
+  // as functions containing a trap instruction.
+  if (DtorType != Dtor_Base && Dtor->getParent()->isAbstract()) {
+    llvm::CallInst *TrapCall = EmitTrapCall(llvm::Intrinsic::trap);
+    TrapCall->setDoesNotReturn();
+    TrapCall->setDoesNotThrow();
+    Builder.CreateUnreachable();
+    Builder.ClearInsertionPoint();
+    return;
+  }
+
   Stmt *Body = Dtor->getBody();
   if (Body)
     incrementProfileCounter(Body);
@@ -2114,7 +2128,9 @@ void CodeGenFunction::EmitInheritedCXXConstructorCall(
 void CodeGenFunction::EmitInlinedInheritingCXXConstructorCall(
     const CXXConstructorDecl *Ctor, CXXCtorType CtorType, bool ForVirtualBase,
     bool Delegating, CallArgList &Args) {
-  InlinedInheritingConstructorScope Scope(*this, GlobalDecl(Ctor, CtorType));
+  GlobalDecl GD(Ctor, CtorType);
+  InlinedInheritingConstructorScope Scope(*this, GD);
+  ApplyInlineDebugLocation DebugScope(*this, GD);
 
   // Save the arguments to be passed to the inherited constructor.
   CXXInheritedCtorInitExprArgs = Args;

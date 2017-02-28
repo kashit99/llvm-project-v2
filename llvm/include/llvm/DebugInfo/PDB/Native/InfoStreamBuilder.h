@@ -19,7 +19,7 @@
 #include "llvm/DebugInfo/PDB/PDBTypes.h"
 
 namespace llvm {
-class WritableBinaryStream;
+class WritableBinaryStreamRef;
 
 namespace msf {
 class MSFBuilder;

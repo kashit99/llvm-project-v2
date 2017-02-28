@@ -8,12 +8,13 @@
 // A BinaryStream which stores data in a single continguous memory buffer.
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_SUPPORT_BINARYBYTESTREAM_H
-#define LLVM_SUPPORT_BINARYBYTESTREAM_H
+#ifndef LLVM_DEBUGINFO_MSF_BINARYBYTESTREAM_H
+#define LLVM_DEBUGINFO_MSF_BINARYBYTESTREAM_H
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/DebugInfo/MSF/BinaryStream.h"
+#include "llvm/DebugInfo/MSF/MSFError.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/FileOutputBuffer.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -41,9 +42,11 @@ public:
   Error readBytes(uint32_t Offset, uint32_t Size,
                   ArrayRef<uint8_t> &Buffer) override {
     if (Offset > Data.size())
-      return errorCodeToError(make_error_code(std::errc::no_buffer_space));
+      return make_error<msf::MSFError>(
+          msf::msf_error_code::insufficient_buffer);
     if (Data.size() < Size + Offset)
-      return errorCodeToError(make_error_code(std::errc::no_buffer_space));
+      return make_error<msf::MSFError>(
+          msf::msf_error_code::insufficient_buffer);
     Buffer = Data.slice(Offset, Size);
     return Error::success();
   }
@@ -51,7 +54,8 @@ public:
   Error readLongestContiguousChunk(uint32_t Offset,
                                    ArrayRef<uint8_t> &Buffer) override {
     if (Offset >= Data.size())
-      return errorCodeToError(make_error_code(std::errc::no_buffer_space));
+      return make_error<msf::MSFError>(
+          msf::msf_error_code::insufficient_buffer);
     Buffer = Data.slice(Offset);
     return Error::success();
   }
@@ -76,8 +80,8 @@ protected:
 /// will never cause a copy.
 class MemoryBufferByteStream : public BinaryByteStream {
 public:
-  explicit MemoryBufferByteStream(std::unique_ptr<MemoryBuffer> Buffer,
-                                  llvm::support::endianness Endian)
+  MemoryBufferByteStream(std::unique_ptr<MemoryBuffer> Buffer,
+                         llvm::support::endianness Endian)
       : BinaryByteStream(Buffer->getBuffer(), Endian),
         MemBuffer(std::move(Buffer)) {}
 
@@ -116,9 +120,11 @@ public:
       return Error::success();
 
     if (Data.size() < Buffer.size())
-      return errorCodeToError(make_error_code(std::errc::no_buffer_space));
+      return make_error<msf::MSFError>(
+          msf::msf_error_code::insufficient_buffer);
     if (Offset > Buffer.size() - Data.size())
-      return errorCodeToError(make_error_code(std::errc::no_buffer_space));
+      return make_error<msf::MSFError>(
+          msf::msf_error_code::insufficient_buffer);
 
     uint8_t *DataPtr = const_cast<uint8_t *>(Data.data());
     ::memcpy(DataPtr + Offset, Buffer.data(), Buffer.size());
@@ -150,7 +156,8 @@ private:
 
     Error commit() override {
       if (FileBuffer->commit())
-        return errorCodeToError(make_error_code(std::errc::no_buffer_space));
+        return make_error<msf::MSFError>(
+            msf::msf_error_code::insufficient_buffer);
       return Error::success();
     }
 
@@ -159,8 +166,8 @@ private:
   };
 
 public:
-  explicit FileBufferByteStream(std::unique_ptr<FileOutputBuffer> Buffer,
-                                llvm::support::endianness Endian)
+  FileBufferByteStream(std::unique_ptr<FileOutputBuffer> Buffer,
+                       llvm::support::endianness Endian)
       : Impl(std::move(Buffer), Endian) {}
 
   llvm::support::endianness getEndian() const override {
@@ -191,4 +198,4 @@ private:
 
 } // end namespace llvm
 
-#endif // LLVM_SUPPORT_BINARYBYTESTREAM_H
+#endif // LLVM_DEBUGINFO_MSF_BYTESTREAM_H

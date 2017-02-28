@@ -842,11 +842,11 @@ void COFFDumper::printCodeViewSymbolSection(StringRef SectionName,
       // First four bytes is a relocation against the function.
       BinaryByteStream S(Contents, llvm::support::little);
       BinaryStreamReader SR(S);
-      StringRef CodePtr;
-      error(SR.readFixedString(CodePtr, 4));
+      const uint32_t *CodePtr;
+      error(SR.readObject(CodePtr));
       StringRef LinkageName;
       error(resolveSymbolName(Obj->getCOFFSection(Section), SectionContents,
-                              CodePtr.data(), LinkageName));
+                              CodePtr, LinkageName));
       W.printString("LinkageName", LinkageName);
 
       // To find the active frame description, search this array for the

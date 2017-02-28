@@ -801,7 +801,6 @@ bool JumpThreadingPass::ProcessBlock(BasicBlock *BB) {
     return false;
   }
 
-
   if (CmpInst *CondCmp = dyn_cast<CmpInst>(CondInst)) {
     // If we're branching on a conditional, LVI might be able to determine
     // it's value at the branch instruction.  We only handle comparisons
@@ -853,7 +852,6 @@ bool JumpThreadingPass::ProcessBlock(BasicBlock *BB) {
   if (LoadInst *LI = dyn_cast<LoadInst>(SimplifyValue))
     if (SimplifyPartiallyRedundantLoad(LI))
       return true;
-
 
   // Handle a variety of cases where we are branching on something derived from
   // a PHI node in the current block.  If we can prove that any predecessors
@@ -1902,10 +1900,10 @@ bool JumpThreadingPass::DuplicateCondBranchOnPHIIntoPred(
 /// TryToUnfoldSelect - Look for blocks of the form
 /// bb1:
 ///   %a = select
-///   br bb
+///   br bb2
 ///
 /// bb2:
-///   %p = phi [%a, %bb] ...
+///   %p = phi [%a, %bb1] ...
 ///   %c = icmp %p
 ///   br i1 %c
 ///

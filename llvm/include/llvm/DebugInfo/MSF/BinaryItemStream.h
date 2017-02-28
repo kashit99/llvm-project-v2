@@ -7,11 +7,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_SUPPORT_BINARYITEMSTREAM_H
-#define LLVM_SUPPORT_BINARYITEMSTREAM_H
+#ifndef LLVM_DEBUGINFO_MSF_BINARYITEMSTREAM_H
+#define LLVM_DEBUGINFO_MSF_BINARYITEMSTREAM_H
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/DebugInfo/MSF/BinaryStream.h"
+#include "llvm/DebugInfo/MSF/MSFError.h"
 #include "llvm/Support/Error.h"
 #include <cstddef>
 #include <cstdint>
@@ -19,8 +20,8 @@
 namespace llvm {
 
 template <typename T> struct BinaryItemTraits {
-  size_t length(const T &Item) = delete;
-  ArrayRef<uint8_t> bytes(const T &Item) = delete;
+  static size_t length(const T &Item) = delete;
+  static ArrayRef<uint8_t> bytes(const T &Item) = delete;
 };
 
 /// BinaryItemStream represents a sequence of objects stored in some kind of
@@ -30,7 +31,7 @@ template <typename T> struct BinaryItemTraits {
 /// records in a container.  The pointers themselves are not laid out
 /// contiguously in memory, but we may wish to read from or write to these
 /// records as if they were.
-template <typename T, typename ItemTraits = BinaryItemTraits<T>>
+template <typename T, typename Traits = BinaryItemTraits<T>>
 class BinaryItemStream : public BinaryStream {
 public:
   explicit BinaryItemStream(llvm::support::endianness Endian)
@@ -40,24 +41,23 @@ public:
 
   Error readBytes(uint32_t Offset, uint32_t Size,
                   ArrayRef<uint8_t> &Buffer) override {
-    if (auto EC = readLongestContiguousChunk(Offset, Buffer))
-      return EC;
-
-    if (Size > Buffer.size())
-      return errorCodeToError(make_error_code(std::errc::no_buffer_space));
-
-    Buffer = Buffer.take_front(Size);
+    auto ExpectedIndex = translateOffsetIndex(Offset);
+    if (!ExpectedIndex)
+      return ExpectedIndex.takeError();
+    const auto &Item = Items[*ExpectedIndex];
+    if (Size > Traits::length(Item))
+      return make_error<msf::MSFError>(
+          msf::msf_error_code::insufficient_buffer);
+    Buffer = Traits::bytes(Item).take_front(Size);
     return Error::success();
   }
 
   Error readLongestContiguousChunk(uint32_t Offset,
                                    ArrayRef<uint8_t> &Buffer) override {
-    uint32_t Index;
-    uint32_t ByteOffset;
-    if (auto EC = translateOffsetIndex(Offset, Index, ByteOffset))
-      return EC;
-    const auto &Item = Items[Index];
-    Buffer = Traits.bytes(Item).drop_front(ByteOffset);
+    auto ExpectedIndex = translateOffsetIndex(Offset);
+    if (!ExpectedIndex)
+      return ExpectedIndex.takeError();
+    Buffer = Traits::bytes(Items[*ExpectedIndex]);
     return Error::success();
   }
 
@@ -66,37 +66,30 @@ public:
   uint32_t getLength() override {
     uint32_t Size = 0;
     for (const auto &Item : Items)
-      Size += Traits.length(Item);
+      Size += Traits::length(Item);
     return Size;
   }
 
 private:
-  Error translateOffsetIndex(uint32_t Offset, uint32_t &ItemIndex,
-                             uint32_t &ByteOffset) {
-    ItemIndex = 0;
-    ByteOffset = 0;
-    uint32_t PrevOffset = 0;
+  Expected<uint32_t> translateOffsetIndex(uint32_t Offset) const {
     uint32_t CurrentOffset = 0;
-    if (Offset > 0) {
-      for (const auto &Item : Items) {
-        PrevOffset = CurrentOffset;
-        CurrentOffset += Traits.length(Item);
-        if (CurrentOffset > Offset)
-          break;
-        ++ItemIndex;
-      }
+    uint32_t CurrentIndex = 0;
+    for (const auto &Item : Items) {
+      if (CurrentOffset >= Offset)
+        break;
+      CurrentOffset += Traits::length(Item);
+      ++CurrentIndex;
     }
-    if (CurrentOffset < Offset)
-      return errorCodeToError(make_error_code(std::errc::no_buffer_space));
-    ByteOffset = Offset - PrevOffset;
-    return Error::success();
+    if (CurrentOffset != Offset)
+      return make_error<msf::MSFError>(
+          msf::msf_error_code::insufficient_buffer);
+    return CurrentIndex;
   }
 
   llvm::support::endianness Endian;
-  ItemTraits Traits;
   ArrayRef<T> Items;
 };
 
 } // end namespace llvm
 
-#endif // LLVM_SUPPORT_BINARYITEMSTREAM_H
+#endif // LLVM_DEBUGINFO_MSF_BINARYITEMSTREAM_H

@@ -14,6 +14,7 @@
 #include "llvm/DebugInfo/MSF/BinaryStreamRef.h"
 #include "llvm/DebugInfo/MSF/BinaryStreamWriter.h"
 #include "llvm/DebugInfo/MSF/IMSFFile.h"
+#include "llvm/DebugInfo/MSF/MSFError.h"
 #include "llvm/DebugInfo/MSF/MSFStreamLayout.h"
 #include "llvm/DebugInfo/MSF/MappedBlockStream.h"
 #include "gtest/gtest.h"
@@ -42,7 +43,7 @@ public:
   Error readBytes(uint32_t Offset, uint32_t Size,
                   ArrayRef<uint8_t> &Buffer) override {
     if (Offset + Size > Data.size())
-      return errorCodeToError(make_error_code(std::errc::no_buffer_space));
+      return make_error<MSFError>(msf_error_code::insufficient_buffer);
     Buffer = Data.slice(Offset, Size);
     return Error::success();
   }
@@ -50,7 +51,7 @@ public:
   Error readLongestContiguousChunk(uint32_t Offset,
                                    ArrayRef<uint8_t> &Buffer) override {
     if (Offset >= Data.size())
-      return errorCodeToError(make_error_code(std::errc::no_buffer_space));
+      return make_error<MSFError>(msf_error_code::insufficient_buffer);
     Buffer = Data.drop_front(Offset);
     return Error::success();
   }
@@ -59,7 +60,7 @@ public:
 
   Error writeBytes(uint32_t Offset, ArrayRef<uint8_t> SrcData) override {
     if (Offset + SrcData.size() > Data.size())
-      return errorCodeToError(make_error_code(std::errc::no_buffer_space));
+      return make_error<MSFError>(msf_error_code::insufficient_buffer);
     ::memcpy(&Data[Offset], SrcData.data(), SrcData.size());
     return Error::success();
   }

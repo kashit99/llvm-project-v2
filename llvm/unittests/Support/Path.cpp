@@ -59,7 +59,7 @@ TEST(is_separator, Works) {
 #ifdef LLVM_ON_WIN32
   EXPECT_TRUE(path::is_separator('\\'));
 #else
-  EXPECT_FALSE(path::is_separator('\\', ));
+  EXPECT_FALSE(path::is_separator('\\'));
 #endif
 }
 
@@ -1054,13 +1054,18 @@ TEST_F(FileSystemTest, FileMapping) {
 }
 
 TEST(Support, NormalizePath) {
-  using TestTuple = std::tuple<StringRef, StringRef, StringRef>;
-  TestTuple Tests[] = {{"a", "a", "a"},         {"a/b", "a\\b", "a/b"},
-                       {"a\\b", "a\\b", "a/b"}, {"a\\\\b", "a\\\\b", "a\\\\b"},
-                       {"\\a", "\\a", "/a"},    {"a\\", "a\\", "a/"}};
+  using TestTuple = std::tuple<const char *, const char *, const char *>;
+  std::vector<TestTuple> Tests;
+  Tests.emplace_back("a", "a", "a");
+  Tests.emplace_back("a/b", "a\\b", "a/b");
+  Tests.emplace_back("a\\b", "a\\b", "a/b");
+  Tests.emplace_back("a\\\\b", "a\\\\b", "a\\\\b");
+  Tests.emplace_back("\\a", "\\a", "/a");
+  Tests.emplace_back("a\\", "a\\", "a/");
+
   for (auto &T : Tests) {
-    SmallString<64> Win = std::get<0>(T);
-    SmallString<64> Posix = Win;
+    SmallString<64> Win(std::get<0>(T));
+    SmallString<64> Posix(Win);
     path::native(Win, path::Style::windows);
     path::native(Posix, path::Style::posix);
     EXPECT_EQ(std::get<1>(T), Win);

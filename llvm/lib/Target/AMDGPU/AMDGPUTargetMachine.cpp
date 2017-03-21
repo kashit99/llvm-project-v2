@@ -252,8 +252,8 @@ void AMDGPUTargetMachine::adjustPassManager(PassManagerBuilder &Builder) {
           return !GV.use_empty();
         }));
         PM.add(createGlobalDCEPass());
+        PM.add(createAMDGPUAlwaysInlinePass());
       }
-      PM.add(createAMDGPUAlwaysInlinePass());
   });
 }
 

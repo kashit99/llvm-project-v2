@@ -9,6 +9,7 @@ Classes:
     AvailabilityMsg: ''
     SwiftPrivate:    false
     SwiftName:       ''
+    SwiftImportAsNonGeneric: true
     Methods:         
       - Selector:        'cellWithImage:'
         MethodKind:      Class
@@ -16,7 +17,6 @@ Classes:
         AvailabilityMsg: ''
         SwiftPrivate:    false
         SwiftName:       ''
-        FactoryAsInit:   C
         ResultType:      id
       - Selector:        init
         MethodKind:      Instance

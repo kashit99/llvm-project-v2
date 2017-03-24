@@ -865,7 +865,15 @@ def FlagEnum : InheritableAttr {
   let Spellings = [GNU<"flag_enum">];
   let Subjects = SubjectList<[Enum]>;
   let Documentation = [FlagEnumDocs];
-  let LangOpts = [COnly];
+}
+
+def EnumExtensibility : InheritableAttr {
+  let Spellings = [GNU<"enum_extensibility">,
+                   CXX11<"clang", "enum_extensibility">];
+  let Subjects = SubjectList<[Enum]>;
+  let Args = [EnumArgument<"Extensibility", "Kind",
+              ["closed", "open"], ["Closed", "Open"]>];
+  let Documentation = [EnumExtensibilityDocs];
 }
 
 def Flatten : InheritableAttr {
@@ -1498,11 +1506,11 @@ def SwiftPrivate : InheritableAttr {
   let Documentation = [Undocumented];
 }
 
-def SwiftSuppressFactoryAsInit : InheritableAttr { 
+def SwiftImportAsNonGeneric : InheritableAttr {
   // This attribute has no spellings as it is only ever created implicitly
   // from API notes.
   let Spellings = [];
-  let SemaHandler = 0; 
+  let SemaHandler = 0;
   let Documentation = [Undocumented];
 }
 

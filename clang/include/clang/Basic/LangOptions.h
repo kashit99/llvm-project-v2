@@ -102,6 +102,16 @@ public:
   /// (files, functions, variables) should not be instrumented.
   std::vector<std::string> SanitizerBlacklistFiles;
 
+  /// \brief Paths to the XRay "always instrument" files specifying which
+  /// objects (files, functions, variables) should be imbued with the XRay
+  /// "always instrument" attribute.
+  std::vector<std::string> XRayAlwaysInstrumentFiles;
+
+  /// \brief Paths to the XRay "never instrument" files specifying which
+  /// objects (files, functions, variables) should be imbued with the XRay
+  /// "never instrument" attribute.
+  std::vector<std::string> XRayNeverInstrumentFiles;
+
   clang::ObjCRuntime ObjCRuntime;
 
   std::string ObjCConstantStringClass;
@@ -214,7 +224,7 @@ public:
 
 private:
   /// Adjust BinaryOperator::FPFeatures to match the bit-field size of this.
-  LangOptions::FPContractModeKind fp_contract : 2;
+  unsigned fp_contract : 2;
 };
 
 /// \brief Describes the kind of translation unit being processed.

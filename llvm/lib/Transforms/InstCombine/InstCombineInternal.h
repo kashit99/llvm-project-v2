@@ -650,11 +650,9 @@ private:
                             SelectPatternFlavor SPF2, Value *C);
   Instruction *foldSelectInstWithICmp(SelectInst &SI, ICmpInst *ICI);
 
-  Instruction *OptAndOp(Instruction *Op, ConstantInt *OpRHS,
+  Instruction *OptAndOp(BinaryOperator *Op, ConstantInt *OpRHS,
                         ConstantInt *AndRHS, BinaryOperator &TheAnd);
 
-  Value *FoldLogicalPlusAnd(Value *LHS, Value *RHS, ConstantInt *Mask,
-                            bool isSub, Instruction &I);
   Value *insertRangeTest(Value *V, const APInt &Lo, const APInt &Hi,
                          bool isSigned, bool Inside);
   Instruction *PromoteCastOfAllocation(BitCastInst &CI, AllocaInst &AI);

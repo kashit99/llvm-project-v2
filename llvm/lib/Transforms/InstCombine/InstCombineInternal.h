@@ -571,7 +571,7 @@ private:
   Instruction *FoldOpIntoSelect(Instruction &Op, SelectInst *SI);
 
   /// This is a convenience wrapper function for the above two functions.
-  Instruction *foldOpWithConstantIntoOperand(Instruction &I);
+  Instruction *foldOpWithConstantIntoOperand(BinaryOperator &I);
 
   /// \brief Try to rotate an operation below a PHI node, using PHI nodes for
   /// its operands.
@@ -653,6 +653,8 @@ private:
   Instruction *OptAndOp(BinaryOperator *Op, ConstantInt *OpRHS,
                         ConstantInt *AndRHS, BinaryOperator &TheAnd);
 
+  Value *FoldLogicalPlusAnd(Value *LHS, Value *RHS, ConstantInt *Mask,
+                            bool isSub, Instruction &I);
   Value *insertRangeTest(Value *V, const APInt &Lo, const APInt &Hi,
                          bool isSigned, bool Inside);
   Instruction *PromoteCastOfAllocation(BitCastInst &CI, AllocaInst &AI);

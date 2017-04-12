@@ -455,16 +455,11 @@ static bool RightDistributesOverLeft(Instruction::BinaryOps LOp,
 
 /// This function returns identity value for given opcode, which can be used to
 /// factor patterns like (X * 2) + X ==> (X * 2) + (X * 1) ==> X * (2 + 1).
-static Value *getIdentityValue(Instruction::BinaryOps OpCode, Value *V) {
+static Value *getIdentityValue(Instruction::BinaryOps Opcode, Value *V) {
   if (isa<Constant>(V))
     return nullptr;
 
-  if (OpCode == Instruction::Mul)
-    return ConstantInt::get(V->getType(), 1);
-
-  // TODO: We can handle other cases e.g. Instruction::And, Instruction::Or etc.
-
-  return nullptr;
+  return ConstantExpr::getBinOpIdentity(Opcode, V->getType());
 }
 
 /// This function factors binary ops which can be combined using distributive
@@ -725,6 +720,21 @@ Value *InstCombiner::dyn_castNegVal(Value *V) const {
   if (ConstantDataVector *C = dyn_cast<ConstantDataVector>(V))
     if (C->getType()->getElementType()->isIntegerTy())
       return ConstantExpr::getNeg(C);
+
+  if (ConstantVector *CV = dyn_cast<ConstantVector>(V)) {
+    for (unsigned i = 0, e = CV->getNumOperands(); i != e; ++i) {
+      Constant *Elt = CV->getAggregateElement(i);
+      if (!Elt)
+        return nullptr;
+
+      if (isa<UndefValue>(Elt))
+        continue;
+
+      if (!isa<ConstantInt>(Elt))
+        return nullptr;
+    }
+    return ConstantExpr::getNeg(CV);
+  }
 
   return nullptr;
 }

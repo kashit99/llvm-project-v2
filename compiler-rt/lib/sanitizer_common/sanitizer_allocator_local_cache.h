@@ -46,9 +46,9 @@ struct SizeClassAllocator64LocalCache {
     CHECK_NE(class_id, 0UL);
     CHECK_LT(class_id, kNumClasses);
     PerClass *c = &per_class_[class_id];
-    stats_.Add(AllocatorStatAllocated, c->class_size);
     if (UNLIKELY(c->count == 0))
       Refill(c, allocator, class_id);
+    stats_.Add(AllocatorStatAllocated, c->class_size);
     CHECK_GT(c->count, 0);
     CompactPtrT chunk = c->chunks[--c->count];
     void *res = reinterpret_cast<void *>(allocator->CompactPtrToPointer(
@@ -144,9 +144,9 @@ struct SizeClassAllocator32LocalCache {
     CHECK_NE(class_id, 0UL);
     CHECK_LT(class_id, kNumClasses);
     PerClass *c = &per_class_[class_id];
-    stats_.Add(AllocatorStatAllocated, c->class_size);
     if (UNLIKELY(c->count == 0))
       Refill(allocator, class_id);
+    stats_.Add(AllocatorStatAllocated, c->class_size);
     void *res = c->batch[--c->count];
     PREFETCH(c->batch[c->count - 1]);
     return res;

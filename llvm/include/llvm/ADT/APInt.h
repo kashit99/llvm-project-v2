@@ -330,6 +330,20 @@ public:
   /// This tests the high bit of the APInt to determine if it is unset.
   bool isNonNegative() const { return !isNegative(); }
 
+  /// \brief Determine if sign bit of this APInt is set.
+  ///
+  /// This tests the high bit of this APInt to determine if it is set.
+  ///
+  /// \returns true if this APInt has its sign bit set, false otherwise.
+  bool isSignBitSet() const { return (*this)[BitWidth-1]; }
+
+  /// \brief Determine if sign bit of this APInt is clear.
+  ///
+  /// This tests the high bit of this APInt to determine if it is clear.
+  ///
+  /// \returns true if this APInt has its sign bit clear, false otherwise.
+  bool isSignBitClear() const { return !isSignBitSet(); }
+
   /// \brief Determine if this APInt Value is positive.
   ///
   /// This tests if the value of this APInt is positive (> 0). Note
@@ -679,24 +693,16 @@ public:
 
   /// @brief Move assignment operator.
   APInt &operator=(APInt &&that) {
-    if (!isSingleWord()) {
-      // The MSVC STL shipped in 2013 requires that self move assignment be a
-      // no-op.  Otherwise algorithms like stable_sort will produce answers
-      // where half of the output is left in a moved-from state.
-      if (this == &that)
-        return *this;
+    assert(this != &that && "Self-move not supported");
+    if (!isSingleWord())
       delete[] pVal;
-    }
 
     // Use memcpy so that type based alias analysis sees both VAL and pVal
     // as modified.
     memcpy(&VAL, &that.VAL, sizeof(uint64_t));
 
-    // If 'this == &that', avoid zeroing our own bitwidth by storing to 'that'
-    // first.
-    unsigned ThatBitWidth = that.BitWidth;
+    BitWidth = that.BitWidth;
     that.BitWidth = 0;
-    BitWidth = ThatBitWidth;
 
     return *this;
   }
@@ -875,8 +881,8 @@ public:
     return R;
   }
 
-  /// Logical right-shift this APInt by shiftAmt in place.
-  void lshrInPlace(unsigned shiftAmt);
+  /// Logical right-shift this APInt by ShiftAmt in place.
+  void lshrInPlace(unsigned ShiftAmt);
 
   /// \brief Left-shift function.
   ///
@@ -1763,9 +1769,9 @@ public:
   /// restrictions on COUNT.
   static void tcShiftLeft(WordType *, unsigned parts, unsigned count);
 
-  /// Shift a bignum right COUNT bits.  Shifted in bits are zero.  There are no
-  /// restrictions on COUNT.
-  static void tcShiftRight(WordType *, unsigned parts, unsigned count);
+  /// Shift a bignum right Count bits.  Shifted in bits are zero.  There are no
+  /// restrictions on Count.
+  static void tcShiftRight(WordType *, unsigned Words, unsigned Count);
 
   /// The obvious AND, OR and XOR and complement operations.
   static void tcAnd(WordType *, const WordType *, unsigned);

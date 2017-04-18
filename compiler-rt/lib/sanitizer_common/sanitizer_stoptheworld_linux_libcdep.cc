@@ -32,17 +32,13 @@
 #include <sys/types.h> // for pid_t
 #include <sys/uio.h> // for iovec
 #include <elf.h> // for NT_PRSTATUS
-#if SANITIZER_ANDROID && defined(__arm__)
-# include <linux/user.h>  // for pt_regs
-#else
-# ifdef __aarch64__
+#if defined(__aarch64__) && !SANITIZER_ANDROID
 // GLIBC 2.20+ sys/user does not include asm/ptrace.h
-#  include <asm/ptrace.h>
-# endif
-# include <sys/user.h>  // for user_regs_struct
-# if SANITIZER_ANDROID && SANITIZER_MIPS
-#   include <asm/reg.h>  // for mips SP register in sys/user.h
-# endif
+# include <asm/ptrace.h>
+#endif
+#include <sys/user.h>  // for user_regs_struct
+#if SANITIZER_ANDROID && SANITIZER_MIPS
+# include <asm/reg.h>  // for mips SP register in sys/user.h
 #endif
 #include <sys/wait.h> // for signal-related stuff
 
@@ -142,10 +138,11 @@ bool ThreadSuspender::SuspendThread(tid_t tid) {
                        &pterrno)) {
     // Either the thread is dead, or something prevented us from attaching.
     // Log this event and move on.
-    VReport(1, "Could not attach to thread %lu (errno %d).\n", tid, pterrno);
+    VReport(1, "Could not attach to thread %zu (errno %d).\n", (uptr)tid,
+            pterrno);
     return false;
   } else {
-    VReport(2, "Attached to thread %lu.\n", tid);
+    VReport(2, "Attached to thread %zu.\n", (uptr)tid);
     // The thread is not guaranteed to stop before ptrace returns, so we must
     // wait on it. Note: if the thread receives a signal concurrently,
     // we can get notification about the signal before notification about stop.
@@ -163,8 +160,8 @@ bool ThreadSuspender::SuspendThread(tid_t tid) {
       if (internal_iserror(waitpid_status, &wperrno)) {
         // Got a ECHILD error. I don't think this situation is possible, but it
         // doesn't hurt to report it.
-        VReport(1, "Waiting on thread %lu failed, detaching (errno %d).\n",
-                tid, wperrno);
+        VReport(1, "Waiting on thread %zu failed, detaching (errno %d).\n",
+                (uptr)tid, wperrno);
         internal_ptrace(PTRACE_DETACH, tid, nullptr, nullptr);
         return false;
       }

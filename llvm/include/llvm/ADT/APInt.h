@@ -195,13 +195,10 @@ private:
   void lshrSlowCase(unsigned ShiftAmt);
 
   /// out-of-line slow case for operator=
-  APInt &AssignSlowCase(const APInt &RHS);
+  void AssignSlowCase(const APInt &RHS);
 
   /// out-of-line slow case for operator==
   bool EqualSlowCase(const APInt &RHS) const LLVM_READONLY;
-
-  /// out-of-line slow case for operator==
-  bool EqualSlowCase(uint64_t Val) const LLVM_READONLY;
 
   /// out-of-line slow case for countLeadingZeros
   unsigned countLeadingZerosSlowCase() const LLVM_READONLY;
@@ -219,13 +216,13 @@ private:
   void flipAllBitsSlowCase();
 
   /// out-of-line slow case for operator&=.
-  APInt& AndAssignSlowCase(const APInt& RHS);
+  void AndAssignSlowCase(const APInt& RHS);
 
   /// out-of-line slow case for operator|=.
-  APInt& OrAssignSlowCase(const APInt& RHS);
+  void OrAssignSlowCase(const APInt& RHS);
 
   /// out-of-line slow case for operator^=.
-  APInt& XorAssignSlowCase(const APInt& RHS);
+  void XorAssignSlowCase(const APInt& RHS);
 
 public:
   /// \name Constructors
@@ -426,8 +423,7 @@ public:
   /// If this value is smaller than the specified limit, return it, otherwise
   /// return the limit value.  This causes the value to saturate to the limit.
   uint64_t getLimitedValue(uint64_t Limit = UINT64_MAX) const {
-    return (getActiveBits() > 64 || getZExtValue() > Limit) ? Limit
-                                                            : getZExtValue();
+    return ugt(Limit) ? Limit : getZExtValue();
   }
 
   /// \brief Check if the APInt consists of a repeated bit pattern.
@@ -691,7 +687,8 @@ public:
       return clearUnusedBits();
     }
 
-    return AssignSlowCase(RHS);
+    AssignSlowCase(RHS);
+    return *this;
   }
 
   /// @brief Move assignment operator.
@@ -736,11 +733,11 @@ public:
   /// \returns *this after ANDing with RHS.
   APInt &operator&=(const APInt &RHS) {
     assert(BitWidth == RHS.BitWidth && "Bit widths must be the same");
-    if (isSingleWord()) {
+    if (isSingleWord())
       VAL &= RHS.VAL;
-      return *this;
-    }
-    return AndAssignSlowCase(RHS);
+    else
+      AndAssignSlowCase(RHS);
+    return *this;
   }
 
   /// \brief Bitwise AND assignment operator.
@@ -766,11 +763,11 @@ public:
   /// \returns *this after ORing with RHS.
   APInt &operator|=(const APInt &RHS) {
     assert(BitWidth == RHS.BitWidth && "Bit widths must be the same");
-    if (isSingleWord()) {
+    if (isSingleWord())
       VAL |= RHS.VAL;
-      return *this;
-    }
-    return OrAssignSlowCase(RHS);
+    else
+      OrAssignSlowCase(RHS);
+    return *this;
   }
 
   /// \brief Bitwise OR assignment operator.
@@ -796,11 +793,11 @@ public:
   /// \returns *this after XORing with RHS.
   APInt &operator^=(const APInt &RHS) {
     assert(BitWidth == RHS.BitWidth && "Bit widths must be the same");
-    if (isSingleWord()) {
+    if (isSingleWord())
       VAL ^= RHS.VAL;
-      return *this;
-    }
-    return XorAssignSlowCase(RHS);
+    else
+      XorAssignSlowCase(RHS);
+    return *this;
   }
 
   /// \brief Bitwise XOR assignment operator.
@@ -1031,9 +1028,7 @@ public:
   ///
   /// \returns true if *this == Val
   bool operator==(uint64_t Val) const {
-    if (isSingleWord())
-      return VAL == Val;
-    return EqualSlowCase(Val);
+    return (isSingleWord() || getActiveBits() <= 64) && getZExtValue() == Val;
   }
 
   /// \brief Equality comparison.
@@ -1083,7 +1078,8 @@ public:
   ///
   /// \returns true if *this < RHS when considered unsigned.
   bool ult(uint64_t RHS) const {
-    return getActiveBits() > 64 ? false : getZExtValue() < RHS;
+    // Only need to check active bits if not a single word.
+    return (isSingleWord() || getActiveBits() <= 64) && getZExtValue() < RHS;
   }
 
   /// \brief Signed less than comparison
@@ -1151,7 +1147,8 @@ public:
   ///
   /// \returns true if *this > RHS when considered unsigned.
   bool ugt(uint64_t RHS) const {
-    return getActiveBits() > 64 ? true : getZExtValue() > RHS;
+    // Only need to check active bits if not a single word.
+    return (!isSingleWord() && getActiveBits() > 64) || getZExtValue() > RHS;
   }
 
   /// \brief Signed greather than comparison
@@ -1432,8 +1429,7 @@ public:
   /// int64_t. Otherwise an assertion will result.
   int64_t getSExtValue() const {
     if (isSingleWord())
-      return int64_t(VAL << (APINT_BITS_PER_WORD - BitWidth)) >>
-             (APINT_BITS_PER_WORD - BitWidth);
+      return SignExtend64(VAL, BitWidth);
     assert(getMinSignedBits() <= 64 && "Too many bits for int64_t");
     return int64_t(pVal[0]);
   }
@@ -1987,7 +1983,7 @@ inline const APInt &umax(const APInt &A, const APInt &B) {
 /// \brief Compute GCD of two unsigned APInt values.
 ///
 /// This function returns the greatest common divisor of the two APInt values
-/// using Euclid's algorithm.
+/// using Stein's algorithm.
 ///
 /// \returns the greatest common divisor of A and B.
 APInt GreatestCommonDivisor(APInt A, APInt B);

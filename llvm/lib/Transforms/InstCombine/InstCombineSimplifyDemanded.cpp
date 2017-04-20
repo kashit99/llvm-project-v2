@@ -38,7 +38,7 @@ static bool ShrinkDemandedConstant(Instruction *I, unsigned OpNo,
 
   // If there are no bits set that aren't demanded, nothing to do.
   Demanded = Demanded.zextOrTrunc(C->getBitWidth());
-  if ((~Demanded & *C) == 0)
+  if (C->isSubsetOf(Demanded))
     return false;
 
   // This instruction is producing bits that are not demanded. Shrink the RHS.
@@ -117,27 +117,16 @@ Value *InstCombiner::SimplifyDemandedUseBits(Value *V, APInt DemandedMask,
       KnownOne.getBitWidth() == BitWidth &&
       "Value *V, DemandedMask, KnownZero and KnownOne "
       "must have same BitWidth");
-  const APInt *C;
-  if (match(V, m_APInt(C))) {
-    // We know all of the bits for a scalar constant or a splat vector constant!
-    KnownOne = *C;
-    KnownZero = ~KnownOne;
-    return nullptr;
-  }
-  if (isa<ConstantPointerNull>(V)) {
-    // We know all of the bits for a constant!
-    KnownOne.clearAllBits();
-    KnownZero.setAllBits();
+
+  if (isa<Constant>(V)) {
+    computeKnownBits(V, KnownZero, KnownOne, Depth, CxtI);
     return nullptr;
   }
 
   KnownZero.clearAllBits();
   KnownOne.clearAllBits();
-  if (DemandedMask == 0) {   // Not demanding any bits from V.
-    if (isa<UndefValue>(V))
-      return nullptr;
+  if (DemandedMask == 0)     // Not demanding any bits from V.
     return UndefValue::get(VTy);
-  }
 
   if (Depth == 6)        // Limit search depth.
     return nullptr;

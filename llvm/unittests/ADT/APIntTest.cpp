@@ -2021,7 +2021,7 @@ TEST(APIntTest, LogicalRightShift) {
 
   // Ensure we handle large shifts of multi-word.
   const APInt neg_one(128, static_cast<uint64_t>(-1), true);
-  EXPECT_EQ(0, neg_one.lshr(257));
+  EXPECT_EQ(0, neg_one.lshr(128));
 }
 
 TEST(APIntTest, LeftShift) {
@@ -2054,7 +2054,36 @@ TEST(APIntTest, LeftShift) {
 
   // Ensure we handle large shifts of multi-word.
   const APInt neg_one(128, static_cast<uint64_t>(-1), true);
-  EXPECT_EQ(0, neg_one.shl(257));
+  EXPECT_EQ(0, neg_one.shl(128));
+}
+
+TEST(APIntTest, isSubsetOf) {
+  APInt i32_1(32, 1);
+  APInt i32_2(32, 2);
+  APInt i32_3(32, 3);
+  EXPECT_FALSE(i32_3.isSubsetOf(i32_1));
+  EXPECT_TRUE(i32_1.isSubsetOf(i32_3));
+  EXPECT_FALSE(i32_2.isSubsetOf(i32_1));
+  EXPECT_FALSE(i32_1.isSubsetOf(i32_2));
+  EXPECT_TRUE(i32_3.isSubsetOf(i32_3));
+
+  APInt i128_1(128, 1);
+  APInt i128_2(128, 2);
+  APInt i128_3(128, 3);
+  EXPECT_FALSE(i128_3.isSubsetOf(i128_1));
+  EXPECT_TRUE(i128_1.isSubsetOf(i128_3));
+  EXPECT_FALSE(i128_2.isSubsetOf(i128_1));
+  EXPECT_FALSE(i128_1.isSubsetOf(i128_2));
+  EXPECT_TRUE(i128_3.isSubsetOf(i128_3));
+
+  i128_1 <<= 64;
+  i128_2 <<= 64;
+  i128_3 <<= 64;
+  EXPECT_FALSE(i128_3.isSubsetOf(i128_1));
+  EXPECT_TRUE(i128_1.isSubsetOf(i128_3));
+  EXPECT_FALSE(i128_2.isSubsetOf(i128_1));
+  EXPECT_FALSE(i128_1.isSubsetOf(i128_2));
+  EXPECT_TRUE(i128_3.isSubsetOf(i128_3));
 }
 
 } // end anonymous namespace

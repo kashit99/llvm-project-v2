@@ -209,6 +209,12 @@ private:
   /// out-of-line slow case for countPopulation
   unsigned countPopulationSlowCase() const LLVM_READONLY;
 
+  /// out-of-line slow case for intersects.
+  bool intersectsSlowCase(const APInt &RHS) const LLVM_READONLY;
+
+  /// out-of-line slow case for isSubsetOf.
+  bool isSubsetOfSlowCase(const APInt &RHS) const LLVM_READONLY;
+
   /// out-of-line slow case for setBits.
   void setBitsSlowCase(unsigned loBit, unsigned hiBit);
 
@@ -440,8 +446,9 @@ public:
     assert(numBits <= BitWidth && "numBits out of range");
     if (isSingleWord())
       return VAL == (UINT64_MAX >> (APINT_BITS_PER_WORD - numBits));
-    unsigned Ones = countTrailingOnes();
-    return (numBits == Ones) && ((Ones + countLeadingZeros()) == BitWidth);
+    unsigned Ones = countTrailingOnesSlowCase();
+    return (numBits == Ones) &&
+           ((Ones + countLeadingZerosSlowCase()) == BitWidth);
   }
 
   /// \returns true if this APInt is a non-empty sequence of ones starting at
@@ -450,8 +457,8 @@ public:
   bool isMask() const {
     if (isSingleWord())
       return isMask_64(VAL);
-    unsigned Ones = countTrailingOnes();
-    return (Ones > 0) && ((Ones + countLeadingZeros()) == BitWidth);
+    unsigned Ones = countTrailingOnesSlowCase();
+    return (Ones > 0) && ((Ones + countLeadingZerosSlowCase()) == BitWidth);
   }
 
   /// \brief Return true if this APInt value contains a sequence of ones with
@@ -459,8 +466,9 @@ public:
   bool isShiftedMask() const {
     if (isSingleWord())
       return isShiftedMask_64(VAL);
-    unsigned Ones = countPopulation();
-    return (Ones + countTrailingZeros() + countLeadingZeros()) == BitWidth;
+    unsigned Ones = countPopulationSlowCase();
+    unsigned LeadZ = countLeadingZerosSlowCase();
+    return (Ones + LeadZ + countTrailingZeros()) == BitWidth;
   }
 
   /// @}
@@ -844,8 +852,9 @@ public:
   ///
   /// \returns *this after shifting left by ShiftAmt
   APInt &operator<<=(unsigned ShiftAmt) {
+    assert(ShiftAmt <= BitWidth && "Invalid shift amount");
     if (isSingleWord()) {
-      if (ShiftAmt >= BitWidth)
+      if (ShiftAmt == BitWidth)
         VAL = 0;
       else
         VAL <<= ShiftAmt;
@@ -890,8 +899,9 @@ public:
 
   /// Logical right-shift this APInt by ShiftAmt in place.
   void lshrInPlace(unsigned ShiftAmt) {
+    assert(ShiftAmt <= BitWidth && "Invalid shift amount");
     if (isSingleWord()) {
-      if (ShiftAmt >= BitWidth)
+      if (ShiftAmt == BitWidth)
         VAL = 0;
       else
         VAL >>= ShiftAmt;
@@ -1097,7 +1107,8 @@ public:
   ///
   /// \returns true if *this < RHS when considered signed.
   bool slt(int64_t RHS) const {
-    return getMinSignedBits() > 64 ? isNegative() : getSExtValue() < RHS;
+    return (!isSingleWord() && getMinSignedBits() > 64) ? isNegative()
+                                                        : getSExtValue() < RHS;
   }
 
   /// \brief Unsigned less or equal comparison
@@ -1166,7 +1177,8 @@ public:
   ///
   /// \returns true if *this > RHS when considered signed.
   bool sgt(int64_t RHS) const {
-    return getMinSignedBits() > 64 ? !isNegative() : getSExtValue() > RHS;
+    return (!isSingleWord() && getMinSignedBits() > 64) ? !isNegative()
+                                                        : getSExtValue() > RHS;
   }
 
   /// \brief Unsigned greater or equal comparison
@@ -1204,9 +1216,18 @@ public:
   /// This operation tests if there are any pairs of corresponding bits
   /// between this APInt and RHS that are both set.
   bool intersects(const APInt &RHS) const {
-    APInt temp(*this);
-    temp &= RHS;
-    return temp != 0;
+    assert(BitWidth == RHS.BitWidth && "Bit widths must be the same");
+    if (isSingleWord())
+      return (VAL & RHS.VAL) != 0;
+    return intersectsSlowCase(RHS);
+  }
+
+  /// This operation checks that all bits set in this APInt are also set in RHS.
+  bool isSubsetOf(const APInt &RHS) const {
+    assert(BitWidth == RHS.BitWidth && "Bit widths must be the same");
+    if (isSingleWord())
+      return (VAL & ~RHS.VAL) == 0;
+    return isSubsetOfSlowCase(RHS);
   }
 
   /// @}

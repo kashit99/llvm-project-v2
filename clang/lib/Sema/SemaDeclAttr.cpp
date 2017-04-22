@@ -2323,10 +2323,8 @@ static void handleAvailabilityAttr(Sema &S, Decl *D,
       << Platform->Ident;
 
   NamedDecl *ND = dyn_cast<NamedDecl>(D);
-  if (!ND) {
-    S.Diag(Attr.getLoc(), diag::warn_attribute_ignored) << Attr.getName();
+  if (!ND) // We warned about this already, so just return.
     return;
-  }
 
   AvailabilityChange Introduced = Attr.getAvailabilityIntroduced();
   AvailabilityChange Deprecated = Attr.getAvailabilityDeprecated();
@@ -2444,12 +2442,6 @@ static void handleExternalSourceSymbolAttr(Sema &S, Decl *D,
     return;
   assert(checkAttributeAtMostNumArgs(S, Attr, 3) &&
          "Invalid number of arguments in an external_source_symbol attribute");
-
-  if (!isa<NamedDecl>(D)) {
-    S.Diag(Attr.getLoc(), diag::warn_attribute_wrong_decl_type)
-        << Attr.getName() << ExpectedNamedDecl;
-    return;
-  }
 
   StringRef Language;
   if (const auto *SE = dyn_cast_or_null<StringLiteral>(Attr.getArgAsExpr(0)))
@@ -6106,18 +6098,21 @@ static void handleOpenCLNoSVMAttr(Sema &S, Decl *D, const AttributeList &Attr) {
 static bool handleCommonAttributeFeatures(Sema &S, Scope *scope, Decl *D,
                                           const AttributeList &Attr) {
   // Several attributes carry different semantics than the parsing requires, so
-  // those are opted out of the common handling.
+  // those are opted out of the common argument checks.
   //
   // We also bail on unknown and ignored attributes because those are handled
   // as part of the target-specific handling logic.
-  if (Attr.hasCustomParsing() ||
-      Attr.getKind() == AttributeList::UnknownAttribute)
+  if (Attr.getKind() == AttributeList::UnknownAttribute)
     return false;
-
   // Check whether the attribute requires specific language extensions to be
   // enabled.
   if (!Attr.diagnoseLangOpts(S))
     return true;
+  // Check whether the attribute appertains to the given subject.
+  if (!Attr.diagnoseAppertainsTo(S, D))
+    return true;
+  if (Attr.hasCustomParsing())
+    return false;
 
   if (Attr.getMinArgs() == Attr.getMaxArgs()) {
     // If there are no optional arguments, then checking for the argument count
@@ -6133,10 +6128,6 @@ static bool handleCommonAttributeFeatures(Sema &S, Scope *scope, Decl *D,
              !checkAttributeAtMostNumArgs(S, Attr, Attr.getMaxArgs()))
       return true;
   }
-
-  // Check whether the attribute appertains to the given subject.
-  if (!Attr.diagnoseAppertainsTo(S, D))
-    return true;
 
   return false;
 }
@@ -7027,6 +7018,8 @@ void Sema::ProcessDeclAttributes(Scope *S, Decl *D, const Declarator &PD) {
 
   // Look for API notes that map to attributes.
   ProcessAPINotes(D);
+  // Apply additional attributes specified by '#pragma clang attribute'.
+  AddPragmaAttributes(S, D);
 }
 
 /// Is the given declaration allowed to use a forbidden type?
@@ -7195,6 +7188,7 @@ static void DoEmitAvailabilityWarning(Sema &S, AvailabilityResult K,
   // Diagnostics for deprecated or unavailable.
   unsigned diag, diag_message, diag_fwdclass_message;
   unsigned diag_available_here = diag::note_availability_specified_here;
+  SourceLocation NoteLocation = D->getLocation();
 
   // Matches 'diag::note_property_attribute' options.
   unsigned property_note_select;
@@ -7217,6 +7211,8 @@ static void DoEmitAvailabilityWarning(Sema &S, AvailabilityResult K,
     diag_fwdclass_message = diag::warn_deprecated_fwdclass_message;
     property_note_select = /* deprecated */ 0;
     available_here_select_kind = /* deprecated */ 2;
+    if (const auto *attr = D->getAttr<DeprecatedAttr>())
+      NoteLocation = attr->getLocation();
     break;
 
   case AR_Unavailable:
@@ -7335,7 +7331,7 @@ static void DoEmitAvailabilityWarning(Sema &S, AvailabilityResult K,
     }
   }
   else
-    S.Diag(D->getLocation(), diag_available_here)
+    S.Diag(NoteLocation, diag_available_here)
         << D << available_here_select_kind;
 
   if (K == AR_NotYetIntroduced)

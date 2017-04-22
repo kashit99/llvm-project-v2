@@ -184,6 +184,8 @@ def arcmt_migrate_report_output : Separate<["-"], "arcmt-migrate-report-output">
 def arcmt_migrate_emit_arc_errors : Flag<["-"], "arcmt-migrate-emit-errors">,
   HelpText<"Emit ARC errors even if the migrator can fix them">,
   Flags<[CC1Option]>;
+def gen_reproducer: Flag<["-"], "gen-reproducer">, InternalDebugOpt,
+  HelpText<"Auto-generates preprocessed source files and a reproduction script">;
 
 def _migrate : Flag<["--"], "migrate">, Flags<[DriverOption]>,
   HelpText<"Run the migrator">;
@@ -600,7 +602,8 @@ def fconstexpr_depth_EQ : Joined<["-"], "fconstexpr-depth=">, Group<f_Group>;
 def fconstexpr_steps_EQ : Joined<["-"], "fconstexpr-steps=">, Group<f_Group>;
 def fconstexpr_backtrace_limit_EQ : Joined<["-"], "fconstexpr-backtrace-limit=">,
                                     Group<f_Group>;
-def fno_crash_diagnostics : Flag<["-"], "fno-crash-diagnostics">, Group<f_clang_Group>, Flags<[NoArgumentUnused]>;
+def fno_crash_diagnostics : Flag<["-"], "fno-crash-diagnostics">, Group<f_clang_Group>, Flags<[NoArgumentUnused]>,
+  HelpText<"Disable auto-generation of preprocessed source files and a script for reproduction during a clang crash">;
 def fcreate_profile : Flag<["-"], "fcreate-profile">, Group<f_Group>;
 def fcxx_exceptions: Flag<["-"], "fcxx-exceptions">, Group<f_Group>,
   HelpText<"Enable C++ exceptions">, Flags<[CC1Option]>;
@@ -1354,6 +1357,12 @@ def fstrict_return : Flag<["-"], "fstrict-return">, Group<f_Group>,
            "function as unreachable">;
 def fno_strict_return : Flag<["-"], "fno-strict-return">, Group<f_Group>,
   Flags<[CC1Option]>;
+
+def fallow_editor_placeholders : Flag<["-"], "fallow-editor-placeholders">,
+  Group<f_Group>, Flags<[CC1Option]>,
+  HelpText<"Treat editor placeholders as valid source code">;
+def fno_allow_editor_placeholders : Flag<["-"],
+  "fno-allow-editor-placeholders">, Group<f_Group>;
 
 def fdebug_types_section: Flag <["-"], "fdebug-types-section">, Group<f_Group>,
   Flags<[CC1Option]>, HelpText<"Place debug types in their own section (ELF Only)">;

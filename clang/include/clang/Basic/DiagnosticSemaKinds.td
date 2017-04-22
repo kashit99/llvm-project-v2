@@ -742,6 +742,25 @@ def err_pragma_loop_compatibility : Error<
 def err_pragma_loop_precedes_nonloop : Error<
   "expected a for, while, or do-while loop to follow '%0'">;
 
+def err_pragma_attribute_matcher_subrule_contradicts_rule : Error<
+  "redundant attribute subject matcher sub-rule '%0'; '%1' already matches "
+  "those declarations">;
+def err_pragma_attribute_matcher_negated_subrule_contradicts_subrule : Error<
+  "negated attribute subject matcher sub-rule '%0' contradicts sub-rule '%1'">;
+def err_pragma_attribute_invalid_matchers : Error<
+  "attribute %0 can't be applied to %1">;
+def err_pragma_attribute_stack_mismatch : Error<
+  "'#pragma clang attribute pop' with no matching '#pragma clang attribute push'">;
+def warn_pragma_attribute_unused : Warning<
+  "unused attribute %0 in '#pragma clang attribute push' region">,
+  InGroup<PragmaClangAttribute>;
+def note_pragma_attribute_region_ends_here : Note<
+  "'#pragma clang attribute push' regions ends here">;
+def err_pragma_attribute_no_pop_eof : Error<"unterminated "
+  "'#pragma clang attribute push' at end of file">;
+def note_pragma_attribute_applied_decl_here : Note<
+  "when applied to this declaration">;
+
 /// Objective-C parser diagnostics
 def err_duplicate_class_def : Error<
   "duplicate interface definition for class %0">;
@@ -1664,8 +1683,8 @@ def err_init_conversion_failed : Error<
   "cannot initialize %select{a variable|a parameter|return object|an "
   "exception object|a member subobject|an array element|a new value|a value|a "
   "base class|a constructor delegation|a vector element|a block element|a "
-  "complex element|a lambda capture|a compound literal initializer|a "
-  "related result|a parameter of CF audited function}0 "
+  "block element|a complex element|a lambda capture|a compound literal "
+  "initializer|a related result|a parameter of CF audited function}0 "
   "%diff{of type $ with an %select{rvalue|lvalue}2 of type $|"
   "with an %select{rvalue|lvalue}2 of incompatible type}1,3"
   "%select{|: different classes%diff{ ($ vs $)|}5,6"
@@ -4545,6 +4564,8 @@ def err_abi_tag_on_redeclaration : Error<
   "cannot add 'abi_tag' attribute in a redeclaration">;
 def err_new_abi_tag_on_redeclaration : Error<
   "'abi_tag' %0 missing in original declaration">;
+def note_use_ifdef_guards :
+  Note <"unguarded header; consider using #ifdef guards or #pragma once">;
 
 def note_deleted_dtor_no_operator_delete : Note<
   "virtual destructor requires an unambiguous, accessible 'operator delete'">;
@@ -4931,6 +4952,8 @@ def note_protected_by_if_available : Note<
   "jump enters controlled statement of if available">;
 def note_protected_by_vla : Note<
   "jump bypasses initialization of variable length array">;
+def note_protected_by_objc_fast_enumeration : Note<
+  "jump enters Objective-C fast enumeration loop">;
 def note_protected_by_objc_try : Note<
   "jump bypasses initialization of @try block">;
 def note_protected_by_objc_catch : Note<
@@ -8792,6 +8815,13 @@ def ext_equivalent_internal_linkage_decl_in_modules : ExtWarn<
   InGroup<DiagGroup<"modules-ambiguous-internal-linkage">>;
 def note_equivalent_internal_linkage_decl : Note<
   "declared here%select{ in module '%1'|}0">;
+
+def note_redefinition_modules_same_file : Note<
+	"'%0' included multiple times, additional include site in header from module '%1'">;
+def note_redefinition_modules_same_file_modulemap : Note<
+	"consider adding '%0' as part of '%1' definition in">;
+def note_redefinition_include_same_file : Note<
+	"'%0' included multiple times, additional include site here">;
 }
 
 let CategoryName = "Coroutines Issue" in {

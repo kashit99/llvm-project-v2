@@ -90,6 +90,8 @@ private:
 
   friend struct DenseMapAPIntKeyInfo;
 
+  friend class APSInt;
+
   /// \brief Fast internal constructor
   ///
   /// This constructor is used only internally for speed of construction of
@@ -229,6 +231,14 @@ private:
 
   /// out-of-line slow case for operator^=.
   void XorAssignSlowCase(const APInt& RHS);
+
+  /// Unsigned comparison. Returns -1, 0, or 1 if this APInt is less than, equal
+  /// to, or greater than RHS.
+  int compare(const APInt &RHS) const LLVM_READONLY;
+
+  /// Signed comparison. Returns -1, 0, or 1 if this APInt is less than, equal
+  /// to, or greater than RHS.
+  int compareSigned(const APInt &RHS) const LLVM_READONLY;
 
 public:
   /// \name Constructors
@@ -1079,7 +1089,7 @@ public:
   /// the validity of the less-than relationship.
   ///
   /// \returns true if *this < RHS when both are considered unsigned.
-  bool ult(const APInt &RHS) const LLVM_READONLY;
+  bool ult(const APInt &RHS) const { return compare(RHS) < 0; }
 
   /// \brief Unsigned less than comparison
   ///
@@ -1098,7 +1108,7 @@ public:
   /// validity of the less-than relationship.
   ///
   /// \returns true if *this < RHS when both are considered signed.
-  bool slt(const APInt &RHS) const LLVM_READONLY;
+  bool slt(const APInt &RHS) const { return compareSigned(RHS) < 0; }
 
   /// \brief Signed less than comparison
   ///
@@ -1117,7 +1127,7 @@ public:
   /// validity of the less-or-equal relationship.
   ///
   /// \returns true if *this <= RHS when both are considered unsigned.
-  bool ule(const APInt &RHS) const { return ult(RHS) || eq(RHS); }
+  bool ule(const APInt &RHS) const { return compare(RHS) <= 0; }
 
   /// \brief Unsigned less or equal comparison
   ///
@@ -1133,7 +1143,7 @@ public:
   /// validity of the less-or-equal relationship.
   ///
   /// \returns true if *this <= RHS when both are considered signed.
-  bool sle(const APInt &RHS) const { return slt(RHS) || eq(RHS); }
+  bool sle(const APInt &RHS) const { return compareSigned(RHS) <= 0; }
 
   /// \brief Signed less or equal comparison
   ///
@@ -1149,7 +1159,7 @@ public:
   /// the validity of the greater-than relationship.
   ///
   /// \returns true if *this > RHS when both are considered unsigned.
-  bool ugt(const APInt &RHS) const { return !ult(RHS) && !eq(RHS); }
+  bool ugt(const APInt &RHS) const { return !ule(RHS); }
 
   /// \brief Unsigned greater than comparison
   ///
@@ -1168,7 +1178,7 @@ public:
   /// validity of the greater-than relationship.
   ///
   /// \returns true if *this > RHS when both are considered signed.
-  bool sgt(const APInt &RHS) const { return !slt(RHS) && !eq(RHS); }
+  bool sgt(const APInt &RHS) const { return !sle(RHS); }
 
   /// \brief Signed greater than comparison
   ///

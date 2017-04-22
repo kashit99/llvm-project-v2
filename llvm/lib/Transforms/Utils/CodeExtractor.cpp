@@ -73,24 +73,26 @@ bool CodeExtractor::isBlockValidForExtraction(const BasicBlock &BB) {
 }
 
 /// \brief Build a set of blocks to extract if the input blocks are viable.
-template <typename IteratorT>
-static SetVector<BasicBlock *> buildExtractionBlockSet(IteratorT BBBegin,
-                                                       IteratorT BBEnd) {
+static SetVector<BasicBlock *>
+buildExtractionBlockSet(ArrayRef<BasicBlock *> BBs, DominatorTree *DT) {
+  assert(!BBs.empty() && "The set of blocks to extract must be non-empty");
   SetVector<BasicBlock *> Result;
-
-  assert(BBBegin != BBEnd);
 
   // Loop over the blocks, adding them to our set-vector, and aborting with an
   // empty set if we encounter invalid blocks.
-  do {
-    if (!Result.insert(*BBBegin))
-      llvm_unreachable("Repeated basic blocks in extraction input");
+  for (BasicBlock *BB : BBs) {
 
-    if (!CodeExtractor::isBlockValidForExtraction(**BBBegin)) {
+    // If this block is dead, don't process it.
+    if (DT && !DT->isReachableFromEntry(BB))
+      continue;
+
+    if (!Result.insert(BB))
+      llvm_unreachable("Repeated basic blocks in extraction input");
+    if (!CodeExtractor::isBlockValidForExtraction(*BB)) {
       Result.clear();
       return Result;
     }
-  } while (++BBBegin != BBEnd);
+  }
 
 #ifndef NDEBUG
   for (SetVector<BasicBlock *>::iterator I = std::next(Result.begin()),
@@ -106,23 +108,17 @@ static SetVector<BasicBlock *> buildExtractionBlockSet(IteratorT BBBegin,
   return Result;
 }
 
-/// \brief Helper to call buildExtractionBlockSet with an ArrayRef.
-static SetVector<BasicBlock *>
-buildExtractionBlockSet(ArrayRef<BasicBlock *> BBs) {
-  return buildExtractionBlockSet(BBs.begin(), BBs.end());
-}
-
 CodeExtractor::CodeExtractor(ArrayRef<BasicBlock *> BBs, DominatorTree *DT,
                              bool AggregateArgs, BlockFrequencyInfo *BFI,
                              BranchProbabilityInfo *BPI)
     : DT(DT), AggregateArgs(AggregateArgs || AggregateArgsOpt), BFI(BFI),
-      BPI(BPI), Blocks(buildExtractionBlockSet(BBs)), NumExitBlocks(~0U) {}
+      BPI(BPI), Blocks(buildExtractionBlockSet(BBs, DT)), NumExitBlocks(~0U) {}
 
 CodeExtractor::CodeExtractor(DominatorTree &DT, Loop &L, bool AggregateArgs,
                              BlockFrequencyInfo *BFI,
                              BranchProbabilityInfo *BPI)
     : DT(&DT), AggregateArgs(AggregateArgs || AggregateArgsOpt), BFI(BFI),
-      BPI(BPI), Blocks(buildExtractionBlockSet(L.getBlocks())),
+      BPI(BPI), Blocks(buildExtractionBlockSet(L.getBlocks(), &DT)),
       NumExitBlocks(~0U) {}
 
 /// definedInRegion - Return true if the specified value is defined in the

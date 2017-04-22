@@ -26,7 +26,7 @@ using namespace llvm::PatternMatch;
 /// constant integer. If so, check to see if there are any bits set in the
 /// constant that are not demanded. If so, shrink the constant and return true.
 static bool ShrinkDemandedConstant(Instruction *I, unsigned OpNo,
-                                   APInt Demanded) {
+                                   const APInt &Demanded) {
   assert(I && "No instruction?");
   assert(OpNo < I->getNumOperands() && "Operand index too large");
 
@@ -37,13 +37,11 @@ static bool ShrinkDemandedConstant(Instruction *I, unsigned OpNo,
     return false;
 
   // If there are no bits set that aren't demanded, nothing to do.
-  Demanded = Demanded.zextOrTrunc(C->getBitWidth());
   if (C->isSubsetOf(Demanded))
     return false;
 
   // This instruction is producing bits that are not demanded. Shrink the RHS.
-  Demanded &= *C;
-  I->setOperand(OpNo, ConstantInt::get(Op->getType(), Demanded));
+  I->setOperand(OpNo, ConstantInt::get(Op->getType(), *C & Demanded));
 
   return true;
 }
@@ -472,15 +470,12 @@ Value *InstCombiner::SimplifyDemandedUseBits(Value *V, APInt DemandedMask,
   case Instruction::Shl: {
     const APInt *SA;
     if (match(I->getOperand(1), m_APInt(SA))) {
-      {
-        Value *VarX; ConstantInt *C1;
-        if (match(I->getOperand(0), m_Shr(m_Value(VarX), m_ConstantInt(C1)))) {
-          Instruction *Shr = cast<Instruction>(I->getOperand(0));
-          Value *R = SimplifyShrShlDemandedBits(Shr, I, DemandedMask,
-                                                KnownZero, KnownOne);
-          if (R)
-            return R;
-        }
+      const APInt *ShrAmt;
+      if (match(I->getOperand(0), m_Shr(m_Value(), m_APInt(ShrAmt)))) {
+        Instruction *Shr = cast<Instruction>(I->getOperand(0));
+        if (Value *R = simplifyShrShlDemandedBits(
+                Shr, *ShrAmt, I, *SA, DemandedMask, KnownZero, KnownOne))
+          return R;
       }
 
       uint64_t ShiftAmt = SA->getLimitedValue(BitWidth-1);
@@ -876,20 +871,17 @@ Value *InstCombiner::SimplifyMultipleUseDemandedBits(Instruction *I,
 ///
 /// As with SimplifyDemandedUseBits, it returns NULL if the simplification was
 /// not successful.
-Value *InstCombiner::SimplifyShrShlDemandedBits(Instruction *Shr,
-                                                Instruction *Shl,
-                                                const APInt &DemandedMask,
-                                                APInt &KnownZero,
-                                                APInt &KnownOne) {
-
-  const APInt &ShlOp1 = cast<ConstantInt>(Shl->getOperand(1))->getValue();
-  const APInt &ShrOp1 = cast<ConstantInt>(Shr->getOperand(1))->getValue();
+Value *
+InstCombiner::simplifyShrShlDemandedBits(Instruction *Shr, const APInt &ShrOp1,
+                                         Instruction *Shl, const APInt &ShlOp1,
+                                         const APInt &DemandedMask,
+                                         APInt &KnownZero, APInt &KnownOne) {
   if (!ShlOp1 || !ShrOp1)
-      return nullptr; // Noop.
+    return nullptr; // No-op.
 
   Value *VarX = Shr->getOperand(0);
   Type *Ty = VarX->getType();
-  unsigned BitWidth = Ty->getIntegerBitWidth();
+  unsigned BitWidth = Ty->getScalarSizeInBits();
   if (ShlOp1.uge(BitWidth) || ShrOp1.uge(BitWidth))
     return nullptr; // Undef.
 

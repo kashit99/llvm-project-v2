@@ -43,5 +43,5 @@ then:
   br label %end
 
 end:
-  ret void
+  unreachable
 }

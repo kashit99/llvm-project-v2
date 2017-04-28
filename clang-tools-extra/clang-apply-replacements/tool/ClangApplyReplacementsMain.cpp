@@ -208,15 +208,8 @@ int main(int argc, char **argv) {
 
   // Determine a formatting style from options.
   format::FormatStyle FormatStyle;
-  if (DoFormat) {
-    auto FormatStyleOrError =
-        format::getStyle(FormatStyleOpt, FormatStyleConfig, "LLVM");
-    if (!FormatStyleOrError) {
-      llvm::errs() << llvm::toString(FormatStyleOrError.takeError()) << "\n";
-      return 1;
-    }
-    FormatStyle = *FormatStyleOrError;
-  }
+  if (DoFormat)
+    FormatStyle = format::getStyle(FormatStyleOpt, FormatStyleConfig, "LLVM");
 
   TUReplacements TURs;
   TUReplacementFiles TUFiles;

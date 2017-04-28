@@ -24,15 +24,8 @@ void DeleteNullPointerCheck::registerMatchers(MatchFinder *Finder) {
                         to(decl(equalsBoundNode("deletedPointer"))))))))
           .bind("deleteExpr");
 
-  const auto DeleteMemberExpr =
-      cxxDeleteExpr(has(castExpr(has(memberExpr(hasDeclaration(
-                        fieldDecl(equalsBoundNode("deletedMemberPointer"))))))))
-          .bind("deleteMemberExpr");
-
-  const auto PointerExpr = ignoringImpCasts(anyOf(
-      declRefExpr(to(decl().bind("deletedPointer"))),
-      memberExpr(hasDeclaration(fieldDecl().bind("deletedMemberPointer")))));
-
+  const auto PointerExpr =
+      ignoringImpCasts(declRefExpr(to(decl().bind("deletedPointer"))));
   const auto PointerCondition = castExpr(hasCastKind(CK_PointerToBoolean),
                                          hasSourceExpression(PointerExpr));
   const auto BinaryPointerCheckCondition =
@@ -41,11 +34,9 @@ void DeleteNullPointerCheck::registerMatchers(MatchFinder *Finder) {
 
   Finder->addMatcher(
       ifStmt(hasCondition(anyOf(PointerCondition, BinaryPointerCheckCondition)),
-             hasThen(anyOf(
-                 DeleteExpr, DeleteMemberExpr,
-                 compoundStmt(anyOf(has(DeleteExpr), has(DeleteMemberExpr)),
-                              statementCountIs(1))
-                     .bind("compound"))))
+             hasThen(anyOf(DeleteExpr,
+                           compoundStmt(has(DeleteExpr), statementCountIs(1))
+                               .bind("compound"))))
           .bind("ifWithDelete"),
       this);
 }
@@ -67,10 +58,16 @@ void DeleteNullPointerCheck::check(const MatchFinder::MatchResult &Result) {
                                  *Result.SourceManager,
                                  Result.Context->getLangOpts())));
   if (Compound) {
-    Diag << FixItHint::CreateRemoval(
-        CharSourceRange::getTokenRange(Compound->getLBracLoc()));
-    Diag << FixItHint::CreateRemoval(
-        CharSourceRange::getTokenRange(Compound->getRBracLoc()));
+    Diag << FixItHint::CreateRemoval(CharSourceRange::getTokenRange(
+        Compound->getLBracLoc(),
+        Lexer::getLocForEndOfToken(Compound->getLBracLoc(), 0,
+                                   *Result.SourceManager,
+                                   Result.Context->getLangOpts())));
+    Diag << FixItHint::CreateRemoval(CharSourceRange::getTokenRange(
+        Compound->getRBracLoc(),
+        Lexer::getLocForEndOfToken(Compound->getRBracLoc(), 0,
+                                   *Result.SourceManager,
+                                   Result.Context->getLangOpts())));
   }
 }
 

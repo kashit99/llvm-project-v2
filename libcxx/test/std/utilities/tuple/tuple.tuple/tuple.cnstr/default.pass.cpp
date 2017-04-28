@@ -86,6 +86,7 @@ int main()
         static_assert(!noexcept(std::tuple<NoExceptDefault, ThrowingDefault>()), "");
         static_assert(!noexcept(std::tuple<ThrowingDefault, ThrowingDefault>()), "");
     }
+#ifndef _LIBCPP_HAS_NO_CONSTEXPR
     {
         constexpr std::tuple<> t;
     }
@@ -99,10 +100,11 @@ int main()
         assert(std::get<1>(t) == nullptr);
     }
     {
-    // Check that the SFINAE on the default constructor is not evaluated when
-    // it isn't needed. If the default constructor is evaluated then this test
+    // Check that the SFINAE on the default constructor is not evaluted when
+    // it isn't needed. If the default constructor is evaluted then this test
     // should fail to compile.
         IllFormedDefault v(0);
         std::tuple<IllFormedDefault> t(v);
     }
+#endif
 }

@@ -63,6 +63,7 @@ void
 test(SV sv, unsigned pos, unsigned n, const typename S::allocator_type& a)
 {
     typedef typename S::traits_type T;
+    typedef typename S::allocator_type A;
     if (pos <= sv.size())
     {
         S s2(sv, pos, n, a);

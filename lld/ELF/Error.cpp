@@ -20,10 +20,10 @@
 #include <unistd.h>
 #endif
 
+using namespace lld::elf;
 using namespace llvm;
 
-using namespace lld;
-using namespace lld::elf;
+namespace lld {
 
 uint64_t elf::ErrorCount;
 raw_ostream *elf::ErrorOS;
@@ -32,18 +32,6 @@ StringRef elf::Argv0;
 // The functions defined in this file can be called from multiple threads,
 // but outs() or errs() are not thread-safe. We protect them using a mutex.
 static std::mutex Mu;
-
-// Prints "\n" or does nothing, depending on Msg contents of
-// the previous call of this function.
-static void newline(const Twine &Msg) {
-  // True if the previous error message contained "\n".
-  // We want to separate multi-line error messages with a newline.
-  static bool Flag;
-
-  if (Flag)
-    *ErrorOS << "\n";
-  Flag = (StringRef(Msg.str()).find('\n') != StringRef::npos);
-}
 
 static void print(StringRef S, raw_ostream::Colors C) {
   *ErrorOS << Argv0 + ": ";
@@ -57,16 +45,9 @@ static void print(StringRef S, raw_ostream::Colors C) {
 }
 
 void elf::log(const Twine &Msg) {
-  if (Config->Verbose) {
-    std::lock_guard<std::mutex> Lock(Mu);
-    outs() << Argv0 << ": " << Msg << "\n";
-  }
-}
-
-void elf::message(const Twine &Msg) {
   std::lock_guard<std::mutex> Lock(Mu);
-  outs() << Msg << "\n";
-  outs().flush();
+  if (Config->Verbose)
+    outs() << Argv0 << ": " << Msg << "\n";
 }
 
 void elf::warn(const Twine &Msg) {
@@ -74,16 +55,13 @@ void elf::warn(const Twine &Msg) {
     error(Msg);
     return;
   }
-
   std::lock_guard<std::mutex> Lock(Mu);
-  newline(Msg);
   print("warning: ", raw_ostream::MAGENTA);
   *ErrorOS << Msg << "\n";
 }
 
 void elf::error(const Twine &Msg) {
   std::lock_guard<std::mutex> Lock(Mu);
-  newline(Msg);
 
   if (Config->ErrorLimit == 0 || ErrorCount < Config->ErrorLimit) {
     print("error: ", raw_ostream::RED);
@@ -99,6 +77,10 @@ void elf::error(const Twine &Msg) {
   ++ErrorCount;
 }
 
+void elf::error(std::error_code EC, const Twine &Prefix) {
+  error(Prefix + ": " + EC.message());
+}
+
 void elf::exitLld(int Val) {
   // Dealloc/destroy ManagedStatic variables before calling
   // _exit(). In a non-LTO build, this is a nop. In an LTO
@@ -111,6 +93,18 @@ void elf::exitLld(int Val) {
 }
 
 void elf::fatal(const Twine &Msg) {
-  error(Msg);
+  std::lock_guard<std::mutex> Lock(Mu);
+  print("error: ", raw_ostream::RED);
+  *ErrorOS << Msg << "\n";
   exitLld(1);
 }
+
+void elf::fatal(std::error_code EC, const Twine &Prefix) {
+  fatal(Prefix + ": " + EC.message());
+}
+
+void elf::fatal(Error &E, const Twine &Prefix) {
+  fatal(Prefix + ": " + llvm::toString(std::move(E)));
+}
+
+} // namespace lld

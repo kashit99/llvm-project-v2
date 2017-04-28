@@ -242,8 +242,7 @@ error:
  * and the constant "1 = \sum_i \alpha_i" for the homogeneous dimension.
  * Next, we extract the coefficients of the Bernstein base polynomials.
  */
-static isl_stat bernstein_coefficients_cell(__isl_take isl_cell *cell,
-	void *user)
+static int bernstein_coefficients_cell(__isl_take isl_cell *cell, void *user)
 {
 	int i, j;
 	struct bernstein_data *data = (struct bernstein_data *)user;
@@ -320,10 +319,10 @@ static isl_stat bernstein_coefficients_cell(__isl_take isl_cell *cell,
 	for (i = 0; i < 1 + nvar; ++i)
 		isl_qpolynomial_free(subs[i]);
 	free(subs);
-	return isl_stat_ok;
+	return 0;
 error:
 	isl_cell_free(cell);
-	return isl_stat_error;
+	return -1;
 }
 
 /* Base case of applying bernstein expansion.
@@ -374,9 +373,8 @@ static __isl_give isl_pw_qpolynomial_fold *bernstein_coefficients_base(
 	data->pwf_tight = isl_pw_qpolynomial_fold_zero(dim, data->type);
 	data->poly = isl_qpolynomial_homogenize(isl_qpolynomial_copy(poly));
 	vertices = isl_basic_set_compute_vertices(bset);
-	if (isl_vertices_foreach_disjoint_cell(vertices,
-					&bernstein_coefficients_cell, data) < 0)
-		data->pwf = isl_pw_qpolynomial_fold_free(data->pwf);
+	isl_vertices_foreach_disjoint_cell(vertices,
+		&bernstein_coefficients_cell, data);
 	isl_vertices_free(vertices);
 	isl_qpolynomial_free(data->poly);
 
@@ -519,9 +517,8 @@ error:
  * bernstein expansion recursively on each dimension.
  * Otherwise, we apply bernstein expansion on the entire polytope.
  */
-isl_stat isl_qpolynomial_bound_on_domain_bernstein(
-	__isl_take isl_basic_set *bset, __isl_take isl_qpolynomial *poly,
-	struct isl_bound *bound)
+int isl_qpolynomial_bound_on_domain_bernstein(__isl_take isl_basic_set *bset,
+	__isl_take isl_qpolynomial *poly, struct isl_bound *bound)
 {
 	struct bernstein_data data;
 	isl_pw_qpolynomial_fold *pwf;
@@ -550,9 +547,9 @@ isl_stat isl_qpolynomial_bound_on_domain_bernstein(
 	else
 		bound->pwf = isl_pw_qpolynomial_fold_fold(bound->pwf, pwf);
 
-	return isl_stat_ok;
+	return 0;
 error:
 	isl_basic_set_free(bset);
 	isl_qpolynomial_free(poly);
-	return isl_stat_error;
+	return -1;
 }

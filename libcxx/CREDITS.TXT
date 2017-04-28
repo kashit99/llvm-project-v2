@@ -81,7 +81,7 @@ E: andrew.c.morrow@gmail.com
 D: Minor patches and Linux fixes.
 
 N: Michael Park
-E: mcypark@gmail.com
+E: mpark@apache.org
 D: Implementation of <variant>.
 
 N: Arvid Picciani

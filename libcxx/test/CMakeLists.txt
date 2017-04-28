@@ -1,3 +1,5 @@
+include(AddLLVM) # for add_lit_testsuite
+
 macro(pythonize_bool var)
   if (${var})
     set(${var} True)
@@ -33,7 +35,6 @@ pythonize_bool(LIBCXXABI_USE_LLVM_UNWINDER)
 pythonize_bool(LIBCXX_HAS_ATOMIC_LIB)
 pythonize_bool(LIBCXX_HAVE_CXX_ATOMICS_WITH_LIB)
 pythonize_bool(LIBCXX_BUILD_EXTERNAL_THREAD_LIBRARY)
-pythonize_bool(LIBCXX_DEBUG_BUILD)
 
 # By default, for non-standalone builds, libcxx and libcxxabi share a library
 # directory.
@@ -60,28 +61,21 @@ if (LIBCXX_ENABLE_EXPERIMENTAL_LIBRARY)
   set(LIBCXX_TEST_DEPS cxx_experimental)
 endif()
 
-if (LIBCXX_BUILD_EXTERNAL_THREAD_LIBRARY)
+if (LIBCXX_HAS_EXTERNAL_THREAD_API)
   list(APPEND LIBCXX_TEST_DEPS cxx_external_threads)
 endif()
 
-if (LIBCXX_INCLUDE_TESTS)
-  include(AddLLVM) # for add_lit_testsuite
-  add_lit_testsuite(check-cxx
-    "Running libcxx tests"
-    ${CMAKE_CURRENT_BINARY_DIR}
-    DEPENDS cxx ${LIBCXX_TEST_DEPS})
+add_lit_testsuite(check-cxx
+  "Running libcxx tests"
+  ${CMAKE_CURRENT_BINARY_DIR}
+  DEPENDS cxx ${LIBCXX_TEST_DEPS})
 
-  add_custom_target(check-libcxx DEPENDS check-cxx)
-endif()
+add_custom_target(check-libcxx DEPENDS check-cxx)
 
 if (LIBCXX_GENERATE_COVERAGE)
   include(CodeCoverage)
   set(output_dir "${CMAKE_CURRENT_BINARY_DIR}/coverage")
-  set(capture_dirs
-      "${LIBCXX_LIB_CMAKEFILES_DIR}/cxx_objects.dir/"
-      "${LIBCXX_LIB_CMAKEFILES_DIR}/cxx.dir/"
-      "${LIBCXX_LIB_CMAKEFILES_DIR}/cxx_experimental.dir/"
-      "${CMAKE_CURRENT_BINARY_DIR}")
+  set(capture_dirs "${LIBCXX_LIB_CMAKEFILES_DIR}/cxx.dir/;${LIBCXX_LIB_CMAKEFILES_DIR}/cxx_experimental.dir/;${CMAKE_CURRENT_BINARY_DIR}")
   set(extract_dirs "${LIBCXX_SOURCE_DIR}/include;${LIBCXX_SOURCE_DIR}/src")
   setup_lcov_test_target_coverage("cxx" "${output_dir}" "${capture_dirs}" "${extract_dirs}")
 endif()

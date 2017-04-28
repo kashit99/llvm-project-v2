@@ -16,6 +16,7 @@
 #include <cstddef>
 
 namespace __cxxabiv1 {
+#pragma GCC visibility push(hidden)
 
 class _LIBCXXABI_TYPE_VIS __shim_type_info : public std::type_info {
 public:
@@ -66,7 +67,7 @@ enum
 
 class _LIBCXXABI_TYPE_VIS __class_type_info;
 
-struct _LIBCXXABI_HIDDEN __dynamic_cast_info
+struct __dynamic_cast_info
 {
 // const data supplied to the search:
 
@@ -152,7 +153,7 @@ public:
   has_unambiguous_public_base(__dynamic_cast_info *, void *, int) const;
 };
 
-struct _LIBCXXABI_HIDDEN __base_class_type_info
+struct __base_class_type_info
 {
 public:
     const __class_type_info* __base_type;
@@ -246,6 +247,8 @@ public:
                                            void *&) const;
   _LIBCXXABI_HIDDEN bool can_catch_nested(const __shim_type_info *) const;
 };
+
+#pragma GCC visibility pop
 
 }  // __cxxabiv1
 

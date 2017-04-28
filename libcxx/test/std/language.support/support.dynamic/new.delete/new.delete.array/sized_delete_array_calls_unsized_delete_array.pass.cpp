@@ -46,11 +46,9 @@ void operator delete[](void* p, const std::nothrow_t&) TEST_NOEXCEPT
 //   selected.
 struct A { ~A() {} };
 
-A *volatile x;
-
 int main()
 {
-    x = new A[3];
+    A* x = new A[3];
     assert(0 == delete_called);
     assert(0 == delete_nothrow_called);
 

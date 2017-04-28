@@ -9,8 +9,6 @@
 //
 // UNSUPPORTED: libcpp-has-no-threads, libcpp-has-thread-api-external
 
-// XFAIL: windows
-
 // <condition_variable>
 
 // class condition_variable;

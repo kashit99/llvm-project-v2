@@ -10,7 +10,7 @@
 
 # CHECK:      Section {
 # CHECK:        Index:
-# CHECK:        Name: .rodata
+# CHECK:        Name: .data
 # CHECK-NEXT:   Type: SHT_PROGBITS
 # CHECK-NEXT:   Flags [
 # CHECK-NEXT:     SHF_ALLOC
@@ -29,7 +29,7 @@
 # CHECK-NEXT: }
 # CHECK:      Section {
 # CHECK:        Index:
-# CHECK:        Name: .rodata
+# CHECK:        Name: .data
 # CHECK-NEXT:   Type: SHT_PROGBITS
 # CHECK-NEXT:   Flags [
 # CHECK-NEXT:     SHF_ALLOC
@@ -66,7 +66,7 @@
 # CHECK-NEXT:   )
 # CHECK-NEXT: }
 
-        .section        .rodata.1,"aM",@progbits,4
+        .section        .data.1,"aM",@progbits,4
         .align  4
         .global foo
 foo:
@@ -74,7 +74,7 @@ foo:
         .long   0x42
         .long   0x42
 
-        .section        .rodata.2,"aM",@progbits,8
+        .section        .data.2,"aM",@progbits,8
         .align  8
         .global bar
 bar:

@@ -43,7 +43,6 @@ struct Export {
   bool Noname = false;
   bool Data = false;
   bool Private = false;
-  bool Constant = false;
 
   // If an export is a form of /export:foo=dllname.bar, that means
   // that foo should be exported as an alias to bar in the DLL.
@@ -81,16 +80,14 @@ struct Configuration {
   SymbolBody *Entry = nullptr;
   bool NoEntry = false;
   std::string OutputFile;
-  bool ColorDiagnostics;
   bool DoGC = true;
   bool DoICF = true;
-  uint64_t ErrorLimit = 20;
   bool Relocatable = true;
   bool Force = false;
   bool Debug = false;
   bool WriteSymtab = true;
   unsigned DebugTypes = static_cast<unsigned>(DebugType::None);
-  llvm::SmallString<128> PDBPath;
+  StringRef PDBPath;
 
   // Symbols in this set are considered as live by the garbage collector.
   std::set<SymbolBody *> GCRoot;
@@ -106,8 +103,6 @@ struct Configuration {
   std::map<std::string, int> DLLOrder;
   SymbolBody *DelayLoadHelper = nullptr;
 
-  bool SaveTemps = false;
-
   // Used for SafeSEH.
   Symbol *SEHTable = nullptr;
   Symbol *SEHCount = nullptr;
@@ -116,9 +111,7 @@ struct Configuration {
   unsigned LTOOptLevel = 2;
 
   // Used for /opt:lldltojobs=N
-  unsigned LTOJobs = 0;
-  // Used for /opt:lldltopartitions=N
-  unsigned LTOPartitions = 1;
+  unsigned LTOJobs = 1;
 
   // Used for /merge:from=to (e.g. /merge:.rdata=.text)
   std::map<StringRef, StringRef> Merge;
@@ -142,9 +135,6 @@ struct Configuration {
   // Used for /alternatename.
   std::map<StringRef, StringRef> AlternateNames;
 
-  // Used for /lldmap.
-  std::string MapFile;
-
   uint64_t ImageBase = -1;
   uint64_t StackReserve = 1024 * 1024;
   uint64_t StackCommit = 4096;
@@ -161,7 +151,6 @@ struct Configuration {
   bool TerminalServerAware = true;
   bool LargeAddressAware = false;
   bool HighEntropyVA = false;
-  bool AppContainer = false;
 
   // This is for debugging.
   bool DebugPdb = false;

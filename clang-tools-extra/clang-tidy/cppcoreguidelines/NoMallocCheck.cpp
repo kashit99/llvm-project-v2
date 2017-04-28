@@ -8,34 +8,16 @@
 //===----------------------------------------------------------------------===//
 
 #include "NoMallocCheck.h"
-#include "../utils/Matchers.h"
-#include "../utils/OptionsUtils.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/ASTMatchers/ASTMatchFinder.h"
-#include <algorithm>
+#include <iostream>
 #include <string>
-#include <vector>
 
 using namespace clang::ast_matchers;
-using namespace clang::ast_matchers::internal;
 
 namespace clang {
 namespace tidy {
 namespace cppcoreguidelines {
-
-namespace {
-Matcher<FunctionDecl> hasAnyListedName(const std::string &FunctionNames) {
-  const std::vector<std::string> NameList =
-      utils::options::parseStringList(FunctionNames);
-  return hasAnyName(std::vector<StringRef>(NameList.begin(), NameList.end()));
-}
-}
-
-void NoMallocCheck::storeOptions(ClangTidyOptions::OptionMap &Opts) {
-  Options.store(Opts, "Allocations", AllocList);
-  Options.store(Opts, "Reallocations", ReallocList);
-  Options.store(Opts, "Deallocations", DeallocList);
-}
 
 void NoMallocCheck::registerMatchers(MatchFinder *Finder) {
   // C-style memory management is only problematic in C++.
@@ -43,28 +25,26 @@ void NoMallocCheck::registerMatchers(MatchFinder *Finder) {
     return;
 
   // Registering malloc, will suggest RAII.
-  Finder->addMatcher(callExpr(callee(functionDecl(hasAnyListedName(AllocList))))
-                         .bind("allocation"),
-                     this);
+  Finder->addMatcher(
+      callExpr(callee(functionDecl(hasAnyName("::malloc", "::calloc"))))
+          .bind("aquisition"),
+      this);
 
   // Registering realloc calls, suggest std::vector or std::string.
   Finder->addMatcher(
-      callExpr(callee(functionDecl(hasAnyListedName(ReallocList))))
-          .bind("realloc"),
+      callExpr(callee(functionDecl(hasName("::realloc")))).bind("realloc"),
       this);
 
   // Registering free calls, will suggest RAII instead.
   Finder->addMatcher(
-      callExpr(callee(functionDecl(hasAnyListedName(DeallocList))))
-          .bind("free"),
-      this);
+      callExpr(callee(functionDecl(hasName("::free")))).bind("free"), this);
 }
 
 void NoMallocCheck::check(const MatchFinder::MatchResult &Result) {
   const CallExpr *Call = nullptr;
   StringRef Recommendation;
 
-  if ((Call = Result.Nodes.getNodeAs<CallExpr>("allocation")))
+  if ((Call = Result.Nodes.getNodeAs<CallExpr>("aquisition")))
     Recommendation = "consider a container or a smart pointer";
   else if ((Call = Result.Nodes.getNodeAs<CallExpr>("realloc")))
     Recommendation = "consider std::vector or std::string";

@@ -35,15 +35,15 @@ __isl_give isl_vertices *isl_vertices_copy(__isl_keep isl_vertices *vertices)
 	return vertices;
 }
 
-__isl_null isl_vertices *isl_vertices_free(__isl_take isl_vertices *vertices)
+void isl_vertices_free(__isl_take isl_vertices *vertices)
 {
 	int i;
 
 	if (!vertices)
-		return NULL;
+		return;
 
 	if (--vertices->ref > 0)
-		return NULL;
+		return;
 
 	for (i = 0; i < vertices->n_vertices; ++i) {
 		isl_basic_set_free(vertices->v[i].vertex);
@@ -59,8 +59,6 @@ __isl_null isl_vertices *isl_vertices_free(__isl_take isl_vertices *vertices)
 
 	isl_basic_set_free(vertices->bset);
 	free(vertices);
-
-	return NULL;
 }
 
 struct isl_vertex_list {
@@ -68,7 +66,7 @@ struct isl_vertex_list {
 	struct isl_vertex_list *next;
 };
 
-static struct isl_vertex_list *free_vertex_list(struct isl_vertex_list *list)
+static void free_vertex_list(struct isl_vertex_list *list)
 {
 	struct isl_vertex_list *next;
 
@@ -78,8 +76,6 @@ static struct isl_vertex_list *free_vertex_list(struct isl_vertex_list *list)
 		isl_basic_set_free(list->v.dom);
 		free(list);
 	}
-
-	return NULL;
 }
 
 static __isl_give isl_vertices *vertices_from_list(__isl_keep isl_basic_set *bset,
@@ -534,24 +530,23 @@ static void free_chamber_list(struct isl_chamber_list *list)
 /* Check whether the basic set "bset" is a superset of the basic set described
  * by "tab", i.e., check whether all constraints of "bset" are redundant.
  */
-static isl_bool bset_covers_tab(__isl_keep isl_basic_set *bset,
-	struct isl_tab *tab)
+static int bset_covers_tab(__isl_keep isl_basic_set *bset, struct isl_tab *tab)
 {
 	int i;
 
 	if (!bset || !tab)
-		return isl_bool_error;
+		return -1;
 
 	for (i = 0; i < bset->n_ineq; ++i) {
 		enum isl_ineq_type type = isl_tab_ineq_type(tab, bset->ineq[i]);
 		switch (type) {
-		case isl_ineq_error:		return isl_bool_error;
+		case isl_ineq_error:		return -1;
 		case isl_ineq_redundant:	continue;
-		default:			return isl_bool_false;
+		default:			return 0;
 		}
 	}
 
-	return isl_bool_true;
+	return 1;
 }
 
 static __isl_give isl_vertices *vertices_add_chambers(
@@ -1003,6 +998,23 @@ int isl_vertex_get_id(__isl_keep isl_vertex *vertex)
 	return vertex ? vertex->id : -1;
 }
 
+__isl_give isl_basic_set *isl_basic_set_set_integral(__isl_take isl_basic_set *bset)
+{
+	if (!bset)
+		return NULL;
+
+	if (!ISL_F_ISSET(bset, ISL_BASIC_MAP_RATIONAL))
+		return bset;
+
+	bset = isl_basic_set_cow(bset);
+	if (!bset)
+		return NULL;
+
+	ISL_F_CLR(bset, ISL_BASIC_MAP_RATIONAL);
+
+	return isl_basic_set_finalize(bset);
+}
+
 /* Return the activity domain of the vertex "vertex".
  */
 __isl_give isl_basic_set *isl_vertex_get_domain(__isl_keep isl_vertex *vertex)
@@ -1209,31 +1221,31 @@ static __isl_give isl_vec *isl_basic_set_interior_point(
  * of the first non-zero coefficient is used to determine which
  * of the two (internal) constraints should be tightened.
  */
-isl_stat isl_vertices_foreach_disjoint_cell(__isl_keep isl_vertices *vertices,
-	isl_stat (*fn)(__isl_take isl_cell *cell, void *user), void *user)
+int isl_vertices_foreach_disjoint_cell(__isl_keep isl_vertices *vertices,
+	int (*fn)(__isl_take isl_cell *cell, void *user), void *user)
 {
 	int i;
 	isl_vec *vec;
 	isl_cell *cell;
 
 	if (!vertices)
-		return isl_stat_error;
+		return -1;
 
 	if (vertices->n_chambers == 0)
-		return isl_stat_ok;
+		return 0;
 
 	if (vertices->n_chambers == 1) {
 		isl_basic_set *dom = isl_basic_set_copy(vertices->c[0].dom);
 		dom = isl_basic_set_set_integral(dom);
 		cell = isl_cell_alloc(isl_vertices_copy(vertices), dom, 0);
 		if (!cell)
-			return isl_stat_error;
+			return -1;
 		return fn(cell, user);
 	}
 
 	vec = isl_basic_set_interior_point(vertices->c[0].dom);
 	if (!vec)
-		return isl_stat_error;
+		return -1;
 
 	for (i = 0; i < vertices->n_chambers; ++i) {
 		int r;
@@ -1251,10 +1263,10 @@ isl_stat isl_vertices_foreach_disjoint_cell(__isl_keep isl_vertices *vertices,
 
 	isl_vec_free(vec);
 
-	return isl_stat_ok;
+	return 0;
 error:
 	isl_vec_free(vec);
-	return isl_stat_error;
+	return -1;
 }
 
 isl_stat isl_vertices_foreach_cell(__isl_keep isl_vertices *vertices,
@@ -1394,9 +1406,9 @@ error:
 /* Construct a simplex isl_cell spanned by the vertices with indices in
  * "simplex_ids" and "other_ids" and call "fn" on this isl_cell.
  */
-static isl_stat call_on_simplex(__isl_keep isl_cell *cell,
+static int call_on_simplex(__isl_keep isl_cell *cell,
 	int *simplex_ids, int n_simplex, int *other_ids, int n_other,
-	isl_stat (*fn)(__isl_take isl_cell *simplex, void *user), void *user)
+	int (*fn)(__isl_take isl_cell *simplex, void *user), void *user)
 {
 	int i;
 	isl_ctx *ctx;
@@ -1406,7 +1418,7 @@ static isl_stat call_on_simplex(__isl_keep isl_cell *cell,
 
 	simplex = isl_calloc_type(ctx, struct isl_cell);
 	if (!simplex)
-		return isl_stat_error;
+		return -1;
 	simplex->vertices = isl_vertices_copy(cell->vertices);
 	if (!simplex->vertices)
 		goto error;
@@ -1426,7 +1438,7 @@ static isl_stat call_on_simplex(__isl_keep isl_cell *cell,
 	return fn(simplex, user);
 error:
 	isl_cell_free(simplex);
-	return isl_stat_error;
+	return -1;
 }
 
 /* Check whether the parametric vertex described by "vertex"
@@ -1469,9 +1481,9 @@ static int vertex_on_facet(__isl_keep isl_basic_set *vertex,
  * and call ourselves recursively on the polytope spanned by the new
  * "simplex_ids" and those points in "other_ids" that lie on the facet.
  */
-static isl_stat triangulate(__isl_keep isl_cell *cell, __isl_keep isl_vec *v,
+static int triangulate(__isl_keep isl_cell *cell, __isl_keep isl_vec *v,
 	int *simplex_ids, int n_simplex, int *other_ids, int n_other,
-	isl_stat (*fn)(__isl_take isl_cell *simplex, void *user), void *user)
+	int (*fn)(__isl_take isl_cell *simplex, void *user), void *user)
 {
 	int i, j, k;
 	int d, nparam;
@@ -1493,8 +1505,6 @@ static isl_stat triangulate(__isl_keep isl_cell *cell, __isl_keep isl_vec *v,
 	bset = cell->vertices->bset;
 
 	ids = isl_alloc_array(ctx, int, n_other - 1);
-	if (!ids)
-		goto error;
 	for (i = 0; i < bset->n_ineq; ++i) {
 		if (isl_seq_first_non_zero(bset->ineq[i] + 1 + nparam, d) == -1)
 			continue;
@@ -1516,17 +1526,17 @@ static isl_stat triangulate(__isl_keep isl_cell *cell, __isl_keep isl_vec *v,
 	}
 	free(ids);
 
-	return isl_stat_ok;
+	return 0;
 error:
 	free(ids);
-	return isl_stat_error;
+	return -1;
 }
 
 /* Triangulate the given cell and call "fn" on each of the resulting
  * simplices.
  */
-isl_stat isl_cell_foreach_simplex(__isl_take isl_cell *cell,
-	isl_stat (*fn)(__isl_take isl_cell *simplex, void *user), void *user)
+int isl_cell_foreach_simplex(__isl_take isl_cell *cell,
+	int (*fn)(__isl_take isl_cell *simplex, void *user), void *user)
 {
 	int d, total;
 	int r;
@@ -1535,7 +1545,7 @@ isl_stat isl_cell_foreach_simplex(__isl_take isl_cell *cell,
 	int *simplex_ids = NULL;
 
 	if (!cell)
-		return isl_stat_error;
+		return -1;
 
 	d = isl_basic_set_dim(cell->vertices->bset, isl_dim_set);
 	total = isl_basic_set_total_dim(cell->vertices->bset);
@@ -1565,5 +1575,5 @@ error:
 	free(simplex_ids);
 	isl_vec_free(v);
 	isl_cell_free(cell);
-	return isl_stat_error;
+	return -1;
 }

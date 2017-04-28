@@ -24,7 +24,6 @@
 #include <stdlib.h>
 
 
-#include "AddressSpace.hpp"
 #include "UnwindCursor.hpp"
 
 using namespace libunwind;
@@ -54,7 +53,7 @@ _LIBUNWIND_EXPORT int unw_init_local(unw_cursor_t *cursor,
 # define REGISTER_KIND Registers_ppc
 #elif defined(__aarch64__)
 # define REGISTER_KIND Registers_arm64
-#elif defined(_LIBUNWIND_ARM_EHABI)
+#elif _LIBUNWIND_ARM_EHABI
 # define REGISTER_KIND Registers_arm
 #elif defined(__or1k__)
 # define REGISTER_KIND Registers_or1k
@@ -86,18 +85,18 @@ _LIBUNWIND_EXPORT int unw_init_remote_thread(unw_cursor_t *cursor,
   switch (as->cpuType) {
   case CPU_TYPE_I386:
     new ((void *)cursor)
-        UnwindCursor<RemoteAddressSpace<Pointer32<LittleEndian>>,
+        UnwindCursor<OtherAddressSpace<Pointer32<LittleEndian> >,
                      Registers_x86>(((unw_addr_space_i386 *)as)->oas, arg);
     break;
   case CPU_TYPE_X86_64:
-    new ((void *)cursor)
-        UnwindCursor<RemoteAddressSpace<Pointer64<LittleEndian>>,
-                     Registers_x86_64>(((unw_addr_space_x86_64 *)as)->oas, arg);
+    new ((void *)cursor) UnwindCursor<
+        OtherAddressSpace<Pointer64<LittleEndian> >, Registers_x86_64>(
+        ((unw_addr_space_x86_64 *)as)->oas, arg);
     break;
   case CPU_TYPE_POWERPC:
     new ((void *)cursor)
-        UnwindCursor<RemoteAddressSpace<Pointer32<BigEndian>>,
-                     Registers_ppc>(((unw_addr_space_ppc *)as)->oas, arg);
+        UnwindCursor<OtherAddressSpace<Pointer32<BigEndian> >, Registers_ppc>(
+            ((unw_addr_space_ppc *)as)->oas, arg);
     break;
   default:
     return UNW_EUNSPEC;
@@ -207,7 +206,7 @@ _LIBUNWIND_EXPORT int unw_get_fpreg(unw_cursor_t *cursor, unw_regnum_t regNum,
 /// Set value of specified float register at cursor position in stack frame.
 _LIBUNWIND_EXPORT int unw_set_fpreg(unw_cursor_t *cursor, unw_regnum_t regNum,
                                     unw_fpreg_t value) {
-#if defined(_LIBUNWIND_ARM_EHABI)
+#if _LIBUNWIND_ARM_EHABI
   _LIBUNWIND_TRACE_API("unw_set_fpreg(cursor=%p, regNum=%d, value=%llX)",
                        static_cast<void *>(cursor), regNum, value);
 #else
@@ -306,7 +305,7 @@ _LIBUNWIND_EXPORT void unw_save_vfp_as_X(unw_cursor_t *cursor) {
 #endif
 
 
-#if defined(_LIBUNWIND_SUPPORT_DWARF_UNWIND)
+#if _LIBUNWIND_SUPPORT_DWARF_UNWIND
 /// SPI: walks cached DWARF entries
 _LIBUNWIND_EXPORT void unw_iterate_dwarf_unwind_cache(void (*func)(
     unw_word_t ip_start, unw_word_t ip_end, unw_word_t fde, unw_word_t mh)) {
@@ -340,7 +339,7 @@ void _unw_remove_dynamic_fde(unw_word_t fde) {
   // fde is own mh_group
   DwarfFDECache<LocalAddressSpace>::removeAllIn((LocalAddressSpace::pint_t)fde);
 }
-#endif // defined(_LIBUNWIND_SUPPORT_DWARF_UNWIND)
+#endif // _LIBUNWIND_SUPPORT_DWARF_UNWIND
 
 
 
@@ -367,18 +366,6 @@ bool logUnwinding() {
   static bool log = false;
   if (!checked) {
     log = (getenv("LIBUNWIND_PRINT_UNWINDING") != NULL);
-    checked = true;
-  }
-  return log;
-}
-
-_LIBUNWIND_HIDDEN
-bool logDWARF() {
-  // do manual lock to avoid use of _cxa_guard_acquire or initializers
-  static bool checked = false;
-  static bool log = false;
-  if (!checked) {
-    log = (getenv("LIBUNWIND_PRINT_DWARF") != NULL);
     checked = true;
   }
   return log;

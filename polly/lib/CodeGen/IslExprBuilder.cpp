@@ -10,7 +10,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "polly/CodeGen/IslExprBuilder.h"
-#include "polly/CodeGen/RuntimeDebugBuilder.h"
 #include "polly/Options.h"
 #include "polly/ScopInfo.h"
 #include "polly/Support/GICHelper.h"
@@ -226,9 +225,6 @@ Value *IslExprBuilder::createAccessAddress(isl_ast_expr *Expr) {
 
   const ScopArrayInfo *SAI = nullptr;
 
-  if (PollyDebugPrinting)
-    RuntimeDebugBuilder::createCPUPrinter(Builder, isl_id_get_name(BaseId));
-
   if (IDToSAI)
     SAI = (*IDToSAI)[BaseId];
 
@@ -256,8 +252,6 @@ Value *IslExprBuilder::createAccessAddress(isl_ast_expr *Expr) {
 
   if (isl_ast_expr_get_op_n_arg(Expr) == 1) {
     isl_ast_expr_free(Expr);
-    if (PollyDebugPrinting)
-      RuntimeDebugBuilder::createCPUPrinter(Builder, "\n");
     return Base;
   }
 
@@ -266,9 +260,6 @@ Value *IslExprBuilder::createAccessAddress(isl_ast_expr *Expr) {
     Value *NextIndex = create(isl_ast_expr_get_op_arg(Expr, u));
     assert(NextIndex->getType()->isIntegerTy() &&
            "Access index should be an integer");
-
-    if (PollyDebugPrinting)
-      RuntimeDebugBuilder::createCPUPrinter(Builder, "[", NextIndex, "]");
 
     if (!IndexOp) {
       IndexOp = NextIndex;
@@ -310,8 +301,6 @@ Value *IslExprBuilder::createAccessAddress(isl_ast_expr *Expr) {
 
   Access = Builder.CreateGEP(Base, IndexOp, "polly.access." + BaseName);
 
-  if (PollyDebugPrinting)
-    RuntimeDebugBuilder::createCPUPrinter(Builder, "\n");
   isl_ast_expr_free(Expr);
   return Access;
 }

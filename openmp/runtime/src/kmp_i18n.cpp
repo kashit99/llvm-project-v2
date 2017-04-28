@@ -819,9 +819,7 @@ sys_error(
                 int    strerror_r( int, char *, size_t );  // XSI version
         */
 
-        #if (defined(__GLIBC__) && defined(_GNU_SOURCE)) || \
-            (defined(__BIONIC__) && defined(_GNU_SOURCE) && \
-             __ANDROID_API__ >= __ANDROID_API_M__)
+        #if defined(__GLIBC__) && defined(_GNU_SOURCE)
 
             // GNU version of strerror_r.
 

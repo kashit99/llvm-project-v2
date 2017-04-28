@@ -17,7 +17,6 @@
 
 #include <algorithm>
 #include <functional>
-#include <random>
 #include <cassert>
 
 #include "test_macros.h"
@@ -59,8 +58,6 @@ struct S {
 #include "test_iterators.h"
 #include "counting_predicates.hpp"
 
-std::mt19937 randomness;
-
 template <class Iter>
 void
 test_one(unsigned N, unsigned M)
@@ -70,7 +67,7 @@ test_one(unsigned N, unsigned M)
     value_type* ia = new value_type[N];
     for (unsigned i = 0; i < N; ++i)
         ia[i] = i;
-    std::shuffle(ia, ia+N, randomness);
+    std::random_shuffle(ia, ia+N);
     std::sort(ia, ia+M, std::greater<value_type>());
     std::sort(ia+M, ia+N, std::greater<value_type>());
     binary_counting_predicate<std::greater<value_type>, value_type, value_type> pred((std::greater<value_type>()));
@@ -133,7 +130,7 @@ int main()
     std::unique_ptr<int>* ia = new std::unique_ptr<int>[N];
     for (int i = 0; i < N; ++i)
         ia[i].reset(new int(i));
-    std::shuffle(ia, ia+N, randomness);
+    std::random_shuffle(ia, ia+N);
     std::sort(ia, ia+M, indirect_less());
     std::sort(ia+M, ia+N, indirect_less());
     std::inplace_merge(ia, ia+M, ia+N, indirect_less());

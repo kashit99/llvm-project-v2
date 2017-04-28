@@ -31,8 +31,6 @@ namespace {
 // FIXME: Move to ASTMatchers.
 AST_MATCHER(VarDecl, isStaticDataMember) { return Node.isStaticDataMember(); }
 
-AST_MATCHER(NamedDecl, notInMacro) { return !Node.getLocation().isMacroID(); }
-
 AST_MATCHER_P(Decl, hasOutermostEnclosingClass,
               ast_matchers::internal::Matcher<Decl>, InnerMatcher) {
   const auto *Context = Node.getDeclContext();
@@ -162,21 +160,6 @@ public:
     if (const auto *FTD = FD->getDescribedFunctionTemplate())
       D = FTD;
     MoveDeclFromOldFileToNewFile(MoveTool, D);
-  }
-
-private:
-  ClangMoveTool *MoveTool;
-};
-
-class VarDeclarationMatch : public MatchFinder::MatchCallback {
-public:
-  explicit VarDeclarationMatch(ClangMoveTool *MoveTool)
-      : MoveTool(MoveTool) {}
-
-  void run(const MatchFinder::MatchResult &Result) override {
-    const auto *VD = Result.Nodes.getNodeAs<clang::VarDecl>("var");
-    assert(VD);
-    MoveDeclFromOldFileToNewFile(MoveTool, VD);
   }
 
 private:
@@ -542,12 +525,12 @@ void ClangMoveTool::registerMatchers(ast_matchers::MatchFinder *Finder) {
   // Matching using decls/type alias decls which are in named/anonymous/global
   // namespace, these decls are always copied to new.h/cc. Those in classes,
   // functions are covered in other matchers.
-  Finder->addMatcher(namedDecl(anyOf(usingDecl(IsOldCCTopLevelDecl),
-                                     usingDirectiveDecl(IsOldCCTopLevelDecl),
-                                     typeAliasDecl(IsOldCCTopLevelDecl)),
-                               notInMacro())
-                         .bind("using_decl"),
-                     this);
+  Finder->addMatcher(
+      namedDecl(anyOf(usingDecl(IsOldCCTopLevelDecl),
+                      usingDirectiveDecl(IsOldCCTopLevelDecl),
+                      typeAliasDecl(IsOldCCTopLevelDecl)))
+          .bind("using_decl"),
+      this);
 
   // Match static functions/variable definitions which are defined in named
   // namespaces.
@@ -568,22 +551,14 @@ void ClangMoveTool::registerMatchers(ast_matchers::MatchFinder *Finder) {
 
   // Matchers for helper declarations in old.cc.
   auto InAnonymousNS = hasParent(namespaceDecl(isAnonymous()));
-  auto NotInMovedClass= allOf(unless(InMovedClass), InOldCC);
-  auto IsOldCCHelper =
-      allOf(NotInMovedClass, anyOf(isStaticStorageClass(), InAnonymousNS));
+  auto DefinitionInOldCC = allOf(isDefinition(), unless(InMovedClass), InOldCC);
+  auto IsOldCCHelperDefinition =
+      allOf(DefinitionInOldCC, anyOf(isStaticStorageClass(), InAnonymousNS));
   // Match helper classes separately with helper functions/variables since we
   // want to reuse these matchers in finding helpers usage below.
-  //
-  // There could be forward declarations usage for helpers, especially for
-  // classes and functions. We need include these forward declarations.
-  //
-  // Forward declarations for variable helpers will be excluded as these
-  // declarations (with "extern") are not supposed in cpp file.
-   auto HelperFuncOrVar =
-      namedDecl(notInMacro(), anyOf(functionDecl(IsOldCCHelper),
-                                    varDecl(isDefinition(), IsOldCCHelper)));
-  auto HelperClasses =
-      cxxRecordDecl(notInMacro(), NotInMovedClass, InAnonymousNS);
+  auto HelperFuncOrVar = namedDecl(anyOf(functionDecl(IsOldCCHelperDefinition),
+                                         varDecl(IsOldCCHelperDefinition)));
+  auto HelperClasses = cxxRecordDecl(DefinitionInOldCC, InAnonymousNS);
   // Save all helper declarations in old.cc.
   Finder->addMatcher(
       namedDecl(anyOf(HelperFuncOrVar, HelperClasses)).bind("helper_decls"),
@@ -633,11 +608,6 @@ void ClangMoveTool::registerMatchers(ast_matchers::MatchFinder *Finder) {
                          .bind("function"),
                      MatchCallbacks.back().get());
 
-  MatchCallbacks.push_back(llvm::make_unique<VarDeclarationMatch>(this));
-  Finder->addMatcher(
-      varDecl(InOldFiles, *HasAnySymbolNames, TopLevelDecl).bind("var"),
-      MatchCallbacks.back().get());
-
   // Match enum definition in old.h. Enum helpers (which are defined in old.cc)
   // will not be moved for now no matter whether they are used or not.
   MatchCallbacks.push_back(llvm::make_unique<EnumDeclarationMatch>(this));
@@ -670,11 +640,12 @@ void ClangMoveTool::run(const ast_matchers::MatchFinder::MatchResult &Result) {
         MovedDecls.push_back(FWD);
     }
   } else if (const auto *ND =
+                 Result.Nodes.getNodeAs<clang::NamedDecl>("static_decls")) {
+    MovedDecls.push_back(ND);
+  } else if (const auto *ND =
                  Result.Nodes.getNodeAs<clang::NamedDecl>("helper_decls")) {
     MovedDecls.push_back(ND);
     HelperDeclarations.push_back(ND);
-    DEBUG(llvm::dbgs() << "Add helper : "
-                       << ND->getNameAsString() << " (" << ND << ")\n");
   } else if (const auto *UD =
                  Result.Nodes.getNodeAs<clang::NamedDecl>("using_decl")) {
     MovedDecls.push_back(UD);
@@ -728,12 +699,9 @@ void ClangMoveTool::removeDeclsInOldFiles() {
     // We remove the helper declarations which are not used in the old.cc after
     // moving the given declarations.
     for (const auto *D : HelperDeclarations) {
-      DEBUG(llvm::dbgs() << "Check helper is used: "
-                         << D->getNameAsString() << " (" << D << ")\n");
-      if (!UsedDecls.count(HelperDeclRGBuilder::getOutmostClassOrFunDecl(
-              D->getCanonicalDecl()))) {
+      if (!UsedDecls.count(HelperDeclRGBuilder::getOutmostClassOrFunDecl(D))) {
         DEBUG(llvm::dbgs() << "Helper removed in old.cc: "
-                           << D->getNameAsString() << " (" << D << ")\n");
+                           << D->getNameAsString() << " " << D << "\n");
         RemovedDecls.push_back(D);
       }
     }
@@ -774,13 +742,10 @@ void ClangMoveTool::removeDeclsInOldFiles() {
     // Ignore replacements for new.h/cc.
     if (SI == FilePathToFileID.end()) continue;
     llvm::StringRef Code = SM.getBufferData(SI->second);
-    auto Style = format::getStyle("file", FilePath, Context->FallbackStyle);
-    if (!Style) {
-      llvm::errs() << llvm::toString(Style.takeError()) << "\n";
-      continue;
-    }
+    format::FormatStyle Style =
+        format::getStyle("file", FilePath, Context->FallbackStyle);
     auto CleanReplacements = format::cleanupAroundReplacements(
-        Code, Context->FileToReplacements[FilePath], *Style);
+        Code, Context->FileToReplacements[FilePath], Style);
 
     if (!CleanReplacements) {
       llvm::errs() << llvm::toString(CleanReplacements.takeError()) << "\n";
@@ -809,8 +774,7 @@ void ClangMoveTool::moveDeclsToNewFiles() {
   // given symbols being moved.
   for (const auto *D : NewCCDecls) {
     if (llvm::is_contained(HelperDeclarations, D) &&
-        !UsedDecls.count(HelperDeclRGBuilder::getOutmostClassOrFunDecl(
-            D->getCanonicalDecl())))
+        !UsedDecls.count(HelperDeclRGBuilder::getOutmostClassOrFunDecl(D)))
       continue;
 
     DEBUG(llvm::dbgs() << "Helper used in new.cc: " << D->getNameAsString()
@@ -872,20 +836,11 @@ void ClangMoveTool::onEndOfTranslationUnit() {
     for (const auto *Decl : UnremovedDeclsInOldHeader) {
       auto Kind = Decl->getKind();
       const std::string QualifiedName = Decl->getQualifiedNameAsString();
-      if (Kind == Decl::Kind::Var)
-        Reporter->reportDeclaration(QualifiedName, "Variable");
-      else if (Kind == Decl::Kind::Function ||
-               Kind == Decl::Kind::FunctionTemplate)
+      if (Kind == Decl::Kind::Function || Kind == Decl::Kind::FunctionTemplate)
         Reporter->reportDeclaration(QualifiedName, "Function");
       else if (Kind == Decl::Kind::ClassTemplate ||
                Kind == Decl::Kind::CXXRecord)
         Reporter->reportDeclaration(QualifiedName, "Class");
-      else if (Kind == Decl::Kind::Enum)
-        Reporter->reportDeclaration(QualifiedName, "Enum");
-      else if (Kind == Decl::Kind::Typedef ||
-               Kind == Decl::Kind::TypeAlias ||
-               Kind == Decl::Kind::TypeAliasTemplate)
-        Reporter->reportDeclaration(QualifiedName, "TypeAlias");
     }
     return;
   }
@@ -906,7 +861,6 @@ void ClangMoveTool::onEndOfTranslationUnit() {
     case Decl::Kind::Typedef:
     case Decl::Kind::TypeAlias:
     case Decl::Kind::TypeAliasTemplate:
-    case Decl::Kind::Var:
       return true;
     default:
       return false;

@@ -32,7 +32,7 @@
 
 struct DeletedDefault {
     // A class with a deleted default constructor. Used to test the SFINAE
-    // on std::pair's default constructor.
+    // on std::pairs default constructor.
     constexpr explicit DeletedDefault(int x) : value(x) {}
     constexpr DeletedDefault() = delete;
     int value;

@@ -38,12 +38,6 @@ int main()
         char str[50];
         output_iterator<char*> iter = f.put(output_iterator<char*>(str), ios, '*', v);
         std::string ex(str, iter.base());
-        char expected_str[32] = {};
-        // num_put::put uses %p for pointer types, but the exact format of %p is
-        // implementation defined behavior for the C library. Compare output to
-        // snprintf for portability.
-        int rc = snprintf(expected_str, sizeof(expected_str), "%p", v);
-        assert(rc > 0);
-        assert(ex == expected_str);
+        assert(ex == "0x0" || ex == "(nil)");
     }
 }

@@ -17,10 +17,7 @@
 
 #include <algorithm>
 #include <iterator>
-#include <random>
 #include <cassert>
-
-std::mt19937 randomness;
 
 template <class RI>
 void
@@ -95,7 +92,7 @@ test_larger_sorts(int N, int M)
     std::stable_sort(array, array+N);
     assert(std::is_sorted(array, array+N));
     // test random pattern
-    std::shuffle(array, array+N, randomness);
+    std::random_shuffle(array, array+N);
     std::stable_sort(array, array+N);
     assert(std::is_sorted(array, array+N));
     // test sorted pattern

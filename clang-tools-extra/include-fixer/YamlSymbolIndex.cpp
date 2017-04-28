@@ -17,7 +17,6 @@
 #include <vector>
 
 using clang::find_all_symbols::SymbolInfo;
-using clang::find_all_symbols::SymbolAndSignals;
 
 namespace clang {
 namespace include_fixer {
@@ -28,8 +27,9 @@ YamlSymbolIndex::createFromFile(llvm::StringRef FilePath) {
   if (!Buffer)
     return Buffer.getError();
 
-  return std::unique_ptr<YamlSymbolIndex>(new YamlSymbolIndex(
-      find_all_symbols::ReadSymbolInfosFromYAML(Buffer.get()->getBuffer())));
+  return std::unique_ptr<YamlSymbolIndex>(
+      new YamlSymbolIndex(clang::find_all_symbols::ReadSymbolInfosFromYAML(
+          Buffer.get()->getBuffer())));
 }
 
 llvm::ErrorOr<std::unique_ptr<YamlSymbolIndex>>
@@ -47,11 +47,10 @@ YamlSymbolIndex::createFromDirectory(llvm::StringRef Directory,
   return llvm::make_error_code(llvm::errc::no_such_file_or_directory);
 }
 
-std::vector<SymbolAndSignals>
-YamlSymbolIndex::search(llvm::StringRef Identifier) {
-  std::vector<SymbolAndSignals> Results;
+std::vector<SymbolInfo> YamlSymbolIndex::search(llvm::StringRef Identifier) {
+  std::vector<SymbolInfo> Results;
   for (const auto &Symbol : Symbols) {
-    if (Symbol.Symbol.getName() == Identifier)
+    if (Symbol.getName() == Identifier)
       Results.push_back(Symbol);
   }
   return Results;

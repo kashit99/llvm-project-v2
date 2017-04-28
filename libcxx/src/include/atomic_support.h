@@ -29,7 +29,7 @@
 #endif
 
 #if !defined(_LIBCPP_HAS_ATOMIC_BUILTINS) && !defined(_LIBCPP_HAS_NO_THREADS)
-# if defined(_LIBCPP_MSVC)
+# if defined(_MSC_VER) && !defined(__clang__)
     _LIBCPP_WARNING("Building libc++ without __atomic builtins is unsupported")
 # else
 #   warning Building libc++ without __atomic builtins is unsupported

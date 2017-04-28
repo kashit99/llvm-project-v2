@@ -33,7 +33,3 @@ void Fun1();
 inline void Fun2() {}
 
 } // namespace a
-
-namespace b {
-void Fun3();
-} // namespace b

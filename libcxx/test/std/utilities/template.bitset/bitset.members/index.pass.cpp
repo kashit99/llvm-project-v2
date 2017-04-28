@@ -10,7 +10,6 @@
 // test bitset<N>::reference operator[](size_t pos);
 
 #include <bitset>
-#include <type_traits>
 #include <cstdlib>
 #include <cassert>
 
@@ -32,8 +31,7 @@ template <std::size_t N>
 void test_index_const()
 {
     std::bitset<N> v1 = make_bitset<N>();
-    const bool greater_than_0 = std::integral_constant<bool, (N > 0)>::value; // avoid compiler warnings
-    if (greater_than_0)
+    if (N > 0)
     {
         assert(v1[N/2] == v1.test(N/2));
         typename std::bitset<N>::reference r = v1[N/2];

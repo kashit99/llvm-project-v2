@@ -315,8 +315,7 @@ enum isl_lp_result isl_basic_set_solve_ilp(struct isl_basic_set *bset, int max,
 	if (sol_p)
 		*sol_p = NULL;
 
-	isl_assert(bset->ctx, isl_basic_set_n_param(bset) == 0,
-		return isl_lp_error);
+	isl_assert(bset->ctx, isl_basic_set_n_param(bset) == 0, goto error);
 
 	if (isl_basic_set_plain_is_empty(bset))
 		return isl_lp_empty;
@@ -337,6 +336,9 @@ enum isl_lp_result isl_basic_set_solve_ilp(struct isl_basic_set *bset, int max,
 	}
 
 	return res;
+error:
+	isl_basic_set_free(bset);
+	return isl_lp_error;
 }
 
 static enum isl_lp_result basic_set_opt(__isl_keep isl_basic_set *bset, int max,
@@ -483,15 +485,12 @@ enum isl_lp_result isl_set_opt(__isl_keep isl_set *set, int max,
 	__isl_keep isl_aff *obj, isl_int *opt)
 {
 	enum isl_lp_result res;
-	isl_bool aligned;
 
 	if (!set || !obj)
 		return isl_lp_error;
 
-	aligned = isl_set_space_has_equal_params(set, obj->ls->dim);
-	if (aligned < 0)
-		return isl_lp_error;
-	if (aligned)
+	if (isl_space_match(set->dim, isl_dim_param,
+			    obj->ls->dim, isl_dim_param))
 		return isl_set_opt_aligned(set, max, obj, opt);
 
 	set = isl_set_copy(set);

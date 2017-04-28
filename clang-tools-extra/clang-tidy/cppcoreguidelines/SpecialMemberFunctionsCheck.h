@@ -25,16 +25,14 @@ namespace cppcoreguidelines {
 /// http://clang.llvm.org/extra/clang-tidy/checks/cppcoreguidelines-special-member-functions.html
 class SpecialMemberFunctionsCheck : public ClangTidyCheck {
 public:
-  SpecialMemberFunctionsCheck(StringRef Name, ClangTidyContext *Context);
-  void storeOptions(ClangTidyOptions::OptionMap &Opts) override;
+  SpecialMemberFunctionsCheck(StringRef Name, ClangTidyContext *Context)
+      : ClangTidyCheck(Name, Context) {}
   void registerMatchers(ast_matchers::MatchFinder *Finder) override;
   void check(const ast_matchers::MatchFinder::MatchResult &Result) override;
   void onEndOfTranslationUnit() override;
 
   enum class SpecialMemberFunctionKind : uint8_t {
     Destructor,
-    DefaultDestructor,
-    NonDefaultDestructor,
     CopyConstructor,
     CopyAssignment,
     MoveConstructor,
@@ -48,12 +46,6 @@ public:
                      llvm::SmallVector<SpecialMemberFunctionKind, 5>>;
 
 private:
-  void checkForMissingMembers(
-      const ClassDefId &ID,
-      llvm::ArrayRef<SpecialMemberFunctionKind> DefinedSpecialMembers);
-
-  const bool AllowMissingMoveFunctions;
-  const bool AllowSoleDefaultDtor;
   ClassDefiningSpecialMembersMap ClassWithSpecialMembers;
 };
 
@@ -91,7 +83,7 @@ struct DenseMapInfo<
     return Val.first.getRawEncoding() + SecondHash(Val.second);
   }
 
-  static bool isEqual(const ClassDefId &LHS, const ClassDefId &RHS) {
+  static bool isEqual(ClassDefId LHS, ClassDefId RHS) {
     if (RHS == getEmptyKey())
       return LHS == getEmptyKey();
     if (RHS == getTombstoneKey())

@@ -76,11 +76,12 @@ static BasicBlock *splitEdge(BasicBlock *Prev, BasicBlock *Succ,
   return MiddleBlock;
 }
 
-BasicBlock *polly::executeScopConditionally(Scop &S, Value *RTC,
-                                            DominatorTree &DT, RegionInfo &RI,
-                                            LoopInfo &LI) {
+BasicBlock *polly::executeScopConditionally(Scop &S, Pass *P, Value *RTC) {
   Region &R = S.getRegion();
   PollyIRBuilder Builder(S.getEntry());
+  DominatorTree &DT = P->getAnalysis<DominatorTreeWrapperPass>().getDomTree();
+  RegionInfo &RI = P->getAnalysis<RegionInfoPass>().getRegionInfo();
+  LoopInfo &LI = P->getAnalysis<LoopInfoWrapperPass>().getLoopInfo();
 
   // Before:
   //

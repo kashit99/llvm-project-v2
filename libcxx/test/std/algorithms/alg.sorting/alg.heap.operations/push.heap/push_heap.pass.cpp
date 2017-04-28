@@ -16,17 +16,14 @@
 //   push_heap(Iter first, Iter last);
 
 #include <algorithm>
-#include <random>
 #include <cassert>
-
-std::mt19937 randomness;
 
 void test(int N)
 {
     int* ia = new int [N];
     for (int i = 0; i < N; ++i)
         ia[i] = i;
-    std::shuffle(ia, ia+N, randomness);
+    std::random_shuffle(ia, ia+N);
     for (int i = 0; i <= N; ++i)
     {
         std::push_heap(ia, ia+i);

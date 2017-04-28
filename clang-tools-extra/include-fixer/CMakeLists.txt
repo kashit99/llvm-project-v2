@@ -6,7 +6,6 @@ add_clang_library(clangIncludeFixer
   IncludeFixer.cpp
   IncludeFixerContext.cpp
   InMemorySymbolIndex.cpp
-  FuzzySymbolIndex.cpp
   SymbolIndexManager.cpp
   YamlSymbolIndex.cpp
 

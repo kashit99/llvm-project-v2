@@ -188,7 +188,12 @@ typedef double  kmp_real64;
     // template for debug prints specification ( d, u, lld, llu ), and to obtain
     // signed/unsigned flavors of a type
     template< typename T >
-    struct traits_t { };
+    struct traits_t {
+        typedef T           signed_t;
+        typedef T           unsigned_t;
+        typedef T           floating_t;
+        static char const * spec;
+    };
     // int
     template<>
     struct traits_t< signed int > {
@@ -196,9 +201,6 @@ typedef double  kmp_real64;
         typedef unsigned int  unsigned_t;
         typedef double        floating_t;
         static char const *   spec;
-        static const signed_t max_value = 0x7fffffff;
-        static const signed_t min_value = 0x80000000;
-        static const int type_size = sizeof(signed_t);
     };
     // unsigned int
     template<>
@@ -207,9 +209,6 @@ typedef double  kmp_real64;
         typedef unsigned int  unsigned_t;
         typedef double        floating_t;
         static char const *   spec;
-        static const unsigned_t max_value = 0xffffffff;
-        static const unsigned_t min_value = 0x00000000;
-        static const int type_size = sizeof(unsigned_t);
     };
     // long long
     template<>
@@ -218,9 +217,6 @@ typedef double  kmp_real64;
         typedef unsigned long long  unsigned_t;
         typedef long double         floating_t;
         static char const *         spec;
-        static const signed_t max_value = 0x7fffffffffffffffLL;
-        static const signed_t min_value = 0x8000000000000000LL;
-        static const int type_size = sizeof(signed_t);
     };
     // unsigned long long
     template<>
@@ -229,9 +225,6 @@ typedef double  kmp_real64;
         typedef unsigned long long  unsigned_t;
         typedef long double         floating_t;
         static char const *         spec;
-        static const unsigned_t max_value = 0xffffffffffffffffLL;
-        static const unsigned_t min_value = 0x0000000000000000LL;
-        static const int type_size = sizeof(unsigned_t);
     };
     //-------------------------------------------------------------------------
 #endif // __cplusplus

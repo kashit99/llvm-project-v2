@@ -4,9 +4,9 @@ Contexts:
   - ContextType:     Namespace
     ContextName:     a
 FilePath:        foo.h
+LineNumber:      1
 Type:            Class
-Seen:            1
-Used:            1
+NumOccurrences:  1
 ...
 ---
 Name:           bar
@@ -14,7 +14,7 @@ Contexts:
   - ContextType:     Namespace
     ContextName:     a
 FilePath:        ../include/bar.h
+LineNumber:      1
 Type:            Class
-Seen:            1
-Used:            2
+NumOccurrences:  1
 ...

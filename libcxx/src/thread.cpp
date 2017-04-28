@@ -24,9 +24,9 @@
 # endif // defined(BSD)
 #endif // defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
 
-#if defined(__unix__) || (defined(__APPLE__) && defined(__MACH__)) || defined(__CloudABI__) || defined(__Fuchsia__)
+#if defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
 # include <unistd.h>
-#endif // defined(__unix__) || (defined(__APPLE__) && defined(__MACH__)) || defined(__CloudABI__) || defined(__Fuchsia__)
+#endif // defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
 
 #if defined(__NetBSD__)
 #pragma weak pthread_create // Do not create libpthread dependency
@@ -40,7 +40,7 @@ _LIBCPP_BEGIN_NAMESPACE_STD
 
 thread::~thread()
 {
-    if (!__libcpp_thread_isnull(&__t_))
+    if (__t_ != 0)
         terminate();
 }
 
@@ -48,11 +48,11 @@ void
 thread::join()
 {
     int ec = EINVAL;
-    if (!__libcpp_thread_isnull(&__t_))
+    if (__t_ != 0)
     {
         ec = __libcpp_thread_join(&__t_);
         if (ec == 0)
-            __t_ = _LIBCPP_NULL_THREAD;
+            __t_ = 0;
     }
 
     if (ec)
@@ -63,11 +63,11 @@ void
 thread::detach()
 {
     int ec = EINVAL;
-    if (!__libcpp_thread_isnull(&__t_))
+    if (__t_ != 0)
     {
         ec = __libcpp_thread_detach(&__t_);
         if (ec == 0)
-            __t_ = _LIBCPP_NULL_THREAD;
+            __t_ = 0;
     }
 
     if (ec)
@@ -99,7 +99,7 @@ thread::hardware_concurrency() _NOEXCEPT
 #else  // defined(CTL_HW) && defined(HW_NCPU)
     // TODO: grovel through /proc or check cpuid on x86 and similar
     // instructions on other architectures.
-#   if defined(_LIBCPP_MSVC)
+#   if defined(_MSC_VER) && ! defined(__clang__)
         _LIBCPP_WARNING("hardware_concurrency not yet implemented")
 #   else
 #       warning hardware_concurrency not yet implemented
@@ -114,9 +114,33 @@ namespace this_thread
 void
 sleep_for(const chrono::nanoseconds& ns)
 {
-    if (ns > chrono::nanoseconds::zero())
+    using namespace chrono;
+    if (ns > nanoseconds::zero())
     {
-        __libcpp_thread_sleep_for(ns);
+#if defined(_LIBCPP_WIN32API)
+        milliseconds ms = duration_cast<milliseconds>(ns);
+        if (ms.count() == 0 || ns > duration_cast<nanoseconds>(ms))
+          ++ms;
+        Sleep(ms.count());
+#else
+        seconds s = duration_cast<seconds>(ns);
+        timespec ts;
+        typedef decltype(ts.tv_sec) ts_sec;
+        _LIBCPP_CONSTEXPR ts_sec ts_sec_max = numeric_limits<ts_sec>::max();
+        if (s.count() < ts_sec_max)
+        {
+            ts.tv_sec = static_cast<ts_sec>(s.count());
+            ts.tv_nsec = static_cast<decltype(ts.tv_nsec)>((ns-s).count());
+        }
+        else
+        {
+            ts.tv_sec = ts_sec_max;
+            ts.tv_nsec = giga::num - 1;
+        }
+
+        while (nanosleep(&ts, &ts) == -1 && errno == EINTR)
+            ;
+#endif
     }
 }
 

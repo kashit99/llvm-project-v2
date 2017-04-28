@@ -27,8 +27,6 @@ namespace readability {
 ///     macro-heavy code. The default is `800`.
 ///   * `BranchThreshold` - flag functions exceeding this number of control
 ///     statements. The default is `-1` (ignore the number of branches).
-///   * `ParameterThreshold` - flag functions having a high number of parameters.
-///     The default is `6`.
 class FunctionSizeCheck : public ClangTidyCheck {
 public:
   FunctionSizeCheck(StringRef Name, ClangTidyContext *Context);
@@ -41,7 +39,6 @@ private:
   const unsigned LineThreshold;
   const unsigned StatementThreshold;
   const unsigned BranchThreshold;
-  const unsigned ParameterThreshold;
 };
 
 } // namespace readability

@@ -26,7 +26,7 @@ public:
 private:
   void replaceIterators(const DeclStmt *D, ASTContext *Context);
   void replaceExpr(const DeclStmt *D, ASTContext *Context,
-                   llvm::function_ref<QualType(const Expr *)> GetType,
+                   std::function<QualType(const Expr *)> GetType,
                    StringRef Message);
 
   const bool RemoveStars;

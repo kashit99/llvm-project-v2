@@ -7,9 +7,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-// exception_ptr has not been implemented on Windows
-// XFAIL: LIBCXX-WINDOWS-FIXME
-
 // UNSUPPORTED: libcpp-no-exceptions
 // <exception>
 
@@ -108,16 +105,6 @@ int main()
         catch (int i)
         {
             assert(i == 7);
-        }
-    }
-    {
-        try
-        {
-            std::throw_with_nested("String literal");
-            assert(false);
-        }
-        catch (const char *)
-        {
         }
     }
 #if TEST_STD_VER > 11

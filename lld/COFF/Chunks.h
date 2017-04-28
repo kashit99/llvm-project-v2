@@ -187,10 +187,10 @@ public:
 
   const coff_section *Header;
 
-  // The file that this chunk was created from.
+private:
+  // A file this chunk was created from.
   ObjectFile *File;
 
-private:
   StringRef SectionName;
   std::vector<SectionChunk *> AssocChildren;
   llvm::iterator_range<const coff_relocation *> Relocs;

@@ -5,7 +5,6 @@ add_clang_library(clangTidyPerformanceModule
   ForRangeCopyCheck.cpp
   ImplicitCastInLoopCheck.cpp
   InefficientStringConcatenationCheck.cpp
-  InefficientVectorOperationCheck.cpp
   PerformanceTidyModule.cpp
   TypePromotionInMathFnCheck.cpp
   UnnecessaryCopyInitialization.cpp

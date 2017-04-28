@@ -55,7 +55,7 @@ licenses, and/or restrictions:
 
 Program             Directory
 -------             ---------
-jsoncpp             lib/External/JSON
+jsoncpp             lib/JSON
 
 
 

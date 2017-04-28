@@ -7,7 +7,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// UNSUPPORTED: libcpp-has-no-threads, c++98, c++03
+// UNSUPPORTED: libcpp-has-no-threads
 
 // <thread>
 
@@ -44,6 +44,7 @@ bool G::op_run = false;
 
 int main()
 {
+#ifndef _LIBCPP_HAS_NO_RVALUE_REFERENCES
     {
         assert(G::n_alive == 0);
         assert(!G::op_run);
@@ -60,4 +61,5 @@ int main()
         assert(G::n_alive == 0);
         assert(G::op_run);
     }
+#endif  // _LIBCPP_HAS_NO_RVALUE_REFERENCES
 }

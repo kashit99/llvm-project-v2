@@ -6,9 +6,11 @@
 // Source Licenses. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
+#undef NDEBUG
 #include "experimental/filesystem"
 #include "string_view"
 #include "utility"
+#include "cassert"
 
 namespace { namespace parser
 {
@@ -56,13 +58,13 @@ public:
   }
 
   PosPtr peek() const noexcept {
+    auto End = &Path.back() + 1;
     auto TkEnd = getNextTokenStartPos();
-    auto End = getAfterBack();
     return TkEnd == End ? nullptr : TkEnd;
   }
 
   void increment() noexcept {
-    const PosPtr End = getAfterBack();
+    const PosPtr End = &Path.back() + 1;
     const PosPtr Start = getNextTokenStartPos();
     if (Start == End)
       return makeState(PS_AtEnd);
@@ -109,8 +111,9 @@ public:
   }
 
   void decrement() noexcept {
-    const PosPtr REnd = getBeforeFront();
+    const PosPtr REnd = &Path.front() - 1;
     const PosPtr RStart = getCurrentTokenStartPos() - 1;
+    assert(RStart != REnd);
 
     switch (State) {
     case PS_AtEnd: {
@@ -195,27 +198,19 @@ private:
     RawEntry = {};
   }
 
-  PosPtr getAfterBack() const noexcept {
-    return Path.data() + Path.size();
-  }
-
-  PosPtr getBeforeFront() const noexcept {
-    return Path.data() - 1;
-  }
-
   /// \brief Return a pointer to the first character after the currently
   ///   lexed element.
   PosPtr getNextTokenStartPos() const noexcept {
     switch (State) {
     case PS_BeforeBegin:
-      return Path.data();
+      return &Path.front();
     case PS_InRootName:
     case PS_InRootDir:
     case PS_InFilenames:
       return &RawEntry.back() + 1;
     case PS_InTrailingSep:
     case PS_AtEnd:
-      return getAfterBack();
+      return &Path.back() + 1;
     }
     _LIBCPP_UNREACHABLE();
   }
@@ -327,6 +322,7 @@ string_view_t path::__root_path_raw() const
       auto NextCh = PP.peek();
       if (NextCh && *NextCh == '/') {
         ++PP;
+        assert(PP.State == PathParser::PS_InRootDir);
         return createView(__pn_.data(), &PP.RawEntry.back());
       }
       return PP.RawEntry;

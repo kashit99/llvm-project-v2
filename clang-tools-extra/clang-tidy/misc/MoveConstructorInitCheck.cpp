@@ -57,9 +57,6 @@ void MoveConstructorInitCheck::check(const MatchFinder::MatchResult &Result) {
   if (QT.isTriviallyCopyableType(*Result.Context))
     return;
 
-  if (QT.isConstQualified())
-    return;
-
   const auto *RD = QT->getAsCXXRecordDecl();
   if (RD && RD->isTriviallyCopyable())
     return;

@@ -65,14 +65,6 @@ class Abstract
     virtual ~Abstract() = 0;
 };
 
-template <class>
-struct AbstractTemplate {
-  virtual void test() = 0;
-};
-
-template <>
-struct AbstractTemplate<double> {};
-
 int main()
 {
     test_is_not_abstract<void>();
@@ -89,6 +81,4 @@ int main()
     test_is_not_abstract<NotEmpty>();
 
     test_is_abstract<Abstract>();
-    test_is_abstract<AbstractTemplate<int> >();
-    test_is_not_abstract<AbstractTemplate<double> >();
 }

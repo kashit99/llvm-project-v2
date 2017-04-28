@@ -19,6 +19,7 @@
 #include <libunwind.h>
 #include <mach-o/compact_unwind_encoding.h>
 
+#include "AddressSpace.hpp"
 #include "Registers.hpp"
 
 #define EXTRACT_BITS(value, mask)                                              \

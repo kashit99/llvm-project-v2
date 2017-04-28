@@ -125,12 +125,12 @@ struct IntializerInsertion {
     SourceLocation Location;
     switch (Placement) {
     case InitializerPlacement::New:
-      Location = utils::lexer::getPreviousToken(
+      Location = utils::lexer::getPreviousNonCommentToken(
                      Context, Constructor.getBody()->getLocStart())
                      .getLocation();
       break;
     case InitializerPlacement::Before:
-      Location = utils::lexer::getPreviousToken(
+      Location = utils::lexer::getPreviousNonCommentToken(
                      Context, Where->getSourceRange().getBegin())
                      .getLocation();
       break;

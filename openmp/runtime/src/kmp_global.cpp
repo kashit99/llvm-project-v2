@@ -264,13 +264,11 @@ kmp_nested_proc_bind_t __kmp_nested_proc_bind = { NULL, 0, 0 };
 int __kmp_affinity_num_places = 0;
 #endif
 
-kmp_hws_item_t __kmp_hws_socket = {0, 0};
-kmp_hws_item_t __kmp_hws_node = {0, 0};
-kmp_hws_item_t __kmp_hws_tile = {0, 0};
-kmp_hws_item_t __kmp_hws_core = {0, 0};
-kmp_hws_item_t __kmp_hws_proc = {0, 0};
-int __kmp_hws_requested = 0;
-int __kmp_hws_abs_flag = 0; // absolute or per-item number requested
+int __kmp_place_num_sockets = 0;
+int __kmp_place_socket_offset = 0;
+int __kmp_place_num_cores = 0;
+int __kmp_place_core_offset = 0;
+int __kmp_place_num_threads_per_core = 0;
 
 #if OMP_40_ENABLED
 kmp_int32 __kmp_default_device = 0;
@@ -356,7 +354,6 @@ kmp_uint32 __kmp_yield_next = KMP_NEXT_WAIT;
 
 #if KMP_USE_MONITOR
 kmp_uint32 __kmp_yielding_on = 1;
-#endif
 #if KMP_OS_CNK
 kmp_uint32 __kmp_yield_cycle = 0;
 #else
@@ -364,6 +361,7 @@ kmp_uint32 __kmp_yield_cycle = 1;     /* Yield-cycle is on by default */
 #endif
 kmp_int32  __kmp_yield_on_count = 10; /* By default, yielding is on for 10 monitor periods. */
 kmp_int32  __kmp_yield_off_count = 1; /* By default, yielding is off for 1 monitor periods. */
+#endif
 /* ----------------------------------------------------- */
 
 

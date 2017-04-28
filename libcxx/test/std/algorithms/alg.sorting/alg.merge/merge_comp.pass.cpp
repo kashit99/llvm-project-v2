@@ -22,13 +22,10 @@
 
 #include <algorithm>
 #include <functional>
-#include <random>
 #include <cassert>
 
 #include "test_iterators.h"
 #include "counting_predicates.hpp"
-
-std::mt19937 randomness;
 
 template <class InIter1, class InIter2, class OutIter>
 void
@@ -64,7 +61,7 @@ test()
     int* ic = new int[2*N];
     for (unsigned i = 0; i < 2*N; ++i)
         ic[i] = i;
-    std::shuffle(ic, ic+2*N, randomness);
+    std::random_shuffle(ic, ic+2*N);
     std::copy(ic, ic+N, ia);
     std::copy(ic+N, ic+2*N, ib);
     std::sort(ia, ia+N, std::greater<int>());

@@ -12,16 +12,11 @@ namespace test {
 // FIXME: It seems this might be incompatible to dos path. Investigating.
 #if !defined(_WIN32)
 static std::string runHeaderGuardCheck(StringRef Code, const Twine &Filename,
-                                       Optional<StringRef> ExpectedWarning) {
+                                       unsigned ExpectedWarnings) {
   std::vector<ClangTidyError> Errors;
   std::string Result = test::runCheckOnCode<LLVMHeaderGuardCheck>(
       Code, &Errors, Filename, std::string("-xc++-header"));
-  if (Errors.size() != (size_t)ExpectedWarning.hasValue())
-    return "invalid error count";
-  if (ExpectedWarning && *ExpectedWarning != Errors.back().Message.Message)
-    return "expected: '" + ExpectedWarning->str() + "', saw: '" +
-           Errors.back().Message.Message + "'";
-  return Result;
+  return Errors.size() == ExpectedWarnings ? Result : "invalid error count";
 }
 
 namespace {
@@ -32,30 +27,24 @@ struct WithEndifComment : public LLVMHeaderGuardCheck {
 };
 } // namespace
 
-static std::string
-runHeaderGuardCheckWithEndif(StringRef Code, const Twine &Filename,
-                             Optional<StringRef> ExpectedWarning) {
+static std::string runHeaderGuardCheckWithEndif(StringRef Code,
+                                                const Twine &Filename,
+                                                unsigned ExpectedWarnings) {
   std::vector<ClangTidyError> Errors;
   std::string Result = test::runCheckOnCode<WithEndifComment>(
       Code, &Errors, Filename, std::string("-xc++-header"));
-  if (Errors.size() != (size_t)ExpectedWarning.hasValue())
-    return "invalid error count";
-  if (ExpectedWarning && *ExpectedWarning != Errors.back().Message.Message)
-    return "expected: '" + ExpectedWarning->str() + "', saw: '" +
-           Errors.back().Message.Message + "'";
-  return Result;
+  return Errors.size() == ExpectedWarnings ? Result : "invalid error count";
 }
 
 TEST(LLVMHeaderGuardCheckTest, FixHeaderGuards) {
   EXPECT_EQ("#ifndef LLVM_ADT_FOO_H\n"
             "#define LLVM_ADT_FOO_H\n"
             "#endif\n",
-            runHeaderGuardCheck(
-                "#ifndef FOO\n"
-                "#define FOO\n"
-                "#endif\n",
-                "include/llvm/ADT/foo.h",
-                StringRef("header guard does not follow preferred style")));
+            runHeaderGuardCheck("#ifndef FOO\n"
+                                "#define FOO\n"
+                                "#endif\n",
+                                "include/llvm/ADT/foo.h",
+                                /*ExpectedWarnings=*/1));
 
   // Allow trailing underscores.
   EXPECT_EQ("#ifndef LLVM_ADT_FOO_H_\n"
@@ -64,7 +53,8 @@ TEST(LLVMHeaderGuardCheckTest, FixHeaderGuards) {
             runHeaderGuardCheck("#ifndef LLVM_ADT_FOO_H_\n"
                                 "#define LLVM_ADT_FOO_H_\n"
                                 "#endif\n",
-                                "include/llvm/ADT/foo.h", None));
+                                "include/llvm/ADT/foo.h",
+                                /*ExpectedWarnings=*/0));
 
   EXPECT_EQ("#ifndef LLVM_CLANG_C_BAR_H\n"
             "#define LLVM_CLANG_C_BAR_H\n"
@@ -72,7 +62,7 @@ TEST(LLVMHeaderGuardCheckTest, FixHeaderGuards) {
             "\n"
             "#endif\n",
             runHeaderGuardCheck("", "./include/clang-c/bar.h",
-                                StringRef("header is missing header guard")));
+                                /*ExpectedWarnings=*/1));
 
   EXPECT_EQ("#ifndef LLVM_CLANG_LIB_CODEGEN_C_H\n"
             "#define LLVM_CLANG_LIB_CODEGEN_C_H\n"
@@ -80,7 +70,7 @@ TEST(LLVMHeaderGuardCheckTest, FixHeaderGuards) {
             "\n"
             "#endif\n",
             runHeaderGuardCheck("", "tools/clang/lib/CodeGen/c.h",
-                                StringRef("header is missing header guard")));
+                                /*ExpectedWarnings=*/1));
 
   EXPECT_EQ("#ifndef LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_X_H\n"
             "#define LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_X_H\n"
@@ -88,33 +78,17 @@ TEST(LLVMHeaderGuardCheckTest, FixHeaderGuards) {
             "\n"
             "#endif\n",
             runHeaderGuardCheck("", "tools/clang/tools/extra/clang-tidy/x.h",
-                                StringRef("header is missing header guard")));
+                                /*ExpectedWarnings=*/1));
 
-  EXPECT_EQ(
-      "int foo;\n"
-      "#ifndef LLVM_CLANG_BAR_H\n"
-      "#define LLVM_CLANG_BAR_H\n"
-      "#endif\n",
-      runHeaderGuardCheck("int foo;\n"
-                          "#ifndef LLVM_CLANG_BAR_H\n"
-                          "#define LLVM_CLANG_BAR_H\n"
-                          "#endif\n",
-                          "include/clang/bar.h",
-                          StringRef("code/includes outside of area guarded by "
-                                    "header guard; consider moving it")));
-
-  EXPECT_EQ(
-      "#ifndef LLVM_CLANG_BAR_H\n"
-      "#define LLVM_CLANG_BAR_H\n"
-      "#endif\n"
-      "int foo;\n",
-      runHeaderGuardCheck("#ifndef LLVM_CLANG_BAR_H\n"
-                          "#define LLVM_CLANG_BAR_H\n"
-                          "#endif\n"
-                          "int foo;\n",
-                          "include/clang/bar.h",
-                          StringRef("code/includes outside of area guarded by "
-                                    "header guard; consider moving it")));
+  EXPECT_EQ("int foo;\n"
+            "#ifndef LLVM_CLANG_BAR_H\n"
+            "#define LLVM_CLANG_BAR_H\n"
+            "#endif\n",
+            runHeaderGuardCheck("int foo;\n"
+                                "#ifndef LLVM_CLANG_BAR_H\n"
+                                "#define LLVM_CLANG_BAR_H\n"
+                                "#endif\n",
+                                "include/clang/bar.h", /*ExpectedWarnings=*/1));
 
   EXPECT_EQ("#ifndef LLVM_CLANG_BAR_H\n"
             "#define LLVM_CLANG_BAR_H\n"
@@ -129,40 +103,35 @@ TEST(LLVMHeaderGuardCheckTest, FixHeaderGuards) {
                                 "#ifndef FOOLOLO\n"
                                 "#define FOOLOLO\n"
                                 "#endif\n",
-                                "include/clang/bar.h",
-                                StringRef("header is missing header guard")));
+                                "include/clang/bar.h", /*ExpectedWarnings=*/1));
 
   // Fix incorrect #endif comments even if we shouldn't add new ones.
   EXPECT_EQ("#ifndef LLVM_ADT_FOO_H\n"
             "#define LLVM_ADT_FOO_H\n"
             "#endif // LLVM_ADT_FOO_H\n",
-            runHeaderGuardCheck(
-                "#ifndef FOO\n"
-                "#define FOO\n"
-                "#endif // FOO\n",
-                "include/llvm/ADT/foo.h",
-                StringRef("header guard does not follow preferred style")));
+            runHeaderGuardCheck("#ifndef FOO\n"
+                                "#define FOO\n"
+                                "#endif // FOO\n",
+                                "include/llvm/ADT/foo.h",
+                                /*ExpectedWarnings=*/1));
 
   EXPECT_EQ("#ifndef LLVM_ADT_FOO_H\n"
             "#define LLVM_ADT_FOO_H\n"
             "#endif // LLVM_ADT_FOO_H\n",
-            runHeaderGuardCheckWithEndif(
-                "#ifndef FOO\n"
-                "#define FOO\n"
-                "#endif\n",
-                "include/llvm/ADT/foo.h",
-                StringRef("header guard does not follow preferred style")));
+            runHeaderGuardCheckWithEndif("#ifndef FOO\n"
+                                         "#define FOO\n"
+                                         "#endif\n",
+                                         "include/llvm/ADT/foo.h",
+                                         /*ExpectedWarnings=*/1));
 
   EXPECT_EQ("#ifndef LLVM_ADT_FOO_H\n"
             "#define LLVM_ADT_FOO_H\n"
             "#endif // LLVM_ADT_FOO_H\n",
-            runHeaderGuardCheckWithEndif(
-                "#ifndef LLVM_ADT_FOO_H\n"
-                "#define LLVM_ADT_FOO_H\n"
-                "#endif // LLVM_H\n",
-                "include/llvm/ADT/foo.h",
-                StringRef("#endif for a header guard should reference the "
-                          "guard macro in a comment")));
+            runHeaderGuardCheckWithEndif("#ifndef LLVM_ADT_FOO_H\n"
+                                         "#define LLVM_ADT_FOO_H\n"
+                                         "#endif // LLVM_H\n",
+                                         "include/llvm/ADT/foo.h",
+                                         /*ExpectedWarnings=*/1));
 
   EXPECT_EQ("#ifndef LLVM_ADT_FOO_H\n"
             "#define LLVM_ADT_FOO_H\n"
@@ -170,7 +139,8 @@ TEST(LLVMHeaderGuardCheckTest, FixHeaderGuards) {
             runHeaderGuardCheckWithEndif("#ifndef LLVM_ADT_FOO_H\n"
                                          "#define LLVM_ADT_FOO_H\n"
                                          "#endif /* LLVM_ADT_FOO_H */\n",
-                                         "include/llvm/ADT/foo.h", None));
+                                         "include/llvm/ADT/foo.h",
+                                         /*ExpectedWarnings=*/0));
 
   EXPECT_EQ("#ifndef LLVM_ADT_FOO_H_\n"
             "#define LLVM_ADT_FOO_H_\n"
@@ -178,29 +148,28 @@ TEST(LLVMHeaderGuardCheckTest, FixHeaderGuards) {
             runHeaderGuardCheckWithEndif("#ifndef LLVM_ADT_FOO_H_\n"
                                          "#define LLVM_ADT_FOO_H_\n"
                                          "#endif // LLVM_ADT_FOO_H_\n",
-                                         "include/llvm/ADT/foo.h", None));
+                                         "include/llvm/ADT/foo.h",
+                                         /*ExpectedWarnings=*/0));
 
   EXPECT_EQ("#ifndef LLVM_ADT_FOO_H\n"
             "#define LLVM_ADT_FOO_H\n"
             "#endif // LLVM_ADT_FOO_H\n",
-            runHeaderGuardCheckWithEndif(
-                "#ifndef LLVM_ADT_FOO_H_\n"
-                "#define LLVM_ADT_FOO_H_\n"
-                "#endif // LLVM\n",
-                "include/llvm/ADT/foo.h",
-                StringRef("header guard does not follow preferred style")));
+            runHeaderGuardCheckWithEndif("#ifndef LLVM_ADT_FOO_H_\n"
+                                         "#define LLVM_ADT_FOO_H_\n"
+                                         "#endif // LLVM\n",
+                                         "include/llvm/ADT/foo.h",
+                                         /*ExpectedWarnings=*/1));
 
   EXPECT_EQ("#ifndef LLVM_ADT_FOO_H\n"
             "#define LLVM_ADT_FOO_H\n"
             "#endif \\ \n"
             "// LLVM_ADT_FOO_H\n",
-            runHeaderGuardCheckWithEndif(
-                "#ifndef LLVM_ADT_FOO_H\n"
-                "#define LLVM_ADT_FOO_H\n"
-                "#endif \\ \n"
-                "// LLVM_ADT_FOO_H\n",
-                "include/llvm/ADT/foo.h",
-                StringRef("backslash and newline separated by space")));
+            runHeaderGuardCheckWithEndif("#ifndef LLVM_ADT_FOO_H\n"
+                                         "#define LLVM_ADT_FOO_H\n"
+                                         "#endif \\ \n"
+                                         "// LLVM_ADT_FOO_H\n",
+                                         "include/llvm/ADT/foo.h",
+                                         /*ExpectedWarnings=*/1));
 
   EXPECT_EQ("#ifndef LLVM_ADT_FOO_H\n"
             "#define LLVM_ADT_FOO_H\n"
@@ -210,7 +179,8 @@ TEST(LLVMHeaderGuardCheckTest, FixHeaderGuards) {
                                          "#define LLVM_ADT_FOO_H\n"
                                          "#endif  /* LLVM_ADT_FOO_H\\ \n"
                                          " FOO */",
-                                         "include/llvm/ADT/foo.h", None));
+                                         "include/llvm/ADT/foo.h",
+                                         /*ExpectedWarnings=*/0));
 }
 #endif
 

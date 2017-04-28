@@ -17,7 +17,6 @@ target_link_libraries(clang-tidy
   clangTidyCERTModule
   clangTidyCppCoreGuidelinesModule
   clangTidyGoogleModule
-  clangTidyHICPPModule
   clangTidyLLVMModule
   clangTidyMiscModule
   clangTidyModernizeModule
@@ -25,7 +24,6 @@ target_link_libraries(clang-tidy
   clangTidyPerformanceModule
   clangTidyReadabilityModule
   clangTooling
-  clangToolingCore
   )
 
 install(TARGETS clang-tidy

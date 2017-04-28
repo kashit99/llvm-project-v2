@@ -55,54 +55,54 @@ class ScopBuilder {
   std::unique_ptr<Scop> scop;
 
   // Build the SCoP for Region @p R.
-  void buildScop(Region &R, AssumptionCache &AC);
+  void buildScop(Region &R);
 
   /// Try to build a multi-dimensional fixed sized MemoryAccess from the
   /// Load/Store instruction.
   ///
   /// @param Inst       The Load/Store instruction that access the memory
-  /// @param Stmt       The parent statement of the instruction
+  /// @param L          The parent loop of the instruction
   ///
   /// @returns True if the access could be built, False otherwise.
-  bool buildAccessMultiDimFixed(MemAccInst Inst, ScopStmt *Stmt);
+  bool buildAccessMultiDimFixed(MemAccInst Inst, Loop *L);
 
   /// Try to build a multi-dimensional parameteric sized MemoryAccess.
   ///        from the Load/Store instruction.
   ///
   /// @param Inst       The Load/Store instruction that access the memory
-  /// @param Stmt       The parent statement of the instruction
+  /// @param L          The parent loop of the instruction
   ///
   /// @returns True if the access could be built, False otherwise.
-  bool buildAccessMultiDimParam(MemAccInst Inst, ScopStmt *Stmt);
+  bool buildAccessMultiDimParam(MemAccInst Inst, Loop *L);
 
   /// Try to build a MemoryAccess for a memory intrinsic.
   ///
   /// @param Inst       The instruction that access the memory
-  /// @param Stmt       The parent statement of the instruction
+  /// @param L          The parent loop of the instruction
   ///
   /// @returns True if the access could be built, False otherwise.
-  bool buildAccessMemIntrinsic(MemAccInst Inst, ScopStmt *Stmt);
+  bool buildAccessMemIntrinsic(MemAccInst Inst, Loop *L);
 
   /// Try to build a MemoryAccess for a call instruction.
   ///
   /// @param Inst       The call instruction that access the memory
-  /// @param Stmt       The parent statement of the instruction
+  /// @param L          The parent loop of the instruction
   ///
   /// @returns True if the access could be built, False otherwise.
-  bool buildAccessCallInst(MemAccInst Inst, ScopStmt *Stmt);
+  bool buildAccessCallInst(MemAccInst Inst, Loop *L);
 
   /// Build a single-dimensional parametric sized MemoryAccess
   ///        from the Load/Store instruction.
   ///
   /// @param Inst       The Load/Store instruction that access the memory
-  /// @param Stmt       The parent statement of the instruction
-  void buildAccessSingleDim(MemAccInst Inst, ScopStmt *Stmt);
+  /// @param L          The parent loop of the instruction
+  void buildAccessSingleDim(MemAccInst Inst, Loop *L);
 
   /// Build an instance of MemoryAccess from the Load/Store instruction.
   ///
   /// @param Inst       The Load/Store instruction that access the memory
-  /// @param Stmt       The parent statement of the instruction
-  void buildMemoryAccess(MemAccInst Inst, ScopStmt *Stmt);
+  /// @param L          The parent loop of the instruction
+  void buildMemoryAccess(MemAccInst Inst, Loop *L);
 
   /// Analyze and extract the cross-BB scalar dependences (or, dataflow
   /// dependencies) of an instruction.
@@ -171,7 +171,8 @@ class ScopBuilder {
                                 Value *BaseAddress, Type *ElemType, bool Affine,
                                 Value *AccessValue,
                                 ArrayRef<const SCEV *> Subscripts,
-                                ArrayRef<const SCEV *> Sizes, MemoryKind Kind);
+                                ArrayRef<const SCEV *> Sizes,
+                                ScopArrayInfo::MemoryKind Kind);
 
   /// Create a MemoryAccess that represents either a LoadInst or
   /// StoreInst.
@@ -185,7 +186,7 @@ class ScopBuilder {
   /// @param Sizes       The array dimension's sizes.
   /// @param AccessValue Value read or written.
   ///
-  /// @see MemoryKind
+  /// @see ScopArrayInfo::MemoryKind
   void addArrayAccess(MemAccInst MemAccInst, MemoryAccess::AccessType AccType,
                       Value *BaseAddress, Type *ElemType, bool IsAffine,
                       ArrayRef<const SCEV *> Subscripts,
@@ -198,7 +199,7 @@ class ScopBuilder {
   /// @param Inst The instruction to be written.
   ///
   /// @see ensureValueRead()
-  /// @see MemoryKind
+  /// @see ScopArrayInfo::MemoryKind
   void ensureValueWrite(Instruction *Inst);
 
   /// Ensure an llvm::Value is available in the BB's statement, creating a
@@ -208,7 +209,7 @@ class ScopBuilder {
   /// @param UserBB Where to reload the value.
   ///
   /// @see ensureValueStore()
-  /// @see MemoryKind
+  /// @see ScopArrayInfo::MemoryKind
   void ensureValueRead(Value *V, BasicBlock *UserBB);
 
   /// Create a write MemoryAccess for the incoming block of a phi node.
@@ -223,7 +224,7 @@ class ScopBuilder {
   ///                      .phiops one. Required for values escaping through a
   ///                      PHINode in the SCoP region's exit block.
   /// @see addPHIReadAccess()
-  /// @see MemoryKind
+  /// @see ScopArrayInfo::MemoryKind
   void ensurePHIWrite(PHINode *PHI, BasicBlock *IncomingBlock,
                       Value *IncomingValue, bool IsExitBlock);
 
@@ -237,13 +238,13 @@ class ScopBuilder {
   /// here.
   ///
   /// @see ensurePHIWrite()
-  /// @see MemoryKind
+  /// @see ScopArrayInfo::MemoryKind
   void addPHIReadAccess(PHINode *PHI);
 
 public:
-  explicit ScopBuilder(Region *R, AssumptionCache &AC, AliasAnalysis &AA,
-                       const DataLayout &DL, DominatorTree &DT, LoopInfo &LI,
-                       ScopDetection &SD, ScalarEvolution &SE);
+  explicit ScopBuilder(Region *R, AliasAnalysis &AA, const DataLayout &DL,
+                       DominatorTree &DT, LoopInfo &LI, ScopDetection &SD,
+                       ScalarEvolution &SE);
   ~ScopBuilder() {}
 
   /// Try to build the Polly IR of static control part on the current

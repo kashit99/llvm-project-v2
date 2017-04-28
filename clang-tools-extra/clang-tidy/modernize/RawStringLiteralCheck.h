@@ -32,10 +32,9 @@ public:
 private:
   void replaceWithRawStringLiteral(
       const ast_matchers::MatchFinder::MatchResult &Result,
-      const StringLiteral *Literal, StringRef Replacement);
+      const StringLiteral *Literal);
 
   std::string DelimiterStem;
-  const bool ReplaceShorterLiterals;
 };
 
 } // namespace modernize

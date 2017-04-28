@@ -34,6 +34,7 @@ int main()
 {
     {
         typedef std::normal_distribution<> D;
+        typedef D::param_type P;
         typedef std::minstd_rand G;
         G g;
         D d(5, 4);

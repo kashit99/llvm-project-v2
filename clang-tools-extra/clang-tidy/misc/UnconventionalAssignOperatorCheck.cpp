@@ -58,10 +58,7 @@ void UnconventionalAssignOperatorCheck::registerMatchers(
       this);
 
   const auto IsBadReturnStatement = returnStmt(unless(has(ignoringParenImpCasts(
-      anyOf(unaryOperator(hasOperatorName("*"), hasUnaryOperand(cxxThisExpr())),
-            cxxOperatorCallExpr(argumentCountIs(1),
-                                callee(unresolvedLookupExpr()),
-                                hasArgument(0, cxxThisExpr())))))));
+      unaryOperator(hasOperatorName("*"), hasUnaryOperand(cxxThisExpr()))))));
   const auto IsGoodAssign = cxxMethodDecl(IsAssign, HasGoodReturnType);
 
   Finder->addMatcher(returnStmt(IsBadReturnStatement, forFunction(IsGoodAssign))

@@ -31,8 +31,7 @@ int main()
     typedef std::hash<T> H;
     static_assert((std::is_same<H::argument_type, T>::value), "" );
     static_assert((std::is_same<H::result_type, std::size_t>::value), "" );
-    ASSERT_NOEXCEPT(H()(T()));
-    
+
     bool ba[] = {true, false, true, true, false};
     T vb(std::begin(ba), std::end(ba));
     H h;
@@ -44,7 +43,6 @@ int main()
     typedef std::hash<T> H;
     static_assert((std::is_same<H::argument_type, T>::value), "" );
     static_assert((std::is_same<H::result_type, std::size_t>::value), "" );
-    ASSERT_NOEXCEPT(H()(T()));
     bool ba[] = {true, false, true, true, false};
     T vb(std::begin(ba), std::end(ba));
     H h;

@@ -150,12 +150,12 @@ CoverageChecker::CoverageChecker(StringRef ModuleMapPath,
 
 // Create instance of CoverageChecker, to simplify setting up
 // subordinate objects.
-std::unique_ptr<CoverageChecker> CoverageChecker::createCoverageChecker(
-    StringRef ModuleMapPath, std::vector<std::string> &IncludePaths,
-    ArrayRef<std::string> CommandLine, clang::ModuleMap *ModuleMap) {
+CoverageChecker *CoverageChecker::createCoverageChecker(
+  StringRef ModuleMapPath, std::vector<std::string> &IncludePaths,
+  ArrayRef<std::string> CommandLine, clang::ModuleMap *ModuleMap) {
 
-  return llvm::make_unique<CoverageChecker>(ModuleMapPath, IncludePaths,
-                                            CommandLine, ModuleMap);
+  return new CoverageChecker(ModuleMapPath, IncludePaths, CommandLine,
+    ModuleMap);
 }
 
 // Do checks.

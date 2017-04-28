@@ -89,13 +89,13 @@ private:
 
 class ErrorReporter {
 public:
-  ErrorReporter(ClangTidyContext &Context, bool ApplyFixes)
+  ErrorReporter(bool ApplyFixes, StringRef FormatStyle)
       : Files(FileSystemOptions()), DiagOpts(new DiagnosticOptions()),
         DiagPrinter(new TextDiagnosticPrinter(llvm::outs(), &*DiagOpts)),
         Diags(IntrusiveRefCntPtr<DiagnosticIDs>(new DiagnosticIDs), &*DiagOpts,
               DiagPrinter),
-        SourceMgr(Diags, Files), Context(Context), ApplyFixes(ApplyFixes),
-        TotalFixes(0), AppliedFixes(0), WarningsAsErrors(0) {
+        SourceMgr(Diags, Files), ApplyFixes(ApplyFixes), TotalFixes(0),
+        AppliedFixes(0), WarningsAsErrors(0), FormatStyle(FormatStyle) {
     DiagOpts->ShowColors = llvm::sys::Process::StandardOutHasColors();
     DiagPrinter->BeginSourceFile(LangOpts);
   }
@@ -183,6 +183,7 @@ public:
   }
 
   void Finish() {
+    // FIXME: Run clang-format on changes.
     if (ApplyFixes && TotalFixes > 0) {
       Rewriter Rewrite(SourceMgr, LangOpts);
       for (const auto &FileAndReplacements : FileReplacements) {
@@ -196,29 +197,15 @@ public:
           continue;
         }
         StringRef Code = Buffer.get()->getBuffer();
-        auto Style = format::getStyle(
-            *Context.getOptionsForFile(File).FormatStyle, File, "none");
-        if (!Style) {
-          llvm::errs() << llvm::toString(Style.takeError()) << "\n";
-          continue;
-        }
-        llvm::Expected<tooling::Replacements> Replacements =
+        format::FormatStyle Style = format::getStyle("file", File, FormatStyle);
+        llvm::Expected<Replacements> CleanReplacements =
             format::cleanupAroundReplacements(Code, FileAndReplacements.second,
-                                              *Style);
-        if (!Replacements) {
-          llvm::errs() << llvm::toString(Replacements.takeError()) << "\n";
+                                              Style);
+        if (!CleanReplacements) {
+          llvm::errs() << llvm::toString(CleanReplacements.takeError()) << "\n";
           continue;
         }
-        if (llvm::Expected<tooling::Replacements> FormattedReplacements =
-                format::formatReplacements(Code, *Replacements, *Style)) {
-          Replacements = std::move(FormattedReplacements);
-          if (!Replacements)
-            llvm_unreachable("!Replacements");
-        } else {
-          llvm::errs() << llvm::toString(FormattedReplacements.takeError())
-                       << ". Skipping formatting.\n";
-        }
-        if (!tooling::applyAllReplacements(Replacements.get(), Rewrite)) {
+        if (!tooling::applyAllReplacements(CleanReplacements.get(), Rewrite)) {
           llvm::errs() << "Can't apply replacements for file " << File << "\n";
         }
       }
@@ -239,7 +226,7 @@ private:
       return SourceLocation();
 
     const FileEntry *File = SourceMgr.getFileManager().getFile(FilePath);
-    FileID ID = SourceMgr.getOrCreateFileID(File, SrcMgr::C_User);
+    FileID ID = SourceMgr.createFileID(File, SourceLocation(), SrcMgr::C_User);
     return SourceMgr.getLocForStartOfFile(ID).getLocWithOffset(Offset);
   }
 
@@ -256,11 +243,11 @@ private:
   DiagnosticsEngine Diags;
   SourceManager SourceMgr;
   llvm::StringMap<Replacements> FileReplacements;
-  ClangTidyContext &Context;
   bool ApplyFixes;
   unsigned TotalFixes;
   unsigned AppliedFixes;
   unsigned WarningsAsErrors;
+  StringRef FormatStyle;
 };
 
 class ClangTidyASTConsumer : public MultiplexConsumer {
@@ -472,10 +459,13 @@ ClangTidyOptions::OptionMap getCheckOptions(const ClangTidyOptions &Options) {
   return Factory.getCheckOptions();
 }
 
-void runClangTidy(clang::tidy::ClangTidyContext &Context,
-                  const CompilationDatabase &Compilations,
-                  ArrayRef<std::string> InputFiles, ProfileData *Profile) {
+ClangTidyStats
+runClangTidy(std::unique_ptr<ClangTidyOptionsProvider> OptionsProvider,
+             const CompilationDatabase &Compilations,
+             ArrayRef<std::string> InputFiles,
+             std::vector<ClangTidyError> *Errors, ProfileData *Profile) {
   ClangTool Tool(Compilations, InputFiles);
+  clang::tidy::ClangTidyContext Context(std::move(OptionsProvider));
 
   // Add extra arguments passed by the clang-tidy command-line.
   ArgumentsAdjuster PerFileExtraArgumentsInserter =
@@ -497,7 +487,7 @@ void runClangTidy(clang::tidy::ClangTidyContext &Context,
 
   // Remove plugins arguments.
   ArgumentsAdjuster PluginArgumentsRemover =
-      [](const CommandLineArguments &Args, StringRef Filename) {
+      [&Context](const CommandLineArguments &Args, StringRef Filename) {
         CommandLineArguments AdjustedArgs;
         for (size_t I = 0, E = Args.size(); I < E; ++I) {
           if (I + 4 < Args.size() && Args[I] == "-Xclang" &&
@@ -543,18 +533,20 @@ void runClangTidy(clang::tidy::ClangTidyContext &Context,
 
   ActionFactory Factory(Context);
   Tool.run(&Factory);
+  *Errors = Context.getErrors();
+  return Context.getStats();
 }
 
-void handleErrors(ClangTidyContext &Context, bool Fix,
-                  unsigned &WarningsAsErrorsCount) {
-  ErrorReporter Reporter(Context, Fix);
+void handleErrors(const std::vector<ClangTidyError> &Errors, bool Fix,
+                  StringRef FormatStyle, unsigned &WarningsAsErrorsCount) {
+  ErrorReporter Reporter(Fix, FormatStyle);
   vfs::FileSystem &FileSystem =
       *Reporter.getSourceManager().getFileManager().getVirtualFileSystem();
   auto InitialWorkingDir = FileSystem.getCurrentWorkingDirectory();
   if (!InitialWorkingDir)
     llvm::report_fatal_error("Cannot get current working path.");
 
-  for (const ClangTidyError &Error : Context.getErrors()) {
+  for (const ClangTidyError &Error : Errors) {
     if (!Error.BuildDirectory.empty()) {
       // By default, the working directory of file system is the current
       // clang-tidy running directory.

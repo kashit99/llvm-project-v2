@@ -15,8 +15,7 @@
 
 namespace lld {
 namespace coff {
-bool link(llvm::ArrayRef<const char *> Args,
-          llvm::raw_ostream &Diag = llvm::errs());
+bool link(llvm::ArrayRef<const char *> Args);
 }
 
 namespace elf {

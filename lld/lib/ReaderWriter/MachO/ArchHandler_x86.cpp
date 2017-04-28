@@ -118,7 +118,14 @@ public:
                                 normalized::Relocations &relocs) override;
 
   bool isDataInCodeTransition(Reference::KindValue refKind) override {
-    return refKind == modeCode || refKind == modeData;
+    switch (refKind) {
+    case modeCode:
+    case modeData:
+      return true;
+    default:
+      return false;
+      break;
+    }
   }
 
   Reference::KindValue dataInCodeTransitionStart(

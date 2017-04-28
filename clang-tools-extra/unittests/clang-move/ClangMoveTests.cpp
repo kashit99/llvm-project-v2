@@ -65,7 +65,7 @@ const char TestCC[] = "#include \"foo.h\"\n"
                       "static int kConstInt2 = 1;\n"
                       "\n"
                       "/** comment4\n"
-                      "*/\n"
+                      " */\n"
                       "static int help() {\n"
                       "  int a = 0;\n"
                       "  return a;\n"
@@ -120,7 +120,7 @@ const char ExpectedTestCC[] = "#include \"foo.h\"\n"
                               "static int kConstInt2 = 1;\n"
                               "\n"
                               "/** comment4\n"
-                              "*/\n"
+                              " */\n"
                               "static int help() {\n"
                               "  int a = 0;\n"
                               "  return a;\n"
@@ -174,7 +174,7 @@ const char ExpectedNewCC[] = "namespace a {\n"
                              "static int kConstInt2 = 1;\n"
                              "\n"
                              "/** comment4\n"
-                             "*/\n"
+                             " */\n"
                              "static int help() {\n"
                              "  int a = 0;\n"
                              "  return a;\n"
@@ -207,8 +207,8 @@ runClangMoveOnCode(const move::MoveDefinitionSpec &Spec,
   std::vector<std::pair<std::string, std::string>> FileToSourceText = {
       {TestHeaderName, Header}, {TestCCName, CC}};
 
-  auto CreateFiles = [&FileToSourceText, &Context, &FileToFileID](
-      llvm::StringRef Name, llvm::StringRef Code) {
+  auto CreateFiles = [&Context, &FileToFileID](llvm::StringRef Name,
+                                               llvm::StringRef Code) {
     if (!Name.empty()) {
       FileToFileID[Name] = Context.createInMemoryFile(Name, Code);
     }
@@ -535,6 +535,12 @@ TEST(ClangMove, DumpDecls) {
                             "namespace b {\n"
                             "class Move1 { public : void f(); };\n"
                             "void f() {}\n"
+                            "enum E1 { Green };\n"
+                            "enum class E2 { Red };\n"
+                            "typedef int Int2;\n"
+                            "using Int = int;\n"
+                            "extern int kGlobalInt;\n"
+                            "extern const char* const kGlobalStr;\n"
                             "} // namespace b\n"
                             "} // namespace a\n";
   const char TestCode[] = "#include \"foo.h\"\n";
@@ -545,22 +551,17 @@ TEST(ClangMove, DumpDecls) {
   Spec.NewHeader = "new_foo.h";
   Spec.NewCC = "new_foo.cc";
   DeclarationReporter Reporter;
-  std::vector<DeclarationReporter::DeclarationPair> ExpectedDeclarations = {
+  std::set<DeclarationReporter::DeclarationPair> ExpectedDeclarations = {
       {"A", "Class"},         {"B", "Class"},        {"a::Move1", "Class"},
       {"a::f1", "Function"},  {"a::f2", "Function"}, {"a::b::Move1", "Class"},
-      {"a::b::f", "Function"}};
+      {"a::b::f", "Function"}, {"a::b::E1", "Enum"}, {"a::b::E2", "Enum"},
+      {"a::b::Int2", "TypeAlias"}, {"a::b::Int", "TypeAlias"},
+      {"a::b::kGlobalInt", "Variable"}, {"a::b::kGlobalStr", "Variable"}};
   runClangMoveOnCode(Spec, TestHeader, TestCode, &Reporter);
-  const auto& Results = Reporter.getDeclarationList();
-  auto ActualDeclIter = Results.begin();
-  auto ExpectedDeclIter = ExpectedDeclarations.begin();
-  while (ActualDeclIter != Results.end() &&
-         ExpectedDeclIter != ExpectedDeclarations.end()) {
-    EXPECT_EQ(*ActualDeclIter, *ExpectedDeclIter);
-    ++ActualDeclIter;
-    ++ExpectedDeclIter;
-  }
-  ASSERT_TRUE(ActualDeclIter == Results.end());
-  ASSERT_TRUE(ExpectedDeclIter == ExpectedDeclarations.end());
+  std::set<DeclarationReporter::DeclarationPair> Results;
+  for (const auto& DelPair : Reporter.getDeclarationList())
+    Results.insert(DelPair);
+  EXPECT_EQ(ExpectedDeclarations, Results);
 }
 
 } // namespace

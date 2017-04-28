@@ -367,14 +367,13 @@ static void computeKnownBitsMul(const Value *Op0, const Value *Op1, bool NSW,
 }
 
 void llvm::computeKnownBitsFromRangeMetadata(const MDNode &Ranges,
-                                             APInt &KnownZero,
-                                             APInt &KnownOne) {
-  unsigned BitWidth = KnownZero.getBitWidth();
+                                             KnownBits &Known) {
+  unsigned BitWidth = Known.getBitWidth();
   unsigned NumRanges = Ranges.getNumOperands() / 2;
   assert(NumRanges >= 1);
 
-  KnownZero.setAllBits();
-  KnownOne.setAllBits();
+  Known.Zero.setAllBits();
+  Known.One.setAllBits();
 
   for (unsigned i = 0; i < NumRanges; ++i) {
     ConstantInt *Lower =
@@ -388,8 +387,8 @@ void llvm::computeKnownBitsFromRangeMetadata(const MDNode &Ranges,
         (Range.getUnsignedMax() ^ Range.getUnsignedMin()).countLeadingZeros();
 
     APInt Mask = APInt::getHighBitsSet(BitWidth, CommonPrefixBits);
-    KnownOne &= Range.getUnsignedMax() & Mask;
-    KnownZero &= ~Range.getUnsignedMax() & Mask;
+    Known.One &= Range.getUnsignedMax() & Mask;
+    Known.Zero &= ~Range.getUnsignedMax() & Mask;
   }
 }
 
@@ -902,7 +901,7 @@ static void computeKnownBitsFromOperator(const Operator *I, KnownBits &Known,
   default: break;
   case Instruction::Load:
     if (MDNode *MD = cast<LoadInst>(I)->getMetadata(LLVMContext::MD_range))
-      computeKnownBitsFromRangeMetadata(*MD, Known.Zero, Known.One);
+      computeKnownBitsFromRangeMetadata(*MD, Known);
     break;
   case Instruction::And: {
     // If either the LHS or the RHS are Zero, the result is zero.
@@ -1163,12 +1162,12 @@ static void computeKnownBitsFromOperator(const Operator *I, KnownBits &Known,
 
         // If the first operand is non-negative or has all low bits zero, then
         // the upper bits are all zero.
-        if (Known2.Zero.isSignBitSet() || ((Known2.Zero & LowBits) == LowBits))
+        if (Known2.Zero.isSignBitSet() || LowBits.isSubsetOf(Known2.Zero))
           Known.Zero |= ~LowBits;
 
         // If the first operand is negative and not all low bits are zero, then
         // the upper bits are all one.
-        if (Known2.One.isSignBitSet() && ((Known2.One & LowBits) != 0))
+        if (Known2.One.isSignBitSet() && LowBits.intersects(Known2.One))
           Known.One |= ~LowBits;
 
         assert((Known.Zero & Known.One) == 0 && "Bits known to be one AND zero?");
@@ -1384,7 +1383,7 @@ static void computeKnownBitsFromOperator(const Operator *I, KnownBits &Known,
     // and then intersect with known bits based on other properties of the
     // function.
     if (MDNode *MD = cast<Instruction>(I)->getMetadata(LLVMContext::MD_range))
-      computeKnownBitsFromRangeMetadata(*MD, Known.Zero, Known.One);
+      computeKnownBitsFromRangeMetadata(*MD, Known);
     if (const Value *RV = ImmutableCallSite(I).getReturnedArgOperand()) {
       computeKnownBits(RV, Known2, Depth + 1, Q);
       Known.Zero |= Known2.Zero;
@@ -3198,7 +3197,7 @@ Value *llvm::GetUnderlyingObject(Value *V, const DataLayout &DL,
       // See if InstructionSimplify knows any relevant tricks.
       if (Instruction *I = dyn_cast<Instruction>(V))
         // TODO: Acquire a DominatorTree and AssumptionCache and use them.
-        if (Value *Simplified = SimplifyInstruction(I, DL, nullptr)) {
+        if (Value *Simplified = SimplifyInstruction(I, {DL, I})) {
           V = Simplified;
           continue;
         }

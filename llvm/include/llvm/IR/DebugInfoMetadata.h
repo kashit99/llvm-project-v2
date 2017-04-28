@@ -56,6 +56,8 @@
 
 namespace llvm {
 
+class DIBuilder;
+
 template <typename T> class Optional;
 
 /// Holds a subclass of DINode.
@@ -433,7 +435,7 @@ public:
 
   /// Return the raw underlying file.
   ///
-  /// An \a DIFile is an \a DIScope, but it doesn't point at a separate file
+  /// A \a DIFile is a \a DIScope, but it doesn't point at a separate file
   /// (it\em is the file).  If \c this is an \a DIFile, we need to return \c
   /// this.  Otherwise, return the first operand, which is where all other
   /// subclasses store their file pointer.
@@ -2275,6 +2277,17 @@ public:
 
   /// Return whether this is a piece of an aggregate variable.
   bool isFragment() const { return getFragmentInfo().hasValue(); }
+
+  /// Append \p Ops with operations to apply the \p Offset.
+  static void appendOffset(SmallVectorImpl<uint64_t> &Ops, int64_t Offset);
+
+  /// Constants for DIExpression::prepend.
+  enum { NoDeref = false, WithDeref = true, WithStackValue = true };
+
+  /// Prepend \p DIExpr with a deref and offset operation and optionally turn it
+  /// into a stack value.
+  static DIExpression *prepend(const DIExpression *DIExpr, bool Deref,
+                               int64_t Offset = 0, bool StackValue = false);
 };
 
 /// Global variables.

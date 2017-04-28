@@ -874,6 +874,13 @@ public:
     return *this;
   }
 
+  /// \brief Left-shift assignment function.
+  ///
+  /// Shifts *this left by shiftAmt and assigns the result to *this.
+  ///
+  /// \returns *this after shifting left by ShiftAmt
+  APInt &operator<<=(const APInt &ShiftAmt);
+
   /// @}
   /// \name Binary Operators
   /// @{
@@ -981,7 +988,11 @@ public:
   /// \brief Left-shift function.
   ///
   /// Left-shift this APInt by shiftAmt.
-  APInt shl(const APInt &shiftAmt) const;
+  APInt shl(const APInt &ShiftAmt) const {
+    APInt R(*this);
+    R <<= ShiftAmt;
+    return R;
+  }
 
   /// \brief Rotate left by rotateAmt.
   APInt rotl(const APInt &rotateAmt) const;
@@ -1390,6 +1401,11 @@ public:
   ///
   /// Set the given bit to 0 whose position is given as "bitPosition".
   void clearBit(unsigned bitPosition);
+
+  /// Set the sign bit to 0.
+  void clearSignBit() {
+    clearBit(BitWidth - 1);
+  }
 
   /// \brief Toggle every bit to its opposite value.
   void flipAllBits() {

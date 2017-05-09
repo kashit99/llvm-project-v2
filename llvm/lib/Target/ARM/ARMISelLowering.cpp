@@ -202,7 +202,7 @@ void ARMTargetLowering::addTypeForNEON(MVT VT, MVT PromotedLdStVT,
 
   if (!VT.isFloatingPoint() &&
       VT != MVT::v2i64 && VT != MVT::v1i64)
-    for (unsigned Opcode : {ISD::SMIN, ISD::SMAX, ISD::UMIN, ISD::UMAX})
+    for (auto Opcode : {ISD::ABS, ISD::SMIN, ISD::SMAX, ISD::UMIN, ISD::UMAX})
       setOperationAction(Opcode, VT, Legal);
 }
 
@@ -473,9 +473,9 @@ ARMTargetLowering::ARMTargetLowering(const TargetMachine &TM,
   }
 
   // Use divmod compiler-rt calls for iOS 5.0 and later.
-  if (Subtarget->isTargetWatchOS() ||
-      (Subtarget->isTargetIOS() &&
-       !Subtarget->getTargetTriple().isOSVersionLT(5, 0))) {
+  if (Subtarget->isTargetMachO() &&
+      !(Subtarget->isTargetIOS() &&
+        Subtarget->getTargetTriple().isOSVersionLT(5, 0))) {
     setLibcallName(RTLIB::SDIVREM_I32, "__divmodsi4");
     setLibcallName(RTLIB::UDIVREM_I32, "__udivmodsi4");
   }
@@ -1817,8 +1817,7 @@ ARMTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
   // Adjust the stack pointer for the new arguments...
   // These operations are automatically eliminated by the prolog/epilog pass
   if (!isSibCall)
-    Chain = DAG.getCALLSEQ_START(Chain,
-                                 DAG.getIntPtrConstant(NumBytes, dl, true), dl);
+    Chain = DAG.getCALLSEQ_START(Chain, NumBytes, 0, dl);
 
   SDValue StackPtr =
       DAG.getCopyFromReg(Chain, dl, ARM::SP, getPointerTy(DAG.getDataLayout()));
@@ -3316,6 +3315,9 @@ ARMTargetLowering::LowerINTRINSIC_WO_CHAIN(SDValue Op, SelectionDAG &DAG,
     }
     return Result;
   }
+  case Intrinsic::arm_neon_vabs:
+    return DAG.getNode(ISD::ABS, SDLoc(Op), Op.getValueType(),
+                        Op.getOperand(1));
   case Intrinsic::arm_neon_vmulls:
   case Intrinsic::arm_neon_vmullu: {
     unsigned NewOpc = (IntNo == Intrinsic::arm_neon_vmulls)
@@ -7362,7 +7364,7 @@ SDValue ARMTargetLowering::LowerFSINCOS(SDValue Op, SelectionDAG &DAG) const {
   const TargetLowering &TLI = DAG.getTargetLoweringInfo();
 
   // Pair of floats / doubles used to pass the result.
-  Type *RetTy = StructType::get(ArgTy, ArgTy, nullptr);
+  Type *RetTy = StructType::get(ArgTy, ArgTy);
   auto &DL = DAG.getDataLayout();
 
   ArgListTy Args;
@@ -13112,7 +13114,7 @@ SDValue ARMTargetLowering::LowerDivRem(SDValue Op, SelectionDAG &DAG) const {
   SDValue Callee = DAG.getExternalSymbol(getLibcallName(LC),
                                          getPointerTy(DAG.getDataLayout()));
 
-  Type *RetTy = (Type*)StructType::get(Ty, Ty, nullptr);
+  Type *RetTy = StructType::get(Ty, Ty);
 
   if (Subtarget->isTargetWindows())
     InChain = WinDBZCheckDenominator(DAG, Op.getNode(), InChain);
@@ -13414,9 +13416,9 @@ Instruction* ARMTargetLowering::makeDMB(IRBuilder<> &Builder,
 }
 
 // Based on http://www.cl.cam.ac.uk/~pes20/cpp/cpp0xmappings.html
-Instruction* ARMTargetLowering::emitLeadingFence(IRBuilder<> &Builder,
-                                         AtomicOrdering Ord, bool IsStore,
-                                         bool IsLoad) const {
+Instruction *ARMTargetLowering::emitLeadingFence(IRBuilder<> &Builder,
+                                                 Instruction *Inst,
+                                                 AtomicOrdering Ord) const {
   switch (Ord) {
   case AtomicOrdering::NotAtomic:
   case AtomicOrdering::Unordered:
@@ -13425,7 +13427,7 @@ Instruction* ARMTargetLowering::emitLeadingFence(IRBuilder<> &Builder,
   case AtomicOrdering::Acquire:
     return nullptr; // Nothing to do
   case AtomicOrdering::SequentiallyConsistent:
-    if (!IsStore)
+    if (!Inst->hasAtomicStore())
       return nullptr; // Nothing to do
     /*FALLTHROUGH*/
   case AtomicOrdering::Release:
@@ -13439,9 +13441,9 @@ Instruction* ARMTargetLowering::emitLeadingFence(IRBuilder<> &Builder,
   llvm_unreachable("Unknown fence ordering in emitLeadingFence");
 }
 
-Instruction* ARMTargetLowering::emitTrailingFence(IRBuilder<> &Builder,
-                                          AtomicOrdering Ord, bool IsStore,
-                                          bool IsLoad) const {
+Instruction *ARMTargetLowering::emitTrailingFence(IRBuilder<> &Builder,
+                                                  Instruction *Inst,
+                                                  AtomicOrdering Ord) const {
   switch (Ord) {
   case AtomicOrdering::NotAtomic:
   case AtomicOrdering::Unordered:

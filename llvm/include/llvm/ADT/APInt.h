@@ -842,6 +842,7 @@ public:
   ///
   /// \returns *this
   APInt &operator*=(const APInt &RHS);
+  APInt &operator*=(uint64_t RHS);
 
   /// \brief Addition assignment operator.
   ///
@@ -1851,10 +1852,9 @@ public:
                         unsigned);
 
   /// DST = LHS * RHS, where DST has width the sum of the widths of the
-  /// operands.  No overflow occurs.  DST must be disjoint from both
-  /// operands. Returns the number of parts required to hold the result.
-  static unsigned tcFullMultiply(WordType *, const WordType *,
-                                 const WordType *, unsigned, unsigned);
+  /// operands. No overflow occurs. DST must be disjoint from both operands.
+  static void tcFullMultiply(WordType *, const WordType *,
+                             const WordType *, unsigned, unsigned);
 
   /// If RHS is zero LHS and REMAINDER are left unchanged, return one.
   /// Otherwise set LHS to LHS / RHS with the fractional part discarded, set
@@ -2040,6 +2040,16 @@ inline APInt operator-(APInt a, uint64_t RHS) {
 inline APInt operator-(uint64_t LHS, APInt b) {
   b = -std::move(b);
   b += LHS;
+  return b;
+}
+
+inline APInt operator*(APInt a, uint64_t RHS) {
+  a *= RHS;
+  return a;
+}
+
+inline APInt operator*(uint64_t LHS, APInt b) {
+  b *= LHS;
   return b;
 }
 

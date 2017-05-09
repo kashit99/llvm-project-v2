@@ -6070,12 +6070,24 @@ NamedDecl *Sema::ActOnVariableDeclarator(
       }
     }
 
-    // OpenCL v1.2 s6.9.b p4:
-    // The sampler type cannot be used with the __local and __global address
-    // space qualifiers.
-    if (R->isSamplerT() && (R.getAddressSpace() == LangAS::opencl_local ||
-      R.getAddressSpace() == LangAS::opencl_global)) {
-      Diag(D.getIdentifierLoc(), diag::err_wrong_sampler_addressspace);
+    if (R->isSamplerT()) {
+      // OpenCL v1.2 s6.9.b p4:
+      // The sampler type cannot be used with the __local and __global address
+      // space qualifiers.
+      if (R.getAddressSpace() == LangAS::opencl_local ||
+          R.getAddressSpace() == LangAS::opencl_global) {
+        Diag(D.getIdentifierLoc(), diag::err_wrong_sampler_addressspace);
+      }
+
+      // OpenCL v1.2 s6.12.14.1:
+      // A global sampler must be declared with either the constant address
+      // space qualifier or with the const qualifier.
+      if (DC->isTranslationUnit() &&
+          !(R.getAddressSpace() == LangAS::opencl_constant ||
+          R.isConstQualified())) {
+        Diag(D.getIdentifierLoc(), diag::err_opencl_nonconst_global_sampler);
+        D.setInvalidType();
+      }
     }
 
     // OpenCL v1.2 s6.9.r:
@@ -8911,6 +8923,7 @@ Sema::ActOnFunctionDeclarator(Scope *S, Declarator &D, DeclContext *DC,
     if (FunctionTemplate) {
       if (NewFD->isInvalidDecl())
         FunctionTemplate->setInvalidDecl();
+      MarkUnusedFileScopedDecl(NewFD);
       return FunctionTemplate;
     }
   }
@@ -11011,8 +11024,7 @@ static bool hasDependentAlignment(VarDecl *VD) {
 
 /// FinalizeDeclaration - called by ParseDeclarationAfterDeclarator to perform
 /// any semantic actions necessary after any initializer has been attached.
-void
-Sema::FinalizeDeclaration(Decl *ThisDecl) {
+void Sema::FinalizeDeclaration(Decl *ThisDecl) {
   // Note that we are no longer parsing the initializer for this declaration.
   ParsingInitForAutoVars.erase(ThisDecl);
 
@@ -11177,9 +11189,8 @@ Sema::FinalizeDeclaration(Decl *ThisDecl) {
   if (DC->getRedeclContext()->isFileContext() && VD->isExternallyVisible())
     AddPushedVisibilityAttribute(VD);
 
-  // FIXME: Warn on unused templates.
-  if (VD->isFileVarDecl() && !VD->getDescribedVarTemplate() &&
-      !isa<VarTemplatePartialSpecializationDecl>(VD))
+  // FIXME: Warn on unused var template partial specializations.
+  if (VD->isFileVarDecl() && !isa<VarTemplatePartialSpecializationDecl>(VD))
     MarkUnusedFileScopedDecl(VD);
 
   // Now we have parsed the initializer and can update the table of magic

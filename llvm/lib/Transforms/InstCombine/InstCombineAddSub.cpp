@@ -1041,6 +1041,57 @@ static Value *checkForNegativeOperand(BinaryOperator &I,
   return nullptr;
 }
 
+static Instruction *foldAddWithConstant(BinaryOperator &Add,
+                                        InstCombiner::BuilderTy &Builder) {
+  Value *Op0 = Add.getOperand(0), *Op1 = Add.getOperand(1);
+  const APInt *C;
+  if (!match(Op1, m_APInt(C)))
+    return nullptr;
+
+  if (C->isSignMask()) {
+    // If wrapping is not allowed, then the addition must set the sign bit:
+    // X + (signmask) --> X | signmask
+    if (Add.hasNoSignedWrap() || Add.hasNoUnsignedWrap())
+      return BinaryOperator::CreateOr(Op0, Op1);
+
+    // If wrapping is allowed, then the addition flips the sign bit of LHS:
+    // X + (signmask) --> X ^ signmask
+    return BinaryOperator::CreateXor(Op0, Op1);
+  }
+
+  Value *X;
+  const APInt *C2;
+  Type *Ty = Add.getType();
+
+  // Is this add the last step in a convoluted sext?
+  // add(zext(xor i16 X, -32768), -32768) --> sext X
+  if (match(Op0, m_ZExt(m_Xor(m_Value(X), m_APInt(C2)))) &&
+      C2->isMinSignedValue() && C2->sext(Ty->getScalarSizeInBits()) == *C)
+    return CastInst::Create(Instruction::SExt, X, Ty);
+
+  // (add (zext (add nuw X, C2)), C) --> (zext (add nuw X, C2 + C))
+  // FIXME: This should check hasOneUse to not increase the instruction count?
+  if (C->isNegative() &&
+      match(Op0, m_ZExt(m_NUWAdd(m_Value(X), m_APInt(C2)))) &&
+      C->sge(-C2->sext(C->getBitWidth()))) {
+    Constant *NewC =
+        ConstantInt::get(X->getType(), *C2 + C->trunc(C2->getBitWidth()));
+    return new ZExtInst(Builder.CreateNUWAdd(X, NewC), Ty);
+  }
+
+  // Shifts and add used to flip and mask off the low bit:
+  // add (ashr (shl i32 X, 31), 31), 1 --> and (not X), 1
+  const APInt *C3;
+  if (*C == 1 && match(Op0, m_OneUse(m_AShr(m_Shl(m_Value(X), m_APInt(C2)),
+                                            m_APInt(C3)))) &&
+      C2 == C3 && *C2 == Ty->getScalarSizeInBits() - 1) {
+    Value *NotX = Builder.CreateNot(X);
+    return BinaryOperator::CreateAnd(NotX, ConstantInt::get(Ty, 1));
+  }
+
+  return nullptr;
+}
+
 Instruction *InstCombiner::visitAdd(BinaryOperator &I) {
   bool Changed = SimplifyAssociativeOrCommutative(I);
   Value *LHS = I.getOperand(0), *RHS = I.getOperand(1);
@@ -1056,41 +1107,11 @@ Instruction *InstCombiner::visitAdd(BinaryOperator &I) {
   if (Value *V = SimplifyUsingDistributiveLaws(I))
     return replaceInstUsesWith(I, V);
 
-  const APInt *RHSC;
-  if (match(RHS, m_APInt(RHSC))) {
-    if (RHSC->isSignMask()) {
-      // If wrapping is not allowed, then the addition must set the sign bit:
-      // X + (signmask) --> X | signmask
-      if (I.hasNoSignedWrap() || I.hasNoUnsignedWrap())
-        return BinaryOperator::CreateOr(LHS, RHS);
+  if (Instruction *X = foldAddWithConstant(I, *Builder))
+    return X;
 
-      // If wrapping is allowed, then the addition flips the sign bit of LHS:
-      // X + (signmask) --> X ^ signmask
-      return BinaryOperator::CreateXor(LHS, RHS);
-    }
-
-    // Is this add the last step in a convoluted sext?
-    Value *X;
-    const APInt *C;
-    if (match(LHS, m_ZExt(m_Xor(m_Value(X), m_APInt(C)))) &&
-        C->isMinSignedValue() &&
-        C->sext(LHS->getType()->getScalarSizeInBits()) == *RHSC) {
-      // add(zext(xor i16 X, -32768), -32768) --> sext X
-      return CastInst::Create(Instruction::SExt, X, LHS->getType());
-    }
-
-    if (RHSC->isNegative() &&
-        match(LHS, m_ZExt(m_NUWAdd(m_Value(X), m_APInt(C)))) &&
-        RHSC->sge(-C->sext(RHSC->getBitWidth()))) {
-      // (add (zext (add nuw X, C)), Val) -> (zext (add nuw X, C+Val))
-      Constant *NewC =
-          ConstantInt::get(X->getType(), *C + RHSC->trunc(C->getBitWidth()));
-      return new ZExtInst(Builder->CreateNUWAdd(X, NewC), I.getType());
-    }
-  }
-
-  // FIXME: Use the match above instead of dyn_cast to allow these transforms
-  // for splat vectors.
+  // FIXME: This should be moved into the above helper function to allow these
+  // transforms for splat vectors.
   if (ConstantInt *CI = dyn_cast<ConstantInt>(RHS)) {
     // zext(bool) + C -> bool ? C + 1 : C
     if (ZExtInst *ZI = dyn_cast<ZExtInst>(LHS))

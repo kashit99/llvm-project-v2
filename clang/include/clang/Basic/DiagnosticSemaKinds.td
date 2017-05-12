@@ -4609,6 +4609,8 @@ def err_abi_tag_on_redeclaration : Error<
   "cannot add 'abi_tag' attribute in a redeclaration">;
 def err_new_abi_tag_on_redeclaration : Error<
   "'abi_tag' %0 missing in original declaration">;
+def note_use_ifdef_guards : Note<
+  "unguarded header; consider using #ifdef guards or #pragma once">;
 
 def note_deleted_dtor_no_operator_delete : Note<
   "virtual destructor requires an unambiguous, accessible 'operator delete'">;
@@ -8188,9 +8190,20 @@ def err_undeclared_use_suggest : Error<
   "use of undeclared %0; did you mean %1?">;
 def err_undeclared_var_use_suggest : Error<
   "use of undeclared identifier %0; did you mean %1?">;
+def err_no_template : Error<"no template named %0">;
 def err_no_template_suggest : Error<"no template named %0; did you mean %1?">;
+def err_no_member_template : Error<"no template named %0 in %1">;
 def err_no_member_template_suggest : Error<
   "no template named %0 in %1; did you mean %select{|simply }2%3?">;
+def err_non_template_in_template_id : Error<
+  "%0 does not name a template but is followed by template arguments">;
+def err_non_template_in_template_id_suggest : Error<
+  "%0 does not name a template but is followed by template arguments; "
+  "did you mean %1?">;
+def err_non_template_in_member_template_id_suggest : Error<
+  "member %0 of %1 is not a template; did you mean %select{|simply }2%3?">;
+def note_non_template_in_template_id_found : Note<
+  "non-template declaration found by name lookup">;
 def err_mem_init_not_member_or_class_suggest : Error<
   "initializer %0 does not name a non-static data member or base "
   "class; did you mean the %select{base class|member}1 %2?">;
@@ -8877,6 +8890,13 @@ def ext_equivalent_internal_linkage_decl_in_modules : ExtWarn<
   InGroup<DiagGroup<"modules-ambiguous-internal-linkage">>;
 def note_equivalent_internal_linkage_decl : Note<
   "declared here%select{ in module '%1'|}0">;
+
+def note_redefinition_modules_same_file : Note<
+	"'%0' included multiple times, additional include site in header from module '%1'">;
+def note_redefinition_modules_same_file_modulemap : Note<
+	"consider adding '%0' as part of '%1' definition">;
+def note_redefinition_include_same_file : Note<
+	"'%0' included multiple times, additional include site here">;
 }
 
 let CategoryName = "Coroutines Issue" in {

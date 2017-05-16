@@ -21,6 +21,7 @@
 #if KMP_ARCH_X86 || KMP_ARCH_X86_64
 
 # if KMP_MIC
+//
 // the 'delay r16/r32/r64' should be used instead of the 'pause'.
 // The delay operation has the effect of removing the current thread from
 // the round-robin HT mechanism, and therefore speeds up the issue rate of
@@ -69,10 +70,9 @@
 KMP_PREFIX_UNDERSCORE($0):
 .endmacro
 # else // KMP_OS_DARWIN
-#  define KMP_PREFIX_UNDERSCORE(x) x //no extra underscore for Linux* OS symbols
+#  define KMP_PREFIX_UNDERSCORE(x) x  // no extra underscore for Linux* OS symbols
 // Format labels so that they don't override function names in gdb's backtraces
-// MIC assembler doesn't accept .L syntax, the L works fine there (as well as
-// on OS X*)
+// MIC assembler doesn't accept .L syntax, the L works fine there (as well as on OS X*)
 # if KMP_MIC
 #  define KMP_LABEL(x) L_##x          // local label
 # else
@@ -109,28 +109,8 @@ KMP_PREFIX_UNDERSCORE(\proc):
 # endif // KMP_OS_DARWIN
 #endif // KMP_ARCH_X86 || KMP_ARCH_x86_64
 
-#if (KMP_OS_LINUX || KMP_OS_DARWIN) && KMP_ARCH_AARCH64
+#if KMP_OS_LINUX && KMP_ARCH_AARCH64
 
-# if KMP_OS_DARWIN
-#  define KMP_PREFIX_UNDERSCORE(x) _##x  // extra underscore for OS X* symbols
-#  define KMP_LABEL(x) L_##x             // form the name of label
-
-.macro ALIGN
-	.align $0
-.endmacro
-
-.macro DEBUG_INFO
-/* Not sure what .size does in icc, not sure if we need to do something
-   similar for OS X*.
-*/
-.endmacro
-
-.macro PROC
-	ALIGN  4
-	.globl KMP_PREFIX_UNDERSCORE($0)
-KMP_PREFIX_UNDERSCORE($0):
-.endmacro
-# else // KMP_OS_DARWIN
 #  define KMP_PREFIX_UNDERSCORE(x) x  // no extra underscore for Linux* OS symbols
 // Format labels so that they don't override function names in gdb's backtraces
 #  define KMP_LABEL(x) .L_##x         // local label hidden from backtraces
@@ -153,9 +133,8 @@ KMP_PREFIX_UNDERSCORE($0):
 KMP_PREFIX_UNDERSCORE(\proc):
 	.cfi_startproc
 .endm
-# endif // KMP_OS_DARWIN
 
-#endif // (KMP_OS_LINUX || KMP_OS_DARWIN) && KMP_ARCH_AARCH64
+#endif // KMP_OS_LINUX && KMP_ARCH_AARCH64
 
 // -----------------------------------------------------------------------
 // data
@@ -163,10 +142,12 @@ KMP_PREFIX_UNDERSCORE(\proc):
 
 #ifdef KMP_GOMP_COMPAT
 
+//
 // Support for unnamed common blocks.
 //
 // Because the symbol ".gomp_critical_user_" contains a ".", we have to
 // put this stuff in assembly.
+//
 
 # if KMP_ARCH_X86
 #  if KMP_OS_DARWIN
@@ -219,12 +200,14 @@ __kmp_unnamed_critical_addr:
 // microtasking routines specifically written for IA-32 architecture
 // running Linux* OS
 // -----------------------------------------------------------------------
+//
 
 	.ident "Intel Corporation"
 	.data
 	ALIGN 4
 // void
 // __kmp_x86_pause( void );
+//
 
         .text
 	PROC  __kmp_x86_pause
@@ -234,9 +217,10 @@ __kmp_unnamed_critical_addr:
 
 	DEBUG_INFO __kmp_x86_pause
 
+//
 // void
 // __kmp_x86_cpuid( int mode, int mode2, void *cpuid_buffer );
-
+//
 	PROC  __kmp_x86_cpuid
 
 	pushl %ebp
@@ -248,7 +232,7 @@ __kmp_unnamed_critical_addr:
 
 	movl  8(%ebp), %eax
 	movl  12(%ebp), %ecx
-	cpuid		// Query the CPUID for the current processor
+	cpuid				// Query the CPUID for the current processor
 
 	movl  16(%ebp), %edi
 	movl  %eax, 0(%edi)
@@ -270,8 +254,10 @@ __kmp_unnamed_critical_addr:
 # if !KMP_ASM_INTRINS
 
 //------------------------------------------------------------------------
+//
 // kmp_int32
 // __kmp_test_then_add32( volatile kmp_int32 *p, kmp_int32 d );
+//
 
         PROC      __kmp_test_then_add32
 
@@ -284,6 +270,7 @@ __kmp_unnamed_critical_addr:
 	DEBUG_INFO __kmp_test_then_add32
 
 //------------------------------------------------------------------------
+//
 // FUNCTION __kmp_xchg_fixed8
 //
 // kmp_int32
@@ -294,6 +281,7 @@ __kmp_unnamed_critical_addr:
 // 	d:	8(%esp)
 //
 // return:	%al
+
         PROC  __kmp_xchg_fixed8
 
         movl      4(%esp), %ecx    // "p"
@@ -307,6 +295,7 @@ __kmp_unnamed_critical_addr:
 
 
 //------------------------------------------------------------------------
+//
 // FUNCTION __kmp_xchg_fixed16
 //
 // kmp_int16
@@ -316,6 +305,7 @@ __kmp_unnamed_critical_addr:
 // 	p:	4(%esp)
 // 	d:	8(%esp)
 // return:     %ax
+
         PROC  __kmp_xchg_fixed16
 
         movl      4(%esp), %ecx    // "p"
@@ -329,6 +319,7 @@ __kmp_unnamed_critical_addr:
 
 
 //------------------------------------------------------------------------
+//
 // FUNCTION __kmp_xchg_fixed32
 //
 // kmp_int32
@@ -339,6 +330,7 @@ __kmp_unnamed_critical_addr:
 // 	d:	8(%esp)
 //
 // return:	%eax
+
         PROC  __kmp_xchg_fixed32
 
         movl      4(%esp), %ecx    // "p"
@@ -351,8 +343,11 @@ __kmp_unnamed_critical_addr:
         DEBUG_INFO __kmp_xchg_fixed32
 
 
+//
 // kmp_int8
 // __kmp_compare_and_store8( volatile kmp_int8 *p, kmp_int8 cv, kmp_int8 sv );
+//
+
         PROC  __kmp_compare_and_store8
 
         movl      4(%esp), %ecx
@@ -366,8 +361,11 @@ __kmp_unnamed_critical_addr:
 
         DEBUG_INFO __kmp_compare_and_store8
 
+//
 // kmp_int16
-// __kmp_compare_and_store16(volatile kmp_int16 *p, kmp_int16 cv, kmp_int16 sv);
+// __kmp_compare_and_store16( volatile kmp_int16 *p, kmp_int16 cv, kmp_int16 sv );
+//
+
         PROC  __kmp_compare_and_store16
 
         movl      4(%esp), %ecx
@@ -381,8 +379,11 @@ __kmp_unnamed_critical_addr:
 
         DEBUG_INFO __kmp_compare_and_store16
 
+//
 // kmp_int32
-// __kmp_compare_and_store32(volatile kmp_int32 *p, kmp_int32 cv, kmp_int32 sv);
+// __kmp_compare_and_store32( volatile kmp_int32 *p, kmp_int32 cv, kmp_int32 sv );
+//
+
         PROC  __kmp_compare_and_store32
 
         movl      4(%esp), %ecx
@@ -390,14 +391,16 @@ __kmp_unnamed_critical_addr:
         movl      12(%esp), %edx
         lock
         cmpxchgl  %edx,(%ecx)
-        sete      %al          // if %eax == (%ecx) set %al = 1 else set %al = 0
-        and       $1, %eax     // sign extend previous instruction
+        sete      %al           // if %eax == (%ecx) set %al = 1 else set %al = 0
+        and       $1, %eax      // sign extend previous instruction
         ret
 
         DEBUG_INFO __kmp_compare_and_store32
 
+//
 // kmp_int32
-// __kmp_compare_and_store64(volatile kmp_int64 *p, kmp_int64 cv, kmp_int64 s );
+// __kmp_compare_and_store64( volatile kmp_int64 *p, kmp_int64 cv, kmp_int64 sv );
+//
         PROC  __kmp_compare_and_store64
 
         pushl     %ebp
@@ -411,8 +414,8 @@ __kmp_unnamed_critical_addr:
         movl      24(%ebp), %ecx        // "sv" high order word
         lock
         cmpxchg8b (%edi)
-        sete      %al      // if %edx:eax == (%edi) set %al = 1 else set %al = 0
-        and       $1, %eax // sign extend previous instruction
+        sete      %al           // if %edx:eax == (%edi) set %al = 1 else set %al = 0
+        and       $1, %eax      // sign extend previous instruction
         popl      %edi
         popl      %ebx
         movl      %ebp, %esp
@@ -421,8 +424,11 @@ __kmp_unnamed_critical_addr:
 
         DEBUG_INFO __kmp_compare_and_store64
 
+//
 // kmp_int8
-// __kmp_compare_and_store_ret8(volatile kmp_int8 *p, kmp_int8 cv, kmp_int8 sv);
+// __kmp_compare_and_store_ret8( volatile kmp_int8 *p, kmp_int8 cv, kmp_int8 sv );
+//
+
         PROC  __kmp_compare_and_store_ret8
 
         movl      4(%esp), %ecx
@@ -434,9 +440,11 @@ __kmp_unnamed_critical_addr:
 
         DEBUG_INFO __kmp_compare_and_store_ret8
 
+//
 // kmp_int16
-// __kmp_compare_and_store_ret16(volatile kmp_int16 *p, kmp_int16 cv,
-//                               kmp_int16 sv);
+// __kmp_compare_and_store_ret16( volatile kmp_int16 *p, kmp_int16 cv, kmp_int16 sv );
+//
+
         PROC  __kmp_compare_and_store_ret16
 
         movl      4(%esp), %ecx
@@ -448,9 +456,11 @@ __kmp_unnamed_critical_addr:
 
         DEBUG_INFO __kmp_compare_and_store_ret16
 
+//
 // kmp_int32
-// __kmp_compare_and_store_ret32(volatile kmp_int32 *p, kmp_int32 cv,
-//                               kmp_int32 sv);
+// __kmp_compare_and_store_ret32( volatile kmp_int32 *p, kmp_int32 cv, kmp_int32 sv );
+//
+
         PROC  __kmp_compare_and_store_ret32
 
         movl      4(%esp), %ecx
@@ -462,9 +472,10 @@ __kmp_unnamed_critical_addr:
 
         DEBUG_INFO __kmp_compare_and_store_ret32
 
+//
 // kmp_int64
-// __kmp_compare_and_store_ret64(volatile kmp_int64 *p, kmp_int64 cv,
-//                               kmp_int64 sv);
+// __kmp_compare_and_store_ret64( volatile kmp_int64 *p, kmp_int64 cv, kmp_int64 sv );
+//
         PROC  __kmp_compare_and_store_ret64
 
         pushl     %ebp
@@ -488,6 +499,7 @@ __kmp_unnamed_critical_addr:
 
 
 //------------------------------------------------------------------------
+//
 // FUNCTION __kmp_xchg_real32
 //
 // kmp_real32
@@ -498,6 +510,8 @@ __kmp_unnamed_critical_addr:
 // 	data:	8(%esp)
 //
 // return:	%eax
+
+
         PROC  __kmp_xchg_real32
 
         pushl   %ebp
@@ -530,6 +544,7 @@ __kmp_unnamed_critical_addr:
 
 
 //------------------------------------------------------------------------
+//
 // FUNCTION __kmp_load_x87_fpu_control_word
 //
 // void
@@ -537,6 +552,8 @@ __kmp_unnamed_critical_addr:
 //
 // parameters:
 // 	p:	4(%esp)
+//
+
         PROC  __kmp_load_x87_fpu_control_word
 
         movl  4(%esp), %eax
@@ -547,6 +564,7 @@ __kmp_unnamed_critical_addr:
 
 
 //------------------------------------------------------------------------
+//
 // FUNCTION __kmp_store_x87_fpu_control_word
 //
 // void
@@ -554,6 +572,8 @@ __kmp_unnamed_critical_addr:
 //
 // parameters:
 // 	p:	4(%esp)
+//
+
         PROC  __kmp_store_x87_fpu_control_word
 
         movl  4(%esp), %eax
@@ -564,10 +584,14 @@ __kmp_unnamed_critical_addr:
 
 
 //------------------------------------------------------------------------
+//
 // FUNCTION __kmp_clear_x87_fpu_status_word
 //
 // void
 // __kmp_clear_x87_fpu_status_word();
+//
+//
+
         PROC  __kmp_clear_x87_fpu_status_word
 
         fnclex
@@ -577,6 +601,7 @@ __kmp_unnamed_critical_addr:
 
 
 //------------------------------------------------------------------------
+//
 // typedef void	(*microtask_t)( int *gtid, int *tid, ... );
 //
 // int
@@ -668,6 +693,7 @@ KMP_LABEL(invoke_3):
 	DEBUG_INFO __kmp_hardware_timestamp
 // -- End  __kmp_hardware_timestamp
 
+// -----------------------------------------------------------------------
 #endif /* KMP_ARCH_X86 */
 
 
@@ -685,9 +711,9 @@ KMP_LABEL(invoke_3):
 	.data
 	ALIGN 4
 
-// To prevent getting our code into .data section .text added to every routine
-// definition for x86_64.
+// To prevent getting our code into .data section .text added to every routine definition for x86_64.
 //------------------------------------------------------------------------
+//
 // FUNCTION __kmp_x86_cpuid
 //
 // void
@@ -697,6 +723,7 @@ KMP_LABEL(invoke_3):
 // 	mode:		%edi
 // 	mode2:		%esi
 // 	cpuid_buffer:	%rdx
+
         .text
 	PROC  __kmp_x86_cpuid
 
@@ -726,6 +753,7 @@ KMP_LABEL(invoke_3):
 # if !KMP_ASM_INTRINS
 
 //------------------------------------------------------------------------
+//
 // FUNCTION __kmp_test_then_add32
 //
 // kmp_int32
@@ -736,6 +764,7 @@ KMP_LABEL(invoke_3):
 // 	d:	%esi
 //
 // return:	%eax
+
         .text
         PROC  __kmp_test_then_add32
 
@@ -748,6 +777,7 @@ KMP_LABEL(invoke_3):
 
 
 //------------------------------------------------------------------------
+//
 // FUNCTION __kmp_test_then_add64
 //
 // kmp_int64
@@ -757,6 +787,7 @@ KMP_LABEL(invoke_3):
 // 	p:	%rdi
 // 	d:	%rsi
 //	return:	%rax
+
         .text
         PROC  __kmp_test_then_add64
 
@@ -769,6 +800,7 @@ KMP_LABEL(invoke_3):
 
 
 //------------------------------------------------------------------------
+//
 // FUNCTION __kmp_xchg_fixed8
 //
 // kmp_int32
@@ -779,6 +811,7 @@ KMP_LABEL(invoke_3):
 // 	d:	%sil
 //
 // return:	%al
+
         .text
         PROC  __kmp_xchg_fixed8
 
@@ -792,6 +825,7 @@ KMP_LABEL(invoke_3):
 
 
 //------------------------------------------------------------------------
+//
 // FUNCTION __kmp_xchg_fixed16
 //
 // kmp_int16
@@ -801,6 +835,7 @@ KMP_LABEL(invoke_3):
 // 	p:	%rdi
 // 	d:	%si
 // return:     %ax
+
         .text
         PROC  __kmp_xchg_fixed16
 
@@ -814,6 +849,7 @@ KMP_LABEL(invoke_3):
 
 
 //------------------------------------------------------------------------
+//
 // FUNCTION __kmp_xchg_fixed32
 //
 // kmp_int32
@@ -824,6 +860,7 @@ KMP_LABEL(invoke_3):
 // 	d:	%esi
 //
 // return:	%eax
+
         .text
         PROC  __kmp_xchg_fixed32
 
@@ -837,6 +874,7 @@ KMP_LABEL(invoke_3):
 
 
 //------------------------------------------------------------------------
+//
 // FUNCTION __kmp_xchg_fixed64
 //
 // kmp_int64
@@ -846,6 +884,7 @@ KMP_LABEL(invoke_3):
 // 	p:	%rdi
 // 	d:	%rsi
 // return:	%rax
+
         .text
         PROC  __kmp_xchg_fixed64
 
@@ -859,6 +898,7 @@ KMP_LABEL(invoke_3):
 
 
 //------------------------------------------------------------------------
+//
 // FUNCTION __kmp_compare_and_store8
 //
 // kmp_int8
@@ -870,6 +910,7 @@ KMP_LABEL(invoke_3):
 //	sv:	%edx
 //
 // return:	%eax
+
         .text
         PROC  __kmp_compare_and_store8
 
@@ -884,6 +925,7 @@ KMP_LABEL(invoke_3):
 
 
 //------------------------------------------------------------------------
+//
 // FUNCTION __kmp_compare_and_store16
 //
 // kmp_int16
@@ -895,6 +937,7 @@ KMP_LABEL(invoke_3):
 //	sv:	%dx
 //
 // return:	%eax
+
         .text
         PROC  __kmp_compare_and_store16
 
@@ -909,6 +952,7 @@ KMP_LABEL(invoke_3):
 
 
 //------------------------------------------------------------------------
+//
 // FUNCTION __kmp_compare_and_store32
 //
 // kmp_int32
@@ -920,6 +964,7 @@ KMP_LABEL(invoke_3):
 //	sv:	%edx
 //
 // return:	%eax
+
         .text
         PROC  __kmp_compare_and_store32
 
@@ -934,6 +979,7 @@ KMP_LABEL(invoke_3):
 
 
 //------------------------------------------------------------------------
+//
 // FUNCTION __kmp_compare_and_store64
 //
 // kmp_int32
@@ -944,6 +990,7 @@ KMP_LABEL(invoke_3):
 // 	cv:	%rsi
 //	sv:	%rdx
 //	return:	%eax
+
         .text
         PROC  __kmp_compare_and_store64
 
@@ -957,6 +1004,7 @@ KMP_LABEL(invoke_3):
         DEBUG_INFO __kmp_compare_and_store64
 
 //------------------------------------------------------------------------
+//
 // FUNCTION __kmp_compare_and_store_ret8
 //
 // kmp_int8
@@ -968,6 +1016,7 @@ KMP_LABEL(invoke_3):
 //	sv:	%edx
 //
 // return:	%eax
+
         .text
         PROC  __kmp_compare_and_store_ret8
 
@@ -980,6 +1029,7 @@ KMP_LABEL(invoke_3):
 
 
 //------------------------------------------------------------------------
+//
 // FUNCTION __kmp_compare_and_store_ret16
 //
 // kmp_int16
@@ -991,6 +1041,7 @@ KMP_LABEL(invoke_3):
 //	sv:	%dx
 //
 // return:	%eax
+
         .text
         PROC  __kmp_compare_and_store_ret16
 
@@ -1003,6 +1054,7 @@ KMP_LABEL(invoke_3):
 
 
 //------------------------------------------------------------------------
+//
 // FUNCTION __kmp_compare_and_store_ret32
 //
 // kmp_int32
@@ -1014,6 +1066,7 @@ KMP_LABEL(invoke_3):
 //	sv:	%edx
 //
 // return:	%eax
+
         .text
         PROC  __kmp_compare_and_store_ret32
 
@@ -1026,6 +1079,7 @@ KMP_LABEL(invoke_3):
 
 
 //------------------------------------------------------------------------
+//
 // FUNCTION __kmp_compare_and_store_ret64
 //
 // kmp_int64
@@ -1036,6 +1090,7 @@ KMP_LABEL(invoke_3):
 // 	cv:	%rsi
 //	sv:	%rdx
 //	return:	%eax
+
         .text
         PROC  __kmp_compare_and_store_ret64
 
@@ -1054,6 +1109,7 @@ KMP_LABEL(invoke_3):
 # if !KMP_ASM_INTRINS
 
 //------------------------------------------------------------------------
+//
 // FUNCTION __kmp_xchg_real32
 //
 // kmp_real32
@@ -1064,6 +1120,7 @@ KMP_LABEL(invoke_3):
 // 	data:	%xmm0 (lower 4 bytes)
 //
 // return:	%xmm0 (lower 4 bytes)
+
         .text
         PROC  __kmp_xchg_real32
 
@@ -1080,6 +1137,7 @@ KMP_LABEL(invoke_3):
 
 
 //------------------------------------------------------------------------
+//
 // FUNCTION __kmp_xchg_real64
 //
 // kmp_real64
@@ -1089,6 +1147,8 @@ KMP_LABEL(invoke_3):
 //      addr:   %rdi
 //      data:   %xmm0 (lower 8 bytes)
 //      return: %xmm0 (lower 8 bytes)
+//
+
         .text
         PROC  __kmp_xchg_real64
 
@@ -1109,6 +1169,7 @@ KMP_LABEL(invoke_3):
 
 
 //------------------------------------------------------------------------
+//
 // FUNCTION __kmp_load_x87_fpu_control_word
 //
 // void
@@ -1116,6 +1177,8 @@ KMP_LABEL(invoke_3):
 //
 // parameters:
 // 	p:	%rdi
+//
+
         .text
         PROC  __kmp_load_x87_fpu_control_word
 
@@ -1126,6 +1189,7 @@ KMP_LABEL(invoke_3):
 
 
 //------------------------------------------------------------------------
+//
 // FUNCTION __kmp_store_x87_fpu_control_word
 //
 // void
@@ -1133,6 +1197,8 @@ KMP_LABEL(invoke_3):
 //
 // parameters:
 // 	p:	%rdi
+//
+
         .text
         PROC  __kmp_store_x87_fpu_control_word
 
@@ -1143,10 +1209,14 @@ KMP_LABEL(invoke_3):
 
 
 //------------------------------------------------------------------------
+//
 // FUNCTION __kmp_clear_x87_fpu_status_word
 //
 // void
 // __kmp_clear_x87_fpu_status_word();
+//
+//
+
         .text
         PROC  __kmp_clear_x87_fpu_status_word
 
@@ -1165,6 +1235,7 @@ KMP_LABEL(invoke_3):
 
 
 //------------------------------------------------------------------------
+//
 // typedef void	(*microtask_t)( int *gtid, int *tid, ... );
 //
 // int
@@ -1175,7 +1246,8 @@ KMP_LABEL(invoke_3):
 //    return 1;
 // }
 //
-// note: at call to pkfn must have %rsp 128-byte aligned for compiler
+// note:
+//	at call to pkfn must have %rsp 128-byte aligned for compiler
 //
 // parameters:
 //      %rdi:  	pkfn
@@ -1198,6 +1270,8 @@ KMP_LABEL(invoke_3):
 //	%rbx:	used to hold pkfn address, and zero constant, callee-save
 //
 // return:	%eax 	(always 1/TRUE)
+//
+
 __gtid = -16
 __tid = -24
 
@@ -1347,10 +1421,13 @@ KMP_LABEL(kmp_1_exit):
 // -- End  __kmp_hardware_timestamp
 
 //------------------------------------------------------------------------
+//
 // FUNCTION __kmp_bsr32
 //
 // int
 // __kmp_bsr32( int );
+//
+
         .text
         PROC  __kmp_bsr32
 
@@ -1364,7 +1441,7 @@ KMP_LABEL(kmp_1_exit):
 #endif /* KMP_ARCH_X86_64 */
 
 // '
-#if (KMP_OS_LINUX || KMP_OS_DARWIN) && KMP_ARCH_AARCH64
+#if KMP_OS_LINUX && KMP_ARCH_AARCH64
 
 //------------------------------------------------------------------------
 //
@@ -1476,7 +1553,7 @@ KMP_LABEL(kmp_1):
 	DEBUG_INFO __kmp_invoke_microtask
 // -- End  __kmp_invoke_microtask
 
-#endif /* (KMP_OS_LINUX || KMP_OS_DARWIN) && KMP_ARCH_AARCH64 */
+#endif /* KMP_OS_LINUX && KMP_ARCH_AARCH64 */
 
 #if KMP_ARCH_PPC64
 

@@ -118,14 +118,14 @@ bool IncludeFixerActionFactory::runInvocation(
   return !Compiler.getDiagnostics().hasFatalErrorOccurred();
 }
 
-static bool addDiagnosticsForContext(TypoCorrection &Correction,
+static void addDiagnosticsForContext(TypoCorrection &Correction,
                                      const IncludeFixerContext &Context,
                                      StringRef Code, SourceLocation StartOfFile,
                                      ASTContext &Ctx) {
   auto Reps = createIncludeFixerReplacements(
       Code, Context, format::getLLVMStyle(), /*AddQualifiers=*/false);
-  if (!Reps || Reps->size() != 1)
-    return false;
+  if (!Reps)
+    return;
 
   unsigned DiagID = Ctx.getDiagnostics().getCustomDiagID(
       DiagnosticsEngine::Note, "Add '#include %0' to provide the missing "
@@ -133,6 +133,7 @@ static bool addDiagnosticsForContext(TypoCorrection &Correction,
 
   // FIXME: Currently we only generate a diagnostic for the first header. Give
   // the user choices.
+  assert(Reps->size() == 1 && "Expected exactly one replacement");
   const tooling::Replacement &Placed = *Reps->begin();
 
   auto Begin = StartOfFile.getLocWithOffset(Placed.getOffset());
@@ -142,7 +143,6 @@ static bool addDiagnosticsForContext(TypoCorrection &Correction,
      << FixItHint::CreateReplacement(CharSourceRange::getCharRange(Begin, End),
                                      Placed.getReplacementText());
   Correction.addExtraDiagnostic(std::move(PD));
-  return true;
 }
 
 /// Callback for incomplete types. If we encounter a forward declaration we
@@ -286,12 +286,12 @@ clang::TypoCorrection IncludeFixerSemaSource::CorrectTypo(
     FileID FID = SM.getFileID(Typo.getLoc());
     StringRef Code = SM.getBufferData(FID);
     SourceLocation StartOfFile = SM.getLocForStartOfFile(FID);
-    if (addDiagnosticsForContext(
-            Correction, getIncludeFixerContext(
-                            SM, CI->getPreprocessor().getHeaderSearchInfo(),
-                            MatchedSymbols),
-            Code, StartOfFile, CI->getASTContext()))
-      return Correction;
+    addDiagnosticsForContext(
+        Correction,
+        getIncludeFixerContext(SM, CI->getPreprocessor().getHeaderSearchInfo(),
+                               MatchedSymbols),
+        Code, StartOfFile, CI->getASTContext());
+    return Correction;
   }
   return TypoCorrection();
 }
@@ -333,7 +333,9 @@ IncludeFixerContext IncludeFixerSemaSource::getIncludeFixerContext(
                                                     : "\"" + FilePath + "\""),
         SourceManager, HeaderSearch);
     SymbolCandidates.emplace_back(Symbol.getName(), Symbol.getSymbolKind(),
-                                  MinimizedFilePath, Symbol.getContexts());
+                                  MinimizedFilePath, Symbol.getLineNumber(),
+                                  Symbol.getContexts(),
+                                  Symbol.getNumOccurrences());
   }
   return IncludeFixerContext(FilePath, QuerySymbolInfos, SymbolCandidates);
 }

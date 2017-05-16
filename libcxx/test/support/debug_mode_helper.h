@@ -191,9 +191,8 @@ public:
   static void run_allocator_aware_tests() {
     try {
       SwapNonEqualAllocators();
-      if constexpr (CT != CT_ForwardList ) {
-          // FIXME: This should work for both forward_list and string
-          SwapInvalidatesIterators();
+      if constexpr (CT != CT_ForwardList) {
+          SwapInvalidatesIterators(); // FIXME: This should work
       }
     } catch (...) {
       assert(false && "uncaught debug exception");
@@ -360,10 +359,7 @@ private:
     iterator it2 = C2.begin();
     swap(C1, C2);
     CHECK_DEBUG_THROWS( C1.erase(it1) );
-    if (CT == CT_String) {
-      CHECK_DEBUG_THROWS(C1.erase(it2));
-    } else
-      C1.erase(it2);
+    C1.erase(it2);
     //C2.erase(it1);
     CHECK_DEBUG_THROWS( C1.erase(it1) );
   }

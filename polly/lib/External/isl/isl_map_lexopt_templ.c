@@ -173,12 +173,9 @@ static __isl_give TYPE *SF(isl_map_partial_lexopt,SUFFIX)(
 	__isl_take isl_map *map, __isl_take isl_set *dom,
 	__isl_give isl_set **empty, unsigned flags)
 {
-	isl_bool aligned;
-
-	aligned = isl_map_set_has_equal_params(map, dom);
-	if (aligned < 0)
+	if (!map || !dom)
 		goto error;
-	if (aligned)
+	if (isl_space_match(map->dim, isl_dim_param, dom->dim, isl_dim_param))
 		return SF(isl_map_partial_lexopt_aligned,SUFFIX)(map, dom,
 								empty, flags);
 	if (!isl_space_has_named_params(map->dim) ||

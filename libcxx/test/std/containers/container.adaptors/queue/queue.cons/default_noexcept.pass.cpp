@@ -7,14 +7,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-// UNSUPPORTED: c++98, c++03
-
 // <queue>
 
 // queue()
 //        noexcept(is_nothrow_default_constructible<container_type>::value);
 
 // This tests a conforming extension
+
+// UNSUPPORTED: c++98, c++03
 
 #include <queue>
 #include <cassert>
@@ -24,10 +24,8 @@
 
 int main()
 {
-#if defined(_LIBCPP_VERSION)
     {
         typedef std::queue<MoveOnly> C;
-        static_assert(std::is_nothrow_default_constructible<C>::value, "");
+        LIBCPP_STATIC_ASSERT(std::is_nothrow_default_constructible<C>::value, "");
     }
-#endif
 }

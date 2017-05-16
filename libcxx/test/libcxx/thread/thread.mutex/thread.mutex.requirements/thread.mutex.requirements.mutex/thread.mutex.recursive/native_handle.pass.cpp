@@ -9,8 +9,6 @@
 //
 // UNSUPPORTED: libcpp-has-no-threads, libcpp-has-thread-api-external
 
-// XFAIL: windows
-
 // <mutex>
 
 // class recursive_mutex;

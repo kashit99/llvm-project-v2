@@ -1,6 +1,8 @@
-; RUN: opt %loadPolly -polly-codegen-ppcg -polly-acc-dump-code -disable-output %s
+; RUN: opt %loadPolly -polly-codegen-ppcg -polly-acc-dump-code %s
 
-; REQUIRES: pollyacc,nvptx
+; REQUIRES: pollyacc
+
+; XFAIL: *
 
 ; This fails today with "unexpected type" in the LLVM PTX backend.
 

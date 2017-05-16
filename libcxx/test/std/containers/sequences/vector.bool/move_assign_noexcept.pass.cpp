@@ -59,40 +59,31 @@ struct some_alloc3
 
 int main()
 {
-#if defined(_LIBCPP_VERSION)
     {
         typedef std::vector<bool> C;
-        static_assert(std::is_nothrow_move_assignable<C>::value, "");
+        LIBCPP_STATIC_ASSERT(std::is_nothrow_move_assignable<C>::value, "");
     }
-#endif // _LIBCPP_VERSION
     {
         typedef std::vector<bool, test_allocator<bool>> C;
         static_assert(!std::is_nothrow_move_assignable<C>::value, "");
     }
-#if defined(_LIBCPP_VERSION)
     {
         typedef std::vector<bool, other_allocator<bool>> C;
-        static_assert(std::is_nothrow_move_assignable<C>::value, "");
+        LIBCPP_STATIC_ASSERT(std::is_nothrow_move_assignable<C>::value, "");
     }
-#endif // _LIBCPP_VERSION
     {
+        typedef std::vector<bool, some_alloc<bool>> C;
 #if TEST_STD_VER > 14
-#if defined(_LIBCPP_VERSION)
-        typedef std::vector<bool, some_alloc<bool>> C;
-        static_assert( std::is_nothrow_move_assignable<C>::value, "");
-#endif // _LIBCPP_VERSION
+        LIBCPP_STATIC_ASSERT( std::is_nothrow_move_assignable<C>::value, "");
 #else
-        typedef std::vector<bool, some_alloc<bool>> C;
         static_assert(!std::is_nothrow_move_assignable<C>::value, "");
 #endif
     }
 #if TEST_STD_VER > 14
-#if defined(_LIBCPP_VERSION)
     {  // POCMA false, is_always_equal true
         typedef std::vector<bool, some_alloc2<bool>> C;
-        static_assert( std::is_nothrow_move_assignable<C>::value, "");
+        LIBCPP_STATIC_ASSERT( std::is_nothrow_move_assignable<C>::value, "");
     }
-#endif // _LIBCPP_VERSION
     {  // POCMA false, is_always_equal false
         typedef std::vector<bool, some_alloc3<bool>> C;
         static_assert(!std::is_nothrow_move_assignable<C>::value, "");

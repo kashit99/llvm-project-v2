@@ -31,6 +31,7 @@ int main()
 {
     {
         typedef std::cauchy_distribution<> D;
+        typedef D::param_type P;
         typedef std::mt19937 G;
         G g;
         const double a = 10;
@@ -46,6 +47,7 @@ int main()
     }
     {
         typedef std::cauchy_distribution<> D;
+        typedef D::param_type P;
         typedef std::mt19937 G;
         G g;
         const double a = -1.5;
@@ -61,6 +63,7 @@ int main()
     }
     {
         typedef std::cauchy_distribution<> D;
+        typedef D::param_type P;
         typedef std::mt19937 G;
         G g;
         const double a = .5;

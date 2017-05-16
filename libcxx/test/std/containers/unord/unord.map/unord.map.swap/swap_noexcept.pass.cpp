@@ -64,7 +64,6 @@ struct some_hash
     typedef T value_type;
     some_hash() {}
     some_hash(const some_hash&);
-    std::size_t operator()(T const&) const;
 };
 
 template <class T>
@@ -73,7 +72,6 @@ struct some_hash2
     typedef T value_type;
     some_hash2() {}
     some_hash2(const some_hash2&);
-    std::size_t operator()(T const&) const;
 };
 
 #if TEST_STD_VER >= 14
@@ -127,18 +125,16 @@ int main()
         typedef std::unordered_map<MoveOnly, MoveOnly> C;
         static_assert(noexcept(swap(std::declval<C&>(), std::declval<C&>())), "");
     }
-#if defined(_LIBCPP_VERSION)
     {
         typedef std::unordered_map<MoveOnly, MoveOnly, std::hash<MoveOnly>,
                            std::equal_to<MoveOnly>, test_allocator<MapType>> C;
-        static_assert(noexcept(swap(std::declval<C&>(), std::declval<C&>())), "");
+        LIBCPP_STATIC_ASSERT(noexcept(swap(std::declval<C&>(), std::declval<C&>())), "");
     }
     {
         typedef std::unordered_map<MoveOnly, MoveOnly, std::hash<MoveOnly>,
                           std::equal_to<MoveOnly>, other_allocator<MapType>> C;
-        static_assert(noexcept(swap(std::declval<C&>(), std::declval<C&>())), "");
+        LIBCPP_STATIC_ASSERT(noexcept(swap(std::declval<C&>(), std::declval<C&>())), "");
     }
-#endif // _LIBCPP_VERSION
     {
         typedef std::unordered_map<MoveOnly, MoveOnly, some_hash<MoveOnly>> C;
         static_assert(!noexcept(swap(std::declval<C&>(), std::declval<C&>())), "");
@@ -182,11 +178,10 @@ int main()
     typedef std::unordered_map<MoveOnly, MoveOnly, some_hash2<MoveOnly>, some_comp2<MoveOnly>, some_alloc2<MapType>> C;
     static_assert( noexcept(swap(std::declval<C&>(), std::declval<C&>())), "");
     }
-#if defined(_LIBCPP_VERSION)
+
     { // NOT always equal allocator, nothrow swap for hash, nothrow swap for comp
     typedef std::unordered_map<MoveOnly, MoveOnly, some_hash2<MoveOnly>, some_comp2<MoveOnly>, some_alloc3<MapType>> C;
-    static_assert( noexcept(swap(std::declval<C&>(), std::declval<C&>())), "");
+    LIBCPP_STATIC_ASSERT( noexcept(swap(std::declval<C&>(), std::declval<C&>())), "");
     }
-#endif // _LIBCPP_VERSION
 #endif
 }

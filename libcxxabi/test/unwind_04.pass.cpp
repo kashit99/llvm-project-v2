@@ -8,7 +8,7 @@
 //===----------------------------------------------------------------------===//
 
 // UNSUPPORTED: libcxxabi-no-exceptions
-// REQUIRES: c++98 || c++03 || c++11 || c++14
+// REQUIRES-ANY: c++98, c++03, c++11, c++14
 
 #include <exception>
 #include <stdlib.h>

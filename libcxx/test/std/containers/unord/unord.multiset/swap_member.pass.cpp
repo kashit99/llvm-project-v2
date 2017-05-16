@@ -32,6 +32,7 @@ int main()
         typedef test_compare<std::equal_to<int> > Compare;
         typedef test_allocator<int> Alloc;
         typedef std::unordered_multiset<int, Hash, Compare, Alloc> C;
+        typedef int P;
         C c1(0, Hash(1), Compare(1), Alloc(1, 1));
         C c2(0, Hash(2), Compare(2), Alloc(1, 2));
         c2.max_load_factor(2);
@@ -212,6 +213,7 @@ int main()
         typedef test_compare<std::equal_to<int> > Compare;
         typedef other_allocator<int> Alloc;
         typedef std::unordered_multiset<int, Hash, Compare, Alloc> C;
+        typedef int P;
         C c1(0, Hash(1), Compare(1), Alloc(1));
         C c2(0, Hash(2), Compare(2), Alloc(2));
         c2.max_load_factor(2);
@@ -392,6 +394,7 @@ int main()
         typedef test_compare<std::equal_to<int> > Compare;
         typedef min_allocator<int> Alloc;
         typedef std::unordered_multiset<int, Hash, Compare, Alloc> C;
+        typedef int P;
         C c1(0, Hash(1), Compare(1), Alloc());
         C c2(0, Hash(2), Compare(2), Alloc());
         c2.max_load_factor(2);

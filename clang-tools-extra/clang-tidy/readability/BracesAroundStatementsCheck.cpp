@@ -39,7 +39,7 @@ SourceLocation forwardSkipWhitespaceAndComments(SourceLocation Loc,
                                                 const ASTContext *Context) {
   assert(Loc.isValid());
   for (;;) {
-    while (isWhitespace(*SM.getCharacterData(Loc)))
+    while (isWhitespace(*FullSourceLoc(Loc, SM).getCharacterData()))
       Loc = Loc.getLocWithOffset(1);
 
     tok::TokenKind TokKind = getTokenKind(Loc, SM, Context);
@@ -69,6 +69,7 @@ SourceLocation findEndLocation(SourceLocation LastTokenLoc,
 
   Loc = Lexer::getLocForEndOfToken(Loc, 0, SM, Context->getLangOpts());
   // Loc points past the last token before end or after ';'.
+
   if (SkipEndWhitespaceAndComments) {
     Loc = forwardSkipWhitespaceAndComments(Loc, SM, Context);
     tok::TokenKind TokKind = getTokenKind(Loc, SM, Context);
@@ -78,11 +79,10 @@ SourceLocation findEndLocation(SourceLocation LastTokenLoc,
 
   for (;;) {
     assert(Loc.isValid());
-    while (isHorizontalWhitespace(*SM.getCharacterData(Loc))) {
+    while (isHorizontalWhitespace(*FullSourceLoc(Loc, SM).getCharacterData()))
       Loc = Loc.getLocWithOffset(1);
-    }
 
-    if (isVerticalWhitespace(*SM.getCharacterData(Loc))) {
+    if (isVerticalWhitespace(*FullSourceLoc(Loc, SM).getCharacterData())) {
       // EOL, insert brace before.
       break;
     }
@@ -159,7 +159,7 @@ void BracesAroundStatementsCheck::check(
       ForceBracesStmts.insert(Else);
     if (Else && !isa<IfStmt>(Else)) {
       // Omit 'else if' statements here, they will be handled directly.
-      checkStmt(Result, Else, S->getElseLoc());
+      checkStmt(Result, Else, S->getElseLoc(), SourceLocation());
     }
   } else {
     llvm_unreachable("Invalid match");

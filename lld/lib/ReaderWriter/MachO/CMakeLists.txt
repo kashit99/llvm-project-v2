@@ -28,7 +28,7 @@ add_lld_library(lldMachO
   LINK_LIBS
     lldCore
     lldYAML
-    ${LLVM_PTHREAD_LIB}
+    ${PTHREAD_LIB}
   )
 
 include_directories(.)

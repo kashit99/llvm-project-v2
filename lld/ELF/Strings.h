@@ -76,10 +76,6 @@ llvm::Optional<std::string> demangle(StringRef Name);
 inline StringRef toStringRef(ArrayRef<uint8_t> Arr) {
   return {(const char *)Arr.data(), Arr.size()};
 }
-
-inline ArrayRef<uint8_t> toArrayRef(StringRef S) {
-  return {(const uint8_t *)S.data(), S.size()};
-}
 }
 }
 

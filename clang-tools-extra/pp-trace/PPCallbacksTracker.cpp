@@ -324,8 +324,7 @@ PPCallbacksTracker::MacroDefined(const clang::Token &MacroNameTok,
 // Hook called whenever a macro #undef is seen.
 void PPCallbacksTracker::MacroUndefined(
     const clang::Token &MacroNameTok,
-    const clang::MacroDefinition &MacroDefinition,
-    const clang::MacroDirective *Undef) {
+    const clang::MacroDefinition &MacroDefinition) {
   beginCallback("MacroUndefined");
   appendArgument("MacroNameTok", MacroNameTok);
   appendArgument("MacroDefinition", MacroDefinition);

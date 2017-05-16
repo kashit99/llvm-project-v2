@@ -18,12 +18,10 @@
 #include <algorithm>
 #include <vector>
 #include <functional>
-#include <random>
 #include <cassert>
 #include <cstddef>
+#ifndef _LIBCPP_HAS_NO_RVALUE_REFERENCES
 #include <memory>
-
-#include "test_macros.h"
 
 struct indirect_less
 {
@@ -32,7 +30,7 @@ struct indirect_less
         {return *x < *y;}
 };
 
-std::mt19937 randomness;
+#endif  // _LIBCPP_HAS_NO_RVALUE_REFERENCES
 
 void
 test_larger_sorts(int N, int M)
@@ -42,7 +40,7 @@ test_larger_sorts(int N, int M)
     int* array = new int[N];
     for (int i = 0; i < N; ++i)
         array[i] = i;
-    std::shuffle(array, array+N, randomness);
+    std::random_shuffle(array, array+N);
     std::partial_sort(array, array+M, array+N, std::greater<int>());
     for (int i = 0; i < M; ++i)
     {
@@ -83,7 +81,7 @@ int main()
     test_larger_sorts(1009);
     }
 
-#if TEST_STD_VER >= 11
+#ifndef _LIBCPP_HAS_NO_RVALUE_REFERENCES
     {
     std::vector<std::unique_ptr<int> > v(1000);
     for (int i = 0; static_cast<std::size_t>(i) < v.size(); ++i)
@@ -92,5 +90,5 @@ int main()
     for (int i = 0; static_cast<std::size_t>(i) < v.size()/2; ++i)
         assert(*v[i] == i);
     }
-#endif
+#endif  // _LIBCPP_HAS_NO_RVALUE_REFERENCES
 }

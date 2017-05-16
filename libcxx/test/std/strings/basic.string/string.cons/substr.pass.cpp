@@ -98,6 +98,7 @@ void
 test(S str, unsigned pos, unsigned n, const typename S::allocator_type& a)
 {
     typedef typename S::traits_type T;
+    typedef typename S::allocator_type A;
 
     if (pos <= str.size())
     {

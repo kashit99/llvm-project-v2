@@ -36,7 +36,6 @@ private:
                          const CXXCtorInitializer *Init);
 
   const bool UseAssignment;
-  const bool IgnoreMacros;
 };
 
 } // namespace modernize

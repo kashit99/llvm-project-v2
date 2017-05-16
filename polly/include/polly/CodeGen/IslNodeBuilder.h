@@ -60,15 +60,15 @@ isl_stat addReferencesFromStmt(const ScopStmt *Stmt, void *UserPtr,
 
 class IslNodeBuilder {
 public:
-  IslNodeBuilder(PollyIRBuilder &Builder, ScopAnnotator &Annotator,
+  IslNodeBuilder(PollyIRBuilder &Builder, ScopAnnotator &Annotator, Pass *P,
                  const DataLayout &DL, LoopInfo &LI, ScalarEvolution &SE,
                  DominatorTree &DT, Scop &S, BasicBlock *StartBlock)
       : S(S), Builder(Builder), Annotator(Annotator),
         ExprBuilder(S, Builder, IDToValue, ValueMap, DL, SE, DT, LI,
                     StartBlock),
-        BlockGen(Builder, LI, SE, DT, ScalarMap, EscapeMap, ValueMap,
+        BlockGen(Builder, LI, SE, DT, ScalarMap, PHIOpMap, EscapeMap, ValueMap,
                  &ExprBuilder, StartBlock),
-        RegionGen(BlockGen), DL(DL), LI(LI), SE(SE), DT(DT),
+        RegionGen(BlockGen), P(P), DL(DL), LI(LI), SE(SE), DT(DT),
         StartBlock(StartBlock) {}
 
   virtual ~IslNodeBuilder() = default;
@@ -125,7 +125,10 @@ protected:
   ///@{
 
   /// See BlockGenerator::ScalarMap.
-  BlockGenerator::AllocaMapTy ScalarMap;
+  BlockGenerator::ScalarAllocaMapTy ScalarMap;
+
+  /// See BlockGenerator::PhiOpMap.
+  BlockGenerator::ScalarAllocaMapTy PHIOpMap;
 
   /// See BlockGenerator::EscapeMap.
   BlockGenerator::EscapeUsersAllocaMapTy EscapeMap;
@@ -138,6 +141,7 @@ protected:
   /// The generator used to copy a non-affine region.
   RegionGenerator RegionGen;
 
+  Pass *const P;
   const DataLayout &DL;
   LoopInfo &LI;
   ScalarEvolution &SE;
@@ -180,13 +184,11 @@ protected:
 
   /// Materialize parameters of @p Set.
   ///
-  /// @returns False, iff a problem occurred and the value was not materialized.
-  bool materializeParameters(__isl_take isl_set *Set);
-
-  /// Materialize all parameters in the current scop.
+  /// @param All If not set only parameters referred to by the constraints in
+  ///            @p Set will be materialized, otherwise all.
   ///
   /// @returns False, iff a problem occurred and the value was not materialized.
-  bool materializeParameters();
+  bool materializeParameters(__isl_take isl_set *Set, bool All);
 
   // Extract the upper bound of this loop
   //

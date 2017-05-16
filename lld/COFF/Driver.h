@@ -48,7 +48,7 @@ public:
   llvm::opt::InputArgList parse(llvm::ArrayRef<const char *> Args);
 
   // Concatenate LINK environment varirable and given arguments and parse them.
-  llvm::opt::InputArgList parseLINK(std::vector<const char *> Args);
+  llvm::opt::InputArgList parseLINK(llvm::ArrayRef<const char *> Args);
 
   // Tokenizes a given string and then parses as command line options.
   llvm::opt::InputArgList parse(StringRef S) { return parse(tokenize(S)); }
@@ -106,8 +106,6 @@ private:
   // entry point name.
   StringRef findDefaultEntry();
   WindowsSubsystem inferSubsystem();
-
-  void invokeMSVC(llvm::opt::InputArgList &Args);
 
   MemoryBufferRef takeBuffer(std::unique_ptr<MemoryBuffer> MB);
   void addBuffer(std::unique_ptr<MemoryBuffer> MB);
@@ -179,8 +177,6 @@ void checkFailIfMismatch(StringRef Arg);
 // using cvtres.exe.
 std::unique_ptr<MemoryBuffer>
 convertResToCOFF(const std::vector<MemoryBufferRef> &MBs);
-
-void runMSVCLinker(std::string Rsp, ArrayRef<StringRef> Objects);
 
 // Create enum with OPT_xxx values for each option in Options.td
 enum {

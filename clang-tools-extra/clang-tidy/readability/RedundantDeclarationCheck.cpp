@@ -19,10 +19,7 @@ namespace tidy {
 namespace readability {
 
 void RedundantDeclarationCheck::registerMatchers(MatchFinder *Finder) {
-  auto UnlessDefinition = unless(isDefinition());
-  Finder->addMatcher(namedDecl(anyOf(varDecl(UnlessDefinition),
-                                     functionDecl(UnlessDefinition)))
-                         .bind("Decl"),
+  Finder->addMatcher(namedDecl(anyOf(varDecl(), functionDecl())).bind("Decl"),
                      this);
 }
 
@@ -44,6 +41,9 @@ void RedundantDeclarationCheck::check(const MatchFinder::MatchResult &Result) {
 
   bool MultiVar = false;
   if (const auto *VD = dyn_cast<VarDecl>(D)) {
+    if (VD->getPreviousDecl()->getStorageClass() == SC_Extern &&
+        VD->getStorageClass() != SC_Extern)
+      return;
     // Is this a multivariable declaration?
     for (const auto Other : VD->getDeclContext()->decls()) {
       if (Other != D && Other->getLocStart() == VD->getLocStart()) {
@@ -51,6 +51,10 @@ void RedundantDeclarationCheck::check(const MatchFinder::MatchResult &Result) {
         break;
       }
     }
+  } else {
+    const auto *FD = cast<FunctionDecl>(D);
+    if (FD->isThisDeclarationADefinition())
+      return;
   }
 
   SourceLocation EndLoc = Lexer::getLocForEndOfToken(

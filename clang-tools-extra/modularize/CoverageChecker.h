@@ -91,9 +91,10 @@ public:
   /// \param CommandLine Compile command line arguments.
   /// \param ModuleMap The module map to check.
   /// \returns Initialized CoverageChecker object.
-  static std::unique_ptr<CoverageChecker> createCoverageChecker(
-      llvm::StringRef ModuleMapPath, std::vector<std::string> &IncludePaths,
-      llvm::ArrayRef<std::string> CommandLine, clang::ModuleMap *ModuleMap);
+  static CoverageChecker *createCoverageChecker(
+    llvm::StringRef ModuleMapPath, std::vector<std::string> &IncludePaths,
+    llvm::ArrayRef<std::string> CommandLine,
+    clang::ModuleMap *ModuleMap);
 
   /// Do checks.
   /// Starting from the directory of the module.modulemap file,

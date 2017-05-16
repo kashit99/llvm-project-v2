@@ -3,10 +3,8 @@ set(LLVM_LINK_COMPONENTS support)
 add_clang_library(clangTidyCERTModule
   CERTTidyModule.cpp
   CommandProcessorCheck.cpp
-  DontModifyStdNamespaceCheck.cpp
   FloatLoopCounter.cpp
   LimitedRandomnessCheck.cpp
-  PostfixOperatorCheck.cpp
   SetLongJmpCheck.cpp
   StaticObjectExceptionCheck.cpp
   StrToNumCheck.cpp

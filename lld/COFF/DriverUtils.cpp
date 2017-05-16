@@ -44,33 +44,31 @@ namespace {
 class Executor {
 public:
   explicit Executor(StringRef S) : Saver(Alloc), Prog(Saver.save(S)) {}
-  void add(StringRef S) { Args.push_back(Saver.save(S)); }
-  void add(std::string &S) { Args.push_back(Saver.save(S)); }
-  void add(Twine S) { Args.push_back(Saver.save(S)); }
-  void add(const char *S) { Args.push_back(Saver.save(S)); }
+  void add(StringRef S) { Args.push_back(Saver.save(S).data()); }
+  void add(std::string &S) { Args.push_back(Saver.save(S).data()); }
+  void add(Twine S) { Args.push_back(Saver.save(S).data()); }
+  void add(const char *S) { Args.push_back(Saver.save(S).data()); }
 
   void run() {
     ErrorOr<std::string> ExeOrErr = sys::findProgramByName(Prog);
     if (auto EC = ExeOrErr.getError())
       fatal(EC, "unable to find " + Prog + " in PATH: ");
-    StringRef Exe = Saver.save(*ExeOrErr);
+    const char *Exe = Saver.save(*ExeOrErr).data();
     Args.insert(Args.begin(), Exe);
-
-    std::vector<const char *> Vec;
-    for (StringRef S : Args)
-      Vec.push_back(S.data());
-    Vec.push_back(nullptr);
-
-    if (sys::ExecuteAndWait(Args[0], Vec.data()) != 0)
-      fatal("ExecuteAndWait failed: " +
-            llvm::join(Args.begin(), Args.end(), " "));
+    Args.push_back(nullptr);
+    if (sys::ExecuteAndWait(Args[0], Args.data()) != 0) {
+      for (const char *S : Args)
+        if (S)
+          errs() << S << " ";
+      fatal("ExecuteAndWait failed");
+    }
   }
 
 private:
   BumpPtrAllocator Alloc;
   StringSaver Saver;
   StringRef Prog;
-  std::vector<StringRef> Args;
+  std::vector<const char *> Args;
 };
 
 } // anonymous namespace
@@ -169,7 +167,8 @@ void parseMerge(StringRef S) {
   if (!Inserted) {
     StringRef Existing = Pair.first->second;
     if (Existing != To)
-      warn(S + ": already merged into " + Existing);
+      errs() << "warning: " << S << ": already merged into " << Existing
+             << "\n";
   }
 }
 
@@ -283,19 +282,11 @@ static void quoteAndPrint(raw_ostream &Out, StringRef S) {
 namespace {
 class TemporaryFile {
 public:
-  TemporaryFile(StringRef Prefix, StringRef Extn, StringRef Contents = "") {
+  TemporaryFile(StringRef Prefix, StringRef Extn) {
     SmallString<128> S;
     if (auto EC = sys::fs::createTemporaryFile("lld-" + Prefix, Extn, S))
       fatal(EC, "cannot create a temporary file");
     Path = S.str();
-
-    if (!Contents.empty()) {
-      std::error_code EC;
-      raw_fd_ostream OS(Path, EC, sys::fs::F_None);
-      if (EC)
-        fatal(EC, "failed to open " + Path);
-      OS << Contents;
-    }
   }
 
   TemporaryFile(TemporaryFile &&Obj) {
@@ -479,10 +470,6 @@ Export parseExport(StringRef Arg) {
       E.Data = true;
       continue;
     }
-    if (Tok.equals_lower("constant")) {
-      E.Constant = true;
-      continue;
-    }
     if (Tok.equals_lower("private")) {
       E.Private = true;
       continue;
@@ -555,7 +542,7 @@ void fixupExports() {
     Export *Existing = Pair.first->second;
     if (E == *Existing || E.Name != Existing->Name)
       continue;
-    warn("duplicate /export option: " + E.Name);
+    errs() << "warning: duplicate /export option: " << E.Name << "\n";
   }
   Config->Exports = std::move(V);
 
@@ -630,26 +617,6 @@ convertResToCOFF(const std::vector<MemoryBufferRef> &MBs) {
   return File.getMemoryBuffer();
 }
 
-// Run MSVC link.exe for given in-memory object files.
-// Command line options are copied from those given to LLD.
-// This is for the /msvclto option.
-void runMSVCLinker(std::string Rsp, ArrayRef<StringRef> Objects) {
-  // Write the in-memory object files to disk.
-  std::vector<TemporaryFile> Temps;
-  for (StringRef S : Objects) {
-    Temps.emplace_back("lto", "obj", S);
-    Rsp += quote(Temps.back().Path) + "\n";
-  }
-
-  log("link.exe " + Rsp);
-
-  // Run MSVC link.exe.
-  Temps.emplace_back("lto", "rsp", Rsp);
-  Executor E("link.exe");
-  E.add(Twine("@" + Temps.back().Path));
-  E.run();
-}
-
 // Create OptTable
 
 // Create prefix string literals used in Options.td
@@ -686,33 +653,30 @@ opt::InputArgList ArgParser::parse(ArrayRef<const char *> ArgsArr) {
 
   // Print the real command line if response files are expanded.
   if (Args.hasArg(OPT_verbose) && ArgsArr.size() != Argv.size()) {
-    std::string Msg = "Command line:";
+    outs() << "Command line:";
     for (const char *S : Argv)
-      Msg += " " + std::string(S);
-    message(Msg);
+      outs() << " " << S;
+    outs() << "\n";
   }
 
   if (MissingCount)
     fatal(Twine(Args.getArgString(MissingIndex)) + ": missing argument");
   for (auto *Arg : Args.filtered(OPT_UNKNOWN))
-    warn("ignoring unknown argument: " + Arg->getSpelling());
+    errs() << "ignoring unknown argument: " << Arg->getSpelling() << "\n";
   return Args;
 }
 
-// link.exe has an interesting feature. If LINK or _LINK_ environment
-// variables exist, their contents are handled as command line strings.
-// So you can pass extra arguments using them.
-opt::InputArgList ArgParser::parseLINK(std::vector<const char *> Args) {
+// link.exe has an interesting feature. If LINK environment exists,
+// its contents are handled as a command line string. So you can pass
+// extra arguments using the environment variable.
+opt::InputArgList ArgParser::parseLINK(ArrayRef<const char *> Args) {
   // Concatenate LINK env and command line arguments, and then parse them.
-  if (Optional<std::string> S = Process::GetEnv("LINK")) {
-    std::vector<const char *> V = tokenize(*S);
-    Args.insert(Args.begin(), V.begin(), V.end());
-  }
-  if (Optional<std::string> S = Process::GetEnv("_LINK_")) {
-    std::vector<const char *> V = tokenize(*S);
-    Args.insert(Args.begin(), V.begin(), V.end());
-  }
-  return parse(Args);
+  Optional<std::string> Env = Process::GetEnv("LINK");
+  if (!Env)
+    return parse(Args);
+  std::vector<const char *> V = tokenize(*Env);
+  V.insert(V.end(), Args.begin(), Args.end());
+  return parse(V);
 }
 
 std::vector<const char *> ArgParser::tokenize(StringRef S) {

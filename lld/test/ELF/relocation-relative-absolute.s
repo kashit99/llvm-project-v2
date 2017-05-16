@@ -7,8 +7,6 @@
 .globl _start
 _start:
 
-# CHECK:      error: relocation R_X86_64_PLT32 cannot refer to absolute symbol: answer
-# CHECK-NEXT: >>> defined in {{.*}}input2.o
-# CHECK-NEXT: >>> referenced by {{.*}}o:(.text+0x1)
+# CHECK: {{.*}}input1.o:(.text+0x1): relocation R_X86_64_PLT32 cannot refer to absolute symbol 'answer' defined in {{.*}}input2.o
 
 call answer@PLT

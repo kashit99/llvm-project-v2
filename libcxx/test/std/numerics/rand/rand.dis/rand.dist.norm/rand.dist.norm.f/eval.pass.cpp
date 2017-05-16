@@ -51,6 +51,7 @@ int main()
     // Purposefully only testing even integral values of m and n (for now)
     {
         typedef std::fisher_f_distribution<> D;
+        typedef D::param_type P;
         typedef std::mt19937 G;
         G g;
         D d(2, 4);
@@ -68,6 +69,7 @@ int main()
     }
     {
         typedef std::fisher_f_distribution<> D;
+        typedef D::param_type P;
         typedef std::mt19937 G;
         G g;
         D d(4, 2);
@@ -85,6 +87,7 @@ int main()
     }
     {
         typedef std::fisher_f_distribution<> D;
+        typedef D::param_type P;
         typedef std::mt19937 G;
         G g;
         D d(18, 20);

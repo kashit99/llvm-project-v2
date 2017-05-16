@@ -26,6 +26,7 @@ struct wat
 
 struct F {};
 struct FD : public F {};
+struct NotDerived {};
 
 template <class T, class U>
 void test_result_of_imp()
@@ -42,6 +43,7 @@ void test_result_of_imp()
 
 int main()
 {
+    typedef NotDerived ND;
     {
     typedef char F::*PMD;
     test_result_of_imp<PMD(F                &), char                &>();

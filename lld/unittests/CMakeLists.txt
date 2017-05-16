@@ -12,5 +12,6 @@ function(add_lld_unittest test_dirname)
   target_link_libraries(${test_dirname} ${LLVM_COMMON_LIBS})
 endfunction()
 
+add_subdirectory(CoreTests)
 add_subdirectory(DriverTests)
 add_subdirectory(MachOTests)

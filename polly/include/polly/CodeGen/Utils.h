@@ -17,9 +17,6 @@ namespace llvm {
 class Pass;
 class Value;
 class BasicBlock;
-class DominatorTree;
-class RegionInfo;
-class LoopInfo;
 } // namespace llvm
 
 namespace polly {
@@ -58,9 +55,7 @@ class Scop;
 /// @param RTC The runtime condition checked before executing the new SCoP.
 ///
 /// @return The 'StartBlock' to which new code can be added.
-llvm::BasicBlock *executeScopConditionally(Scop &S, llvm::Value *RTC,
-                                           llvm::DominatorTree &DT,
-                                           llvm::RegionInfo &RI,
-                                           llvm::LoopInfo &LI);
+llvm::BasicBlock *executeScopConditionally(Scop &S, llvm::Pass *P,
+                                           llvm::Value *RTC);
 } // namespace polly
 #endif

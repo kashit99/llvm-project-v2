@@ -1,6 +1,5 @@
 @ RUN: %cxx %flags %link_flags %s -o %t.exe
-@ RUN: %t.exe
-@ UNSUPPORTED: libcxxabi-no-exceptions
+@ RUN: %exec %t.exe
 
 @ PURPOSE: Check that 0x90 is a valid value for ttype encoding.
 

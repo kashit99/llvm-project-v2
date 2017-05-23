@@ -82,7 +82,7 @@ __isl_take isl_schedule_tree *isl_schedule_tree_dup(
 	case isl_schedule_node_error:
 		isl_die(ctx, isl_error_internal,
 			"allocation should have failed",
-			return isl_schedule_tree_free(dup));
+			isl_schedule_tree_free(dup));
 	case isl_schedule_node_band:
 		dup->band = isl_schedule_band_copy(tree->band);
 		if (!dup->band)

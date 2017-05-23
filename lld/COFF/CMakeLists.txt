@@ -14,9 +14,9 @@ add_lld_library(lldCOFF
   Error.cpp
   ICF.cpp
   InputFiles.cpp
-  LTO.cpp
-  MapFile.cpp
+  Librarian.cpp
   MarkLive.cpp
+  ModuleDef.cpp
   PDB.cpp
   Strings.cpp
   SymbolTable.cpp
@@ -25,7 +25,6 @@ add_lld_library(lldCOFF
 
   LINK_COMPONENTS
   ${LLVM_TARGETS_TO_BUILD}
-  BitReader
   Core
   DebugInfoCodeView
   DebugInfoMSF

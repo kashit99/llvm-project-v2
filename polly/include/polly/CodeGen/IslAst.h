@@ -45,7 +45,7 @@ struct Dependences;
 
 class IslAst {
 public:
-  static IslAst create(Scop &Scop, const Dependences &D);
+  static IslAst *create(Scop *Scop, const Dependences &D);
   ~IslAst();
 
   /// Print a source code representation of the program.
@@ -62,25 +62,20 @@ public:
   /// @param Build The isl_build object to use to build the condition.
   ///
   /// @returns An ast expression that describes the necessary run-time check.
-  static isl_ast_expr *buildRunCondition(Scop &S,
+  static isl_ast_expr *buildRunCondition(Scop *S,
                                          __isl_keep isl_ast_build *Build);
 
-  IslAst(const IslAst &) = delete;
-  IslAst &operator=(const IslAst &) = delete;
-  IslAst(IslAst &&);
-  IslAst &operator=(IslAst &&) = delete;
-
 private:
-  Scop &S;
+  Scop *S;
   isl_ast_node *Root;
   isl_ast_expr *RunCondition;
   std::shared_ptr<isl_ctx> Ctx;
 
-  IslAst(Scop &Scop);
+  IslAst(Scop *Scop);
   void init(const Dependences &D);
 };
 
-class IslAstInfo {
+class IslAstInfo : public ScopPass {
 public:
   using MemoryAccessSet = SmallPtrSet<MemoryAccess *, 4>;
 
@@ -118,14 +113,27 @@ public:
   };
 
 private:
-  Scop &S;
-  IslAst Ast;
+  Scop *S;
+  IslAst *Ast;
 
 public:
-  IslAstInfo(Scop &S, const Dependences &D) : S(S), Ast(IslAst::create(S, D)) {}
+  static char ID;
+  IslAstInfo() : ScopPass(ID), S(nullptr), Ast(nullptr) {}
+
+  /// Build the AST for the given SCoP @p S.
+  bool runOnScop(Scop &S) override;
+
+  /// Register all analyses and transformation required.
+  void getAnalysisUsage(AnalysisUsage &AU) const override;
+
+  /// Release the internal memory.
+  void releaseMemory() override;
+
+  /// Print a source code representation of the program.
+  void printScop(llvm::raw_ostream &OS, Scop &S) const override;
 
   /// Return a copy of the AST root node.
-  __isl_give isl_ast_node *getAst();
+  __isl_give isl_ast_node *getAst() const;
 
   /// Get the run condition.
   ///
@@ -133,13 +141,12 @@ public:
   /// assumptions that have been taken hold. If the run condition evaluates to
   /// zero/false some assumptions do not hold and the original code needs to
   /// be executed.
-  __isl_give isl_ast_expr *getRunCondition();
-
-  void print(raw_ostream &O);
+  __isl_give isl_ast_expr *getRunCondition() const;
 
   /// @name Extract information attached to an isl ast (for) node.
   ///
   ///{
+
   /// Get the complete payload attached to @p Node.
   static IslAstUserPayload *getNodePayload(__isl_keep isl_ast_node *Node);
 
@@ -176,47 +183,10 @@ public:
 
   ///}
 };
-
-struct IslAstAnalysis : public AnalysisInfoMixin<IslAstAnalysis> {
-  static AnalysisKey Key;
-  using Result = IslAstInfo;
-  IslAstInfo run(Scop &S, ScopAnalysisManager &SAM,
-                 ScopStandardAnalysisResults &SAR);
-};
-
-class IslAstInfoWrapperPass : public ScopPass {
-  std::unique_ptr<IslAstInfo> Ast;
-
-public:
-  static char ID;
-  IslAstInfoWrapperPass() : ScopPass(ID) {}
-
-  IslAstInfo &getAI() { return *Ast; }
-  const IslAstInfo &getAI() const { return *Ast; }
-
-  /// Build the AST for the given SCoP @p S.
-  bool runOnScop(Scop &S) override;
-
-  /// Register all analyses and transformation required.
-  void getAnalysisUsage(AnalysisUsage &AU) const override;
-
-  /// Release the internal memory.
-  void releaseMemory() override;
-
-  /// Print a source code representation of the program.
-  void printScop(llvm::raw_ostream &OS, Scop &S) const override;
-};
-
-struct IslAstPrinterPass : public PassInfoMixin<IslAstPrinterPass> {
-  IslAstPrinterPass(raw_ostream &O) : Stream(O) {}
-  PreservedAnalyses run(Scop &S, ScopAnalysisManager &SAM,
-                        ScopStandardAnalysisResults &, SPMUpdater &U);
-  raw_ostream &Stream;
-};
 } // namespace polly
 
 namespace llvm {
 class PassRegistry;
-void initializeIslAstInfoWrapperPassPass(llvm::PassRegistry &);
+void initializeIslAstInfoPass(llvm::PassRegistry &);
 } // namespace llvm
 #endif /* POLLY_ISL_AST_H */

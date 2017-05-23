@@ -3,9 +3,6 @@
 Developing lld Readers
 ======================
 
-Note: this document discuss Mach-O port of LLD. For ELF and COFF,
-see :doc:`index`.
-
 Introduction
 ------------
 

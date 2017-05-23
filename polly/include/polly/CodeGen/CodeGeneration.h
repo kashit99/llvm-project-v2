@@ -13,7 +13,6 @@
 #define POLLY_CODEGENERATION_H
 
 #include "polly/Config/config.h"
-#include "polly/ScopPass.h"
 #include "isl/map.h"
 #include "isl/set.h"
 
@@ -24,11 +23,6 @@ enum VectorizerChoice {
   VECTORIZER_POLLY,
 };
 extern VectorizerChoice PollyVectorizerChoice;
-
-struct CodeGenerationPass : public PassInfoMixin<CodeGenerationPass> {
-  PreservedAnalyses run(Scop &S, ScopAnalysisManager &SAM,
-                        ScopStandardAnalysisResults &AR, SPMUpdater &U);
-};
 } // namespace polly
 
 #endif // POLLY_CODEGENERATION_H

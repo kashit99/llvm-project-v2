@@ -50,8 +50,9 @@ using namespace llvm;
 ///
 /// @return Value*    The newly created induction variable for this loop.
 Value *createLoop(Value *LowerBound, Value *UpperBound, Value *Stride,
-                  PollyIRBuilder &Builder, LoopInfo &LI, DominatorTree &DT,
-                  BasicBlock *&ExitBlock, ICmpInst::Predicate Predicate,
+                  PollyIRBuilder &Builder, Pass *P, LoopInfo &LI,
+                  DominatorTree &DT, BasicBlock *&ExitBlock,
+                  ICmpInst::Predicate Predicate,
                   ScopAnnotator *Annotator = NULL, bool Parallel = false,
                   bool UseGuard = true);
 
@@ -98,9 +99,9 @@ Value *createLoop(Value *LowerBound, Value *UpperBound, Value *Stride,
 class ParallelLoopGenerator {
 public:
   /// Create a parallel loop generator for the current function.
-  ParallelLoopGenerator(PollyIRBuilder &Builder, LoopInfo &LI,
+  ParallelLoopGenerator(PollyIRBuilder &Builder, Pass *P, LoopInfo &LI,
                         DominatorTree &DT, const DataLayout &DL)
-      : Builder(Builder), LI(LI), DT(DT),
+      : Builder(Builder), P(P), LI(LI), DT(DT), DL(DL),
         LongType(
             Type::getIntNTy(Builder.getContext(), DL.getPointerSizeInBits())),
         M(Builder.GetInsertBlock()->getParent()->getParent()) {}
@@ -130,11 +131,17 @@ private:
   /// The IR builder we use to create instructions.
   PollyIRBuilder &Builder;
 
+  /// A pass pointer to update analysis information.
+  Pass *P;
+
   /// The loop info of the current function we need to update.
   LoopInfo &LI;
 
   /// The dominance tree of the current function we need to update.
   DominatorTree &DT;
+
+  /// The target layout to get the right size for types.
+  const DataLayout &DL;
 
   /// The type of a "long" on this hardware used for backend calls.
   Type *LongType;

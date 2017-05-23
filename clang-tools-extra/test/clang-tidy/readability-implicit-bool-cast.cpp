@@ -48,14 +48,8 @@ float implicitCastFromBoolInReturnValue() {
   // CHECK-FIXES: return static_cast<float>(boolean);
 }
 
-void implicitCastFromBoolInSingleBoolExpressions(bool b1, bool b2) {
+void implicitCastFromBoolInSingleBoolExpressions() {
   bool boolean = true;
-  boolean = b1 ^ b2;
-  boolean = b1 && b2;
-  boolean |= !b1 || !b2;
-  boolean &= b1;
-  boolean = b1 == true;
-  boolean = b2 != false;
 
   int integer = boolean - 3;
   // CHECK-MESSAGES: :[[@LINE-1]]:17: warning: implicit cast bool -> 'int'
@@ -201,7 +195,7 @@ void implicitCastToBoolSimpleCases() {
 
   auto pointerToMember = &Struct::member;
   functionTaking<bool>(pointerToMember);
-  // CHECK-MESSAGES: :[[@LINE-1]]:24: warning: implicit cast 'int Struct::*' -> bool
+  // CHECK-MESSAGES: :[[@LINE-1]]:24: warning: implicit cast 'int struct Struct::*' -> bool
   // CHECK-FIXES: functionTaking<bool>(pointerToMember != nullptr);
 }
 

@@ -45,39 +45,39 @@ target datalayout = "e-p:64:64:64-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-f3
 @B = common global [1024 x i32] zeroinitializer, align 16 ; <[1024 x i32]*> [#uses=4]
 
 define void @loop_with_condition_ineq() nounwind {
-bb0:
+; <label>:0
   fence seq_cst
-  br label %bb1
+  br label %1
 
-bb1:
-  %indvar = phi i64 [ %indvar.next, %bb7 ], [ 0, %bb0 ] ; <i64> [#uses=5]
+; <label>:1                                       ; preds = %7, %0
+  %indvar = phi i64 [ %indvar.next, %7 ], [ 0, %0 ] ; <i64> [#uses=5]
   %scevgep = getelementptr [1024 x i32], [1024 x i32]* @A, i64 0, i64 %indvar ; <i32*> [#uses=2]
   %scevgep1 = getelementptr [1024 x i32], [1024 x i32]* @B, i64 0, i64 %indvar ; <i32*> [#uses=1]
   %i.0 = trunc i64 %indvar to i32                 ; <i32> [#uses=1]
   %exitcond = icmp ne i64 %indvar, 1024           ; <i1> [#uses=1]
-  br i1 %exitcond, label %bb2, label %bb8
+  br i1 %exitcond, label %2, label %8
 
-bb2:
-  %var3 = icmp ne i32 %i.0, 512                      ; <i1> [#uses=1]
-  br i1 %var3, label %bb4, label %bb5
+; <label>:2                                       ; preds = %1
+  %3 = icmp ne i32 %i.0, 512                      ; <i1> [#uses=1]
+  br i1 %3, label %4, label %5
 
-bb4:
+; <label>:4                                       ; preds = %2
   store i32 1, i32* %scevgep
-  br label %bb6
+  br label %6
 
-bb5:
+; <label>:5                                       ; preds = %2
   store i32 2, i32* %scevgep
-  br label %bb6
+  br label %6
 
-bb6:
+; <label>:6                                       ; preds = %5, %4
   store i32 3, i32* %scevgep1
-  br label %bb7
+  br label %7
 
-bb7:
+; <label>:7                                       ; preds = %6
   %indvar.next = add i64 %indvar, 1               ; <i64> [#uses=1]
-  br label %bb1
+  br label %1
 
-bb8:
+; <label>:8                                       ; preds = %1
   fence seq_cst
   ret void
 }
@@ -167,8 +167,8 @@ declare void @llvm.memset.p0i8.i64(i8* nocapture, i8, i64, i32, i1) nounwind
 
 ; CHECK: for (int c0 = 0; c0 <= 1023; c0 += 1) {
 ; CHECK:   if (c0 == 512) {
-; CHECK:     Stmt_bb5(512);
+; CHECK:     Stmt_5(512);
 ; CHECK:   } else
-; CHECK:     Stmt_bb4(c0);
-; CHECK:   Stmt_bb6(c0);
+; CHECK:     Stmt_4(c0);
+; CHECK:   Stmt_6(c0);
 ; CHECK: }

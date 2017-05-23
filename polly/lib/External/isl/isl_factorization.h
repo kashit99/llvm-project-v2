@@ -1,6 +1,3 @@
-#ifndef ISL_FACTORIZATION_H
-#define ISL_FACTORIZATION_H
-
 #include <isl/set.h>
 #include <isl_morph.h>
 
@@ -29,6 +26,4 @@ void isl_factorizer_dump(__isl_take isl_factorizer *f);
 
 #if defined(__cplusplus)
 }
-#endif
-
 #endif

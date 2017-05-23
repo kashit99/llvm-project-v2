@@ -26,7 +26,7 @@
 
 struct AllocController;
     // 'AllocController' is a concrete type that instruments and controls the
-    // behavior of test allocators.
+    // behavior of of test allocators.
 
 template <class T, size_t ID = 0>
 class CountingAllocator;

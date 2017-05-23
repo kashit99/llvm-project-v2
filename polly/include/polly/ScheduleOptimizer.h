@@ -12,7 +12,6 @@
 #ifndef POLLY_SCHEDULE_OPTIMIZER_H
 #define POLLY_SCHEDULE_OPTIMIZER_H
 
-#include "polly/DependenceInfo.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
 #include "isl/ctx.h"
@@ -43,31 +42,6 @@ struct MacroKernelParamsTy {
 };
 
 namespace polly {
-/// Additional parameters of the schedule optimizer.
-///
-/// Target Transform Info and the SCoP dependencies used by the schedule
-/// optimizer.
-///
-struct OptimizerAdditionalInfoTy {
-  const llvm::TargetTransformInfo *TTI;
-  const Dependences *D;
-};
-
-/// Parameters of the matrix multiplication operands.
-///
-/// Parameters, which describe access relations that represent operands of the
-/// matrix multiplication.
-///
-struct MatMulInfoTy {
-  MemoryAccess *A = nullptr;
-  MemoryAccess *B = nullptr;
-  MemoryAccess *ReadFromC = nullptr;
-  MemoryAccess *WriteToC = nullptr;
-  int i = -1;
-  int j = -1;
-  int k = -1;
-};
-
 extern bool DisablePollyTiling;
 class Scop;
 } // namespace polly
@@ -85,11 +59,11 @@ public:
   ///
   /// @param Schedule The schedule object the transformations will be applied
   ///                 to.
-  /// @param OAI      Target Transform Info and the SCoP dependencies.
+  /// @param TTI      Target Transform Info.
   /// @returns        The transformed schedule.
   static __isl_give isl_schedule *
   optimizeSchedule(__isl_take isl_schedule *Schedule,
-                   const polly::OptimizerAdditionalInfoTy *OAI = nullptr);
+                   const llvm::TargetTransformInfo *TTI = nullptr);
 
   /// Apply schedule tree transformations.
   ///
@@ -101,11 +75,11 @@ public:
   ///   - Prevectorization
   ///
   /// @param Node The schedule object post-transformations will be applied to.
-  /// @param OAI  Target Transform Info and the SCoP dependencies.
+  /// @param TTI  Target Transform Info.
   /// @returns    The transformed schedule.
   static __isl_give isl_schedule_node *
   optimizeScheduleNode(__isl_take isl_schedule_node *Node,
-                       const polly::OptimizerAdditionalInfoTy *OAI = nullptr);
+                       const llvm::TargetTransformInfo *TTI = nullptr);
 
   /// Decide if the @p NewSchedule is profitable for @p S.
   ///
@@ -154,11 +128,10 @@ private:
 
   /// Apply the BLIS matmul optimization pattern.
   ///
-  /// Make the loops containing the matrix multiplication be the innermost
-  /// loops and apply the BLIS matmul optimization pattern. BLIS implements
-  /// gemm as three nested loops around a macro-kernel, plus two packing
-  /// routines. The macro-kernel is implemented in terms of two additional
-  /// loops around a micro-kernel. The micro-kernel is a loop around a rank-1
+  /// Apply the BLIS matmul optimization pattern. BLIS implements gemm as three
+  /// nested loops around a macro-kernel, plus two packing routines.
+  /// The macro-kernel is implemented in terms of two additional loops around
+  /// a micro-kernel. The micro-kernel is a loop around a rank-1
   /// (i.e., outer product) update.
   ///
   /// For a detailed description please see [1].
@@ -194,13 +167,9 @@ private:
   /// @param Node The node that contains a band to be optimized. The node
   ///             is required to successfully pass
   ///             ScheduleTreeOptimizer::isMatrMultPattern.
-  /// @param TTI  Target Transform Info.
-  /// @param MMI  Parameters of the matrix multiplication operands.
-  /// @returns    The transformed schedule.
   static __isl_give isl_schedule_node *
   optimizeMatMulPattern(__isl_take isl_schedule_node *Node,
-                        const llvm::TargetTransformInfo *TTI,
-                        polly::MatMulInfoTy &MMI);
+                        const llvm::TargetTransformInfo *TTI);
 
   /// Check if this node is a band node we want to tile.
   ///
@@ -297,11 +266,7 @@ private:
   /// the one used to get close-to-peak performance of matrix multiplications.
   ///
   /// @param Node The node to check.
-  /// @param D    The SCoP dependencies.
-  /// @param MMI  Parameters of the matrix multiplication operands.
-  static bool isMatrMultPattern(__isl_keep isl_schedule_node *Node,
-                                const polly::Dependences *D,
-                                polly::MatMulInfoTy &MMI);
+  static bool isMatrMultPattern(__isl_keep isl_schedule_node *Node);
 
   /// Create the BLIS macro-kernel.
   ///

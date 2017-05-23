@@ -35,11 +35,8 @@ void TwineLocalCheck::check(const MatchFinder::MatchResult &Result) {
     // of the initializer.
     const Expr *C = VD->getInit()->IgnoreImplicit();
 
-    while (isa<CXXConstructExpr>(C)) {
-      if (cast<CXXConstructExpr>(C)->getNumArgs() == 0)
-        break;
+    while (isa<CXXConstructExpr>(C))
       C = cast<CXXConstructExpr>(C)->getArg(0)->IgnoreParenImpCasts();
-    }
 
     SourceRange TypeRange =
         VD->getTypeSourceInfo()->getTypeLoc().getSourceRange();

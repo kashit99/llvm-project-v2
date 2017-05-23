@@ -23,7 +23,7 @@
  * range propagation on unbounded domains.  Otherwise, we respect the choice
  * of the user.
  */
-static isl_stat compressed_guarded_poly_bound(__isl_take isl_basic_set *bset,
+static int compressed_guarded_poly_bound(__isl_take isl_basic_set *bset,
 	__isl_take isl_qpolynomial *poly, void *user)
 {
 	struct isl_bound *bound = (struct isl_bound *)user;
@@ -48,7 +48,7 @@ error:
 	return -1;
 }
 
-static isl_stat unwrapped_guarded_poly_bound(__isl_take isl_basic_set *bset,
+static int unwrapped_guarded_poly_bound(__isl_take isl_basic_set *bset,
 	__isl_take isl_qpolynomial *poly, void *user)
 {
 	struct isl_bound *bound = (struct isl_bound *)user;
@@ -56,7 +56,7 @@ static isl_stat unwrapped_guarded_poly_bound(__isl_take isl_basic_set *bset,
 	isl_pw_qpolynomial_fold *top_pwf_tight;
 	isl_space *dim;
 	isl_morph *morph;
-	isl_stat r;
+	int r;
 
 	bset = isl_basic_set_detect_equalities(bset);
 
@@ -102,10 +102,10 @@ static isl_stat unwrapped_guarded_poly_bound(__isl_take isl_basic_set *bset,
 error:
 	isl_basic_set_free(bset);
 	isl_qpolynomial_free(poly);
-	return isl_stat_error;
+	return -1;
 }
 
-static isl_stat guarded_poly_bound(__isl_take isl_basic_set *bset,
+static int guarded_poly_bound(__isl_take isl_basic_set *bset,
 	__isl_take isl_qpolynomial *poly, void *user)
 {
 	struct isl_bound *bound = (struct isl_bound *)user;
@@ -114,7 +114,7 @@ static isl_stat guarded_poly_bound(__isl_take isl_basic_set *bset,
 	isl_pw_qpolynomial_fold *top_pwf_tight;
 	int nparam;
 	int n_in;
-	isl_stat r;
+	int r;
 
 	if (!bound->wrapping)
 		return unwrapped_guarded_poly_bound(bset, poly, user);

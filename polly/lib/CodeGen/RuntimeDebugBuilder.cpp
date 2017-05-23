@@ -170,12 +170,10 @@ void RuntimeDebugBuilder::createGPUPrinterT(PollyIRBuilder &Builder,
   ToPrint.push_back(Builder.CreateGlobalStringPtr("\n  ", "", 4));
   ToPrint.insert(ToPrint.end(), Values.begin(), Values.end());
 
-  const DataLayout &DL = Builder.GetInsertBlock()->getModule()->getDataLayout();
-
   // Allocate print buffer (assuming 2*32 bit per element)
   auto T = ArrayType::get(Builder.getInt32Ty(), ToPrint.size() * 2);
   Value *Data = new AllocaInst(
-      T, DL.getAllocaAddrSpace(), "polly.vprint.buffer",
+      T, "polly.vprint.buffer",
       &Builder.GetInsertBlock()->getParent()->getEntryBlock().front());
   auto *DataPtr = Builder.CreateGEP(Data, {Zero, Zero});
 

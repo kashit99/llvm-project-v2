@@ -43,8 +43,7 @@ macro(find_llvm_parts)
     execute_process(
       COMMAND ${LLVM_CONFIG_PATH} --cmakedir
       RESULT_VARIABLE HAD_ERROR
-      OUTPUT_VARIABLE CONFIG_OUTPUT
-      ERROR_QUIET)
+      OUTPUT_VARIABLE CONFIG_OUTPUT)
     if(NOT HAD_ERROR)
       string(STRIP "${CONFIG_OUTPUT}" LLVM_CMAKE_PATH)
     else()
@@ -96,6 +95,13 @@ macro(configure_out_of_tree_llvm)
   endif()
 
   # LLVM Options --------------------------------------------------------------
+  include(FindPythonInterp)
+  if( NOT PYTHONINTERP_FOUND )
+    message(WARNING "Failed to find python interpreter. "
+                    "The libc++ test suite will be disabled.")
+    set(LLVM_INCLUDE_TESTS OFF)
+  endif()
+
   if (NOT DEFINED LLVM_INCLUDE_TESTS)
     set(LLVM_INCLUDE_TESTS ${LLVM_FOUND})
   endif()

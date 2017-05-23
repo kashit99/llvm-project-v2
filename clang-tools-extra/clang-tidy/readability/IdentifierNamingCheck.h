@@ -53,15 +53,19 @@ public:
   };
 
   struct NamingStyle {
-    NamingStyle() = default;
+    NamingStyle() : Case(CT_AnyCase) {}
 
-    NamingStyle(llvm::Optional<CaseType> Case, const std::string &Prefix,
+    NamingStyle(CaseType Case, const std::string &Prefix,
                 const std::string &Suffix)
         : Case(Case), Prefix(Prefix), Suffix(Suffix) {}
 
-    llvm::Optional<CaseType> Case;
+    CaseType Case;
     std::string Prefix;
     std::string Suffix;
+
+    bool isSet() const {
+      return !(Case == CT_AnyCase && Prefix.empty() && Suffix.empty());
+    }
   };
 
   /// \brief Holds an identifier name check failure, tracking the kind of the
@@ -97,7 +101,7 @@ public:
   void expandMacro(const Token &MacroNameTok, const MacroInfo *MI);
 
 private:
-  std::vector<llvm::Optional<NamingStyle>> NamingStyles;
+  std::vector<NamingStyle> NamingStyles;
   bool IgnoreFailedSplit;
   NamingCheckFailureMap NamingCheckFailures;
 };

@@ -41,10 +41,8 @@ int main()
         typedef std::vector<bool, other_allocator<bool>> C;
         static_assert(std::is_nothrow_destructible<C>::value, "");
     }
-#if defined(_LIBCPP_VERSION)
     {
         typedef std::vector<bool, some_alloc<bool>> C;
-        static_assert(!std::is_nothrow_destructible<C>::value, "");
+        LIBCPP_STATIC_ASSERT(!std::is_nothrow_destructible<C>::value, "");
     }
-#endif // _LIBCPP_VERSION
 }

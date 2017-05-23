@@ -1,8 +1,8 @@
-; RUN: opt %loadPolly -polly-codegen-ppcg -polly-acc-dump-code -disable-output %s
+; RUN: opt %loadPolly -polly-codegen-ppcg -polly-acc-dump-code %s
 
 ; XFAIL: *
 
-; REQUIRES: pollyacc,nvptx
+; REQUIRES: pollyacc
 
 ; This fails today with "type mismatch between callee prototype and arguments"
 

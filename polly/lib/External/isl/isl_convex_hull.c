@@ -27,8 +27,57 @@
 #include <bset_from_bmap.c>
 #include <set_to_map.c>
 
-static __isl_give isl_basic_set *uset_convex_hull_wrap_bounded(
-	__isl_take isl_set *set);
+static struct isl_basic_set *uset_convex_hull_wrap_bounded(struct isl_set *set);
+
+/* Return 1 if constraint c is redundant with respect to the constraints
+ * in bmap.  If c is a lower [upper] bound in some variable and bmap
+ * does not have a lower [upper] bound in that variable, then c cannot
+ * be redundant and we do not need solve any lp.
+ */
+int isl_basic_map_constraint_is_redundant(struct isl_basic_map **bmap,
+	isl_int *c, isl_int *opt_n, isl_int *opt_d)
+{
+	enum isl_lp_result res;
+	unsigned total;
+	int i, j;
+
+	if (!bmap)
+		return -1;
+
+	total = isl_basic_map_total_dim(*bmap);
+	for (i = 0; i < total; ++i) {
+		int sign;
+		if (isl_int_is_zero(c[1+i]))
+			continue;
+		sign = isl_int_sgn(c[1+i]);
+		for (j = 0; j < (*bmap)->n_ineq; ++j)
+			if (sign == isl_int_sgn((*bmap)->ineq[j][1+i]))
+				break;
+		if (j == (*bmap)->n_ineq)
+			break;
+	}
+	if (i < total)
+		return 0;
+
+	res = isl_basic_map_solve_lp(*bmap, 0, c, (*bmap)->ctx->one,
+					opt_n, opt_d, NULL);
+	if (res == isl_lp_unbounded)
+		return 0;
+	if (res == isl_lp_error)
+		return -1;
+	if (res == isl_lp_empty) {
+		*bmap = isl_basic_map_set_to_empty(*bmap);
+		return 0;
+	}
+	return !isl_int_is_neg(*opt_n);
+}
+
+int isl_basic_set_constraint_is_redundant(struct isl_basic_set **bset,
+	isl_int *c, isl_int *opt_n, isl_int *opt_d)
+{
+	return isl_basic_map_constraint_is_redundant(
+			(struct isl_basic_map **)bset, c, opt_n, opt_d);
+}
 
 /* Remove redundant
  * constraints.  If the minimal value along the normal of a constraint
@@ -113,7 +162,7 @@ __isl_give isl_set *isl_set_remove_redundancies(__isl_take isl_set *set)
  * constraint c and if so, set the constant term such that the
  * resulting constraint is a bounding constraint for the set.
  */
-static int uset_is_bound(__isl_keep isl_set *set, isl_int *c, unsigned len)
+static int uset_is_bound(struct isl_set *set, isl_int *c, unsigned len)
 {
 	int first;
 	int j;
@@ -157,6 +206,53 @@ error:
 	return -1;
 }
 
+__isl_give isl_basic_map *isl_basic_map_set_rational(
+	__isl_take isl_basic_map *bmap)
+{
+	if (!bmap)
+		return NULL;
+
+	if (ISL_F_ISSET(bmap, ISL_BASIC_MAP_RATIONAL))
+		return bmap;
+
+	bmap = isl_basic_map_cow(bmap);
+	if (!bmap)
+		return NULL;
+
+	ISL_F_SET(bmap, ISL_BASIC_MAP_RATIONAL);
+
+	return isl_basic_map_finalize(bmap);
+}
+
+__isl_give isl_basic_set *isl_basic_set_set_rational(
+	__isl_take isl_basic_set *bset)
+{
+	return isl_basic_map_set_rational(bset);
+}
+
+__isl_give isl_map *isl_map_set_rational(__isl_take isl_map *map)
+{
+	int i;
+
+	map = isl_map_cow(map);
+	if (!map)
+		return NULL;
+	for (i = 0; i < map->n; ++i) {
+		map->p[i] = isl_basic_map_set_rational(map->p[i]);
+		if (!map->p[i])
+			goto error;
+	}
+	return map;
+error:
+	isl_map_free(map);
+	return NULL;
+}
+
+__isl_give isl_set *isl_set_set_rational(__isl_take isl_set *set)
+{
+	return isl_map_set_rational(set);
+}
+
 static struct isl_basic_set *isl_basic_set_add_equality(
 	struct isl_basic_set *bset, isl_int *c)
 {
@@ -184,8 +280,7 @@ error:
 	return NULL;
 }
 
-static __isl_give isl_set *isl_set_add_basic_set_equality(
-	__isl_take isl_set *set, isl_int *c)
+static struct isl_set *isl_set_add_basic_set_equality(struct isl_set *set, isl_int *c)
 {
 	int i;
 
@@ -220,7 +315,7 @@ error:
  *
  *			\sum_i x_{i,1} = 1
  */
-static __isl_give isl_basic_set *wrap_constraints(__isl_keep isl_set *set)
+static struct isl_basic_set *wrap_constraints(struct isl_set *set)
 {
 	struct isl_basic_set *lp;
 	unsigned n_eq;
@@ -500,8 +595,7 @@ error:
  * After computing the facets of the facet in the z' space,
  * we convert them back to the x space through Q.
  */
-static __isl_give isl_basic_set *compute_facet(__isl_keep isl_set *set,
-	isl_int *c)
+static struct isl_basic_set *compute_facet(struct isl_set *set, isl_int *c)
 {
 	struct isl_mat *m, *U, *Q;
 	struct isl_basic_set *facet = NULL;
@@ -555,8 +649,8 @@ error:
  * using the technique in section "3.1 Ridge Generation" of
  * "Extended Convex Hull" by Fukuda et al.
  */
-static __isl_give isl_basic_set *extend(__isl_take isl_basic_set *hull,
-	__isl_keep isl_set *set)
+static struct isl_basic_set *extend(struct isl_basic_set *hull,
+	struct isl_set *set)
 {
 	int i, j, f;
 	int k;
@@ -618,7 +712,7 @@ error:
  * We simply collect the lower and upper bounds of each basic set
  * and the biggest of those.
  */
-static __isl_give isl_basic_set *convex_hull_1d(__isl_take isl_set *set)
+static struct isl_basic_set *convex_hull_1d(struct isl_set *set)
 {
 	struct isl_mat *c = NULL;
 	isl_int *lower = NULL;
@@ -738,7 +832,7 @@ error:
 	return NULL;
 }
 
-static __isl_give isl_basic_set *convex_hull_0d(__isl_take isl_set *set)
+static struct isl_basic_set *convex_hull_0d(struct isl_set *set)
 {
 	struct isl_basic_set *convex_hull;
 
@@ -762,8 +856,8 @@ static __isl_give isl_basic_set *convex_hull_0d(__isl_take isl_set *set)
  * to the two original basic sets, retaining only those corresponding
  * to the convex hull.
  */
-static __isl_give isl_basic_set *convex_hull_pair_elim(
-	__isl_take isl_basic_set *bset1, __isl_take isl_basic_set *bset2)
+static struct isl_basic_set *convex_hull_pair_elim(struct isl_basic_set *bset1,
+	struct isl_basic_set *bset2)
 {
 	int i, j, k;
 	struct isl_basic_set *bset[2];
@@ -828,15 +922,15 @@ error:
 
 /* Is the set bounded for each value of the parameters?
  */
-isl_bool isl_basic_set_is_bounded(__isl_keep isl_basic_set *bset)
+int isl_basic_set_is_bounded(__isl_keep isl_basic_set *bset)
 {
 	struct isl_tab *tab;
-	isl_bool bounded;
+	int bounded;
 
 	if (!bset)
-		return isl_bool_error;
+		return -1;
 	if (isl_basic_set_plain_is_empty(bset))
-		return isl_bool_true;
+		return 1;
 
 	tab = isl_tab_from_recession_cone(bset, 1);
 	bounded = isl_tab_cone_is_bounded(tab);
@@ -847,11 +941,11 @@ isl_bool isl_basic_set_is_bounded(__isl_keep isl_basic_set *bset)
 /* Is the image bounded for each value of the parameters and
  * the domain variables?
  */
-isl_bool isl_basic_map_image_is_bounded(__isl_keep isl_basic_map *bmap)
+int isl_basic_map_image_is_bounded(__isl_keep isl_basic_map *bmap)
 {
 	unsigned nparam = isl_basic_map_dim(bmap, isl_dim_param);
 	unsigned n_in = isl_basic_map_dim(bmap, isl_dim_in);
-	isl_bool bounded;
+	int bounded;
 
 	bmap = isl_basic_map_copy(bmap);
 	bmap = isl_basic_map_cow(bmap);
@@ -865,19 +959,19 @@ isl_bool isl_basic_map_image_is_bounded(__isl_keep isl_basic_map *bmap)
 
 /* Is the set bounded for each value of the parameters?
  */
-isl_bool isl_set_is_bounded(__isl_keep isl_set *set)
+int isl_set_is_bounded(__isl_keep isl_set *set)
 {
 	int i;
 
 	if (!set)
-		return isl_bool_error;
+		return -1;
 
 	for (i = 0; i < set->n; ++i) {
-		isl_bool bounded = isl_basic_set_is_bounded(set->p[i]);
+		int bounded = isl_basic_set_is_bounded(set->p[i]);
 		if (!bounded || bounded < 0)
 			return bounded;
 	}
-	return isl_bool_true;
+	return 1;
 }
 
 /* Compute the lineality space of the convex hull of bset1 and bset2.
@@ -886,8 +980,8 @@ isl_bool isl_set_is_bounded(__isl_keep isl_set *set)
  * with the negative of the recession cone of bset2 and then compute
  * the linear hull of the resulting cone.
  */
-static __isl_give isl_basic_set *induced_lineality_space(
-	__isl_take isl_basic_set *bset1, __isl_take isl_basic_set *bset2)
+static struct isl_basic_set *induced_lineality_space(
+	struct isl_basic_set *bset1, struct isl_basic_set *bset2)
 {
 	int i, k;
 	struct isl_basic_set *lin = NULL;
@@ -942,7 +1036,7 @@ error:
 	return NULL;
 }
 
-static __isl_give isl_basic_set *uset_convex_hull(__isl_take isl_set *set);
+static struct isl_basic_set *uset_convex_hull(struct isl_set *set);
 
 /* Given a set and a linear space "lin" of dimension n > 0,
  * project the linear space from the set, compute the convex hull
@@ -964,8 +1058,8 @@ static __isl_give isl_basic_set *uset_convex_hull(__isl_take isl_set *set);
  * we transform the hull back to the original space as A' Q_1 x >= b',
  * with Q_1 all but the last n rows of Q.
  */
-static __isl_give isl_basic_set *modulo_lineality(__isl_take isl_set *set,
-	__isl_take isl_basic_set *lin)
+static struct isl_basic_set *modulo_lineality(struct isl_set *set,
+	struct isl_basic_set *lin)
 {
 	unsigned total = isl_basic_set_total_dim(lin);
 	unsigned lin_dim;
@@ -1008,8 +1102,8 @@ error:
  * The next \alpha{ij} correspond to the equalities and come in pairs.
  * The final \alpha{ij} correspond to the inequalities.
  */
-static __isl_give isl_basic_set *valid_direction_lp(
-	__isl_take isl_basic_set *bset1, __isl_take isl_basic_set *bset2)
+static struct isl_basic_set *valid_direction_lp(
+	struct isl_basic_set *bset1, struct isl_basic_set *bset2)
 {
 	isl_space *dim;
 	struct isl_basic_set *lp;
@@ -1089,8 +1183,8 @@ error:
  * Note that we simply pick any valid direction and make no attempt
  * to pick a "good" or even the "best" valid direction.
  */
-static __isl_give isl_vec *valid_direction(
-	__isl_take isl_basic_set *bset1, __isl_take isl_basic_set *bset2)
+static struct isl_vec *valid_direction(
+	struct isl_basic_set *bset1, struct isl_basic_set *bset2)
 {
 	struct isl_basic_set *lp;
 	struct isl_tab *tab;
@@ -1152,8 +1246,8 @@ error:
  * In particular, add the "positivity constraint" and then perform
  * the mapping.
  */
-static __isl_give isl_basic_set *homogeneous_map(__isl_take isl_basic_set *bset,
-	__isl_take isl_mat *T)
+static struct isl_basic_set *homogeneous_map(struct isl_basic_set *bset,
+	struct isl_mat *T)
 {
 	int k;
 
@@ -1232,8 +1326,8 @@ error:
  *
  * The polyhedron b + A x >= 0 is then the convex hull of the input polyhedra.
  */
-static __isl_give isl_basic_set *convex_hull_pair_pointed(
-	__isl_take isl_basic_set *bset1, __isl_take isl_basic_set *bset2)
+static struct isl_basic_set *convex_hull_pair_pointed(
+	struct isl_basic_set *bset1, struct isl_basic_set *bset2)
 {
 	struct isl_ctx *ctx = NULL;
 	struct isl_vec *dir = NULL;
@@ -1274,9 +1368,9 @@ error:
 	return NULL;
 }
 
-static __isl_give isl_basic_set *uset_convex_hull_wrap(__isl_take isl_set *set);
-static __isl_give isl_basic_set *modulo_affine_hull(
-	__isl_take isl_set *set, __isl_take isl_basic_set *affine_hull);
+static struct isl_basic_set *uset_convex_hull_wrap(struct isl_set *set);
+static struct isl_basic_set *modulo_affine_hull(
+	struct isl_set *set, struct isl_basic_set *affine_hull);
 
 /* Compute the convex hull of a pair of basic sets without any parameters or
  * integer divisions.
@@ -1291,8 +1385,8 @@ static __isl_give isl_basic_set *modulo_affine_hull(
  * If the convex hull of the two basic sets would have a non-trivial
  * lineality space, we first project out this lineality space.
  */
-static __isl_give isl_basic_set *convex_hull_pair(
-	__isl_take isl_basic_set *bset1, __isl_take isl_basic_set *bset2)
+static struct isl_basic_set *convex_hull_pair(struct isl_basic_set *bset1,
+	struct isl_basic_set *bset2)
 {
 	isl_basic_set *lin, *aff;
 	int bounded1, bounded2;
@@ -1350,8 +1444,7 @@ error:
  * We basically just drop the constants and turn every inequality
  * into an equality.
  */
-__isl_give isl_basic_set *isl_basic_set_lineality_space(
-	__isl_take isl_basic_set *bset)
+struct isl_basic_set *isl_basic_set_lineality_space(struct isl_basic_set *bset)
 {
 	int i, k;
 	struct isl_basic_set *lin = NULL;
@@ -1396,8 +1489,7 @@ error:
 /* Compute the (linear) hull of the lineality spaces of the basic sets in the
  * "underlying" set "set".
  */
-static __isl_give isl_basic_set *uset_combined_lineality_space(
-	__isl_take isl_set *set)
+static struct isl_basic_set *uset_combined_lineality_space(struct isl_set *set)
 {
 	int i;
 	struct isl_set *lin = NULL;
@@ -1405,9 +1497,9 @@ static __isl_give isl_basic_set *uset_combined_lineality_space(
 	if (!set)
 		return NULL;
 	if (set->n == 0) {
-		isl_space *space = isl_set_get_space(set);
+		isl_space *dim = isl_set_get_space(set);
 		isl_set_free(set);
-		return isl_basic_set_empty(space);
+		return isl_basic_set_empty(dim);
 	}
 
 	lin = isl_set_alloc_space(isl_set_get_space(set), set->n, 0);
@@ -1480,8 +1572,8 @@ error:
  * facet.
  * This function assumes that the given set is bounded.
  */
-static __isl_give isl_basic_set *initial_hull(__isl_take isl_basic_set *hull,
-	__isl_keep isl_set *set)
+static struct isl_basic_set *initial_hull(struct isl_basic_set *hull,
+	struct isl_set *set)
 {
 	struct isl_mat *bounds = NULL;
 	unsigned dim;
@@ -1582,8 +1674,8 @@ static int has_constraint(struct isl_ctx *ctx, struct isl_hash_table *table,
  * all other basic sets and is therefore the convex hull of set.
  * In this case we set *is_hull to 1.
  */
-static __isl_give isl_basic_set *common_constraints(
-	__isl_take isl_basic_set *hull, __isl_keep isl_set *set, int *is_hull)
+static struct isl_basic_set *common_constraints(struct isl_basic_set *hull,
+	struct isl_set *set, int *is_hull)
 {
 	int i, j, s, n;
 	int min_constraints;
@@ -1703,8 +1795,7 @@ error:
  * obvious facet constraints, if any.  If the result happens to
  * be the convex hull of "set" then *is_hull is set to 1.
  */
-static __isl_give isl_basic_set *proto_hull(__isl_keep isl_set *set,
-	int *is_hull)
+static struct isl_basic_set *proto_hull(struct isl_set *set, int *is_hull)
 {
 	struct isl_basic_set *hull;
 	unsigned n_ineq;
@@ -1722,7 +1813,7 @@ static __isl_give isl_basic_set *proto_hull(__isl_keep isl_set *set,
 	return common_constraints(hull, set, is_hull);
 }
 
-static __isl_give isl_basic_set *uset_convex_hull_wrap(__isl_take isl_set *set)
+static struct isl_basic_set *uset_convex_hull_wrap(struct isl_set *set)
 {
 	struct isl_basic_set *hull;
 	int is_hull;
@@ -1744,9 +1835,8 @@ static __isl_give isl_basic_set *uset_convex_hull_wrap(__isl_take isl_set *set)
  * the Fourier-Motzkin elimination based convex hull.
  * We also handle a few special cases before checking the boundedness.
  */
-static __isl_give isl_basic_set *uset_convex_hull(__isl_take isl_set *set)
+static struct isl_basic_set *uset_convex_hull(struct isl_set *set)
 {
-	isl_bool bounded;
 	struct isl_basic_set *convex_hull = NULL;
 	struct isl_basic_set *lin;
 
@@ -1757,6 +1847,8 @@ static __isl_give isl_basic_set *uset_convex_hull(__isl_take isl_set *set)
 	set = isl_set_set_rational(set);
 
 	if (!set)
+		goto error;
+	if (!set)
 		return NULL;
 	if (set->n == 1) {
 		convex_hull = isl_basic_set_copy(set->p[0]);
@@ -1766,10 +1858,8 @@ static __isl_give isl_basic_set *uset_convex_hull(__isl_take isl_set *set)
 	if (isl_set_n_dim(set) == 1)
 		return convex_hull_1d(set);
 
-	bounded = isl_set_is_bounded(set);
-	if (bounded < 0)
-		goto error;
-	if (bounded && set->ctx->opt->convex == ISL_CONVEX_HULL_WRAP)
+	if (isl_set_is_bounded(set) &&
+	    set->ctx->opt->convex == ISL_CONVEX_HULL_WRAP)
 		return uset_convex_hull_wrap(set);
 
 	lin = uset_combined_lineality_space(isl_set_copy(set));
@@ -1794,8 +1884,7 @@ error:
  * without parameters or divs and where the convex hull of set is
  * known to be full-dimensional.
  */
-static __isl_give isl_basic_set *uset_convex_hull_wrap_bounded(
-	__isl_take isl_set *set)
+static struct isl_basic_set *uset_convex_hull_wrap_bounded(struct isl_set *set)
 {
 	struct isl_basic_set *convex_hull = NULL;
 
@@ -1833,8 +1922,8 @@ error:
  * convex hull of the transformed set and then add the equalities back
  * (after performing the inverse transformation.
  */
-static __isl_give isl_basic_set *modulo_affine_hull(
-	__isl_take isl_set *set, __isl_take isl_basic_set *affine_hull)
+static struct isl_basic_set *modulo_affine_hull(
+	struct isl_set *set, struct isl_basic_set *affine_hull)
 {
 	struct isl_mat *T;
 	struct isl_mat *T2;
@@ -1874,7 +1963,7 @@ static __isl_give isl_basic_map *replace_map_by_empty_basic_map(
  * The implementation was inspired by "Extended Convex Hull" by Fukuda et al.,
  * specifically, the wrapping of facets to obtain new facets.
  */
-__isl_give isl_basic_map *isl_map_convex_hull(__isl_take isl_map *map)
+struct isl_basic_map *isl_map_convex_hull(struct isl_map *map)
 {
 	struct isl_basic_set *bset;
 	struct isl_basic_map *model = NULL;
@@ -1883,7 +1972,7 @@ __isl_give isl_basic_map *isl_map_convex_hull(__isl_take isl_map *map)
 	struct isl_set *set = NULL;
 
 	map = isl_map_detect_equalities(map);
-	map = isl_map_align_divs_internal(map);
+	map = isl_map_align_divs(map);
 	if (!map)
 		goto error;
 
@@ -2008,7 +2097,7 @@ static int hash_ineq(struct isl_ctx *ctx, struct isl_hash_table *table,
  * The value in the hash table is a pointer to the (in)equality of "bset".
  */
 static int hash_basic_set(struct isl_hash_table *table,
-	__isl_keep isl_basic_set *bset)
+				struct isl_basic_set *bset)
 {
 	int i, j;
 	unsigned dim = isl_basic_set_total_dim(bset);
@@ -2027,7 +2116,7 @@ static int hash_basic_set(struct isl_hash_table *table,
 	return 0;
 }
 
-static struct sh_data *sh_data_alloc(__isl_keep isl_set *set, unsigned n_ineq)
+static struct sh_data *sh_data_alloc(struct isl_set *set, unsigned n_ineq)
 {
 	struct sh_data *data;
 	int i;
@@ -2066,7 +2155,7 @@ error:
  *	  0 if "ineq" may attain arbitrarily small values on basic set "j"
  *	 -1 if some error occurred
  */
-static int is_bound(struct sh_data *data, __isl_keep isl_set *set, int j,
+static int is_bound(struct sh_data *data, struct isl_set *set, int j,
 	isl_int *ineq, int shift)
 {
 	enum isl_lp_result res;
@@ -2157,8 +2246,8 @@ static void set_max_constant_term(struct sh_data *data, __isl_keep isl_set *set,
  * translate and the inequality is therefore known to be a bound
  * of this basic set.
  */
-static __isl_give isl_basic_set *add_bound(__isl_take isl_basic_set *hull,
-	struct sh_data *data, __isl_keep isl_set *set, int i, isl_int *ineq,
+static struct isl_basic_set *add_bound(struct isl_basic_set *hull,
+	struct sh_data *data, struct isl_set *set, int i, isl_int *ineq,
 	int shift)
 {
 	uint32_t c_hash;
@@ -2239,8 +2328,8 @@ error:
  * become a bound on the whole set.  If so, add the (relaxed) inequality
  * to "hull".  Relaxation is only allowed if "shift" is set.
  */
-static __isl_give isl_basic_set *add_bounds(__isl_take isl_basic_set *bset,
-	struct sh_data *data, __isl_keep isl_set *set, int i, int shift)
+static struct isl_basic_set *add_bounds(struct isl_basic_set *bset,
+	struct sh_data *data, struct isl_set *set, int i, int shift)
 {
 	int j, k;
 	unsigned dim = isl_basic_set_total_dim(bset);
@@ -2375,7 +2464,7 @@ static __isl_give isl_basic_map *map_simple_hull(__isl_take isl_map *map,
 		return map_simple_hull_trivial(map);
 	affine_hull = isl_map_affine_hull(isl_map_copy(map));
 	input = isl_map_copy(map);
-	map = isl_map_align_divs_internal(map);
+	map = isl_map_align_divs(map);
 	model = map ? isl_basic_map_copy(map->p[0]) : NULL;
 
 	set = isl_map_underlying_set(map);
@@ -2988,7 +3077,7 @@ static struct isl_basic_set *set_bounds(struct isl_set *set, int dim)
  * resulting hull is bounded by a symbolic constant.  If not, the
  * hull is intersected with the corresponding bounds on the whole set.
  */
-__isl_give isl_basic_set *isl_set_bounded_simple_hull(__isl_take isl_set *set)
+struct isl_basic_set *isl_set_bounded_simple_hull(struct isl_set *set)
 {
 	int i, j;
 	struct isl_basic_set *hull;
@@ -3050,6 +3139,5 @@ __isl_give isl_basic_set *isl_set_bounded_simple_hull(__isl_take isl_set *set)
 	return hull;
 error:
 	isl_set_free(set);
-	isl_basic_set_free(hull);
 	return NULL;
 }

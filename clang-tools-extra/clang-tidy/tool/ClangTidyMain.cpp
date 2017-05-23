@@ -35,13 +35,12 @@ Configuration files:
   option, command-line option takes precedence. The effective
   configuration can be inspected using -dump-config:
 
-    $ clang-tidy -dump-config
+    $ clang-tidy -dump-config - --
     ---
     Checks:          '-*,some-check'
     WarningsAsErrors: ''
     HeaderFilterRegex: ''
     AnalyzeTemporaryDtors: false
-    FormatStyle:     none
     User:            user
     CheckOptions:
       - key:             some-check.SomeOption
@@ -61,7 +60,7 @@ appearance in the list. Globs without '-'
 prefix add checks with matching names to the
 set, globs with the '-' prefix remove checks
 with matching names from the set of enabled
-checks. This option's value is appended to the
+checks.  This option's value is appended to the
 value of the 'Checks' option in .clang-tidy
 file, if any.
 )"),
@@ -121,22 +120,12 @@ well.
 )"),
                                cl::init(false), cl::cat(ClangTidyCategory));
 
-static cl::opt<std::string> FormatStyle("format-style", cl::desc(R"(
-Style for formatting code around applied fixes:
-  - 'none' (default) turns off formatting
-  - 'file' (literally 'file', not a placeholder)
-    uses .clang-format file in the closest parent
-    directory
-  - '{ <json> }' specifies options inline, e.g.
-    -format-style='{BasedOnStyle: llvm, IndentWidth: 8}'
-  - 'llvm', 'google', 'webkit', 'mozilla'
-See clang-format documentation for the up-to-date
-information about formatting styles and options.
-This option overrides the 'FormatStyle` option in
-.clang-tidy file, if any.
+static cl::opt<std::string> FormatStyle("style", cl::desc(R"(
+Fallback style for reformatting after inserting fixes
+if there is no clang-format config file found.
 )"),
-                                   cl::init("none"),
-                                   cl::cat(ClangTidyCategory));
+                                        cl::init("llvm"),
+                                        cl::cat(ClangTidyCategory));
 
 static cl::opt<bool> ListChecks("list-checks", cl::desc(R"(
 List all enabled checks and exit. Use with
@@ -198,15 +187,6 @@ code with clang-apply-replacements.
 )"),
                                         cl::value_desc("filename"),
                                         cl::cat(ClangTidyCategory));
-
-static cl::opt<bool> Quiet("quiet", cl::desc(R"(
-Run clang-tidy in quiet mode. This suppresses
-printing statistics about ignored warnings and
-warnings treated as errors if the respective
-options are specified.
-)"),
-                           cl::init(false),
-                           cl::cat(ClangTidyCategory));
 
 namespace clang {
 namespace tidy {
@@ -292,7 +272,6 @@ static std::unique_ptr<ClangTidyOptionsProvider> createOptionsProvider() {
   DefaultOptions.HeaderFilterRegex = HeaderFilter;
   DefaultOptions.SystemHeaders = SystemHeaders;
   DefaultOptions.AnalyzeTemporaryDtors = AnalyzeTemporaryDtors;
-  DefaultOptions.FormatStyle = FormatStyle;
   DefaultOptions.User = llvm::sys::Process::GetEnv("USER");
   // USERNAME is used on Windows.
   if (!DefaultOptions.User)
@@ -309,8 +288,6 @@ static std::unique_ptr<ClangTidyOptionsProvider> createOptionsProvider() {
     OverrideOptions.SystemHeaders = SystemHeaders;
   if (AnalyzeTemporaryDtors.getNumOccurrences() > 0)
     OverrideOptions.AnalyzeTemporaryDtors = AnalyzeTemporaryDtors;
-  if (FormatStyle.getNumOccurrences() > 0)
-    OverrideOptions.FormatStyle = FormatStyle;
 
   if (!Config.empty()) {
     if (llvm::ErrorOr<ClangTidyOptions> ParsedConfig =
@@ -333,8 +310,7 @@ static int clangTidyMain(int argc, const char **argv) {
   CommonOptionsParser OptionsParser(argc, argv, ClangTidyCategory,
                                     cl::ZeroOrMore);
 
-  auto OwningOptionsProvider = createOptionsProvider();
-  auto *OptionsProvider = OwningOptionsProvider.get();
+  auto OptionsProvider = createOptionsProvider();
   if (!OptionsProvider)
     return 1;
 
@@ -403,10 +379,10 @@ static int clangTidyMain(int argc, const char **argv) {
 
   ProfileData Profile;
 
-  ClangTidyContext Context(std::move(OwningOptionsProvider));
-  runClangTidy(Context, OptionsParser.getCompilations(), PathList,
-               EnableCheckProfile ? &Profile : nullptr);
-  ArrayRef<ClangTidyError> Errors = Context.getErrors();
+  std::vector<ClangTidyError> Errors;
+  ClangTidyStats Stats =
+      runClangTidy(std::move(OptionsProvider), OptionsParser.getCompilations(),
+                   PathList, &Errors, EnableCheckProfile ? &Profile : nullptr);
   bool FoundErrors =
       std::find_if(Errors.begin(), Errors.end(), [](const ClangTidyError &E) {
         return E.DiagLevel == ClangTidyError::Error;
@@ -417,7 +393,8 @@ static int clangTidyMain(int argc, const char **argv) {
   unsigned WErrorCount = 0;
 
   // -fix-errors implies -fix.
-  handleErrors(Context, (FixErrors || Fix) && !DisableFixes, WErrorCount);
+  handleErrors(Errors, (FixErrors || Fix) && !DisableFixes, FormatStyle,
+               WErrorCount);
 
   if (!ExportFixes.empty() && !Errors.empty()) {
     std::error_code EC;
@@ -429,23 +406,19 @@ static int clangTidyMain(int argc, const char **argv) {
     exportReplacements(FilePath.str(), Errors, OS);
   }
 
-  if (!Quiet) {
-    printStats(Context.getStats());
-    if (DisableFixes)
-      llvm::errs()
-          << "Found compiler errors, but -fix-errors was not specified.\n"
-             "Fixes have NOT been applied.\n\n";
-  }
+  printStats(Stats);
+  if (DisableFixes)
+    llvm::errs()
+        << "Found compiler errors, but -fix-errors was not specified.\n"
+           "Fixes have NOT been applied.\n\n";
 
   if (EnableCheckProfile)
     printProfileData(Profile, llvm::errs());
 
   if (WErrorCount) {
-    if (!Quiet) {
-      StringRef Plural = WErrorCount == 1 ? "" : "s";
-      llvm::errs() << WErrorCount << " warning" << Plural << " treated as error"
-                   << Plural << "\n";
-    }
+    StringRef Plural = WErrorCount == 1 ? "" : "s";
+    llvm::errs() << WErrorCount << " warning" << Plural << " treated as error"
+                 << Plural << "\n";
     return WErrorCount;
   }
 
@@ -501,11 +474,6 @@ static int LLVM_ATTRIBUTE_UNUSED PerformanceModuleAnchorDestination =
 extern volatile int ReadabilityModuleAnchorSource;
 static int LLVM_ATTRIBUTE_UNUSED ReadabilityModuleAnchorDestination =
     ReadabilityModuleAnchorSource;
-
-// This anchor is used to force the linker to link the HICPPModule.
-extern volatile int HICPPModuleAnchorSource;
-static int LLVM_ATTRIBUTE_UNUSED HICPPModuleAnchorDestination =
-    HICPPModuleAnchorSource;
 
 } // namespace tidy
 } // namespace clang

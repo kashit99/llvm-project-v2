@@ -25,11 +25,14 @@ int main()
 {
     {
         typedef std::unordered_set<int> C;
+        typedef C::const_iterator I;
+        typedef int P;
         const C c;
         LIBCPP_ASSERT(c.bucket_count() == 0);
     }
     {
         typedef std::unordered_set<int> C;
+        typedef C::const_iterator I;
         typedef int P;
         P a[] =
         {
@@ -48,11 +51,14 @@ int main()
 #if TEST_STD_VER >= 11
     {
         typedef std::unordered_set<int, std::hash<int>, std::equal_to<int>, min_allocator<int>> C;
+        typedef C::const_iterator I;
+        typedef int P;
         const C c;
         LIBCPP_ASSERT(c.bucket_count() == 0);
     }
     {
         typedef std::unordered_set<int, std::hash<int>, std::equal_to<int>, min_allocator<int>> C;
+        typedef C::const_iterator I;
         typedef int P;
         P a[] =
         {

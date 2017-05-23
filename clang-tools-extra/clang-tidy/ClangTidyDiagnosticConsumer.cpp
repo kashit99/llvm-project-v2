@@ -119,7 +119,6 @@ ClangTidyError::ClangTidyError(StringRef CheckName,
 // Returns true if GlobList starts with the negative indicator ('-'), removes it
 // from the GlobList.
 static bool ConsumeNegativeIndicator(StringRef &GlobList) {
-  GlobList = GlobList.trim(' ');
   if (GlobList.startswith("-")) {
     GlobList = GlobList.substr(1);
     return true;
@@ -129,9 +128,8 @@ static bool ConsumeNegativeIndicator(StringRef &GlobList) {
 // Converts first glob from the comma-separated list of globs to Regex and
 // removes it and the trailing comma from the GlobList.
 static llvm::Regex ConsumeGlob(StringRef &GlobList) {
-  StringRef UntrimmedGlob = GlobList.substr(0, GlobList.find(','));
-  StringRef Glob = UntrimmedGlob.trim(' ');
-  GlobList = GlobList.substr(UntrimmedGlob.size() + 1);
+  StringRef Glob = GlobList.substr(0, GlobList.find(',')).trim();
+  GlobList = GlobList.substr(Glob.size() + 1);
   SmallString<128> RegexText("^");
   StringRef MetaChars("()^$|*+?.[]\\{}");
   for (char C : Glob) {
@@ -158,27 +156,6 @@ bool GlobList::contains(StringRef S, bool Contains) {
   return Contains;
 }
 
-class ClangTidyContext::CachedGlobList {
-public:
-  CachedGlobList(StringRef Globs) : Globs(Globs) {}
-
-  bool contains(StringRef S) {
-    switch (auto &Result = Cache[S]) {
-      case Yes: return true;
-      case No: return false;
-      case None:
-        Result = Globs.contains(S) ? Yes : No;
-        return Result == Yes;
-    }
-    llvm_unreachable("invalid enum");
-  }
-
-private:
-  GlobList Globs;
-  enum Tristate { None, Yes, No };
-  llvm::StringMap<Tristate> Cache;
-};
-
 ClangTidyContext::ClangTidyContext(
     std::unique_ptr<ClangTidyOptionsProvider> OptionsProvider)
     : DiagEngine(nullptr), OptionsProvider(std::move(OptionsProvider)),
@@ -187,8 +164,6 @@ ClangTidyContext::ClangTidyContext(
   // parsing, use empty string for the file name in this case.
   setCurrentFile("");
 }
-
-ClangTidyContext::~ClangTidyContext() = default;
 
 DiagnosticBuilder ClangTidyContext::diag(
     StringRef CheckName, SourceLocation Loc, StringRef Description,
@@ -211,9 +186,8 @@ void ClangTidyContext::setSourceManager(SourceManager *SourceMgr) {
 void ClangTidyContext::setCurrentFile(StringRef File) {
   CurrentFile = File;
   CurrentOptions = getOptionsForFile(CurrentFile);
-  CheckFilter = llvm::make_unique<CachedGlobList>(*getOptions().Checks);
-  WarningAsErrorFilter =
-      llvm::make_unique<CachedGlobList>(*getOptions().WarningsAsErrors);
+  CheckFilter.reset(new GlobList(*getOptions().Checks));
+  WarningAsErrorFilter.reset(new GlobList(*getOptions().WarningsAsErrors));
 }
 
 void ClangTidyContext::setASTContext(ASTContext *Context) {
@@ -238,14 +212,14 @@ ClangTidyOptions ClangTidyContext::getOptionsForFile(StringRef File) const {
 
 void ClangTidyContext::setCheckProfileData(ProfileData *P) { Profile = P; }
 
-bool ClangTidyContext::isCheckEnabled(StringRef CheckName) const {
+GlobList &ClangTidyContext::getChecksFilter() {
   assert(CheckFilter != nullptr);
-  return CheckFilter->contains(CheckName);
+  return *CheckFilter;
 }
 
-bool ClangTidyContext::treatAsError(StringRef CheckName) const {
+GlobList &ClangTidyContext::getWarningAsErrorFilter() {
   assert(WarningAsErrorFilter != nullptr);
-  return WarningAsErrorFilter->contains(CheckName);
+  return *WarningAsErrorFilter;
 }
 
 /// \brief Store a \c ClangTidyError.
@@ -261,22 +235,20 @@ StringRef ClangTidyContext::getCheckName(unsigned DiagnosticID) const {
   return "";
 }
 
-ClangTidyDiagnosticConsumer::ClangTidyDiagnosticConsumer(
-    ClangTidyContext &Ctx, bool RemoveIncompatibleErrors)
-    : Context(Ctx), RemoveIncompatibleErrors(RemoveIncompatibleErrors),
-      LastErrorRelatesToUserCode(false), LastErrorPassesLineFilter(false),
-      LastErrorWasIgnored(false) {
+ClangTidyDiagnosticConsumer::ClangTidyDiagnosticConsumer(ClangTidyContext &Ctx)
+    : Context(Ctx), LastErrorRelatesToUserCode(false),
+      LastErrorPassesLineFilter(false), LastErrorWasIgnored(false) {
   IntrusiveRefCntPtr<DiagnosticOptions> DiagOpts = new DiagnosticOptions();
-  Diags = llvm::make_unique<DiagnosticsEngine>(
+  Diags.reset(new DiagnosticsEngine(
       IntrusiveRefCntPtr<DiagnosticIDs>(new DiagnosticIDs), &*DiagOpts, this,
-      /*ShouldOwnClient=*/false);
+      /*ShouldOwnClient=*/false));
   Context.setDiagnosticsEngine(Diags.get());
 }
 
 void ClangTidyDiagnosticConsumer::finalizeLastError() {
   if (!Errors.empty()) {
     ClangTidyError &Error = Errors.back();
-    if (!Context.isCheckEnabled(Error.DiagnosticName) &&
+    if (!Context.getChecksFilter().contains(Error.DiagnosticName) &&
         Error.DiagLevel != ClangTidyError::Error) {
       ++Context.Stats.ErrorsIgnoredCheckFilter;
       Errors.pop_back();
@@ -297,45 +269,16 @@ void ClangTidyDiagnosticConsumer::finalizeLastError() {
 static bool LineIsMarkedWithNOLINT(SourceManager &SM, SourceLocation Loc) {
   bool Invalid;
   const char *CharacterData = SM.getCharacterData(Loc, &Invalid);
-  if (Invalid)
-    return false;
-
-  // Check if there's a NOLINT on this line.
-  const char *P = CharacterData;
-  while (*P != '\0' && *P != '\r' && *P != '\n')
-    ++P;
-  StringRef RestOfLine(CharacterData, P - CharacterData + 1);
-  // FIXME: Handle /\bNOLINT\b(\([^)]*\))?/ as cpplint.py does.
-  if (RestOfLine.find("NOLINT") != StringRef::npos)
-    return true;
-
-  // Check if there's a NOLINTNEXTLINE on the previous line.
-  const char *BufBegin =
-      SM.getCharacterData(SM.getLocForStartOfFile(SM.getFileID(Loc)), &Invalid);
-  if (Invalid || P == BufBegin)
-    return false;
-
-  // Scan backwards over the current line.
-  P = CharacterData;
-  while (P != BufBegin && *P != '\n')
-    --P;
-
-  // If we reached the begin of the file there is no line before it.
-  if (P == BufBegin)
-    return false;
-
-  // Skip over the newline.
-  --P;
-  const char *LineEnd = P;
-
-  // Now we're on the previous line. Skip to the beginning of it.
-  while (P != BufBegin && *P != '\n')
-    --P;
-
-  RestOfLine = StringRef(P, LineEnd - P + 1);
-  if (RestOfLine.find("NOLINTNEXTLINE") != StringRef::npos)
-    return true;
-
+  if (!Invalid) {
+    const char *P = CharacterData;
+    while (*P != '\0' && *P != '\r' && *P != '\n')
+      ++P;
+    StringRef RestOfLine(CharacterData, P - CharacterData + 1);
+    // FIXME: Handle /\bNOLINT\b(\([^)]*\))?/ as cpplint.py does.
+    if (RestOfLine.find("NOLINT") != StringRef::npos) {
+      return true;
+    }
+  }
   return false;
 }
 
@@ -408,8 +351,9 @@ void ClangTidyDiagnosticConsumer::HandleDiagnostic(
       LastErrorRelatesToUserCode = true;
       LastErrorPassesLineFilter = true;
     }
-    bool IsWarningAsError = DiagLevel == DiagnosticsEngine::Warning &&
-                            Context.treatAsError(CheckName);
+    bool IsWarningAsError =
+        DiagLevel == DiagnosticsEngine::Warning &&
+        Context.getWarningAsErrorFilter().contains(CheckName);
     Errors.emplace_back(CheckName, Level, Context.getCurrentBuildDirectory(),
                         IsWarningAsError);
   }
@@ -485,8 +429,8 @@ void ClangTidyDiagnosticConsumer::checkFilters(SourceLocation Location) {
 
 llvm::Regex *ClangTidyDiagnosticConsumer::getHeaderFilter() {
   if (!HeaderFilter)
-    HeaderFilter =
-        llvm::make_unique<llvm::Regex>(*Context.getOptions().HeaderFilterRegex);
+    HeaderFilter.reset(
+        new llvm::Regex(*Context.getOptions().HeaderFilterRegex));
   return HeaderFilter.get();
 }
 
@@ -636,9 +580,7 @@ void ClangTidyDiagnosticConsumer::finish() {
   std::sort(Errors.begin(), Errors.end(), LessClangTidyError());
   Errors.erase(std::unique(Errors.begin(), Errors.end(), EqualClangTidyError()),
                Errors.end());
-
-  if (RemoveIncompatibleErrors)
-    removeIncompatibleErrors(Errors);
+  removeIncompatibleErrors(Errors);
 
   for (const ClangTidyError &Error : Errors)
     Context.storeError(Error);

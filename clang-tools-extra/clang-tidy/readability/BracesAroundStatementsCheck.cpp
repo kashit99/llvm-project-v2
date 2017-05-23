@@ -39,7 +39,7 @@ SourceLocation forwardSkipWhitespaceAndComments(SourceLocation Loc,
                                                 const ASTContext *Context) {
   assert(Loc.isValid());
   for (;;) {
-    while (isWhitespace(*SM.getCharacterData(Loc)))
+    while (isWhitespace(*FullSourceLoc(Loc, SM).getCharacterData()))
       Loc = Loc.getLocWithOffset(1);
 
     tok::TokenKind TokKind = getTokenKind(Loc, SM, Context);
@@ -54,15 +54,14 @@ SourceLocation forwardSkipWhitespaceAndComments(SourceLocation Loc,
 SourceLocation findEndLocation(SourceLocation LastTokenLoc,
                                const SourceManager &SM,
                                const ASTContext *Context) {
-  SourceLocation Loc =
-      Lexer::GetBeginningOfToken(LastTokenLoc, SM, Context->getLangOpts());
+  SourceLocation Loc = LastTokenLoc;
   // Loc points to the beginning of the last (non-comment non-ws) token
   // before end or ';'.
   assert(Loc.isValid());
   bool SkipEndWhitespaceAndComments = true;
   tok::TokenKind TokKind = getTokenKind(Loc, SM, Context);
   if (TokKind == tok::NUM_TOKENS || TokKind == tok::semi ||
-      TokKind == tok::r_brace) {
+      TokKind == tok::r_brace || isStringLiteral(TokKind)) {
     // If we are at ";" or "}", we found the last token. We could use as well
     // `if (isa<NullStmt>(S))`, but it wouldn't work for nested statements.
     SkipEndWhitespaceAndComments = false;
@@ -70,6 +69,7 @@ SourceLocation findEndLocation(SourceLocation LastTokenLoc,
 
   Loc = Lexer::getLocForEndOfToken(Loc, 0, SM, Context->getLangOpts());
   // Loc points past the last token before end or after ';'.
+
   if (SkipEndWhitespaceAndComments) {
     Loc = forwardSkipWhitespaceAndComments(Loc, SM, Context);
     tok::TokenKind TokKind = getTokenKind(Loc, SM, Context);
@@ -79,11 +79,10 @@ SourceLocation findEndLocation(SourceLocation LastTokenLoc,
 
   for (;;) {
     assert(Loc.isValid());
-    while (isHorizontalWhitespace(*SM.getCharacterData(Loc))) {
+    while (isHorizontalWhitespace(*FullSourceLoc(Loc, SM).getCharacterData()))
       Loc = Loc.getLocWithOffset(1);
-    }
 
-    if (isVerticalWhitespace(*SM.getCharacterData(Loc))) {
+    if (isVerticalWhitespace(*FullSourceLoc(Loc, SM).getCharacterData())) {
       // EOL, insert brace before.
       break;
     }
@@ -160,7 +159,7 @@ void BracesAroundStatementsCheck::check(
       ForceBracesStmts.insert(Else);
     if (Else && !isa<IfStmt>(Else)) {
       // Omit 'else if' statements here, they will be handled directly.
-      checkStmt(Result, Else, S->getElseLoc());
+      checkStmt(Result, Else, S->getElseLoc(), SourceLocation());
     }
   } else {
     llvm_unreachable("Invalid match");

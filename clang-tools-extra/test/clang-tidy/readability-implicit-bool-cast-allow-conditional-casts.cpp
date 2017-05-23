@@ -25,19 +25,8 @@ void regularImplicitCastIntegerToBoolIsNotIgnored() {
 void implicitCastIntegerToBoolInConditionalsIsAllowed() {
   if (functionReturningInt()) {}
   if (!functionReturningInt()) {}
-  if (functionReturningInt() && functionReturningPointer()) {}
-  if (!functionReturningInt() && !functionReturningPointer()) {}
-  for (; functionReturningInt(); ) {}
-  for (; functionReturningPointer(); ) {}
-  for (; functionReturningInt() && !functionReturningPointer() || (!functionReturningInt() && functionReturningPointer()); ) {}
-  while (functionReturningInt()) {}
-  while (functionReturningPointer()) {}
-  while (functionReturningInt() && !functionReturningPointer() || (!functionReturningInt() && functionReturningPointer())) {}
   int value1 = functionReturningInt() ? 1 : 2;
-  int value2 = !functionReturningInt() ? 1 : 2;
-  int value3 = (functionReturningInt() && functionReturningPointer() || !functionReturningInt()) ? 1 : 2;
-  int value4 = functionReturningInt() ?: value3;
-  int *p1 = functionReturningPointer() ?: &value3;
+  int value2 = ! functionReturningInt() ? 1 : 2;
 }
 
 void regularImplicitCastPointerToBoolIsNotIgnored() {
@@ -48,7 +37,7 @@ void regularImplicitCastPointerToBoolIsNotIgnored() {
 
   int Struct::* memberPointer = &Struct::member;
   functionTaking<bool>(memberPointer);
-  // CHECK-MESSAGES: :[[@LINE-1]]:24: warning: implicit cast 'int Struct::*' -> bool
+  // CHECK-MESSAGES: :[[@LINE-1]]:24: warning: implicit cast 'int struct Struct::*' -> bool
   // CHECK-FIXES: functionTaking<bool>(memberPointer != nullptr);
 }
 

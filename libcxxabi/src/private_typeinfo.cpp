@@ -55,7 +55,12 @@
 #include <string.h>
 #endif
 
-static inline
+namespace __cxxabiv1
+{
+
+#pragma GCC visibility push(hidden)
+
+inline
 bool
 is_equal(const std::type_info* x, const std::type_info* y, bool use_strcmp)
 {
@@ -68,8 +73,6 @@ is_equal(const std::type_info* x, const std::type_info* y, bool use_strcmp)
 #endif
 }
 
-namespace __cxxabiv1
-{
 
 // __shim_type_info
 
@@ -535,6 +538,9 @@ bool __pointer_to_member_type_info::can_catch_nested(
 #pragma clang diagnostic pop
 #endif
 
+#pragma GCC visibility pop
+#pragma GCC visibility push(default)
+
 #ifdef __clang__
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wmissing-field-initializers"
@@ -708,6 +714,9 @@ __dynamic_cast(const void *static_ptr, const __class_type_info *static_type,
 #ifdef __clang__
 #pragma clang diagnostic pop
 #endif
+
+#pragma GCC visibility pop
+#pragma GCC visibility push(hidden)
 
 // Call this function when you hit a static_type which is a base (above) a dst_type.
 // Let caller know you hit a static_type.  But only start recording details if
@@ -1290,5 +1299,7 @@ __base_class_type_info::search_below_dst(__dynamic_cast_info* info,
                                       not_public_path,
                                   use_strcmp);
 }
+
+#pragma GCC visibility pop
 
 }  // __cxxabiv1

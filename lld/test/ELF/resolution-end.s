@@ -21,18 +21,19 @@
 # CHECK-NEXT: AddressAlignment:
 # CHECK-NEXT: EntrySize:
 # CHECK-NEXT: SectionData (
-# CHECK-NEXT:   0000: 80202000 00000000 80202000 00000000
+# CHECK-NEXT:   0000: 80202000 00000000
 # CHECK-NEXT: )
 
 # CHECK:      Symbol {
 # CHECK:        Name: _end
 # CHECK-NEXT:   Value: 0x202080
-
-# CHECK:      Symbol {
-# CHECK:        Name: end
-# CHECK-NEXT:   Value: 0x202080
+# CHECK-NEXT:   Size:
+# CHECK-NEXT:   Binding: Global
+# CHECK-NEXT:   Type:
+# CHECK-NEXT:   Other:
+# CHECK-NEXT:   Section:
+# CHECK-NEXT: }
 
 .global _start
 _start:
 .quad _end
-.quad end

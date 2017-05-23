@@ -42,14 +42,12 @@ int main()
         typedef std::list<MoveOnly, test_allocator<MoveOnly>> C;
         static_assert(!std::is_nothrow_move_assignable<C>::value, "");
     }
-#if defined(_LIBCPP_VERSION)
     {
         typedef std::list<MoveOnly, other_allocator<MoveOnly>> C;
-        static_assert(std::is_nothrow_move_assignable<C>::value, "");
+        LIBCPP_STATIC_ASSERT(std::is_nothrow_move_assignable<C>::value, "");
     }
     {
         typedef std::list<MoveOnly, some_alloc<MoveOnly>> C;
-        static_assert(!std::is_nothrow_move_assignable<C>::value, "");
+        LIBCPP_STATIC_ASSERT(!std::is_nothrow_move_assignable<C>::value, "");
     }
-#endif // _LIBCPP_VERSION
 }

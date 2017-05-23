@@ -53,7 +53,7 @@ void PolyhedralInfo::getAnalysisUsage(AnalysisUsage &AU) const {
 
 bool PolyhedralInfo::runOnFunction(Function &F) {
   DI = &getAnalysis<DependenceInfoWrapperPass>();
-  SI = getAnalysis<ScopInfoWrapperPass>().getSI();
+  SI = &getAnalysis<ScopInfoWrapperPass>();
   return false;
 }
 

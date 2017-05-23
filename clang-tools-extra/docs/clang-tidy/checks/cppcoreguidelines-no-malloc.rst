@@ -6,12 +6,11 @@ cppcoreguidelines-no-malloc
 This check handles C-Style memory management using ``malloc()``, ``realloc()``,
 ``calloc()`` and ``free()``. It warns about its use and tries to suggest the use
 of an appropriate RAII object.
-Furthermore, it can be configured to check against a user-specified list of functions 
-that are used for memory management (e.g. ``posix_memalign()``).
-See `C++ Core Guidelines <https://github.com/isocpp/CppCoreGuidelines/blob/master/CppCoreGuidelines.md#Rr-mallocfree>`_.
+See `C++ Core Guidelines
+<https://github.com/isocpp/CppCoreGuidelines/blob/master/CppCoreGuidelines.md#Rr-mallocfree>`.
 
-There is no attempt made to provide fix-it hints, since manual resource
-management isn't easily transformed automatically into RAII.
+There is no attempt made to provide fixit hints, since manual resource management isn't
+easily transformed automatically into RAII.
 
 .. code-block:: c++
 
@@ -25,22 +24,4 @@ management isn't easily transformed automatically into RAII.
 
   // Rather use a smartpointer or stack variable.
   struct some_struct* s = (struct some_struct*) malloc(sizeof(struct some_struct));
-
-Options
--------
-
-.. option:: Allocations
-
-   Semicolon-separated list of fully qualified names of memory allocation functions. 
-   Defaults to ``::malloc;::calloc``.
-
-.. option:: Deallocations
-
-   Semicolon-separated list of fully qualified names of memory allocation functions. 
-   Defaults to ``::free``.
-
-.. option:: Reallocations
-
-   Semicolon-separated list of fully qualified names of memory allocation functions. 
-   Defaults to ``::realloc``.
 

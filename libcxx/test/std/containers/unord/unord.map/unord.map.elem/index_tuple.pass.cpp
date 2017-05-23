@@ -17,7 +17,7 @@
 
 // mapped_type& operator[](const key_type& k);
 
-// https://bugs.llvm.org/show_bug.cgi?id=16542
+// http://llvm.org/bugs/show_bug.cgi?id=16542
 
 #include <unordered_map>
 #include <tuple>

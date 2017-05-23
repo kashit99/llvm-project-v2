@@ -22,7 +22,7 @@
 #include <cstdlib>
 
 #include "count_new.hpp"
-#include "deleter_types.h"
+#include "../test_deleter.h"
 
 struct A
 {

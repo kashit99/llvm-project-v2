@@ -34,6 +34,7 @@ int main()
 {
     {
         typedef std::exponential_distribution<> D;
+        typedef D::param_type P;
         typedef std::mt19937 G;
         G g;
         D d(.75);
@@ -73,6 +74,7 @@ int main()
     }
     {
         typedef std::exponential_distribution<> D;
+        typedef D::param_type P;
         typedef std::mt19937 G;
         G g;
         D d(1);
@@ -112,6 +114,7 @@ int main()
     }
     {
         typedef std::exponential_distribution<> D;
+        typedef D::param_type P;
         typedef std::mt19937 G;
         G g;
         D d(10);

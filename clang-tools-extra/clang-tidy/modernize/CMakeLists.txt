@@ -13,6 +13,8 @@ add_clang_library(clangTidyModernizeModule
   RawStringLiteralCheck.cpp
   RedundantVoidArgCheck.cpp
   ReplaceAutoPtrCheck.cpp
+  ReplaceRandomShuffleCheck.cpp
+  ReturnBracedInitListCheck.cpp
   ShrinkToFitCheck.cpp
   UseAutoCheck.cpp
   UseBoolLiteralsCheck.cpp

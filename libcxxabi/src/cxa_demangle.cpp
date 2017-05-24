@@ -7,7 +7,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#define _LIBCPP_EXTERN_TEMPLATE(...)
 #define _LIBCPP_NO_EXCEPTIONS
 
 #include "__cxxabi_config.h"
@@ -16,6 +15,7 @@
 #include <algorithm>
 #include <string>
 #include <numeric>
+#include <cassert>
 #include <cstdlib>
 #include <cstring>
 #include <cctype>
@@ -1611,7 +1611,8 @@ parse_function_type(const char* first, const char* last, C& db)
                 {
                     if (t == last)
                     {
-                        db.names.pop_back();
+                        if (!db.names.empty())
+                          db.names.pop_back();
                         return first;
                     }
                     if (*t == 'E')
@@ -1927,10 +1928,11 @@ parse_type(const char* first, const char* last, C& db)
                             if (is_function)
                             {
                                 size_t p = db.names[k].second.size();
-                                if (db.names[k].second[p-2] == '&')
-                                    p -= 3;
-                                else if (db.names[k].second.back() == '&')
+                                if (db.names[k].second[p - 2] == '&' &&
+                                    db.names[k].second[p - 1] == '&')
                                     p -= 2;
+                                else if (db.names[k].second.back() == '&')
+                                    p -= 1;
                                 if (cv & 1)
                                 {
                                     db.names[k].second.insert(p, " const");
@@ -3014,6 +3016,7 @@ parse_unnamed_type_name(const char* first, const char* last, C& db)
             break;
         case 'l':
           {
+            size_t lambda_pos = db.names.size();
             db.names.push_back(typename C::String("'lambda'("));
             const char* t0 = first+2;
             if (first[2] == 'v')
@@ -3023,36 +3026,41 @@ parse_unnamed_type_name(const char* first, const char* last, C& db)
             }
             else
             {
-                const char* t1 = parse_type(t0, last, db);
-                if (t1 == t0)
+                bool is_first_it = true;
+                while (true)
                 {
-                    if(!db.names.empty())
+                    long k0 = static_cast<long>(db.names.size());
+                    const char* t1 = parse_type(t0, last, db);
+                    long k1 = static_cast<long>(db.names.size());
+                    if (t1 == t0)
+                        break;
+                    assert(k0 <= k1 && "parse_type() mutated the name stack");
+                    if (k1 == k0)
+                        return first;
+                    // If the call to parse_type above found a pack expansion
+                    // substitution, then multiple names could have been
+                    // inserted into the name table. Walk through the names,
+                    // appending each onto the lambda's parameter list.
+                    std::for_each(db.names.begin() + k0, db.names.begin() + k1,
+                                  [&](typename C::sub_type::value_type &pair) {
+                                      if (pair.empty())
+                                          return;
+                                      auto &lambda = db.names[lambda_pos].first;
+                                      if (!is_first_it)
+                                          lambda.append(", ");
+                                      is_first_it = false;
+                                      lambda.append(pair.move_full());
+                                  });
+                    db.names.erase(db.names.begin() + k0, db.names.end());
+                    t0 = t1;
+                }
+                if (is_first_it)
+                {
+                    if (!db.names.empty())
                         db.names.pop_back();
                     return first;
                 }
-                if (db.names.size() < 2)
-                    return first;
-                auto tmp = db.names.back().move_full();
-                db.names.pop_back();
-                db.names.back().first.append(tmp);
-                t0 = t1;
-                while (true)
-                {
-                    t1 = parse_type(t0, last, db);
-                    if (t1 == t0)
-                        break;
-                    if (db.names.size() < 2)
-                        return first;
-                    tmp = db.names.back().move_full();
-                    db.names.pop_back();
-                    if (!tmp.empty())
-                    {
-                        db.names.back().first.append(", ");
-                        db.names.back().first.append(tmp);
-                    }
-                    t0 = t1;
-                }
-                if(db.names.empty())
+                if (db.names.empty() || db.names.size() - 1 != lambda_pos)
                   return first;
                 db.names.back().first.append(")");
             }
@@ -4343,6 +4351,8 @@ parse_call_offset(const char* first, const char* last)
 //                    # base is the nominal target function of thunk
 //                ::= GV <object name> # Guard variable for one-time initialization
 //                                     # No <type>
+//                ::= TW <object name> # Thread-local wrapper
+//                ::= TH <object name> # Thread-local initialization
 //      extension ::= TC <first type> <number> _ <second type> # construction vtable for second-in-first
 //      extension ::= GR <object name> # reference temporary for object
 
@@ -4444,6 +4454,28 @@ parse_special_name(const char* first, const char* last, C& db)
                             first = t1;
                         }
                     }
+                }
+                break;
+            case 'W':
+                // TW <object name> # Thread-local wrapper
+                t = parse_name(first + 2, last, db);
+                if (t != first + 2) 
+                {
+                    if (db.names.empty())
+                    return first;
+                    db.names.back().first.insert(0, "thread-local wrapper routine for ");
+                    first = t;
+                }
+                break;
+            case 'H':
+                //TH <object name> # Thread-local initialization
+                t = parse_name(first + 2, last, db);
+                if (t != first + 2) 
+                {
+                    if (db.names.empty())
+                    return first;
+                    db.names.back().first.insert(0, "thread-local initialization routine for ");
+                    first = t;
                 }
                 break;
             default:
@@ -4939,6 +4971,7 @@ struct string_pair
         string_pair(const char (&s)[N]) : first(s, N-1) {}
 
     size_t size() const {return first.size() + second.size();}
+    bool empty() const { return first.empty() && second.empty(); }
     StrT full() const {return first + second;}
     StrT move_full() {return std::move(first) + std::move(second);}
 };

@@ -7515,6 +7515,13 @@ public:
         SemaRef.Context.getTargetInfo().getPlatformMinVersion());
   }
 
+  bool TraverseDecl(Decl *D) {
+    // Avoid visiting nested functions to prevent duplicate warnings.
+    if (!D || isa<FunctionDecl>(D))
+      return true;
+    return Base::TraverseDecl(D);
+  }
+
   bool TraverseStmt(Stmt *S) {
     if (!S)
       return true;
@@ -7527,6 +7534,14 @@ public:
   void IssueDiagnostics(Stmt *S) { TraverseStmt(S); }
 
   bool TraverseIfStmt(IfStmt *If);
+
+  bool TraverseLambdaExpr(LambdaExpr *E) { return true; }
+
+  bool VisitObjCPropertyRefExpr(ObjCPropertyRefExpr *PRE) {
+    if (PRE->isClassReceiver())
+      DiagnoseDeclAvailability(PRE->getClassReceiver(), PRE->getReceiverLocation());
+    return true;
+  }
 
   bool VisitObjCMessageExpr(ObjCMessageExpr *Msg) {
     if (ObjCMethodDecl *D = Msg->getMethodDecl())
@@ -7656,6 +7671,9 @@ void DiagnoseUnguardedAvailability::DiagnoseDeclAvailability(
 bool DiagnoseUnguardedAvailability::VisitTypeLoc(TypeLoc Ty) {
   const Type *TyPtr = Ty.getTypePtr();
   SourceRange Range{Ty.getBeginLoc(), Ty.getEndLoc()};
+
+  if (Range.isInvalid())
+    return true;
 
   if (const TagType *TT = dyn_cast<TagType>(TyPtr)) {
     TagDecl *TD = TT->getDecl();

@@ -1557,8 +1557,6 @@ def note_member_synthesized_at : Note<
   "in implicit %select{default constructor|copy constructor|move constructor|"
   "copy assignment operator|move assignment operator|destructor}0 for %1 "
   "first required here">;
-def note_inhctor_synthesized_at : Note<
-  "inherited constructor for %0 first required here">;
 def err_missing_default_ctor : Error<
   "%select{constructor for %1 must explicitly initialize the|"
   "implicit default constructor for %1 must explicitly initialize the|"
@@ -8314,9 +8312,6 @@ def err_opencl_bitfields : Error<
   "bit-fields are not supported in OpenCL">;
 def err_opencl_vla : Error<
   "variable length arrays are not supported in OpenCL">;
-def err_opencl_scalar_type_rank_greater_than_vector_type : Error<
-    "scalar operand type has greater rank than the type of the vector "
-    "element. (%0 and %1)">;
 def err_bad_kernel_param_type : Error<
   "%0 cannot be used as the type of a kernel parameter">;
 def err_record_with_pointers_kernel_param : Error<
@@ -8912,8 +8907,6 @@ def note_equivalent_internal_linkage_decl : Note<
 
 def note_redefinition_modules_same_file : Note<
 	"'%0' included multiple times, additional include site in header from module '%1'">;
-def note_redefinition_modules_same_file_modulemap : Note<
-	"consider adding '%0' as part of '%1' definition">;
 def note_redefinition_include_same_file : Note<
 	"'%0' included multiple times, additional include site here">;
 }
@@ -8980,6 +8973,12 @@ def err_coroutine_promise_new_requires_nothrow : Error<
    "type declares 'get_return_object_on_allocation_failure()'">;
 def note_coroutine_promise_call_implicitly_required : Note<
   "call to %0 implicitly required by coroutine function here">;
+def err_await_suspend_invalid_return_type : Error<
+  "the return type of 'await_suspend' is required to be 'void' or 'bool' (have %0)"
+>;
+def note_await_ready_no_bool_conversion : Note<
+  "the return type of 'await_ready' is required to be contextually convertible to 'bool'"
+>;
 }
 
 let CategoryName = "Documentation Issue" in {

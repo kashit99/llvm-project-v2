@@ -77,7 +77,14 @@ const char *const NoFoldSet[] = {
     "TCRETURNri64",
     "TCRETURNmi64", // Special dealing (in X86InstrCompiler.td under
     "TCRETURNri",   // "tailcall stuff" section).
-    "TCRETURNmi"
+    "TCRETURNmi",
+
+    // Never fold XCHG, the register and memory forms have different locking
+    // semantics.
+    "XCHG8rr",  "XCHG8rm",
+    "XCHG16rr", "XCHG16rm",
+    "XCHG32rr", "XCHG32rm",
+    "XCHG64rr", "XCHG64rm",
 
     // Different calculations of the folded operand between
     // memory and register forms (folding is illegal).
@@ -285,7 +292,7 @@ getMemOperandSize(const Record *MemRec, const bool IntrinsicSensitive = false) {
         (MemRec->getName() == "sdmem" || MemRec->getName() == "ssmem"))
       return 128;
 
-    std::string Name =
+    StringRef Name =
         MemRec->getValueAsDef("ParserMatchClass")->getValueAsString("Name");
     if (Name == "Mem8")
       return 8;
@@ -361,7 +368,7 @@ static inline const CodeGenInstruction *
 getAltRegInst(const CodeGenInstruction *I, const RecordKeeper &Records,
               const CodeGenTarget &Target) {
 
-  std::string AltRegInstStr = I->TheDef->getValueAsString("FoldGenRegForm");
+  StringRef AltRegInstStr = I->TheDef->getValueAsString("FoldGenRegForm");
   Record *AltRegInstRec = Records.getDef(AltRegInstStr);
   assert(AltRegInstRec &&
          "Alternative register form instruction def not found");

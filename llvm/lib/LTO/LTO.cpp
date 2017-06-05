@@ -405,10 +405,11 @@ void LTO::addSymbolToGlobalRes(const InputFile::Symbol &Sym,
   if (Res.Prevailing)
     GlobalRes.IRName = Sym.getIRName();
 
-  // Set the partition to external if we know it is used elsewhere, e.g.
-  // it is visible to a regular object, is referenced from llvm.compiler_used,
-  // or was already recorded as being referenced from a different partition.
-  if (Res.VisibleToRegularObj || Sym.isUsed() ||
+  // Set the partition to external if we know it is re-defined by the linker
+  // with -defsym or -wrap options, used elsewhere, e.g. it is visible to a
+  // regular object, is referenced from llvm.compiler_used, or was already
+  // recorded as being referenced from a different partition.
+  if (Res.LinkerRedefined || Res.VisibleToRegularObj || Sym.isUsed() ||
       (GlobalRes.Partition != GlobalResolution::Unknown &&
        GlobalRes.Partition != Partition)) {
     GlobalRes.Partition = GlobalResolution::External;
@@ -439,6 +440,8 @@ static void writeToResolutionFile(raw_ostream &OS, InputFile *Input,
       OS << 'l';
     if (Res.VisibleToRegularObj)
       OS << 'x';
+    if (Res.LinkerRedefined)
+      OS << 'r';
     OS << '\n';
   }
   OS.flush();
@@ -543,6 +546,12 @@ Error LTO::addRegularLTO(BitcodeModule BM,
         if (Sym.isUndefined())
           continue;
         Keep.push_back(GV);
+        // For symbols re-defined with linker -wrap and -defsym options,
+        // set the linkage to weak to inhibit IPO. The linkage will be
+        // restored by the linker.
+        if (Res.LinkerRedefined)
+          GV->setLinkage(GlobalValue::WeakAnyLinkage);
+
         GlobalValue::LinkageTypes OriginalLinkage = GV->getLinkage();
         if (GlobalValue::isLinkOnceLinkage(OriginalLinkage))
           GV->setLinkage(GlobalValue::getWeakLinkage(
@@ -622,6 +631,19 @@ unsigned LTO::getMaxTasks() const {
 }
 
 Error LTO::run(AddStreamFn AddStream, NativeObjectCache Cache) {
+  // Compute "dead" symbols, we don't want to import/export these!
+  DenseSet<GlobalValue::GUID> GUIDPreservedSymbols;
+  for (auto &Res : GlobalResolutions) {
+    if (Res.second.VisibleOutsideThinLTO &&
+        // IRName will be defined if we have seen the prevailing copy of
+        // this value. If not, no need to preserve any ThinLTO copies.
+        !Res.second.IRName.empty())
+      GUIDPreservedSymbols.insert(GlobalValue::getGUID(
+          GlobalValue::dropLLVMManglingEscape(Res.second.IRName)));
+  }
+
+  computeDeadSymbols(ThinLTO.CombinedIndex, GUIDPreservedSymbols);
+
   // Save the status of having a regularLTO combined module, as
   // this is needed for generating the ThinLTO Task ID, and
   // the CombinedModule will be moved at the end of runRegularLTO.
@@ -974,19 +996,6 @@ Error LTO::runThinLTO(AddStreamFn AddStream, NativeObjectCache Cache,
   StringMap<std::map<GlobalValue::GUID, GlobalValue::LinkageTypes>> ResolvedODR;
 
   if (Conf.OptLevel > 0) {
-    // Compute "dead" symbols, we don't want to import/export these!
-    DenseSet<GlobalValue::GUID> GUIDPreservedSymbols;
-    for (auto &Res : GlobalResolutions) {
-      if (Res.second.VisibleOutsideThinLTO &&
-          // IRName will be defined if we have seen the prevailing copy of
-          // this value. If not, no need to preserve any ThinLTO copies.
-          !Res.second.IRName.empty())
-        GUIDPreservedSymbols.insert(GlobalValue::getGUID(
-            GlobalValue::dropLLVMManglingEscape(Res.second.IRName)));
-    }
-
-    computeDeadSymbols(ThinLTO.CombinedIndex, GUIDPreservedSymbols);
-
     ComputeCrossModuleImport(ThinLTO.CombinedIndex, ModuleToDefinedGVSummaries,
                              ImportLists, ExportLists);
 

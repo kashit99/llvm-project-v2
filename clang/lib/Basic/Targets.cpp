@@ -5385,6 +5385,10 @@ public:
     // ARM has atomics up to 8 bytes
     setAtomic();
 
+    // Maximum alignment for ARM NEON data types should be 64-bits (AAPCS)
+    if (IsAAPCS && (Triple.getEnvironment() != llvm::Triple::Android))
+       MaxVectorAlign = 64;
+
     // Do force alignment of members that follow zero length bitfields.  If
     // the alignment of the zero-length bitfield is greater than the member
     // that follows it, `bar', `bar' will be aligned as the  type of the
@@ -5437,6 +5441,13 @@ public:
     for (auto Feature : TargetFeatures)
       if (Feature[0] == '+')
         Features[Feature.drop_front(1)] = true;
+
+    // Enable or disable thumb-mode explicitly per function to enable mixed
+    // ARM and Thumb code generation.
+    if (isThumb())
+      Features["thumb-mode"] = true;
+    else
+      Features["thumb-mode"] = false;
 
     // Convert user-provided arm and thumb GNU target attributes to
     // [-|+]thumb-mode target features respectively.

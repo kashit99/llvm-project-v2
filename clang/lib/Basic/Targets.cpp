@@ -5438,7 +5438,17 @@ public:
       if (Feature[0] == '+')
         Features[Feature.drop_front(1)] = true;
 
-    return TargetInfo::initFeatureMap(Features, Diags, CPU, FeaturesVec);
+    // Convert user-provided arm and thumb GNU target attributes to
+    // [-|+]thumb-mode target features respectively.
+    std::vector<std::string> UpdatedFeaturesVec(FeaturesVec);
+    for (auto &Feature : UpdatedFeaturesVec) {
+      if (Feature.compare("+arm") == 0)
+        Feature = "-thumb-mode";
+      else if (Feature.compare("+thumb") == 0)
+        Feature = "+thumb-mode";
+    }
+
+    return TargetInfo::initFeatureMap(Features, Diags, CPU, UpdatedFeaturesVec);
   }
 
   bool handleTargetFeatures(std::vector<std::string> &Features,
@@ -8466,7 +8476,7 @@ public:
   explicit WebAssembly32TargetInfo(const llvm::Triple &T,
                                    const TargetOptions &Opts)
       : WebAssemblyTargetInfo(T, Opts) {
-    MaxAtomicPromoteWidth = MaxAtomicInlineWidth = 32;
+    MaxAtomicPromoteWidth = MaxAtomicInlineWidth = 64;
     resetDataLayout("e-m:e-p:32:32-i64:64-n32:64-S128");
   }
 

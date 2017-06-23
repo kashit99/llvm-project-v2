@@ -293,6 +293,12 @@ public:
     return true;
   }
 
+  bool VisitDecompositionDecl(const DecompositionDecl *D) {
+    for (const auto *Binding : D->bindings())
+      TRY_DECL(Binding, IndexCtx.handleDecl(Binding));
+    return Base::VisitDecompositionDecl(D);
+  }
+
   bool VisitFieldDecl(const FieldDecl *D) {
     SmallVector<SymbolRelation, 4> Relations;
     gatherTemplatePseudoOverrides(D, Relations);
@@ -603,18 +609,16 @@ public:
                                            ClassTemplateSpecializationDecl *D) {
     // FIXME: Notify subsequent callbacks if info comes from implicit
     // instantiation.
-    if (D->isThisDeclarationADefinition()) {
-      llvm::PointerUnion<ClassTemplateDecl *,
-                         ClassTemplatePartialSpecializationDecl *>
-          Template = D->getSpecializedTemplateOrPartial();
-      const Decl *SpecializationOf =
-          Template.is<ClassTemplateDecl *>()
-              ? (Decl *)Template.get<ClassTemplateDecl *>()
-              : Template.get<ClassTemplatePartialSpecializationDecl *>();
-      IndexCtx.indexTagDecl(
-          D, SymbolRelation(SymbolRoleSet(SymbolRole::RelationSpecializationOf),
-                            SpecializationOf));
-    }
+    llvm::PointerUnion<ClassTemplateDecl *,
+                       ClassTemplatePartialSpecializationDecl *>
+        Template = D->getSpecializedTemplateOrPartial();
+    const Decl *SpecializationOf =
+        Template.is<ClassTemplateDecl *>()
+            ? (Decl *)Template.get<ClassTemplateDecl *>()
+            : Template.get<ClassTemplatePartialSpecializationDecl *>();
+    IndexCtx.indexTagDecl(
+        D, SymbolRelation(SymbolRoleSet(SymbolRole::RelationSpecializationOf),
+                          SpecializationOf));
     if (TypeSourceInfo *TSI = D->getTypeAsWritten())
       IndexCtx.indexTypeSourceInfo(TSI, /*Parent=*/nullptr,
                                    D->getLexicalDeclContext());
@@ -681,6 +685,13 @@ public:
 
   bool VisitImportDecl(const ImportDecl *D) {
     return IndexCtx.importedModule(D);
+  }
+
+  bool VisitStaticAssertDecl(const StaticAssertDecl *D) {
+    IndexCtx.indexBody(D->getAssertExpr(),
+                       dyn_cast<NamedDecl>(D->getDeclContext()),
+                       D->getLexicalDeclContext());
+    return true;
   }
 };
 

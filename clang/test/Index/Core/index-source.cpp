@@ -1,4 +1,4 @@
-// RUN: c-index-test core -print-source-symbols -- %s -std=c++14 -target x86_64-apple-macosx10.7 | FileCheck %s
+// RUN: c-index-test core -print-source-symbols -- %s -std=c++1z -target x86_64-apple-macosx10.7 | FileCheck %s
 
 // CHECK: [[@LINE+1]]:7 | class/C++ | Cls | [[Cls_USR:.*]] | <no-cgname> | Def | rel: 0
 class Cls { public:
@@ -265,7 +265,9 @@ class SpecializationDecl { };
 
 template<>
 class SpecializationDecl<int>;
-// CHECK: [[@LINE-1]]:7 | class(Gen)/C++ | SpecializationDecl | c:@ST>1#T@SpecializationDecl | <no-cgname> | Ref | rel: 0
+// CHECK: [[@LINE-1]]:7 | class(Gen,TS)/C++ | SpecializationDecl | c:@S@SpecializationDecl>#I | <no-cgname> | Decl,RelSpecialization | rel: 1
+// CHECK-NEXT: RelSpecialization | SpecializationDecl | c:@ST>1#T@SpecializationDecl
+// CHECK: [[@LINE-3]]:7 | class(Gen)/C++ | SpecializationDecl | c:@ST>1#T@SpecializationDecl | <no-cgname> | Ref | rel: 0
 
 template<>
 class SpecializationDecl<int> { };
@@ -275,8 +277,10 @@ class SpecializationDecl<int> { };
 
 template<typename T>
 class PartialSpecilizationClass<Cls, T>;
-// CHECK: [[@LINE-1]]:7 | class(Gen)/C++ | PartialSpecilizationClass | c:@ST>2#T#T@PartialSpecilizationClass | <no-cgname> | Ref | rel: 0
-// CHECK-NEXT: [[@LINE-2]]:33 | class/C++ | Cls | c:@S@Cls | <no-cgname> | Ref | rel: 0
+// CHECK: [[@LINE-1]]:7 | class(Gen,TPS)/C++ | PartialSpecilizationClass | c:@SP>1#T@PartialSpecilizationClass>#$@S@Cls#t0.0 | <no-cgname> | Decl,RelSpecialization | rel: 1
+// CHECK-NEXT: RelSpecialization | PartialSpecilizationClass | c:@ST>2#T#T@PartialSpecilizationClass
+// CHECK: [[@LINE-3]]:7 | class(Gen)/C++ | PartialSpecilizationClass | c:@ST>2#T#T@PartialSpecilizationClass | <no-cgname> | Ref | rel: 0
+// CHECK-NEXT: [[@LINE-4]]:33 | class/C++ | Cls | c:@S@Cls | <no-cgname> | Ref | rel: 0
 
 template<>
 class PartialSpecilizationClass<Cls, Cls> : Cls { };
@@ -433,3 +437,45 @@ template<typename T>
 T varDecl = T();
 
 } // end namespace ensureDefaultTemplateParamsAreRecordedOnce
+
+struct StaticAssertRef {
+  static constexpr bool constVar = true;
+};
+
+static_assert(StaticAssertRef::constVar, "index static asserts");
+// CHECK: [[@LINE-1]]:32 | static-property/C++ | constVar | c:@S@StaticAssertRef@constVar | __ZN15StaticAssertRef8constVarE | Ref | rel: 0
+// CHECK: [[@LINE-2]]:15 | struct/C++ | StaticAssertRef | c:@S@StaticAssertRef | <no-cgname> | Ref | rel: 0
+
+void staticAssertInFn() {
+  static_assert(StaticAssertRef::constVar, "index static asserts");
+// CHECK: [[@LINE-1]]:34 | static-property/C++ | constVar | c:@S@StaticAssertRef@constVar | __ZN15StaticAssertRef8constVarE | Ref,RelCont | rel: 1
+// CHECK-NEXT: RelCont | staticAssertInFn | c:@F@staticAssertInFn#
+// CHECK: [[@LINE-3]]:17 | struct/C++ | StaticAssertRef | c:@S@StaticAssertRef | <no-cgname> | Ref,RelCont | rel: 1
+// CHECK-NEXT: RelCont | staticAssertInFn | c:@F@staticAssertInFn#
+}
+
+namespace cpp17structuredBinding {
+
+struct Cpp17StructuredBinding {
+  int x, y;
+
+  Cpp17StructuredBinding(int x, int y): x(x), y(y) { }
+};
+
+auto [structuredBinding1, structuredBinding2] = Cpp17StructuredBinding(Record::C, 0);
+// CHECK: [[@LINE-1]]:7 | variable/C++ | structuredBinding1 | c:@N@cpp17structuredBinding@structuredBinding1 | <no-cgname> | Decl,RelChild | rel: 1
+// CHECK-NEXT: RelChild | cpp17structuredBinding | c:@N@cpp17structuredBinding
+// CHECK: [[@LINE-3]]:27 | variable/C++ | structuredBinding2 | c:@N@cpp17structuredBinding@structuredBinding2 | <no-cgname> | Decl,RelChild | rel: 1
+// CHECK-NEXT: RelChild | cpp17structuredBinding | c:@N@cpp17structuredBinding
+
+void localStructuredBindingAndRef() {
+  int ref = structuredBinding1;
+// CHECK: [[@LINE-1]]:13 | variable/C++ | structuredBinding1 | c:@N@cpp17structuredBinding@structuredBinding1 | <no-cgname> | Ref,Read,RelCont | rel: 1
+// CHECK-NEXT: RelCont | localStructuredBindingAndRef | c:@N@cpp17structuredBinding@F@localStructuredBindingAndRef#
+  auto [localBinding1, localBinding2] = Cpp17StructuredBinding(ref, structuredBinding2);
+// CHECK: [[@LINE-1]]:69 | variable/C++ | structuredBinding2 | c:@N@cpp17structuredBinding@structuredBinding2 | <no-cgname> | Ref,Read,RelCont | rel: 1
+// CHECK-NEXT: RelCont | localStructuredBindingAndRef | c:@N@cpp17structuredBinding@F@localStructuredBindingAndRef#
+// CHECK-NOT: localBinding
+}
+
+}

@@ -12,6 +12,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Transforms/Utils/LoopUtils.h"
+#include "llvm/ADT/ScopeExit.h"
 #include "llvm/Analysis/AliasAnalysis.h"
 #include "llvm/Analysis/BasicAliasAnalysis.h"
 #include "llvm/Analysis/GlobalsModRef.h"
@@ -88,8 +89,7 @@ RecurrenceDescriptor::lookThroughAnd(PHINode *Phi, Type *&RT,
 
   // Matches either I & 2^x-1 or 2^x-1 & I. If we find a match, we update RT
   // with a new integer type of the corresponding bit width.
-  if (match(J, m_CombineOr(m_And(m_Instruction(I), m_APInt(M)),
-                           m_And(m_APInt(M), m_Instruction(I))))) {
+  if (match(J, m_c_And(m_Instruction(I), m_APInt(M)))) {
     int32_t Bits = (*M + 1).exactLogBase2();
     if (Bits > 0) {
       RT = IntegerType::get(Phi->getContext(), Bits);
@@ -932,6 +932,10 @@ bool llvm::formDedicatedExitBlocks(Loop *L, DominatorTree *DT, LoopInfo *LI,
   SmallVector<BasicBlock *, 4> InLoopPredecessors;
 
   auto RewriteExit = [&](BasicBlock *BB) {
+    assert(InLoopPredecessors.empty() &&
+           "Must start with an empty predecessors list!");
+    auto Cleanup = make_scope_exit([&] { InLoopPredecessors.clear(); });
+
     // See if there are any non-loop predecessors of this exit block and
     // keep track of the in-loop predecessors.
     bool IsDedicatedExit = true;
@@ -946,13 +950,12 @@ bool llvm::formDedicatedExitBlocks(Loop *L, DominatorTree *DT, LoopInfo *LI,
         IsDedicatedExit = false;
       }
 
-    // Nothing to do if this is already a dedicated exit.
-    if (IsDedicatedExit) {
-      InLoopPredecessors.clear();
-      return false;
-    }
-
     assert(!InLoopPredecessors.empty() && "Must have *some* loop predecessor!");
+
+    // Nothing to do if this is already a dedicated exit.
+    if (IsDedicatedExit)
+      return false;
+
     auto *NewExitBB = SplitBlockPredecessors(
         BB, InLoopPredecessors, ".loopexit", DT, LI, PreserveLCSSA);
 
@@ -962,7 +965,6 @@ bool llvm::formDedicatedExitBlocks(Loop *L, DominatorTree *DT, LoopInfo *LI,
     else
       DEBUG(dbgs() << "LoopSimplify: Creating dedicated exit block "
                    << NewExitBB->getName() << "\n");
-    InLoopPredecessors.clear();
     return true;
   };
 

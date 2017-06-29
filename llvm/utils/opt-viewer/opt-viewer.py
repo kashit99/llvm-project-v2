@@ -169,7 +169,7 @@ def _render_file(source_dir, output_dir, ctx, entry):
 def map_remarks(all_remarks):
     # Set up a map between function names and their source location for
     # function where inlining happened
-    for remark in all_remarks.itervalues():
+    for remark in optrecord.itervalues(all_remarks):
         if isinstance(remark, optrecord.Passed) and remark.Pass == "inline" and remark.Name == "Inlined":
             for arg in remark.Args:
                 caller = arg.get('Caller')
@@ -190,9 +190,9 @@ def generate_report(pmap, all_remarks, file_remarks, source_dir, output_dir, sho
     pmap(_render_file_bound, file_remarks.items())
 
     if should_display_hotness:
-        sorted_remarks = sorted(all_remarks.itervalues(), key=lambda r: (r.Hotness, r.File, r.Line, r.Column, r.__dict__), reverse=True)
+        sorted_remarks = sorted(optrecord.itervalues(all_remarks), key=lambda r: (r.Hotness, r.File, r.Line, r.Column, r.PassWithDiffPrefix, r.yaml_tag, r.Function), reverse=True)
     else:
-        sorted_remarks = sorted(all_remarks.itervalues(), key=lambda r: (r.File, r.Line, r.Column, r.__dict__))
+        sorted_remarks = sorted(optrecord.itervalues(all_remarks), key=lambda r: (r.File, r.Line, r.Column, r.PassWithDiffPrefix, r.yaml_tag, r.Function))
     IndexRenderer(args.output_dir).render(sorted_remarks)
 
     shutil.copy(os.path.join(os.path.dirname(os.path.realpath(__file__)),
@@ -202,7 +202,13 @@ def generate_report(pmap, all_remarks, file_remarks, source_dir, output_dir, sho
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=desc)
     parser.add_argument('yaml_files', nargs='+')
-    parser.add_argument('output_dir')
+    parser.add_argument(
+        '--output-dir',
+        '-o',
+        default='html',
+        help='Path to a directory where generated HTML files will be output. '
+             'If the directory does not already exist, it will be created. '
+             '"%(default)s" by default.')
     parser.add_argument(
         '--jobs',
         '-j',

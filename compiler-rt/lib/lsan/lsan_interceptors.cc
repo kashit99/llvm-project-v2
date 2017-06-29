@@ -70,7 +70,6 @@ INTERCEPTOR(void*, calloc, uptr nmemb, uptr size) {
     CHECK(allocated < kCallocPoolSize);
     return mem;
   }
-  if (CallocShouldReturnNullDueToOverflow(size, nmemb)) return nullptr;
   ENSURE_LSAN_INITED;
   GET_STACK_TRACE_MALLOC;
   return lsan_calloc(nmemb, size, stack);
@@ -199,19 +198,26 @@ INTERCEPTOR(int, mprobe, void *ptr) {
 }
 #endif // SANITIZER_INTERCEPT_MCHECK_MPROBE
 
-#define OPERATOR_NEW_BODY                              \
-  ENSURE_LSAN_INITED;                                  \
-  GET_STACK_TRACE_MALLOC;                              \
-  return Allocate(stack, size, 1, kAlwaysClearMemory);
+// TODO(alekseys): throw std::bad_alloc instead of dying on OOM.
+#define OPERATOR_NEW_BODY(nothrow)                         \
+  ENSURE_LSAN_INITED;                                      \
+  GET_STACK_TRACE_MALLOC;                                  \
+  void *res = Allocate(stack, size, 1, kAlwaysClearMemory);\
+  if (!nothrow && UNLIKELY(!res)) DieOnFailure::OnOOM();\
+  return res;
 
 INTERCEPTOR_ATTRIBUTE
-void *operator new(size_t size) { OPERATOR_NEW_BODY; }
+void *operator new(size_t size) { OPERATOR_NEW_BODY(false /*nothrow*/); }
 INTERCEPTOR_ATTRIBUTE
-void *operator new[](size_t size) { OPERATOR_NEW_BODY; }
+void *operator new[](size_t size) { OPERATOR_NEW_BODY(false /*nothrow*/); }
 INTERCEPTOR_ATTRIBUTE
-void *operator new(size_t size, std::nothrow_t const&) { OPERATOR_NEW_BODY; }
+void *operator new(size_t size, std::nothrow_t const&) {
+  OPERATOR_NEW_BODY(true /*nothrow*/);
+}
 INTERCEPTOR_ATTRIBUTE
-void *operator new[](size_t size, std::nothrow_t const&) { OPERATOR_NEW_BODY; }
+void *operator new[](size_t size, std::nothrow_t const&) {
+  OPERATOR_NEW_BODY(true /*nothrow*/);
+}
 
 #define OPERATOR_DELETE_BODY \
   ENSURE_LSAN_INITED;        \

@@ -1251,14 +1251,15 @@ static LinkageInfo computeLVForDecl(const NamedDecl *D,
 
     case Decl::EnumConstant:
       // C++ [basic.link]p4: an enumerator has the linkage of its enumeration.
-      return getLVForDecl(cast<EnumDecl>(D->getDeclContext()), computation);
+      if (D->getASTContext().getLangOpts().CPlusPlus)
+        return getLVForDecl(cast<EnumDecl>(D->getDeclContext()), computation);
+      return LinkageInfo::visible_none();
 
     case Decl::Typedef:
     case Decl::TypeAlias:
       // A typedef declaration has linkage if it gives a type a name for
       // linkage purposes.
-      if (!D->getASTContext().getLangOpts().CPlusPlus ||
-          !cast<TypedefNameDecl>(D)
+      if (!cast<TypedefNameDecl>(D)
                ->getAnonDeclWithTypedefName(/*AnyRedecl*/true))
         return LinkageInfo::none();
       break;

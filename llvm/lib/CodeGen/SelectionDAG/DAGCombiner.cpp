@@ -5268,14 +5268,40 @@ SDValue DAGCombiner::distributeTruncateThroughAnd(SDNode *N) {
 }
 
 SDValue DAGCombiner::visitRotate(SDNode *N) {
+  SDLoc dl(N);
+  SDValue N0 = N->getOperand(0);
+  SDValue N1 = N->getOperand(1);
+  EVT VT = N->getValueType(0);
+
+  // fold (rot x, 0) -> x
+  if (isNullConstantOrNullSplatConstant(N1))
+    return N0;
+
   // fold (rot* x, (trunc (and y, c))) -> (rot* x, (and (trunc y), (trunc c))).
-  if (N->getOperand(1).getOpcode() == ISD::TRUNCATE &&
-      N->getOperand(1).getOperand(0).getOpcode() == ISD::AND) {
-    if (SDValue NewOp1 =
-            distributeTruncateThroughAnd(N->getOperand(1).getNode()))
-      return DAG.getNode(N->getOpcode(), SDLoc(N), N->getValueType(0),
-                         N->getOperand(0), NewOp1);
+  if (N1.getOpcode() == ISD::TRUNCATE &&
+      N1.getOperand(0).getOpcode() == ISD::AND) {
+    if (SDValue NewOp1 = distributeTruncateThroughAnd(N1.getNode()))
+      return DAG.getNode(N->getOpcode(), dl, VT, N0, NewOp1);
   }
+
+  unsigned NextOp = N0.getOpcode();
+  // fold (rot* (rot* x, c2), c1) -> (rot* x, c1 +- c2 % bitsize)
+  if (NextOp == ISD::ROTL || NextOp == ISD::ROTR)
+    if (SDNode *C1 = DAG.isConstantIntBuildVectorOrConstantInt(N1))
+      if (SDNode *C2 =
+          DAG.isConstantIntBuildVectorOrConstantInt(N0.getOperand(1))) {
+        bool SameSide = (N->getOpcode() == NextOp);
+        unsigned CombineOp = SameSide ? ISD::ADD : ISD::SUB;
+        if (SDValue CombinedShift =
+            DAG.FoldConstantArithmetic(CombineOp, dl, VT, C1, C2)) {
+          unsigned Bitsize = VT.getScalarSizeInBits();
+          SDValue BitsizeC = DAG.getConstant(Bitsize, dl, VT);
+          SDValue CombinedShiftNorm = DAG.FoldConstantArithmetic(
+            ISD::SREM, dl, VT, CombinedShift.getNode(), BitsizeC.getNode());
+          return DAG.getNode(
+            N->getOpcode(), dl, VT, N0->getOperand(0), CombinedShiftNorm);
+        }
+      }
   return SDValue();
 }
 
@@ -11046,7 +11072,7 @@ bool DAGCombiner::CombineToPreIndexedLoadStore(SDNode *N) {
     //   x1 * offset1 + y1 * ptr0 = t1 (the indexed load/store)
     //
     // where x0, x1, y0 and y1 in {-1, 1} are given by the types of the
-    // indexed load/store and the expresion that needs to be re-written.
+    // indexed load/store and the expression that needs to be re-written.
     //
     // Therefore, we have:
     //   t0 = (x0 * offset0 - x1 * y0 * y1 *offset1) + (y0 * y1) * t1

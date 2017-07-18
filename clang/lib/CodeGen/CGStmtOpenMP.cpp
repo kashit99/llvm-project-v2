@@ -956,7 +956,7 @@ void CodeGenFunction::EmitOMPReductionClauseInit(
 
     auto *LHSVD = cast<VarDecl>(cast<DeclRefExpr>(*ILHS)->getDecl());
     auto *RHSVD = cast<VarDecl>(cast<DeclRefExpr>(*IRHS)->getDecl());
-    if (auto *OASE = dyn_cast<OMPArraySectionExpr>(IRef)) {
+    if (isa<OMPArraySectionExpr>(IRef)) {
       // Store the address of the original variable associated with the LHS
       // implicit variable.
       PrivateScope.addPrivate(LHSVD, [&RedCG, Count]() -> Address {
@@ -965,7 +965,7 @@ void CodeGenFunction::EmitOMPReductionClauseInit(
       PrivateScope.addPrivate(RHSVD, [this, PrivateVD]() -> Address {
         return GetAddrOfLocalVar(PrivateVD);
       });
-    } else if (auto *ASE = dyn_cast<ArraySubscriptExpr>(IRef)) {
+    } else if (isa<ArraySubscriptExpr>(IRef)) {
       // Store the address of the original variable associated with the LHS
       // implicit variable.
       PrivateScope.addPrivate(LHSVD, [&RedCG, Count]() -> Address {
@@ -2697,11 +2697,32 @@ void CodeGenFunction::EmitOMPTaskBasedDirective(const OMPExecutableDirective &S,
       ++ID;
     }
   }
+  SmallVector<const Expr *, 4> LHSs;
+  SmallVector<const Expr *, 4> RHSs;
+  for (const auto *C : S.getClausesOfKind<OMPReductionClause>()) {
+    auto IPriv = C->privates().begin();
+    auto IRed = C->reduction_ops().begin();
+    auto ILHS = C->lhs_exprs().begin();
+    auto IRHS = C->rhs_exprs().begin();
+    for (const auto *Ref : C->varlists()) {
+      Data.ReductionVars.emplace_back(Ref);
+      Data.ReductionCopies.emplace_back(*IPriv);
+      Data.ReductionOps.emplace_back(*IRed);
+      LHSs.emplace_back(*ILHS);
+      RHSs.emplace_back(*IRHS);
+      std::advance(IPriv, 1);
+      std::advance(IRed, 1);
+      std::advance(ILHS, 1);
+      std::advance(IRHS, 1);
+    }
+  }
+  Data.Reductions = CGM.getOpenMPRuntime().emitTaskReductionInit(
+      *this, S.getLocStart(), LHSs, RHSs, Data);
   // Build list of dependences.
   for (const auto *C : S.getClausesOfKind<OMPDependClause>())
     for (auto *IRef : C->varlists())
       Data.Dependences.push_back(std::make_pair(C->getDependencyKind(), IRef));
-  auto &&CodeGen = [&Data, CS, &BodyGen, &LastprivateDstsOrigs](
+  auto &&CodeGen = [&Data, &S, CS, &BodyGen, &LastprivateDstsOrigs](
       CodeGenFunction &CGF, PrePostActionTy &Action) {
     // Set proper addresses for generated private copies.
     OMPPrivateScope Scope(CGF);
@@ -2754,6 +2775,34 @@ void CodeGenFunction::EmitOMPTaskBasedDirective(const OMPExecutableDirective &S,
         Address Replacement(CGF.Builder.CreateLoad(Pair.second),
                             CGF.getContext().getDeclAlign(Pair.first));
         Scope.addPrivate(Pair.first, [Replacement]() { return Replacement; });
+      }
+    }
+    if (Data.Reductions) {
+      OMPLexicalScope LexScope(CGF, S, /*AsInlined=*/true);
+      ReductionCodeGen RedCG(Data.ReductionVars, Data.ReductionCopies,
+                             Data.ReductionOps);
+      llvm::Value *ReductionsPtr = CGF.Builder.CreateLoad(
+          CGF.GetAddrOfLocalVar(CS->getCapturedDecl()->getParam(9)));
+      for (unsigned Cnt = 0, E = Data.ReductionVars.size(); Cnt < E; ++Cnt) {
+        RedCG.emitSharedLValue(CGF, Cnt);
+        RedCG.emitAggregateType(CGF, Cnt);
+        Address Replacement = CGF.CGM.getOpenMPRuntime().getTaskReductionItem(
+            CGF, S.getLocStart(), ReductionsPtr, RedCG.getSharedLValue(Cnt));
+        Replacement =
+            Address(CGF.EmitScalarConversion(
+                        Replacement.getPointer(), CGF.getContext().VoidPtrTy,
+                        CGF.getContext().getPointerType(
+                            Data.ReductionCopies[Cnt]->getType()),
+                        SourceLocation()),
+                    Replacement.getAlignment());
+        Replacement = RedCG.adjustPrivateAddress(CGF, Cnt, Replacement);
+        Scope.addPrivate(RedCG.getBaseDecl(Cnt),
+                         [Replacement]() { return Replacement; });
+        // FIXME: This must removed once the runtime library is fixed.
+        // Emit required threadprivate variables for
+        // initilizer/combiner/finalizer.
+        CGF.CGM.getOpenMPRuntime().emitTaskReductionFixups(CGF, S.getLocStart(),
+                                                           RedCG, Cnt);
       }
     }
     (void)Scope.Privatize();

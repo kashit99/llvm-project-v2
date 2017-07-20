@@ -23,7 +23,6 @@
 #include "clang/Frontend/FrontendDiagnostic.h"
 #include "clang/Frontend/FrontendPluginRegistry.h"
 #include "clang/Frontend/Utils.h"
-#include "clang/Index/IndexingAction.h"
 #include "clang/Rewrite/Frontend/FrontendActions.h"
 #include "clang/StaticAnalyzer/Frontend/FrontendActions.h"
 #include "llvm/Option/OptTable.h"
@@ -164,12 +163,6 @@ CreateFrontendAction(CompilerInstance &CI) {
     }
   }
 #endif
-
-  if (!FEOpts.IndexStorePath.empty()) {
-#if defined(__APPLE__)
-    Act = index::createIndexDataRecordingAction(FEOpts, std::move(Act));
-#endif
-  }
 
   // If there are any AST files to merge, create a frontend action
   // adaptor to perform the merge.

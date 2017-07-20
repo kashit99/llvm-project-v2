@@ -4,7 +4,6 @@ set(LLVM_LINK_COMPONENTS
   )
 
 add_subdirectory(Core)
-add_subdirectory(Refactor)
 add_subdirectory(Refactoring)
 
 add_clang_library(clangTooling
@@ -31,6 +30,4 @@ add_clang_library(clangTooling
   clangLex
   clangRewrite
   clangToolingCore
-  clangToolingRefactor
-  clangToolingRefactoring
   )

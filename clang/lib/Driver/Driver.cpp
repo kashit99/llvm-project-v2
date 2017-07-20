@@ -996,9 +996,7 @@ void Driver::generateCompilationDiagnostics(Compilation &C,
   }
 
   // Assume associated files are based off of the first temporary file.
-  CrashReportInfo CrashInfo(
-      TempFiles[0], VFS,
-      C.getArgs().getLastArgValue(options::OPT_index_store_path));
+  CrashReportInfo CrashInfo(TempFiles[0], VFS);
 
   std::string Script = CrashInfo.Filename.rsplit('.').first.str() + ".sh";
   std::error_code EC;

@@ -28,6 +28,7 @@
 #include "clang/AST/PrettyPrinter.h"
 #include "clang/AST/StmtCXX.h"
 #include "clang/AST/TypeLoc.h"
+#include "clang/APINotes/APINotesManager.h"
 #include "clang/AST/TypeOrdering.h"
 #include "clang/Basic/ExpressionTraits.h"
 #include "clang/Basic/LangOptions.h"
@@ -55,6 +56,7 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/TinyPtrVector.h"
 #include <deque>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -208,6 +210,7 @@ namespace sema {
   class FunctionScopeInfo;
   class LambdaScopeInfo;
   class PossiblyUnreachableDiag;
+  class SemaPPCallbacks;
   class TemplateDeductionInfo;
 }
 
@@ -306,6 +309,7 @@ public:
   ASTConsumer &Consumer;
   DiagnosticsEngine &Diags;
   SourceManager &SourceMgr;
+  api_notes::APINotesManager APINotes;
 
   /// \brief Flag indicating whether or not to collect detailed statistics.
   bool CollectStats;
@@ -381,11 +385,12 @@ public:
       llvm::StringRef StackSlotLabel;
       ValueType Value;
       SourceLocation PragmaLocation;
-      Slot(llvm::StringRef StackSlotLabel,
-           ValueType Value,
-           SourceLocation PragmaLocation)
-        : StackSlotLabel(StackSlotLabel), Value(Value),
-          PragmaLocation(PragmaLocation) {}
+      SourceLocation PragmaPushLocation;
+      Slot(llvm::StringRef StackSlotLabel, ValueType Value,
+           SourceLocation PragmaLocation, SourceLocation PragmaPushLocation)
+          : StackSlotLabel(StackSlotLabel), Value(Value),
+            PragmaLocation(PragmaLocation),
+            PragmaPushLocation(PragmaPushLocation) {}
     };
     void Act(SourceLocation PragmaLocation,
              PragmaMsStackAction Action,
@@ -416,6 +421,8 @@ public:
     explicit PragmaStack(const ValueType &Default)
         : DefaultValue(Default), CurrentValue(Default) {}
 
+    bool hasValue() const { return CurrentValue != DefaultValue; }
+
     SmallVector<Slot, 2> Stack;
     ValueType DefaultValue; // Value used for PSK_Reset action.
     ValueType CurrentValue;
@@ -437,6 +444,8 @@ public:
   // Sentinel to represent when the stack is set to mac68k alignment.
   static const unsigned kMac68kAlignmentSentinel = ~0U;
   PragmaStack<unsigned> PackStack;
+  // The current #pragma pack values and locations at each #include.
+  SmallVector<std::pair<unsigned, SourceLocation>, 8> PackIncludeStack;
   // Segment #pragmas.
   PragmaStack<StringLiteral *> DataSegStack;
   PragmaStack<StringLiteral *> BSSSegStack;
@@ -617,6 +626,10 @@ public:
     LateTemplateParserCleanup = LTPCleanup;
     OpaqueParser = P;
   }
+
+  /// \brief Callback to the parser to parse a type expressed as a string.
+  std::function<TypeResult(StringRef, StringRef, SourceLocation)>
+    ParseTypeFromStringCallback;
 
   class DelayedDiagnostics;
 
@@ -1499,6 +1512,24 @@ public:
     }
   };
 
+  /// Do a check to make sure \p Name looks like a legal swift_name
+  /// attribute for the decl \p D. Raise a diagnostic if the name is invalid
+  /// for the given declaration.
+  ///
+  /// For a function, this will validate a compound Swift name,
+  /// e.g. <code>init(foo:bar:baz:)</code> or <code>controllerForName(_:)</code>,
+  /// and the function will output the number of parameter names, and whether
+  /// this is a single-arg initializer.
+  ///
+  /// For a type, enum constant, property, or variable declaration, this will
+  /// validate either a simple identifier, or a qualified
+  /// <code>context.identifier</code> name.
+  ///
+  /// \returns true if the name is a valid swift name for \p D, false otherwise.
+  bool DiagnoseSwiftName(Decl *D, StringRef Name,
+                         SourceLocation ArgLoc,
+                         IdentifierInfo *AttrName);
+
 private:
   bool RequireCompleteTypeImpl(SourceLocation Loc, QualType T,
                                TypeDiagnoser *Diagnoser);
@@ -1920,6 +1951,8 @@ public:
   ParmVarDecl *BuildParmVarDeclForTypedef(DeclContext *DC,
                                           SourceLocation Loc,
                                           QualType T);
+  QualType adjustParameterTypeForObjCAutoRefCount(QualType T,
+                                                  SourceLocation Loc);
   ParmVarDecl *CheckParameter(DeclContext *DC, SourceLocation StartLoc,
                               SourceLocation NameLoc, IdentifierInfo *Name,
                               QualType T, TypeSourceInfo *TSInfo,
@@ -2411,6 +2444,9 @@ public:
                                 unsigned AttrSpellingListIndex);
   OptimizeNoneAttr *mergeOptimizeNoneAttr(Decl *D, SourceRange Range,
                                           unsigned AttrSpellingListIndex);
+  SwiftNameAttr *mergeSwiftNameAttr(Decl *D, SourceRange Range,
+                                    StringRef Name, bool Override,
+                                    unsigned AttrSpellingListIndex);
   InternalLinkageAttr *mergeInternalLinkageAttr(Decl *D, SourceRange Range,
                                                 IdentifierInfo *Ident,
                                                 unsigned AttrSpellingListIndex);
@@ -3256,6 +3292,12 @@ public:
 
   void checkUnusedDeclAttributes(Declarator &D);
 
+  /// Map any API notes provided for this declaration to attributes on the
+  /// declaration.
+  ///
+  /// Triggered by declaration-attribute processing.
+  void ProcessAPINotes(Decl *D);
+
   /// Determine if type T is a valid subject for a nonnull and similar
   /// attributes. By default, we look through references (the behavior used by
   /// nonnull), but if the second parameter is true, then we treat a reference
@@ -3311,11 +3353,16 @@ public:
   /// \param allowArrayTypes Whether to accept nullability specifiers on an
   /// array type (e.g., because it will decay to a pointer).
   ///
+  /// \param overrideExisting Whether to override an existing, locally-specified
+  /// nullability specifier rather than complaining about the conflict.
+  ///
   /// \returns true if nullability cannot be applied, false otherwise.
   bool checkNullabilityTypeSpecifier(QualType &type, NullabilityKind nullability,
                                      SourceLocation nullabilityLoc,
                                      bool isContextSensitive,
-                                     bool allowArrayTypes);
+                                     bool allowArrayTypes,
+                                     bool implicit,
+                                     bool overrideExisting = false);
 
   /// \brief Stmt attributes - this routine is the top level dispatcher.
   StmtResult ProcessStmtAttributes(Stmt *Stmt, AttributeList *Attrs,
@@ -8156,6 +8203,12 @@ public:
     RTC_Unknown
   };
 
+  /// Check whether the declared result type of the given Objective-C
+  /// method declaration is compatible with the method's class.
+  ResultTypeCompatibilityKind
+  checkRelatedResultTypeCompatibility(const ObjCMethodDecl *Method,
+                                      const ObjCInterfaceDecl *CurrentClass);
+
   void CheckObjCMethodOverrides(ObjCMethodDecl *ObjCMethod,
                                 ObjCInterfaceDecl *CurrentClass,
                                 ResultTypeCompatibilityKind RTC);
@@ -8181,6 +8234,15 @@ public:
   /// ActOnPragmaPack - Called on well formed \#pragma pack(...).
   void ActOnPragmaPack(SourceLocation PragmaLoc, PragmaMsStackAction Action,
                        StringRef SlotLabel, Expr *Alignment);
+
+  enum class PragmaPackDiagnoseKind {
+    NonDefaultStateAtInclude,
+    ChangedStateAtExit
+  };
+
+  void DiagnoseNonDefaultPragmaPack(PragmaPackDiagnoseKind Kind,
+                                    SourceLocation IncludeLoc);
+  void DiagnoseUnterminatedPragmaPack();
 
   /// ActOnPragmaMSStruct - Called on well formed \#pragma ms_struct [on|off].
   void ActOnPragmaMSStruct(PragmaMSStructKind Kind);
@@ -10383,6 +10445,12 @@ private:
 
   IdentifierInfo *Ident_NSError = nullptr;
 
+  /// \brief The handler for the FileChanged preprocessor events.
+  ///
+  /// Used for diagnostics that implement custom semantic analysis for #include
+  /// directives, like -Wpragma-pack.
+  sema::SemaPPCallbacks *SemaPPCallbackHandler;
+
 protected:
   friend class Parser;
   friend class InitializationSequence;
@@ -10396,6 +10464,7 @@ public:
 
   /// The struct behind the CFErrorRef pointer.
   RecordDecl *CFError = nullptr;
+  bool isCFError(RecordDecl *D);
 
   /// Retrieve the identifier "NSError".
   IdentifierInfo *getNSErrorIdent();

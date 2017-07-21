@@ -3,7 +3,7 @@ set(LLVM_LINK_COMPONENTS
   Support
   )
 
-add_clang_library(clangToolingRefactoring
+add_clang_library(clangToolingRefactor
   AtomicChange.cpp
   Rename/RenamingAction.cpp
   Rename/USRFinder.cpp

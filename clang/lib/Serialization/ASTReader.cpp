@@ -3384,7 +3384,6 @@ ASTReader::ReadASTBlock(ModuleFile &F, unsigned ClientLoadCapabilities) {
         PragmaPackStackEntry Entry;
         Entry.Value = Record[Idx++];
         Entry.Location = ReadSourceLocation(F, Record[Idx++]);
-        Entry.PushLocation = ReadSourceLocation(F, Record[Idx++]);
         PragmaPackStrings.push_back(ReadString(Record, Idx));
         Entry.SlotLabel = PragmaPackStrings.back();
         PragmaPackStack.push_back(Entry);
@@ -4909,7 +4908,6 @@ ASTReader::ReadSubmoduleBlock(ModuleFile &F, unsigned ClientLoadCapabilities) {
       bool IsExplicit = Record[Idx++];
       bool IsSystem = Record[Idx++];
       bool IsExternC = Record[Idx++];
-      bool IsSwiftInferImportAsMember = Record[Idx++];
       bool InferSubmodules = Record[Idx++];
       bool InferExplicitSubmodules = Record[Idx++];
       bool InferExportWildcard = Record[Idx++];
@@ -4957,7 +4955,6 @@ ASTReader::ReadSubmoduleBlock(ModuleFile &F, unsigned ClientLoadCapabilities) {
       CurrentModule->IsFromModuleFile = true;
       CurrentModule->IsSystem = IsSystem || CurrentModule->IsSystem;
       CurrentModule->IsExternC = IsExternC;
-      CurrentModule->IsSwiftInferImportAsMember = IsSwiftInferImportAsMember;
       CurrentModule->InferSubmodules = InferSubmodules;
       CurrentModule->InferExplicitSubmodules = InferExplicitSubmodules;
       CurrentModule->InferExportWildcard = InferExportWildcard;
@@ -7582,14 +7579,13 @@ void ASTReader::UpdateSema() {
              "Expected a default alignment value");
       SemaObj->PackStack.Stack.emplace_back(
           PragmaPackStack.front().SlotLabel, SemaObj->PackStack.CurrentValue,
-          SemaObj->PackStack.CurrentPragmaLocation,
-          PragmaPackStack.front().PushLocation);
+          SemaObj->PackStack.CurrentPragmaLocation);
       DropFirst = true;
     }
     for (const auto &Entry :
          llvm::makeArrayRef(PragmaPackStack).drop_front(DropFirst ? 1 : 0))
       SemaObj->PackStack.Stack.emplace_back(Entry.SlotLabel, Entry.Value,
-                                            Entry.Location, Entry.PushLocation);
+                                            Entry.Location);
     if (PragmaPackCurrentLocation.isInvalid()) {
       assert(*PragmaPackCurrentValue == SemaObj->PackStack.DefaultValue &&
              "Expected a default alignment value");

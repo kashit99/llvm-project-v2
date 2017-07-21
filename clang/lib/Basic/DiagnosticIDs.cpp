@@ -43,7 +43,7 @@ struct StaticDiagInfoRec {
   unsigned SFINAE : 2;
   unsigned WarnNoWerror : 1;
   unsigned WarnShowInSystemHeader : 1;
-  unsigned Category : 6;
+  unsigned Category : 5;
 
   uint16_t OptionGroupIndex;
 
@@ -88,7 +88,6 @@ static const StaticDiagInfoRec StaticDiagInfo[] = {
 #include "clang/Basic/DiagnosticCommentKinds.inc"
 #include "clang/Basic/DiagnosticSemaKinds.inc"
 #include "clang/Basic/DiagnosticAnalysisKinds.inc"
-#include "clang/Basic/DiagnosticRefactoringKinds.inc"
 #undef DIAG
 };
 
@@ -138,7 +137,6 @@ CATEGORY(AST, PARSE)
 CATEGORY(COMMENT, AST)
 CATEGORY(SEMA, COMMENT)
 CATEGORY(ANALYSIS, SEMA)
-CATEGORY(REFACTORING, ANALYSIS)
 #undef CATEGORY
 
   // Avoid out of bounds reads.

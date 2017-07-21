@@ -15,7 +15,6 @@ clang_diag_gen(Lex)
 clang_diag_gen(Parse)
 clang_diag_gen(Sema)
 clang_diag_gen(Serialization)
-clang_diag_gen(Refactoring)
 clang_tablegen(DiagnosticGroups.inc -gen-clang-diag-groups
   SOURCE Diagnostic.td
   TARGET ClangDiagnosticGroups)

@@ -138,7 +138,7 @@ struct PreorderVisitor : public RecursiveASTVisitor<PreorderVisitor> {
     Parent = MyId;
     ++Id;
     ++Depth;
-    return {MyId, Root.getNode(MyId).Parent};
+    return std::make_tuple(MyId, Root.getNode(MyId).Parent);
   }
   void PostTraverse(std::tuple<NodeId, NodeId> State) {
     NodeId MyId, PreviousParent;
@@ -279,9 +279,7 @@ std::string SyntaxTreeImpl::getNodeValueImpl(const DynTypedNode &DTN) const {
     return X->getString();
   if (auto *X = DTN.get<ValueDecl>())
     return X->getNameAsString() + "(" + X->getType().getAsString() + ")";
-  if (auto *X = DTN.get<DeclStmt>())
-    return "";
-  if (auto *X = DTN.get<TranslationUnitDecl>())
+  if (DTN.get<DeclStmt>() || DTN.get<TranslationUnitDecl>())
     return "";
   std::string Value;
   if (auto *X = DTN.get<DeclRefExpr>()) {
@@ -297,15 +295,15 @@ std::string SyntaxTreeImpl::getNodeValueImpl(const DynTypedNode &DTN) const {
     Value += X->getNameAsString() + ";";
   if (auto *X = DTN.get<TypedefNameDecl>())
     return Value + X->getUnderlyingType().getAsString() + ";";
-  if (auto *X = DTN.get<NamespaceDecl>())
+  if (DTN.get<NamespaceDecl>())
     return Value;
   if (auto *X = DTN.get<TypeDecl>())
     if (X->getTypeForDecl())
       Value +=
           X->getTypeForDecl()->getCanonicalTypeInternal().getAsString() + ";";
-  if (auto *X = DTN.get<Decl>())
+  if (DTN.get<Decl>())
     return Value;
-  if (auto *X = DTN.get<Stmt>())
+  if (DTN.get<Stmt>())
     return "";
   llvm_unreachable("Fatal: unhandled AST node.\n");
 }
@@ -469,7 +467,7 @@ public:
 
     bool RootNodePair = true;
 
-    TreePairs.emplace_back(S1.getSize(), S2.getSize());
+    TreePairs.emplace_back(SNodeId(S1.getSize()), SNodeId(S2.getSize()));
 
     while (!TreePairs.empty()) {
       SNodeId LastRow, LastCol, FirstRow, FirstCol, Row, Col;

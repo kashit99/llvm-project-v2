@@ -494,6 +494,8 @@ DwarfDebug::getOrCreateDwarfCompileUnit(const DICompileUnit *DIUnit) {
 
 void DwarfDebug::constructAndAddImportedEntityDIE(DwarfCompileUnit &TheCU,
                                                   const DIImportedEntity *N) {
+  if (isa<DILocalScope>(N->getScope()))
+    return;
   if (DIE *D = TheCU.getOrCreateContextDIE(N->getScope()))
     D->addChild(TheCU.constructImportedEntityDIE(N));
 }
@@ -518,6 +520,14 @@ sortGlobalExprs(SmallVectorImpl<DwarfCompileUnit::GlobalExpr> &GVEs) {
                          }),
              GVEs.end());
   return GVEs;
+}
+
+static bool isEmptyCU(DICompileUnit *CUNode) {
+  return CUNode->getEnumTypes().empty() &&
+         CUNode->getRetainedTypes().empty() &&
+         CUNode->getGlobalVariables().empty() &&
+         CUNode->getImportedEntities().empty() &&
+         CUNode->getMacros().empty();
 }
 
 // Emit all Dwarf sections that should come prior to the content. Create
@@ -546,10 +556,7 @@ void DwarfDebug::beginModule() {
   }
 
   for (DICompileUnit *CUNode : M->debug_compile_units()) {
-    if (CUNode->getEnumTypes().empty() && CUNode->getRetainedTypes().empty() &&
-        CUNode->getGlobalVariables().empty() &&
-        CUNode->getImportedEntities().empty() && CUNode->getMacros().empty() &&
-        !CUNode->getDWOId())
+    if (isEmptyCU(CUNode))
       continue;
 
     DwarfCompileUnit &CU = getOrCreateDwarfCompileUnit(CUNode);
@@ -683,6 +690,11 @@ void DwarfDebug::finalizeModuleInfo() {
                         TLOF.getDwarfMacinfoSection()->getBeginSymbol());
   }
 
+  // Emit all frontend-produced Skeleton CUs, i.e., Clang modules.
+  for (auto *CUNode : MMI->getModule()->debug_compile_units())
+    if (CUNode->getDWOId() && isEmptyCU(CUNode))
+      getOrCreateDwarfCompileUnit(CUNode);
+
   // Compute DIE offsets and sizes.
   InfoHolder.computeSizeAndOffsets();
   if (useSplitDwarf())
@@ -779,6 +791,7 @@ void DwarfDebug::ensureAbstractVariableIsCreatedIfScoped(DwarfCompileUnit &CU,
 // Collect variable information from side table maintained by MF.
 void DwarfDebug::collectVariableInfoFromMFTable(
     DwarfCompileUnit &TheCU, DenseSet<InlinedVariable> &Processed) {
+  SmallDenseMap<InlinedVariable, DbgVariable *> MFVars;
   for (const auto &VI : Asm->MF->getVariableDbgInfo()) {
     if (!VI.Var)
       continue;
@@ -796,8 +809,12 @@ void DwarfDebug::collectVariableInfoFromMFTable(
     ensureAbstractVariableIsCreatedIfScoped(TheCU, Var, Scope->getScopeNode());
     auto RegVar = make_unique<DbgVariable>(Var.first, Var.second);
     RegVar->initializeMMI(VI.Expr, VI.Slot);
-    if (InfoHolder.addScopeVariable(Scope, RegVar.get()))
+    if (DbgVariable *DbgVar = MFVars.lookup(Var))
+      DbgVar->addMMIEntry(*RegVar);
+    else if (InfoHolder.addScopeVariable(Scope, RegVar.get())) {
+      MFVars.insert({Var, RegVar.get()});
       ConcreteVariables.push_back(std::move(RegVar));
+    }
   }
 }
 

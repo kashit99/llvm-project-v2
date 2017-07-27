@@ -418,19 +418,13 @@ DWARFDie DWARFContext::getDIEForOffset(uint32_t Offset) {
 bool DWARFContext::verify(raw_ostream &OS, DIDumpType DumpType) {
   bool Success = true;
   DWARFVerifier verifier(OS, *this);
+
   Success &= verifier.handleDebugAbbrev();
-  if (DumpType == DIDT_All || DumpType == DIDT_Info) {
-    if (!verifier.handleDebugInfo())
-      Success = false;
-  }
-  if (DumpType == DIDT_All || DumpType == DIDT_Line) {
-    if (!verifier.handleDebugLine())
-      Success = false;
-  }
-  if (DumpType == DIDT_All || DumpType == DIDT_AppleNames) {
-    if (!verifier.handleAppleNames())
-      Success = false;
-  }
+  if (DumpType == DIDT_All || DumpType == DIDT_Info)
+    Success &= verifier.handleDebugInfo();
+  if (DumpType == DIDT_All || DumpType == DIDT_Line)
+    Success &= verifier.handleDebugLine();
+  Success &= verifier.handleAccelTables();
   return Success;
 }
 

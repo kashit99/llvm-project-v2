@@ -12550,6 +12550,7 @@ void DAGCombiner::getStoreMergeCandidates(
   BaseIndexOffset BasePtr = BaseIndexOffset::match(St->getBasePtr(), DAG);
   EVT MemVT = St->getMemoryVT();
 
+  SDValue Val = St->getValue();
   // We must have a base and an offset.
   if (!BasePtr.getBase().getNode())
     return;
@@ -12558,44 +12559,51 @@ void DAGCombiner::getStoreMergeCandidates(
   if (BasePtr.getBase().isUndef())
     return;
 
-  bool IsConstantSrc = isa<ConstantSDNode>(St->getValue()) ||
-                       isa<ConstantFPSDNode>(St->getValue());
-  bool IsExtractVecSrc =
-      (St->getValue().getOpcode() == ISD::EXTRACT_VECTOR_ELT ||
-       St->getValue().getOpcode() == ISD::EXTRACT_SUBVECTOR);
-  bool IsLoadSrc = isa<LoadSDNode>(St->getValue());
+  bool IsConstantSrc = isa<ConstantSDNode>(Val) || isa<ConstantFPSDNode>(Val);
+  bool IsExtractVecSrc = (Val.getOpcode() == ISD::EXTRACT_VECTOR_ELT ||
+                          Val.getOpcode() == ISD::EXTRACT_SUBVECTOR);
+  bool IsLoadSrc = isa<LoadSDNode>(Val);
   BaseIndexOffset LBasePtr;
   // Match on loadbaseptr if relevant.
-  if (IsLoadSrc)
-    LBasePtr = BaseIndexOffset::match(
-        cast<LoadSDNode>(St->getValue())->getBasePtr(), DAG);
-
+  EVT LoadVT;
+  if (IsLoadSrc) {
+    auto *Ld = cast<LoadSDNode>(Val);
+    LBasePtr = BaseIndexOffset::match(Ld->getBasePtr(), DAG);
+    LoadVT = Ld->getMemoryVT();
+    // Load and store should be the same type.
+    if (MemVT != LoadVT)
+      return;
+  }
   auto CandidateMatch = [&](StoreSDNode *Other, BaseIndexOffset &Ptr,
                             int64_t &Offset) -> bool {
     if (Other->isVolatile() || Other->isIndexed())
       return false;
+    SDValue Val = Other->getValue();
     // We can merge constant floats to equivalent integers
     if (Other->getMemoryVT() != MemVT)
       if (!(MemVT.isInteger() && MemVT.bitsEq(Other->getMemoryVT()) &&
-            isa<ConstantFPSDNode>(Other->getValue())))
+            isa<ConstantFPSDNode>(Val)))
         return false;
     if (IsLoadSrc) {
       // The Load's Base Ptr must also match
-      if (LoadSDNode *OtherLd = dyn_cast<LoadSDNode>(Other->getValue())) {
+      if (LoadSDNode *OtherLd = dyn_cast<LoadSDNode>(Val)) {
         auto LPtr = BaseIndexOffset::match(OtherLd->getBasePtr(), DAG);
+        if (LoadVT != OtherLd->getMemoryVT())
+          return false;
         if (!(LBasePtr.equalBaseIndex(LPtr, DAG)))
           return false;
       } else
         return false;
     }
-    if (IsConstantSrc)
-      if (!(isa<ConstantSDNode>(Other->getValue()) ||
-            isa<ConstantFPSDNode>(Other->getValue())))
+    if (IsConstantSrc) {
+      if (!(isa<ConstantSDNode>(Val) || isa<ConstantFPSDNode>(Val)))
         return false;
-    if (IsExtractVecSrc)
-      if (!(Other->getValue().getOpcode() == ISD::EXTRACT_VECTOR_ELT ||
-            Other->getValue().getOpcode() == ISD::EXTRACT_SUBVECTOR))
+    }
+    if (IsExtractVecSrc) {
+      if (!(Val.getOpcode() == ISD::EXTRACT_VECTOR_ELT ||
+            Val.getOpcode() == ISD::EXTRACT_SUBVECTOR))
         return false;
+    }
     Ptr = BaseIndexOffset::match(Other->getBasePtr(), DAG);
     return (BasePtr.equalBaseIndex(Ptr, DAG, Offset));
   };
@@ -12670,6 +12678,7 @@ bool DAGCombiner::MergeConsecutiveStores(StoreSDNode *St) {
 
   EVT MemVT = St->getMemoryVT();
   int64_t ElementSizeBytes = MemVT.getSizeInBits() / 8;
+  unsigned NumMemElts = MemVT.isVector() ? MemVT.getVectorNumElements() : 1;
 
   if (MemVT.getSizeInBits() * 2 > MaximumLegalStoreInBits)
     return false;
@@ -12827,11 +12836,7 @@ bool DAGCombiner::MergeConsecutiveStores(StoreSDNode *St) {
              TLI.storeOfVectorConstantIsCheap(MemVT, i + 1, FirstStoreAS)) &&
             !NoVectors) {
           // Find a legal type for the vector store.
-          unsigned Elts = i + 1;
-          if (MemVT.isVector()) {
-            // When merging vector stores, get the total number of elements.
-            Elts *= MemVT.getVectorNumElements();
-          }
+          unsigned Elts = (i + 1) * NumMemElts;
           EVT Ty = EVT::getVectorVT(Context, MemVT.getScalarType(), Elts);
           if (TLI.isTypeLegal(Ty) &&
               TLI.canMergeStoresTo(FirstStoreAS, Ty, DAG) &&
@@ -12870,25 +12875,20 @@ bool DAGCombiner::MergeConsecutiveStores(StoreSDNode *St) {
       unsigned FirstStoreAS = FirstInChain->getAddressSpace();
       unsigned FirstStoreAlign = FirstInChain->getAlignment();
       unsigned NumStoresToMerge = 1;
-      bool IsVec = MemVT.isVector();
       for (unsigned i = 0; i < NumConsecutiveStores; ++i) {
         StoreSDNode *St = cast<StoreSDNode>(StoreNodes[i].MemNode);
-        unsigned StoreValOpcode = St->getValue().getOpcode();
+        SDValue StVal = St->getValue();
         // This restriction could be loosened.
         // Bail out if any stored values are not elements extracted from a
         // vector. It should be possible to handle mixed sources, but load
         // sources need more careful handling (see the block of code below that
         // handles consecutive loads).
-        if (StoreValOpcode != ISD::EXTRACT_VECTOR_ELT &&
-            StoreValOpcode != ISD::EXTRACT_SUBVECTOR)
+        if (StVal.getOpcode() != ISD::EXTRACT_VECTOR_ELT &&
+            StVal.getOpcode() != ISD::EXTRACT_SUBVECTOR)
           return RV;
 
         // Find a legal type for the vector store.
-        unsigned Elts = i + 1;
-        if (IsVec) {
-          // When merging vector stores, get the total number of elements.
-          Elts *= MemVT.getVectorNumElements();
-        }
+        unsigned Elts = (i + 1) * NumMemElts;
         EVT Ty =
             EVT::getVectorVT(*DAG.getContext(), MemVT.getScalarType(), Elts);
         bool IsFast;
@@ -12926,7 +12926,8 @@ bool DAGCombiner::MergeConsecutiveStores(StoreSDNode *St) {
     BaseIndexOffset LdBasePtr;
     for (unsigned i = 0; i < NumConsecutiveStores; ++i) {
       StoreSDNode *St = cast<StoreSDNode>(StoreNodes[i].MemNode);
-      LoadSDNode *Ld = dyn_cast<LoadSDNode>(St->getValue());
+      SDValue Val = St->getValue();
+      LoadSDNode *Ld = dyn_cast<LoadSDNode>(Val);
       if (!Ld)
         break;
 
@@ -12936,10 +12937,6 @@ bool DAGCombiner::MergeConsecutiveStores(StoreSDNode *St) {
 
       // The memory operands must not be volatile.
       if (Ld->isVolatile() || Ld->isIndexed())
-        break;
-
-      // We do not accept ext loads.
-      if (Ld->getExtensionType() != ISD::NON_EXTLOAD)
         break;
 
       // The stored memory type must be the same.
@@ -13007,7 +13004,9 @@ bool DAGCombiner::MergeConsecutiveStores(StoreSDNode *St) {
         isDereferenceable = false;
 
       // Find a legal type for the vector store.
-      EVT StoreTy = EVT::getVectorVT(Context, MemVT, i + 1);
+      unsigned Elts = (i + 1) * NumMemElts;
+      EVT StoreTy = EVT::getVectorVT(Context, MemVT.getScalarType(), Elts);
+
       bool IsFastSt, IsFastLd;
       if (TLI.isTypeLegal(StoreTy) &&
           TLI.canMergeStoresTo(FirstStoreAS, StoreTy, DAG) &&
@@ -13076,7 +13075,9 @@ bool DAGCombiner::MergeConsecutiveStores(StoreSDNode *St) {
     // to memory.
     EVT JointMemOpVT;
     if (UseVectorTy) {
-      JointMemOpVT = EVT::getVectorVT(Context, MemVT, NumElem);
+      // Find a legal type for the vector store.
+      unsigned Elts = NumElem * NumMemElts;
+      JointMemOpVT = EVT::getVectorVT(Context, MemVT.getScalarType(), Elts);
     } else {
       unsigned SizeInBits = NumElem * ElementSizeBytes * 8;
       JointMemOpVT = EVT::getIntegerVT(Context, SizeInBits);

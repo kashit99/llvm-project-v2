@@ -1947,6 +1947,15 @@ SDValue DAGCombiner::visitADD(SDNode *N) {
         return DAG.getNode(ISD::ZERO_EXTEND, DL, VT, Not);
       }
     }
+
+    // Undo the add -> or combine to merge constant offsets from a frame index.
+    if (N0.getOpcode() == ISD::OR &&
+        isa<FrameIndexSDNode>(N0.getOperand(0)) &&
+        isa<ConstantSDNode>(N0.getOperand(1)) &&
+        DAG.haveNoCommonBitsSet(N0.getOperand(0), N0.getOperand(1))) {
+      SDValue Add0 = DAG.getNode(ISD::ADD, DL, VT, N1, N0.getOperand(1));
+      return DAG.getNode(ISD::ADD, DL, VT, N0.getOperand(0), Add0);
+    }
   }
 
   if (SDValue NewSel = foldBinOpIntoSelect(N))
@@ -12436,36 +12445,36 @@ bool DAGCombiner::MergeStoresOfConstantsOrVecElts(
   if (NumStores < 2)
     return false;
 
-  int64_t ElementSizeBytes = MemVT.getSizeInBits() / 8;
-
   // The latest Node in the DAG.
   SDLoc DL(StoreNodes[0].MemNode);
 
+  int64_t ElementSizeBytes = MemVT.getSizeInBits() / 8;
+  unsigned SizeInBits = NumStores * ElementSizeBytes * 8;
+  unsigned NumMemElts = MemVT.isVector() ? MemVT.getVectorNumElements() : 1;
+
+  EVT StoreTy;
+  if (UseVector) {
+    unsigned Elts = NumStores * NumMemElts;
+    // Get the type for the merged vector store.
+    StoreTy = EVT::getVectorVT(*DAG.getContext(), MemVT.getScalarType(), Elts);
+  } else
+    StoreTy = EVT::getIntegerVT(*DAG.getContext(), SizeInBits);
+
   SDValue StoredVal;
   if (UseVector) {
-    bool IsVec = MemVT.isVector();
-    unsigned Elts = NumStores;
-    if (IsVec) {
-      // When merging vector stores, get the total number of elements.
-      Elts *= MemVT.getVectorNumElements();
-    }
-    // Get the type for the merged vector store.
-    EVT Ty = EVT::getVectorVT(*DAG.getContext(), MemVT.getScalarType(), Elts);
-    assert(TLI.isTypeLegal(Ty) && "Illegal vector store");
-
     if (IsConstantSrc) {
       SmallVector<SDValue, 8> BuildVector;
-      for (unsigned I = 0, E = Ty.getVectorNumElements(); I != E; ++I) {
+      for (unsigned I = 0; I != NumStores; ++I) {
         StoreSDNode *St = cast<StoreSDNode>(StoreNodes[I].MemNode);
         SDValue Val = St->getValue();
         if (MemVT.getScalarType().isInteger())
-          if (auto *CFP = dyn_cast<ConstantFPSDNode>(St->getValue()))
+          if (auto *CFP = dyn_cast<ConstantFPSDNode>(Val))
             Val = DAG.getConstant(
                 (uint32_t)CFP->getValueAPF().bitcastToAPInt().getZExtValue(),
                 SDLoc(CFP), MemVT);
         BuildVector.push_back(Val);
       }
-      StoredVal = DAG.getBuildVector(Ty, DL, BuildVector);
+      StoredVal = DAG.getBuildVector(StoreTy, DL, BuildVector);
     } else {
       SmallVector<SDValue, 8> Ops;
       for (unsigned i = 0; i < NumStores; ++i) {
@@ -12478,14 +12487,15 @@ bool DAGCombiner::MergeStoresOfConstantsOrVecElts(
       }
 
       // Build the extracted vector elements back into a vector.
-      StoredVal = DAG.getNode(IsVec ? ISD::CONCAT_VECTORS : ISD::BUILD_VECTOR,
-                              DL, Ty, Ops);    }
+      StoredVal = DAG.getNode(MemVT.isVector() ? ISD::CONCAT_VECTORS
+                                               : ISD::BUILD_VECTOR,
+                              DL, StoreTy, Ops);
+    }
   } else {
     // We should always use a vector store when merging extracted vector
     // elements, so this path implies a store of constants.
     assert(IsConstantSrc && "Merged vector elements should use vector store");
 
-    unsigned SizeInBits = NumStores * ElementSizeBytes * 8;
     APInt StoreInt(SizeInBits, 0);
 
     // Construct a single integer constant which is made of the smaller
@@ -12507,7 +12517,6 @@ bool DAGCombiner::MergeStoresOfConstantsOrVecElts(
     }
 
     // Create the new Load and Store operations.
-    EVT StoreTy = EVT::getIntegerVT(*DAG.getContext(), SizeInBits);
     StoredVal = DAG.getConstant(StoreInt, DL, StoreTy);
   }
 
@@ -12579,12 +12588,10 @@ void DAGCombiner::getStoreMergeCandidates(
     if (Other->isVolatile() || Other->isIndexed())
       return false;
     SDValue Val = Other->getValue();
-    // We can merge constant floats to equivalent integers
-    if (Other->getMemoryVT() != MemVT)
-      if (!(MemVT.isInteger() && MemVT.bitsEq(Other->getMemoryVT()) &&
-            isa<ConstantFPSDNode>(Val)))
-        return false;
     if (IsLoadSrc) {
+      // Loads must match type.
+      if (Other->getMemoryVT() != MemVT)
+        return false;
       // The Load's Base Ptr must also match
       if (LoadSDNode *OtherLd = dyn_cast<LoadSDNode>(Val)) {
         auto LPtr = BaseIndexOffset::match(OtherLd->getBasePtr(), DAG);
@@ -12596,10 +12603,17 @@ void DAGCombiner::getStoreMergeCandidates(
         return false;
     }
     if (IsConstantSrc) {
+      // Allow merging constants of different types as integers.
+      if (MemVT.isInteger() ? !MemVT.bitsEq(Other->getMemoryVT())
+                            : Other->getMemoryVT() != MemVT)
+        return false;
       if (!(isa<ConstantSDNode>(Val) || isa<ConstantFPSDNode>(Val)))
         return false;
     }
     if (IsExtractVecSrc) {
+      // Must match type.
+      if (Other->getMemoryVT() != MemVT)
+        return false;
       if (!(Val.getOpcode() == ISD::EXTRACT_VECTOR_ELT ||
             Val.getOpcode() == ISD::EXTRACT_SUBVECTOR))
         return false;
@@ -12789,19 +12803,20 @@ bool DAGCombiner::MergeConsecutiveStores(StoreSDNode *St) {
       unsigned LastLegalVectorType = 1;
       bool LastIntegerTrunc = false;
       bool NonZero = false;
+      unsigned FirstZeroAfterNonZero = NumConsecutiveStores;
       for (unsigned i = 0; i < NumConsecutiveStores; ++i) {
         StoreSDNode *ST = cast<StoreSDNode>(StoreNodes[i].MemNode);
         SDValue StoredVal = ST->getValue();
-
-        if (ConstantSDNode *C = dyn_cast<ConstantSDNode>(StoredVal)) {
-          NonZero |= !C->isNullValue();
-        } else if (ConstantFPSDNode *C =
-                       dyn_cast<ConstantFPSDNode>(StoredVal)) {
-          NonZero |= !C->getConstantFPValue()->isNullValue();
-        } else {
-          // Non-constant.
-          break;
+        bool IsElementZero = false;
+        if (ConstantSDNode *C = dyn_cast<ConstantSDNode>(StoredVal))
+          IsElementZero = C->isNullValue();
+        else if (ConstantFPSDNode *C = dyn_cast<ConstantFPSDNode>(StoredVal))
+          IsElementZero = C->getConstantFPValue()->isNullValue();
+        if (IsElementZero) {
+          if (NonZero && FirstZeroAfterNonZero == NumConsecutiveStores)
+            FirstZeroAfterNonZero = i;
         }
+        NonZero |= !IsElementZero;
 
         // Find a legal type for the constant store.
         unsigned SizeInBits = (i + 1) * ElementSizeBytes * 8;
@@ -12847,23 +12862,34 @@ bool DAGCombiner::MergeConsecutiveStores(StoreSDNode *St) {
         }
       }
 
-      // Check if we found a legal integer type that creates a meaningful merge.
-      if (LastLegalType < 2 && LastLegalVectorType < 2) {
-        StoreNodes.erase(StoreNodes.begin(), StoreNodes.begin() + 1);
-        continue;
-      }
-
       bool UseVector = (LastLegalVectorType > LastLegalType) && !NoVectors;
       unsigned NumElem = (UseVector) ? LastLegalVectorType : LastLegalType;
 
-      bool Merged = MergeStoresOfConstantsOrVecElts(
-          StoreNodes, MemVT, NumElem, true, UseVector, LastIntegerTrunc);
-      if (!Merged) {
-        StoreNodes.erase(StoreNodes.begin(), StoreNodes.begin() + NumElem);
+      // Check if we found a legal integer type that creates a meaningful merge.
+      if (NumElem < 2) {
+        // We know that candidate stores are in order and of correct
+        // shape. While there is no mergeable sequence from the
+        // beginning one may start later in the sequence. The only
+        // reason a merge of size N could have failed where another of
+        // the same size would not have, is if the alignment has
+        // improved or we've dropped a non-zero value. Drop as many
+        // candidates as we can here.
+        unsigned NumSkip = 1;
+        while (
+            (NumSkip < NumConsecutiveStores) &&
+            (NumSkip < FirstZeroAfterNonZero) &&
+            (StoreNodes[NumSkip].MemNode->getAlignment() <= FirstStoreAlign)) {
+          NumSkip++;
+        }
+        StoreNodes.erase(StoreNodes.begin(), StoreNodes.begin() + NumSkip);
         continue;
       }
+
+      bool Merged = MergeStoresOfConstantsOrVecElts(
+          StoreNodes, MemVT, NumElem, true, UseVector, LastIntegerTrunc);
+      RV |= Merged;
+
       // Remove merged stores for next iteration.
-      RV = true;
       StoreNodes.erase(StoreNodes.begin(), StoreNodes.begin() + NumElem);
       continue;
     }
@@ -12898,6 +12924,23 @@ bool DAGCombiner::MergeConsecutiveStores(StoreSDNode *St) {
                                    FirstStoreAlign, &IsFast) &&
             IsFast)
           NumStoresToMerge = i + 1;
+      }
+
+      // Check if we found a legal integer type that creates a meaningful merge.
+      if (NumStoresToMerge < 2) {
+        // We know that candidate stores are in order and of correct
+        // shape. While there is no mergeable sequence from the
+        // beginning one may start later in the sequence. The only
+        // reason a merge of size N could have failed where another of
+        // the same size would not have, is if the alignment has
+        // improved. Drop as many candidates as we can here.
+        unsigned NumSkip = 1;
+        while ((NumSkip < NumConsecutiveStores) &&
+               (StoreNodes[NumSkip].MemNode->getAlignment() <= FirstStoreAlign))
+          NumSkip++;
+
+        StoreNodes.erase(StoreNodes.begin(), StoreNodes.begin() + NumSkip);
+        continue;
       }
 
       bool Merged = MergeStoresOfConstantsOrVecElts(
@@ -13067,7 +13110,19 @@ bool DAGCombiner::MergeConsecutiveStores(StoreSDNode *St) {
     NumElem = std::min(LastLegalType, NumElem);
 
     if (NumElem < 2) {
-      StoreNodes.erase(StoreNodes.begin(), StoreNodes.begin() + 1);
+      // We know that candidate stores are in order and of correct
+      // shape. While there is no mergeable sequence from the
+      // beginning one may start later in the sequence. The only
+      // reason a merge of size N could have failed where another of
+      // the same size would not have is if the alignment or either
+      // the load or store has improved. Drop as many candidates as we
+      // can here.
+      unsigned NumSkip = 1;
+      while ((NumSkip < LoadNodes.size()) &&
+             (LoadNodes[NumSkip].MemNode->getAlignment() <= FirstLoadAlign) &&
+             (StoreNodes[NumSkip].MemNode->getAlignment() <= FirstStoreAlign))
+        NumSkip++;
+      StoreNodes.erase(StoreNodes.begin(), StoreNodes.begin() + NumSkip);
       continue;
     }
 

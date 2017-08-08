@@ -783,15 +783,8 @@ static bool isAddressUse(Instruction *Inst, Value *OperandVal) {
     // of intrinsics.
     switch (II->getIntrinsicID()) {
       default: break;
-      case Intrinsic::memset:
       case Intrinsic::prefetch:
         if (II->getArgOperand(0) == OperandVal)
-          isAddress = true;
-        break;
-      case Intrinsic::memmove:
-      case Intrinsic::memcpy:
-        if (II->getArgOperand(0) == OperandVal ||
-            II->getArgOperand(1) == OperandVal)
           isAddress = true;
         break;
     }
@@ -1287,7 +1280,7 @@ void Cost::RateFormula(const TargetTransformInfo &TTI,
 
     // Check with target if this offset with this instruction is
     // specifically not supported.
-    if (LU.Kind == LSRUse::Address && Offset != 0 &&
+    if ((isa<LoadInst>(Fixup.UserInst) || isa<StoreInst>(Fixup.UserInst)) &&
         !TTI.isFoldableMemAccessOffset(Fixup.UserInst, Offset))
       C.NumBaseAdds++;
   }
@@ -1542,12 +1535,11 @@ LLVM_DUMP_METHOD void LSRUse::dump() const {
 static bool isAMCompletelyFolded(const TargetTransformInfo &TTI,
                                  LSRUse::KindType Kind, MemAccessTy AccessTy,
                                  GlobalValue *BaseGV, int64_t BaseOffset,
-                                 bool HasBaseReg, int64_t Scale,
-                                 Instruction *Fixup = nullptr) {
+                                 bool HasBaseReg, int64_t Scale) {
   switch (Kind) {
   case LSRUse::Address:
     return TTI.isLegalAddressingMode(AccessTy.MemTy, BaseGV, BaseOffset,
-                                     HasBaseReg, Scale, AccessTy.AddrSpace, Fixup);
+                                     HasBaseReg, Scale, AccessTy.AddrSpace);
 
   case LSRUse::ICmpZero:
     // There's not even a target hook for querying whether it would be legal to
@@ -1653,16 +1645,6 @@ static bool isLegalUse(const TargetTransformInfo &TTI, int64_t MinOffset,
 
 static bool isAMCompletelyFolded(const TargetTransformInfo &TTI,
                                  const LSRUse &LU, const Formula &F) {
-  // Target may want to look at the user instructions.
-  if (LU.Kind == LSRUse::Address && TTI.LSRWithInstrQueries()) {
-    for (const LSRFixup &Fixup : LU.Fixups)
-      if (!isAMCompletelyFolded(TTI, LSRUse::Address, LU.AccessTy, F.BaseGV,
-                                F.BaseOffset, F.HasBaseReg, F.Scale,
-                                Fixup.UserInst))
-        return false;
-    return true;
-  }
-
   return isAMCompletelyFolded(TTI, LU.MinOffset, LU.MaxOffset, LU.Kind,
                               LU.AccessTy, F.BaseGV, F.BaseOffset, F.HasBaseReg,
                               F.Scale);

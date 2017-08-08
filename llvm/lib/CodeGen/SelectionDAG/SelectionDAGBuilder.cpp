@@ -6083,7 +6083,7 @@ SelectionDAGBuilder::lowerInvokable(TargetLowering::CallLoweringInfo &CLI,
     if (MF.hasEHFunclets()) {
       assert(CLI.CS);
       WinEHFuncInfo *EHInfo = DAG.getMachineFunction().getWinEHFuncInfo();
-      EHInfo->addIPToStateRange(cast<InvokeInst>(CLI.CS.getInstruction()),
+      EHInfo->addIPToStateRange(cast<InvokeInst>(CLI.CS->getInstruction()),
                                 BeginLabel, EndLabel);
     } else {
       MF.addInvoke(FuncInfo.MBBMap[EHPadBB], BeginLabel, EndLabel);
@@ -8150,7 +8150,8 @@ TargetLowering::LowerCallTo(TargetLowering::CallLoweringInfo &CLI) const {
       }
 
       getCopyToParts(CLI.DAG, CLI.DL, Op, &Parts[0], NumParts, PartVT,
-                     CLI.CS.getInstruction(), ExtendKind, true);
+                     CLI.CS ? CLI.CS->getInstruction() : nullptr, ExtendKind,
+                     true);
 
       for (unsigned j = 0; j != NumParts; ++j) {
         // if it isn't first piece, alignment must be 1

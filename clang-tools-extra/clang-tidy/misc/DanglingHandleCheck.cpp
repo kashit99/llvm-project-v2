@@ -71,13 +71,11 @@ ast_matchers::internal::BindableMatcher<Stmt> makeContainerMatcher(
           // For sequences: assign, push_back, resize.
           cxxMemberCallExpr(
               callee(functionDecl(hasAnyName("assign", "push_back", "resize"))),
-              on(expr(hasType(hasUnqualifiedDesugaredType(
-                  recordType(hasDeclaration(recordDecl(isASequence())))))))),
+              on(expr(hasType(recordDecl(isASequence()))))),
           // For sequences and sets: insert.
-          cxxMemberCallExpr(callee(functionDecl(hasName("insert"))),
-                            on(expr(hasType(hasUnqualifiedDesugaredType(
-                                recordType(hasDeclaration(recordDecl(
-                                    anyOf(isASequence(), isASet()))))))))),
+          cxxMemberCallExpr(
+              callee(functionDecl(hasName("insert"))),
+              on(expr(hasType(recordDecl(anyOf(isASequence(), isASet())))))),
           // For maps: operator[].
           cxxOperatorCallExpr(callee(cxxMethodDecl(ofClass(isAMap()))),
                               hasOverloadedOperatorName("[]"))));
@@ -105,8 +103,7 @@ void DanglingHandleCheck::registerMatchersForVariables(MatchFinder *Finder) {
 
   // Find 'Handle foo(ReturnsAValue());'
   Finder->addMatcher(
-      varDecl(hasType(hasUnqualifiedDesugaredType(
-                  recordType(hasDeclaration(cxxRecordDecl(IsAHandle))))),
+      varDecl(hasType(cxxRecordDecl(IsAHandle)),
               hasInitializer(
                   exprWithCleanups(has(ignoringParenImpCasts(ConvertedHandle)))
                       .bind("bad_stmt"))),
@@ -115,9 +112,7 @@ void DanglingHandleCheck::registerMatchersForVariables(MatchFinder *Finder) {
   // Find 'Handle foo = ReturnsAValue();'
   Finder->addMatcher(
       varDecl(
-          hasType(hasUnqualifiedDesugaredType(
-              recordType(hasDeclaration(cxxRecordDecl(IsAHandle))))),
-          unless(parmVarDecl()),
+          hasType(cxxRecordDecl(IsAHandle)), unless(parmVarDecl()),
           hasInitializer(exprWithCleanups(has(ignoringParenImpCasts(handleFrom(
                                               IsAHandle, ConvertedHandle))))
                              .bind("bad_stmt"))),
@@ -144,15 +139,13 @@ void DanglingHandleCheck::registerMatchersForReturn(MatchFinder *Finder) {
           // We have to match both.
           has(ignoringImplicit(handleFrom(
               IsAHandle,
-              handleFrom(IsAHandle,
-                         declRefExpr(to(varDecl(
-                             // Is function scope ...
-                             hasAutomaticStorageDuration(),
-                             // ... and it is a local array or Value.
-                             anyOf(hasType(arrayType()),
-                                   hasType(hasUnqualifiedDesugaredType(
-                                       recordType(hasDeclaration(recordDecl(
-                                           unless(IsAHandle)))))))))))))),
+              handleFrom(IsAHandle, declRefExpr(to(varDecl(
+                                        // Is function scope ...
+                                        hasAutomaticStorageDuration(),
+                                        // ... and it is a local array or Value.
+                                        anyOf(hasType(arrayType()),
+                                              hasType(recordDecl(
+                                                  unless(IsAHandle))))))))))),
           // Temporary fix for false positives inside lambdas.
           unless(hasAncestor(lambdaExpr())))
           .bind("bad_stmt"),

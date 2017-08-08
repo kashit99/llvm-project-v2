@@ -230,8 +230,7 @@ void FindAllSymbols::registerMatchers(MatchFinder *MatchFinder) {
   MatchFinder->addMatcher(
       typeLoc(isExpansionInMainFile(),
               loc(templateSpecializationType(hasDeclaration(
-                  classTemplateSpecializationDecl(hasSpecializedTemplate(
-                      classTemplateDecl(has(CXXRecords.bind("use"))))))))),
+                  classTemplateDecl(has(CXXRecords.bind("use"))))))),
       this);
 }
 

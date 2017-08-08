@@ -1,8 +1,4 @@
-// RUN: %check_clang_tidy %s readability-redundant-declaration %t -- \
-// RUN:   -config="{CheckOptions: \
-// RUN:             [{key: readability-redundant-declaration.IgnoreMacros, \
-// RUN:               value: 0}]}" \
-// RUN:   -- -std=c++11
+// RUN: %check_clang_tidy %s readability-redundant-declaration %t
 
 extern int Xyz;
 extern int Xyz; // Xyz
@@ -46,25 +42,3 @@ struct C2 {
 
 template <class T>
 C2<T>::C2() = default;
-
-void best_friend();
-
-struct Friendly {
-  friend void best_friend();
-  friend void enemy();
-};
-
-void enemy();
-
-namespace macros {
-#define DECLARE(x) extern int x
-#define DEFINE(x) extern int x; int x = 42
-DECLARE(test);
-DEFINE(test);
-// CHECK-MESSAGES: :[[@LINE-1]]:8: warning: redundant 'test' declaration
-// CHECK-FIXES: {{^}}#define DECLARE(x) extern int x{{$}}
-// CHECK-FIXES: {{^}}#define DEFINE(x) extern int x; int x = 42{{$}}
-// CHECK-FIXES: {{^}}DECLARE(test);{{$}}
-// CHECK-FIXES: {{^}}DEFINE(test);{{$}}
-
-} // namespace macros

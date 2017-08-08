@@ -432,9 +432,6 @@ DwarfDebug::getOrCreateDwarfCompileUnit(const DICompileUnit *DIUnit) {
                   Asm->TM.Options.MCOptions.SplitDwarfFile);
   }
 
-  for (auto *IE : DIUnit->getImportedEntities())
-    NewCU.addImportedEntity(IE);
-
   // LTO with assembly output shares a single line table amongst multiple CUs.
   // To avoid the compilation directory being ambiguous, let the line table
   // explicitly describe the directory of all files, never relying on the
@@ -529,6 +526,14 @@ sortGlobalExprs(SmallVectorImpl<DwarfCompileUnit::GlobalExpr> &GVEs) {
   return GVEs;
 }
 
+static bool isEmptyCU(DICompileUnit *CUNode) {
+  return CUNode->getEnumTypes().empty() &&
+         CUNode->getRetainedTypes().empty() &&
+         CUNode->getGlobalVariables().empty() &&
+         CUNode->getImportedEntities().empty() &&
+         CUNode->getMacros().empty();
+}
+
 // Emit all Dwarf sections that should come prior to the content. Create
 // global DIEs and emit initial debug info sections. This is invoked by
 // the target AsmPrinter.
@@ -555,20 +560,12 @@ void DwarfDebug::beginModule() {
   }
 
   for (DICompileUnit *CUNode : M->debug_compile_units()) {
-    // FIXME: Move local imported entities into a list attached to the
-    // subprogram, then this search won't be needed and a
-    // getImportedEntities().empty() test should go below with the rest.
-    bool HasNonLocalImportedEntities = llvm::any_of(
-        CUNode->getImportedEntities(), [](const DIImportedEntity *IE) {
-          return !isa<DILocalScope>(IE->getScope());
-        });
-
-    if (!HasNonLocalImportedEntities && CUNode->getEnumTypes().empty() &&
-        CUNode->getRetainedTypes().empty() &&
-        CUNode->getGlobalVariables().empty() && CUNode->getMacros().empty())
+    if (isEmptyCU(CUNode))
       continue;
 
     DwarfCompileUnit &CU = getOrCreateDwarfCompileUnit(CUNode);
+    for (auto *IE : CUNode->getImportedEntities())
+      CU.addImportedEntity(IE);
 
     // Global Variables.
     for (auto *GVE : CUNode->getGlobalVariables())

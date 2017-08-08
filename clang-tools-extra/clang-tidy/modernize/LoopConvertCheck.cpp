@@ -161,18 +161,17 @@ StatementMatcher makeIteratorLoopMatcher() {
   // overloaded operator*(). If the operator*() returns by value instead of by
   // reference then the return type is tagged with DerefByValueResultName.
   internal::Matcher<VarDecl> TestDerefReturnsByValue =
-      hasType(hasUnqualifiedDesugaredType(
-          recordType(hasDeclaration(cxxRecordDecl(hasMethod(allOf(
-              hasOverloadedOperatorName("*"),
-              anyOf(
-                  // Tag the return type if it's by value.
-                  returns(qualType(unless(hasCanonicalType(referenceType())))
-                              .bind(DerefByValueResultName)),
-                  returns(
-                      // Skip loops where the iterator's operator* returns an
-                      // rvalue reference. This is just weird.
-                      qualType(unless(hasCanonicalType(rValueReferenceType())))
-                          .bind(DerefByRefResultName))))))))));
+      hasType(cxxRecordDecl(hasMethod(allOf(
+          hasOverloadedOperatorName("*"),
+          anyOf(
+              // Tag the return type if it's by value.
+              returns(qualType(unless(hasCanonicalType(referenceType())))
+                          .bind(DerefByValueResultName)),
+              returns(
+                  // Skip loops where the iterator's operator* returns an
+                  // rvalue reference. This is just weird.
+                  qualType(unless(hasCanonicalType(rValueReferenceType())))
+                      .bind(DerefByRefResultName)))))));
 
   return forStmt(
              unless(isInTemplateInstantiation()),
@@ -243,17 +242,16 @@ StatementMatcher makePseudoArrayLoopMatcher() {
   // functions called begin() and end() taking the container as an argument
   // are also allowed.
   TypeMatcher RecordWithBeginEnd = qualType(anyOf(
+      qualType(isConstQualified(),
+               hasDeclaration(cxxRecordDecl(
+                   hasMethod(cxxMethodDecl(hasName("begin"), isConst())),
+                   hasMethod(cxxMethodDecl(hasName("end"),
+                                           isConst())))) // hasDeclaration
+               ),                                        // qualType
       qualType(
-          isConstQualified(),
-          hasUnqualifiedDesugaredType(recordType(hasDeclaration(cxxRecordDecl(
-              hasMethod(cxxMethodDecl(hasName("begin"), isConst())),
-              hasMethod(cxxMethodDecl(hasName("end"),
-                                      isConst()))))   // hasDeclaration
-                                                 ))), // qualType
-      qualType(unless(isConstQualified()),
-               hasUnqualifiedDesugaredType(recordType(hasDeclaration(
-                   cxxRecordDecl(hasMethod(hasName("begin")),
-                                 hasMethod(hasName("end"))))))) // qualType
+          unless(isConstQualified()),
+          hasDeclaration(cxxRecordDecl(hasMethod(hasName("begin")),
+                                       hasMethod(hasName("end"))))) // qualType
       ));
 
   StatementMatcher SizeCallMatcher = cxxMemberCallExpr(

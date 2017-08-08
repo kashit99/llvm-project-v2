@@ -1515,14 +1515,6 @@ void Clang::AddMIPSTargetArgs(const ArgList &Args,
         CmdArgs.push_back("-membedded-data=0");
       }
       EmbeddedData->claim();
-
-      if (Arg *A = Args.getLastArg(options::OPT_muninit_const_in_rodata,
-                                   options::OPT_mno_uninit_const_in_rodata)) {
-        if (A->getOption().matches(options::OPT_muninit_const_in_rodata)) {
-          CmdArgs.push_back("-muninit-const-in-rodata");
-          A->claim();
-        }
-      }
     }
 
   } else if ((!ABICalls || (!NoABICalls && ABICalls)) && WantGPOpt)
@@ -2607,7 +2599,7 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   bool AsynchronousUnwindTables =
       Args.hasFlag(options::OPT_fasynchronous_unwind_tables,
                    options::OPT_fno_asynchronous_unwind_tables,
-                   (getToolChain().IsUnwindTablesDefault() ||
+                   (getToolChain().IsUnwindTablesDefault(Args) ||
                     getToolChain().getSanitizerArgs().needsUnwindTables()) &&
                        !KernelOrKext);
   if (Args.hasFlag(options::OPT_funwind_tables, options::OPT_fno_unwind_tables,
@@ -5324,7 +5316,13 @@ void OffloadBundler::ConstructJobMultipleOutputs(
   for (unsigned I = 0; I < Outputs.size(); ++I) {
     if (I)
       UB += ',';
-    UB += Outputs[I].getFilename();
+    SmallString<256> OutputFileName(Outputs[I].getFilename());
+    // Change extension of target files for OpenMP offloading
+    // to NVIDIA GPUs.
+    if (DepInfo[I].DependentToolChain->getTriple().isNVPTX() &&
+        JA.isOffloading(Action::OFK_OpenMP))
+      llvm::sys::path::replace_extension(OutputFileName, "cubin");
+    UB += OutputFileName;
   }
   CmdArgs.push_back(TCArgs.MakeArgString(UB));
   CmdArgs.push_back("-unbundle");

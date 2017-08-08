@@ -1851,12 +1851,13 @@ static void emitConvertFuncs(CodeGenTarget &Target, StringRef ClassName,
     for (const auto &MI : Infos) {
       MaxNumOperands = std::max(MaxNumOperands, MI->AsmOperands.size());
     }
-    CvtOS << "  unsigned DefaultsOffset[" << (MaxNumOperands) << "];\n";
+    CvtOS << "  unsigned DefaultsOffset[" << (MaxNumOperands + 1)
+          << "] = { 0 };\n";
     CvtOS << "  assert(OptionalOperandsMask.size() == " << (MaxNumOperands)
           << ");\n";
     CvtOS << "  for (unsigned i = 0, NumDefaults = 0; i < " << (MaxNumOperands)
           << "; ++i) {\n";
-    CvtOS << "    DefaultsOffset[i] = NumDefaults;\n";
+    CvtOS << "    DefaultsOffset[i + 1] = NumDefaults;\n";
     CvtOS << "    NumDefaults += (OptionalOperandsMask[i] ? 1 : 0);\n";
     CvtOS << "  }\n";
   }
@@ -1864,13 +1865,7 @@ static void emitConvertFuncs(CodeGenTarget &Target, StringRef ClassName,
   CvtOS << "  Inst.setOpcode(Opcode);\n";
   CvtOS << "  for (const uint8_t *p = Converter; *p; p+= 2) {\n";
   if (HasOptionalOperands) {
-    // OpIdx has different semantics for Tied operands and the rest of the
-    // operands. For Tied it is the index in the Inst, therefore we use it
-    // directly. For the rest of the operands, we need to account for the
-    // offset.
-    CvtOS << "    OpIdx = *(p + 1);\n";
-    CvtOS << "    OpIdx -= (*p != CVT_Tied) ? DefaultsOffset[*(p + 1) - 1] : "
-             "0;\n";
+    CvtOS << "    OpIdx = *(p + 1) - DefaultsOffset[*(p + 1)];\n";
   } else {
     CvtOS << "    OpIdx = *(p + 1);\n";
   }

@@ -444,6 +444,11 @@ TargetCodeGenInfo::performAddrSpaceCast(CodeGenModule &CGM, llvm::Constant *Src,
   return llvm::ConstantExpr::getPointerCast(Src, DestTy);
 }
 
+llvm::SyncScope::ID
+TargetCodeGenInfo::getLLVMSyncScopeID(SyncScope S, llvm::LLVMContext &C) const {
+  return C.getOrInsertSyncScopeID(""); /* default sync scope */
+}
+
 static bool isEmptyRecord(ASTContext &Context, QualType T, bool AllowArrays);
 
 /// isEmptyField - Return true iff a the field is "empty", that is it
@@ -6656,20 +6661,6 @@ public:
   void setTargetAttributes(const Decl *D, llvm::GlobalValue *GV,
                            CodeGen::CodeGenModule &CGM,
                            ForDefinition_t IsForDefinition) const override {
-
-    if (const VarDecl *VD = dyn_cast_or_null<VarDecl>(D)) {
-      if (CGM.getCodeGenOpts().UInitCstDataInROData &&
-          VD->getType().isConstQualified() && !VD->hasInit()) {
-        llvm::GlobalVariable *GVar = dyn_cast_or_null<llvm::GlobalVariable>(GV);
-        if (GVar && !GVar->hasSection()) {
-          GVar->setLinkage(llvm::GlobalValue::ExternalLinkage);
-          GVar->setSection("rodata");
-        }
-      }
-
-      return;
-    }
-
     const FunctionDecl *FD = dyn_cast_or_null<FunctionDecl>(D);
     if (!FD) return;
     llvm::Function *Fn = cast<llvm::Function>(GV);
@@ -7444,6 +7435,8 @@ public:
   }
   unsigned getGlobalVarAddressSpace(CodeGenModule &CGM,
                                     const VarDecl *D) const override;
+  llvm::SyncScope::ID getLLVMSyncScopeID(SyncScope S,
+                                         llvm::LLVMContext &C) const override;
 };
 }
 
@@ -7551,6 +7544,26 @@ AMDGPUTargetCodeGenInfo::getGlobalVarAddressSpace(CodeGenModule &CGM,
       return ConstAS.getValue();
   }
   return DefaultGlobalAS;
+}
+
+llvm::SyncScope::ID
+AMDGPUTargetCodeGenInfo::getLLVMSyncScopeID(SyncScope S,
+                                            llvm::LLVMContext &C) const {
+  StringRef Name;
+  switch (S) {
+  case SyncScope::OpenCLWorkGroup:
+    Name = "workgroup";
+    break;
+  case SyncScope::OpenCLDevice:
+    Name = "agent";
+    break;
+  case SyncScope::OpenCLAllSVMDevices:
+    Name = "";
+    break;
+  case SyncScope::OpenCLSubGroup:
+    Name = "subgroup";
+  }
+  return C.getOrInsertSyncScopeID(Name);
 }
 
 //===----------------------------------------------------------------------===//

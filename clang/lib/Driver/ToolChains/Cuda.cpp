@@ -291,6 +291,13 @@ void NVPTX::Assembler::ConstructJob(Compilation &C, const JobAction &JA,
   for (const auto& A : Args.getAllArgValues(options::OPT_Xcuda_ptxas))
     CmdArgs.push_back(Args.MakeArgString(A));
 
+  // In OpenMP we need to generate relocatable code.
+  if (JA.isOffloading(Action::OFK_OpenMP) &&
+      Args.hasFlag(options::OPT_fopenmp_relocatable_target,
+                   options::OPT_fnoopenmp_relocatable_target,
+                   /*Default=*/ true))
+    CmdArgs.push_back("-c");
+
   const char *Exec;
   if (Arg *A = Args.getLastArg(options::OPT_ptxas_path_EQ))
     Exec = A->getValue();
@@ -474,7 +481,13 @@ void CudaToolChain::addClangTargetOptions(
   // than LLVM defaults to. Use PTX4.2 which is the PTX version that
   // came with CUDA-7.0.
   CC1Args.push_back("-target-feature");
-  CC1Args.push_back("+ptx42");
+
+  if (DeviceOffloadingKind == Action::OFK_OpenMP)
+    CC1Args.push_back(
+        DriverArgs.getLastArgValue(options::OPT_fopenmp_ptx_EQ,
+                                   "+ptx42").data());
+  else
+    CC1Args.push_back("+ptx42");
 }
 
 void CudaToolChain::AddCudaIncludeArgs(const ArgList &DriverArgs,

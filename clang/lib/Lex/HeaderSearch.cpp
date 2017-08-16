@@ -1108,7 +1108,6 @@ bool HeaderSearch::ShouldEnterIncludeFile(Preprocessor &PP,
 
   // Get information about this file.
   HeaderFileInfo &FileInfo = getFileInfo(File);
-  bool isCompilingModule = ModMap.getLangOpts().isCompilingModule();
 
   // FIXME: this is a workaround for the lack of proper modules-aware support
   // for #import / #pragma once
@@ -1144,7 +1143,7 @@ bool HeaderSearch::ShouldEnterIncludeFile(Preprocessor &PP,
     // headers find in the wild might rely only on #import and do not contain
     // controlling macros, be conservative and only try to enter textual headers
     // if such macro is present.
-    if ((isCompilingModule || !isImport) && !FileInfo.isModuleHeader &&
+    if (!FileInfo.isModuleHeader &&
         FileInfo.getControllingMacro(ExternalLookup))
       TryEnterHdr = true;
     return TryEnterHdr;

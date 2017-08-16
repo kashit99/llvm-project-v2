@@ -76,6 +76,7 @@ static MachineTypes getEmulation(StringRef S) {
       .Case("i386", IMAGE_FILE_MACHINE_I386)
       .Case("i386:x86-64", IMAGE_FILE_MACHINE_AMD64)
       .Case("arm", IMAGE_FILE_MACHINE_ARMNT)
+      .Case("arm64", IMAGE_FILE_MACHINE_ARM64)
       .Default(IMAGE_FILE_MACHINE_UNKNOWN);
 }
 
@@ -154,7 +155,23 @@ int llvm::dlltoolDriverMain(llvm::ArrayRef<const char *> ArgsArr) {
   if (Path.empty())
     Path = getImplibPath(Def->OutputFile);
 
-  if (writeImportLibrary(Def->OutputFile, Path, Def->Exports, Machine))
+  if (Machine == IMAGE_FILE_MACHINE_I386 && Args.getLastArg(OPT_k)) {
+    for (COFFShortExport& E : Def->Exports) {
+      if (E.isWeak() || (!E.Name.empty() && E.Name[0] == '?'))
+        continue;
+      E.SymbolName = E.Name;
+      // Trim off the trailing decoration. Symbols will always have a
+      // starting prefix here (either _ for cdecl/stdcall, @ for fastcall
+      // or ? for C++ functions). (Vectorcall functions also will end up having
+      // a prefix here, even if they shouldn't.)
+      E.Name = E.Name.substr(0, E.Name.find('@', 1));
+      // By making sure E.SymbolName != E.Name for decorated symbols,
+      // writeImportLibrary writes these symbols with the type
+      // IMPORT_NAME_UNDECORATE.
+    }
+  }
+
+  if (writeImportLibrary(Def->OutputFile, Path, Def->Exports, Machine, true))
     return 1;
   return 0;
 }

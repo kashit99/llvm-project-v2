@@ -36,6 +36,7 @@ static bool is32bit(MachineTypes Machine) {
   switch (Machine) {
   default:
     llvm_unreachable("unsupported machine");
+  case IMAGE_FILE_MACHINE_ARM64:
   case IMAGE_FILE_MACHINE_AMD64:
     return false;
   case IMAGE_FILE_MACHINE_ARMNT:
@@ -52,6 +53,8 @@ static uint16_t getImgRelRelocation(MachineTypes Machine) {
     return IMAGE_REL_AMD64_ADDR32NB;
   case IMAGE_FILE_MACHINE_ARMNT:
     return IMAGE_REL_ARM_ADDR32NB;
+  case IMAGE_FILE_MACHINE_ARM64:
+    return IMAGE_REL_ARM64_ADDR32NB;
   case IMAGE_FILE_MACHINE_I386:
     return IMAGE_REL_I386_DIR32NB;
   }
@@ -557,7 +560,7 @@ NewArchiveMember ObjectFactory::createWeakExternal(StringRef Sym,
 
 std::error_code writeImportLibrary(StringRef ImportName, StringRef Path,
                                    ArrayRef<COFFShortExport> Exports,
-                                   MachineTypes Machine) {
+                                   MachineTypes Machine, bool MakeWeakAliases) {
 
   std::vector<NewArchiveMember> Members;
   ObjectFactory OF(llvm::sys::path::filename(ImportName), Machine);
@@ -575,7 +578,7 @@ std::error_code writeImportLibrary(StringRef ImportName, StringRef Path,
     if (E.Private)
       continue;
 
-    if (E.isWeak()) {
+    if (E.isWeak() && MakeWeakAliases) {
       Members.push_back(OF.createWeakExternal(E.Name, E.ExtName, false));
       Members.push_back(OF.createWeakExternal(E.Name, E.ExtName, true));
       continue;
@@ -587,7 +590,7 @@ std::error_code writeImportLibrary(StringRef ImportName, StringRef Path,
     if (E.Constant)
       ImportType = IMPORT_CONST;
 
-    StringRef SymbolName = E.isWeak() ? E.ExtName : E.Name;
+    StringRef SymbolName = E.SymbolName.empty() ? E.Name : E.SymbolName;
     ImportNameType NameType = getNameType(SymbolName, E.Name, Machine);
     Expected<std::string> Name = E.ExtName.empty()
                                      ? SymbolName

@@ -808,7 +808,8 @@ void AMDGPUInstPrinter::printExpTgt(const MCInst *MI, unsigned OpNo,
   }
 }
 
-static bool allOpsDefaultValue(const int* Ops, int NumOps, int Mod) {
+static bool allOpsDefaultValue(const int* Ops, int NumOps, int Mod,
+                               bool HasDstSel) {
   int DefaultValue = (Mod == SISrcMods::OP_SEL_1);
 
   for (int I = 0; I < NumOps; ++I) {
@@ -816,11 +817,16 @@ static bool allOpsDefaultValue(const int* Ops, int NumOps, int Mod) {
       return false;
   }
 
+  if (HasDstSel && (Ops[0] & SISrcMods::DST_OP_SEL) != 0)
+    return false;
+
   return true;
 }
 
-static void printPackedModifier(const MCInst *MI, StringRef Name, unsigned Mod,
-                                raw_ostream &O) {
+void AMDGPUInstPrinter::printPackedModifier(const MCInst *MI,
+                                            StringRef Name,
+                                            unsigned Mod,
+                                            raw_ostream &O) {
   unsigned Opc = MI->getOpcode();
   int NumOps = 0;
   int Ops[3];
@@ -835,7 +841,12 @@ static void printPackedModifier(const MCInst *MI, StringRef Name, unsigned Mod,
     Ops[NumOps++] = MI->getOperand(Idx).getImm();
   }
 
-  if (allOpsDefaultValue(Ops, NumOps, Mod))
+  const bool HasDstSel =
+    NumOps > 0 &&
+    Mod == SISrcMods::OP_SEL_0 &&
+    MII.get(MI->getOpcode()).TSFlags & SIInstrFlags::VOP3_OPSEL;
+
+  if (allOpsDefaultValue(Ops, NumOps, Mod, HasDstSel))
     return;
 
   O << Name;
@@ -844,6 +855,10 @@ static void printPackedModifier(const MCInst *MI, StringRef Name, unsigned Mod,
       O << ',';
 
     O << !!(Ops[I] & Mod);
+  }
+
+  if (HasDstSel) {
+    O << ',' << !!(Ops[0] & SISrcMods::DST_OP_SEL);
   }
 
   O << ']';
@@ -966,6 +981,13 @@ void AMDGPUInstPrinter::printClamp(const MCInst *MI, unsigned OpNo,
   printIfSet(MI, OpNo, O, "_SAT");
 }
 
+void AMDGPUInstPrinter::printHigh(const MCInst *MI, unsigned OpNo,
+                                  const MCSubtargetInfo &STI,
+                                  raw_ostream &O) {
+  if (MI->getOperand(OpNo).getImm())
+    O << " high";
+}
+
 void AMDGPUInstPrinter::printClampSI(const MCInst *MI, unsigned OpNo,
                                      const MCSubtargetInfo &STI,
                                      raw_ostream &O) {
@@ -1048,30 +1070,6 @@ void AMDGPUInstPrinter::printWrite(const MCInst *MI, unsigned OpNo,
   if (Op.getImm() == 0) {
     O << " (MASKED)";
   }
-}
-
-void AMDGPUInstPrinter::printSel(const MCInst *MI, unsigned OpNo,
-                                 raw_ostream &O) {
-  const char * chans = "XYZW";
-  int sel = MI->getOperand(OpNo).getImm();
-
-  int chan = sel & 3;
-  sel >>= 2;
-
-  if (sel >= 512) {
-    sel -= 512;
-    int cb = sel >> 12;
-    sel &= 4095;
-    O << cb << '[' << sel << ']';
-  } else if (sel >= 448) {
-    sel -= 448;
-    O << sel;
-  } else if (sel >= 0){
-    O << sel;
-  }
-
-  if (sel >= 0)
-    O << '.' << chans[chan];
 }
 
 void AMDGPUInstPrinter::printBankSwizzle(const MCInst *MI, unsigned OpNo,

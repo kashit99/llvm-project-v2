@@ -5104,17 +5104,17 @@ SelectionDAGBuilder::visitIntrinsicCall(const CallInst &I, unsigned Intrinsic) {
 
     // Static allocas are handled more efficiently in the variable frame index
     // side table.
-    const auto *AI =
-        dyn_cast<AllocaInst>(Address->stripInBoundsConstantOffsets());
-    if (AI && AI->isStaticAlloca() && FuncInfo.StaticAllocaMap.count(AI))
-      return nullptr;
+    if (const auto *AI =
+            dyn_cast<AllocaInst>(Address->stripInBoundsConstantOffsets()))
+      if (AI->isStaticAlloca() && FuncInfo.StaticAllocaMap.count(AI))
+        return nullptr;
 
     // Byval arguments with frame indices were already handled after argument
     // lowering and before isel.
-    const auto *Arg =
-        dyn_cast<Argument>(Address->stripInBoundsConstantOffsets());
-    if (Arg && FuncInfo.getArgumentFrameIndex(Arg) != INT_MAX)
-      return nullptr;
+    if (const auto *Arg =
+            dyn_cast<Argument>(Address->stripInBoundsConstantOffsets()))
+      if (FuncInfo.getArgumentFrameIndex(Arg) != INT_MAX)
+        return nullptr;
 
     SDValue &N = NodeMap[Address];
     if (!N.getNode() && isa<Argument>(Address))
@@ -6083,7 +6083,7 @@ SelectionDAGBuilder::lowerInvokable(TargetLowering::CallLoweringInfo &CLI,
     if (MF.hasEHFunclets()) {
       assert(CLI.CS);
       WinEHFuncInfo *EHInfo = DAG.getMachineFunction().getWinEHFuncInfo();
-      EHInfo->addIPToStateRange(cast<InvokeInst>(CLI.CS->getInstruction()),
+      EHInfo->addIPToStateRange(cast<InvokeInst>(CLI.CS.getInstruction()),
                                 BeginLabel, EndLabel);
     } else {
       MF.addInvoke(FuncInfo.MBBMap[EHPadBB], BeginLabel, EndLabel);
@@ -6555,10 +6555,10 @@ void SelectionDAGBuilder::visitCall(const CallInst &I) {
 
     // Check for well-known libc/libm calls.  If the function is internal, it
     // can't be a library call.  Don't do the check if marked as nobuiltin for
-    // some reason.
+    // some reason or the call site requires strict floating point semantics.
     LibFunc Func;
-    if (!I.isNoBuiltin() && !F->hasLocalLinkage() && F->hasName() &&
-        LibInfo->getLibFunc(*F, Func) &&
+    if (!I.isNoBuiltin() && !I.isStrictFP() && !F->hasLocalLinkage() &&
+        F->hasName() && LibInfo->getLibFunc(*F, Func) &&
         LibInfo->hasOptimizedCodeGen(Func)) {
       switch (Func) {
       default: break;
@@ -8150,8 +8150,7 @@ TargetLowering::LowerCallTo(TargetLowering::CallLoweringInfo &CLI) const {
       }
 
       getCopyToParts(CLI.DAG, CLI.DL, Op, &Parts[0], NumParts, PartVT,
-                     CLI.CS ? CLI.CS->getInstruction() : nullptr, ExtendKind,
-                     true);
+                     CLI.CS.getInstruction(), ExtendKind, true);
 
       for (unsigned j = 0; j != NumParts; ++j) {
         // if it isn't first piece, alignment must be 1

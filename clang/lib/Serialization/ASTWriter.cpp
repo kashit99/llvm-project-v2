@@ -2719,7 +2719,6 @@ void ASTWriter::WriteSubmodules(Module *WritingModule) {
   Abbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 1)); // IsExplicit
   Abbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 1)); // IsSystem
   Abbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 1)); // IsExternC
-  Abbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 1)); // IsSwiftInferIAM...
   Abbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 1)); // InferSubmodules...
   Abbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 1)); // InferExplicit...
   Abbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 1)); // InferExportWild...
@@ -2820,7 +2819,6 @@ void ASTWriter::WriteSubmodules(Module *WritingModule) {
                                          Mod->IsExplicit,
                                          Mod->IsSystem,
                                          Mod->IsExternC,
-                                         Mod->IsSwiftInferImportAsMember,
                                          Mod->InferSubmodules,
                                          Mod->InferExplicitSubmodules,
                                          Mod->InferExportWildcard,
@@ -4297,6 +4295,7 @@ void ASTWriter::WritePackPragmaOptions(Sema &SemaRef) {
   for (const auto &StackEntry : SemaRef.PackStack.Stack) {
     Record.push_back(StackEntry.Value);
     AddSourceLocation(StackEntry.PragmaLocation, Record);
+    AddSourceLocation(StackEntry.PragmaPushLocation, Record);
     AddString(StackEntry.StackSlotLabel, Record);
   }
   Stream.EmitRecord(PACK_PRAGMA_OPTIONS, Record);
@@ -5876,9 +5875,11 @@ void ASTRecordWriter::AddCXXDefinitionData(const CXXRecordDecl *D) {
   Record->push_back(Data.HasUninitializedFields);
   Record->push_back(Data.HasInheritedConstructor);
   Record->push_back(Data.HasInheritedAssignment);
+  Record->push_back(Data.NeedOverloadResolutionForCopyConstructor);
   Record->push_back(Data.NeedOverloadResolutionForMoveConstructor);
   Record->push_back(Data.NeedOverloadResolutionForMoveAssignment);
   Record->push_back(Data.NeedOverloadResolutionForDestructor);
+  Record->push_back(Data.DefaultedCopyConstructorIsDeleted);
   Record->push_back(Data.DefaultedMoveConstructorIsDeleted);
   Record->push_back(Data.DefaultedMoveAssignmentIsDeleted);
   Record->push_back(Data.DefaultedDestructorIsDeleted);
@@ -5887,6 +5888,7 @@ void ASTRecordWriter::AddCXXDefinitionData(const CXXRecordDecl *D) {
   Record->push_back(Data.HasIrrelevantDestructor);
   Record->push_back(Data.HasConstexprNonCopyMoveConstructor);
   Record->push_back(Data.HasDefaultedDefaultConstructor);
+  Record->push_back(Data.CanPassInRegisters);
   Record->push_back(Data.DefaultedDefaultConstructorIsConstexpr);
   Record->push_back(Data.HasConstexprDefaultConstructor);
   Record->push_back(Data.HasNonLiteralTypeFieldsOrBases);

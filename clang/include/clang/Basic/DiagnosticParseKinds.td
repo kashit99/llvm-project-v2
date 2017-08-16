@@ -752,13 +752,13 @@ def err_alias_declaration_pack_expansion : Error<
 def ext_multi_using_declaration : ExtWarn<
   "use of multiple declarators in a single using declaration is "
   "a C++17 extension">, InGroup<CXX17>;
-def warn_cxx1z_compat_multi_using_declaration : Warning<
+def warn_cxx17_compat_multi_using_declaration : Warning<
   "use of multiple declarators in a single using declaration is "
   "incompatible with C++ standards before C++17">,
   InGroup<CXXPre1zCompat>, DefaultIgnore;
 def ext_using_declaration_pack : ExtWarn<
   "pack expansion of using declaration is a C++17 extension">, InGroup<CXX17>;
-def warn_cxx1z_compat_using_declaration_pack : Warning<
+def warn_cxx17_compat_using_declaration_pack : Warning<
   "pack expansion using declaration is incompatible with C++ standards "
   "before C++17">, InGroup<CXXPre1zCompat>, DefaultIgnore;
 
@@ -819,7 +819,7 @@ def err_expected_star_this_capture : Error<
 def warn_cxx14_compat_constexpr_on_lambda : Warning<
   "constexpr on lambda expressions is incompatible with C++ standards before C++17">,
   InGroup<CXXPre1zCompat>, DefaultIgnore;
-def ext_constexpr_on_lambda_cxx1z : ExtWarn<
+def ext_constexpr_on_lambda_cxx17 : ExtWarn<
   "'constexpr' on lambda expressions is a C++17 extension">, InGroup<CXX17>;
 
 // Availability attribute
@@ -893,8 +893,6 @@ def err_pragma_expected_clang_section_name : Error<
   "expected one of [bss|data|rodata|text] section kind in '#pragma %0'">;
 def err_pragma_clang_section_expected_equal : Error<
   "expected '=' following '#pragma clang section %select{invalid|bss|data|rodata|text}0'">;
-def err_pragma_clang_section_expected_name_or_clear : Error<
-  "expected section name or '\"\"' following '#pragma clang section %select{invalid|bss|data|rodata|text}0'">;
 def warn_pragma_expected_section_name : Warning<
   "expected a string literal for the section name in '#pragma %0' - ignored">,
   InGroup<IgnoredPragmas>;
@@ -1105,9 +1103,6 @@ def err_pragma_fp_scope : Error<
 
 def err_pragma_invalid_keyword : Error<
   "invalid argument; expected 'enable'%select{|, 'full'}0%select{|, 'assume_safety'}1 or 'disable'">;
-
-// API notes.
-def err_type_unparsed : Error<"unparsed tokens following type">;
 
 // Pragma unroll support.
 def warn_pragma_unroll_cuda_value_in_parens : Warning<

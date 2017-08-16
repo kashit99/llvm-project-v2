@@ -528,11 +528,8 @@ template <typename T> class ArrayRef;
   ///  F | T | T
   /// (A)
   Optional<bool> isImpliedCondition(const Value *LHS, const Value *RHS,
-                                    const DataLayout &DL,
-                                    bool LHSIsFalse = false, unsigned Depth = 0,
-                                    AssumptionCache *AC = nullptr,
-                                    const Instruction *CxtI = nullptr,
-                                    const DominatorTree *DT = nullptr);
+                                    const DataLayout &DL, bool LHSIsTrue = true,
+                                    unsigned Depth = 0);
 } // end namespace llvm
 
 #endif

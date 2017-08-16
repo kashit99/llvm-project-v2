@@ -2281,6 +2281,25 @@ void OMPClauseEnqueue::VisitOMPTaskReductionClause(
     Visitor->AddStmt(E);
   }
 }
+void OMPClauseEnqueue::VisitOMPInReductionClause(
+    const OMPInReductionClause *C) {
+  VisitOMPClauseList(C);
+  VisitOMPClauseWithPostUpdate(C);
+  for (auto *E : C->privates()) {
+    Visitor->AddStmt(E);
+  }
+  for (auto *E : C->lhs_exprs()) {
+    Visitor->AddStmt(E);
+  }
+  for (auto *E : C->rhs_exprs()) {
+    Visitor->AddStmt(E);
+  }
+  for (auto *E : C->reduction_ops()) {
+    Visitor->AddStmt(E);
+  }
+  for (auto *E : C->taskgroup_descriptors())
+    Visitor->AddStmt(E);
+}
 void OMPClauseEnqueue::VisitOMPLinearClause(const OMPLinearClause *C) {
   VisitOMPClauseList(C);
   VisitOMPClauseWithPostUpdate(C);
@@ -2738,6 +2757,8 @@ void EnqueueVisitor::VisitOMPTaskwaitDirective(const OMPTaskwaitDirective *D) {
 void EnqueueVisitor::VisitOMPTaskgroupDirective(
     const OMPTaskgroupDirective *D) {
   VisitOMPExecutableDirective(D);
+  if (const Expr *E = D->getReductionRef())
+    VisitStmt(E);
 }
 
 void EnqueueVisitor::VisitOMPFlushDirective(const OMPFlushDirective *D) {
@@ -7282,7 +7303,8 @@ static void getCursorPlatformAvailabilityForDecl(
 
   std::sort(AvailabilityAttrs.begin(), AvailabilityAttrs.end(),
             [](AvailabilityAttr *LHS, AvailabilityAttr *RHS) {
-              return LHS->getPlatform() > RHS->getPlatform();
+              return LHS->getPlatform()->getName() <
+                     RHS->getPlatform()->getName();
             });
   ASTContext &Ctx = D->getASTContext();
   auto It = std::unique(

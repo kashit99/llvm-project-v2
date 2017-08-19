@@ -40,7 +40,7 @@ struct Node {
   int Depth, Height, Shift = 0;
   ast_type_traits::DynTypedNode ASTNode;
   SmallVector<NodeId, 4> Children;
-  ChangeKind ChangeKind = None;
+  ChangeKind Change = None;
 
   ast_type_traits::ASTNodeKind getType() const;
   StringRef getTypeLabel() const;

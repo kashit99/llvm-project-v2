@@ -90,7 +90,7 @@ public:
   /// Matches nodes one-by-one based on their similarity.
   void computeMapping();
 
-  // Compute ChangeKind for each node based on similarity.
+  // Compute Change for each node based on similarity.
   void computeChangeKinds(Mapping &M);
 
   NodeId getMapped(const std::unique_ptr<SyntaxTree::Impl> &Tree,
@@ -871,13 +871,13 @@ void ASTDiff::Impl::computeMapping() {
 void ASTDiff::Impl::computeChangeKinds(Mapping &M) {
   for (NodeId Id1 : T1) {
     if (!M.hasSrc(Id1)) {
-      T1.getMutableNode(Id1).ChangeKind = Delete;
+      T1.getMutableNode(Id1).Change = Delete;
       T1.getMutableNode(Id1).Shift -= 1;
     }
   }
   for (NodeId Id2 : T2) {
     if (!M.hasDst(Id2)) {
-      T2.getMutableNode(Id2).ChangeKind = Insert;
+      T2.getMutableNode(Id2).Change = Insert;
       T2.getMutableNode(Id2).Shift -= 1;
     }
   }
@@ -903,11 +903,10 @@ void ASTDiff::Impl::computeChangeKinds(Mapping &M) {
     if (!haveSameParents(M, Id1, Id2) ||
         T1.findPositionInParent(Id1, true) !=
             T2.findPositionInParent(Id2, true)) {
-      N1.ChangeKind = N2.ChangeKind = Move;
+      N1.Change = N2.Change = Move;
     }
     if (T1.getNodeValue(Id1) != T2.getNodeValue(Id2)) {
-      N1.ChangeKind = N2.ChangeKind =
-          (N1.ChangeKind == Move ? UpdateMove : Update);
+      N1.Change = N2.Change = (N1.Change == Move ? UpdateMove : Update);
     }
   }
 }

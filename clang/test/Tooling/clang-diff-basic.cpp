@@ -11,18 +11,18 @@ void foo() {
 }
 }
 
-// CHECK: Match DeclRefExpr: foo{{.*}} to DeclRefExpr: inner::foo
+// CHECK: Match DeclRefExpr: src::foo{{.*}} to DeclRefExpr: dst::inner::foo
 void main() { inner::foo(); }
 
 // CHECK: Match StringLiteral: foo{{.*}} to StringLiteral: foo
 const char *b = "f" "o" "o";
 
 // unsigned is canonicalized to unsigned int
-// CHECK: Match TypedefDecl: nat;unsigned int;{{.*}} to TypedefDecl: nat;unsigned int;
+// CHECK: Match TypedefDecl: src::nat;unsigned int;{{.*}} to TypedefDecl: dst::nat;unsigned int;
 typedef unsigned nat;
 
-// CHECK: Match VarDecl: p(int){{.*}} to VarDecl: prod(double)
-// CHECK: Update VarDecl: p(int){{.*}} to prod(double)
+// CHECK: Match VarDecl: src::p(int){{.*}} to VarDecl: dst::prod(double)
+// CHECK: Update VarDecl: src::p(int){{.*}} to dst::prod(double)
 // CHECK: Match BinaryOperator: *{{.*}} to BinaryOperator: *
 double prod = 1 * 2 * 10;
 // CHECK: Update DeclRefExpr
@@ -42,10 +42,16 @@ class X {
 };
 }
 
-// CHECK: Move DeclStmt{{.*}} into CompoundStmt
+// CHECK: Move CompoundStmt{{.*}} into CompoundStmt
 void m() { { int x = 0 + 0 + 0; } }
 // CHECK: Update and Move IntegerLiteral: 7{{.*}} into BinaryOperator: +({{.*}}) at 1
 int um = 1 + 7;
+
+namespace {
+// match with parents of different type
+// CHECK: Match FunctionDecl: f1{{.*}} to FunctionDecl: (anonymous namespace)::f1
+void f1() {{ (void) __func__;;; }}
+}
 
 // CHECK: Delete AccessSpecDecl: public
 // CHECK: Delete CXXMethodDecl

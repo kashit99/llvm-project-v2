@@ -14194,9 +14194,12 @@ SDValue DAGCombiner::createBuildVecShuffle(const SDLoc &DL, SDNode *N,
   unsigned NumElems = VT.getVectorNumElements();
   unsigned ShuffleNumElems = NumElems;
 
-  if (!(VecIn2 && (VecIn1.getOpcode() == ISD::EXTRACT_SUBVECTOR) &&
-        (VecIn2.getOpcode() == ISD::EXTRACT_SUBVECTOR) &&
-        (VecIn1.getOperand(0) == VecIn2.getOperand(0))))
+  // In case both the input vectors are extracted from same base
+  // vector we do not need extra addend (Vec2Offset) while
+  // computing shuffle mask.
+  if (!VecIn2 || !(VecIn1.getOpcode() == ISD::EXTRACT_SUBVECTOR) ||
+      !(VecIn2.getOpcode() == ISD::EXTRACT_SUBVECTOR) ||
+      !(VecIn1.getOperand(0) == VecIn2.getOperand(0)))
     Vec2Offset = InVT1.getVectorNumElements();
 
   // We can't generate a shuffle node with mismatched input and output types.
@@ -14384,15 +14387,16 @@ SDValue DAGCombiner::reduceBuildVecToShuffle(SDNode *N) {
         continue;
       unsigned Index = N->getOperand(i).getConstantOperandVal(1);
       IndexVec[i] = Index;
-      MaxIndex = std::max(MaxIndex,Index);
+      MaxIndex = std::max(MaxIndex, Index);
     }
 
     NearestPow2 = PowerOf2Ceil(MaxIndex);
-    if (NearestPow2 && ((NumElems * 2) < NearestPow2)) {
+    if (InVT.isSimple() && (NearestPow2 > 2) &&
+        ((NumElems * 2) < NearestPow2)) {
       unsigned SplitSize = NearestPow2 / 2;
-      if (SplitSize > 1) {
-        EVT SplitVT = EVT::getVectorVT(*DAG.getContext(),
-                                       InVT.getVectorElementType(), SplitSize);
+      EVT SplitVT = EVT::getVectorVT(*DAG.getContext(),
+                                     InVT.getVectorElementType(), SplitSize);
+      if (TLI.isTypeLegal(SplitVT)) {
         SDValue VecIn2 = DAG.getNode(ISD::EXTRACT_SUBVECTOR, DL, SplitVT, Vec,
                                      DAG.getConstant(SplitSize, DL, IdxTy));
         SDValue VecIn1 = DAG.getNode(ISD::EXTRACT_SUBVECTOR, DL, SplitVT, Vec,
@@ -14401,8 +14405,11 @@ SDValue DAGCombiner::reduceBuildVecToShuffle(SDNode *N) {
         VecIn.push_back(VecIn1);
         VecIn.push_back(VecIn2);
 
-        for (unsigned i = 0; i < NumElems; i++)
+        for (unsigned i = 0; i < NumElems; i++) {
+          if (VectorMask[i] <= 0)
+            continue;
           VectorMask[i] = (IndexVec[i] < SplitSize) ? 1 : 2;
+        }
       }
     }
   }

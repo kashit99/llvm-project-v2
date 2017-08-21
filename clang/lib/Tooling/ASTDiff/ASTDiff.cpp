@@ -34,48 +34,23 @@ public:
   Mapping() = default;
   Mapping(Mapping &&Other) = default;
   Mapping &operator=(Mapping &&Other) = default;
-  Mapping(int Size1, int Size2) {
-    // Maximum possible size after patching one tree.
-    int Size = Size1 + Size2;
-    SrcToDst = llvm::make_unique<SmallVector<NodeId, 2>[]>(Size);
-    DstToSrc = llvm::make_unique<SmallVector<NodeId, 2>[]>(Size);
+
+  Mapping(size_t Size) {
+    SrcToDst = llvm::make_unique<NodeId[]>(Size);
+    DstToSrc = llvm::make_unique<NodeId[]>(Size);
   }
 
   void link(NodeId Src, NodeId Dst) {
-    SrcToDst[Src].push_back(Dst);
-    DstToSrc[Dst].push_back(Src);
+    SrcToDst[Src] = Dst, DstToSrc[Dst] = Src;
   }
 
-  NodeId getDst(NodeId Src) const {
-    if (hasSrc(Src))
-      return SrcToDst[Src][0];
-    return NodeId();
-  }
-  NodeId getSrc(NodeId Dst) const {
-    if (hasDst(Dst))
-      return DstToSrc[Dst][0];
-    return NodeId();
-  }
-  const SmallVector<NodeId, 2> &getAllDsts(NodeId Src) const {
-    return SrcToDst[Src];
-  }
-  const SmallVector<NodeId, 2> &getAllSrcs(NodeId Dst) const {
-    return DstToSrc[Dst];
-  }
-  bool hasSrc(NodeId Src) const { return !SrcToDst[Src].empty(); }
-  bool hasDst(NodeId Dst) const { return !DstToSrc[Dst].empty(); }
-  bool hasSrcDst(NodeId Src, NodeId Dst) const {
-    for (NodeId DstId : SrcToDst[Src])
-      if (DstId == Dst)
-        return true;
-    for (NodeId SrcId : DstToSrc[Dst])
-      if (SrcId == Src)
-        return true;
-    return false;
-  }
+  NodeId getDst(NodeId Src) const { return SrcToDst[Src]; }
+  NodeId getSrc(NodeId Dst) const { return DstToSrc[Dst]; }
+  bool hasSrc(NodeId Src) const { return getDst(Src).isValid(); }
+  bool hasDst(NodeId Dst) const { return getSrc(Dst).isValid(); }
 
 private:
-  std::unique_ptr<SmallVector<NodeId, 2>[]> SrcToDst, DstToSrc;
+  std::unique_ptr<NodeId[]> SrcToDst, DstToSrc;
 };
 } // end anonymous namespace
 
@@ -105,8 +80,6 @@ private:
   // Returns true if the two subtrees are identical.
   bool identical(NodeId Id1, NodeId Id2) const;
 
-  bool canBeAddedToMapping(const Mapping &M, NodeId Id1, NodeId Id2) const;
-
   // Returns false if the nodes must not be mached.
   bool isMatchingPossible(NodeId Id1, NodeId Id2) const;
 
@@ -119,7 +92,7 @@ private:
 
   // Computes the ratio of common descendants between the two nodes.
   // Descendants are only considered to be equal when they are mapped in M.
-  double getSimilarity(const Mapping &M, NodeId Id1, NodeId Id2) const;
+  double getJaccardSimilarity(const Mapping &M, NodeId Id1, NodeId Id2) const;
 
   // Returns the node that has the highest degree of similarity.
   NodeId findCandidate(const Mapping &M, NodeId Id1) const;
@@ -176,6 +149,8 @@ public:
 
   std::string getNodeValue(NodeId Id) const;
   std::string getNodeValue(const Node &Node) const;
+  std::string getDeclValue(const Decl *D) const;
+  std::string getStmtValue(const Stmt *S) const;
 
 private:
   /// Nodes in preorder.
@@ -185,12 +160,23 @@ private:
   void setLeftMostDescendants();
 };
 
+static bool isSpecializedNodeExcluded(const Decl *D) { return D->isImplicit(); }
+static bool isSpecializedNodeExcluded(const Stmt *S) { return false; }
+
 template <class T>
 static bool isNodeExcluded(const SourceManager &SrcMgr, T *N) {
   if (!N)
     return true;
   SourceLocation SLoc = N->getLocStart();
-  return SLoc.isValid() && SrcMgr.isInSystemHeader(SLoc);
+  if (SLoc.isValid()) {
+    // Ignore everything from other files.
+    if (!SrcMgr.isInMainFile(SLoc))
+      return true;
+    // Ignore macros.
+    if (SLoc != SrcMgr.getSpellingLoc(SLoc))
+      return true;
+  }
+  return isSpecializedNodeExcluded(N);
 }
 
 namespace {
@@ -207,6 +193,8 @@ struct NodeCountVisitor : public RecursiveASTVisitor<NodeCountVisitor> {
     return true;
   }
   bool TraverseStmt(Stmt *S) {
+    if (S)
+      S = S->IgnoreImplicit();
     if (isNodeExcluded(Tree.AST.getSourceManager(), S))
       return true;
     ++Count;
@@ -269,6 +257,8 @@ struct PreorderVisitor : public RecursiveASTVisitor<PreorderVisitor> {
     return true;
   }
   bool TraverseStmt(Stmt *S) {
+    if (S)
+      S = S->IgnoreImplicit();
     if (isNodeExcluded(Tree.AST.getSourceManager(), S))
       return true;
     auto SavedState = PreTraverse(S);
@@ -279,9 +269,6 @@ struct PreorderVisitor : public RecursiveASTVisitor<PreorderVisitor> {
   bool TraverseType(QualType T) { return true; }
 };
 } // end anonymous namespace
-
-SyntaxTree::Impl::Impl(SyntaxTree *Parent, const ASTContext &AST)
-    : Impl(Parent, AST.getTranslationUnitDecl(), AST) {}
 
 SyntaxTree::Impl::Impl(SyntaxTree *Parent, Decl *N, const ASTContext &AST)
     : Parent(Parent), AST(AST) {
@@ -384,49 +371,82 @@ std::string SyntaxTree::Impl::getNodeValue(NodeId Id) const {
 
 std::string SyntaxTree::Impl::getNodeValue(const Node &N) const {
   const DynTypedNode &DTN = N.ASTNode;
-  if (auto *X = DTN.get<BinaryOperator>())
-    return X->getOpcodeStr();
-  if (auto *X = DTN.get<AccessSpecDecl>()) {
-    CharSourceRange Range(X->getSourceRange(), false);
+  if (auto *S = DTN.get<Stmt>())
+    return getStmtValue(S);
+  if (auto *D = DTN.get<Decl>())
+    return getDeclValue(D);
+  llvm_unreachable("Fatal: unhandled AST node.\n");
+}
+
+std::string SyntaxTree::Impl::getDeclValue(const Decl *D) const {
+  std::string Value;
+  PrintingPolicy TypePP(AST.getLangOpts());
+  TypePP.AnonymousTagLocations = false;
+
+  if (auto *V = dyn_cast<ValueDecl>(D)) {
+    Value += V->getQualifiedNameAsString() + "(" +
+             V->getType().getAsString(TypePP) + ")";
+    if (auto *C = dyn_cast<CXXConstructorDecl>(D)) {
+      for (auto *Init : C->inits()) {
+        if (!Init->isWritten())
+          continue;
+        if (Init->isBaseInitializer()) {
+          Value += Init->getBaseClass()->getCanonicalTypeInternal().getAsString(
+              TypePP);
+        } else if (Init->isDelegatingInitializer()) {
+          Value += C->getNameAsString();
+        } else {
+          assert(Init->isAnyMemberInitializer());
+          Value += Init->getMember()->getQualifiedNameAsString();
+        }
+        Value += ",";
+      }
+    }
+    return Value;
+  }
+  if (auto *N = dyn_cast<NamedDecl>(D))
+    Value += N->getQualifiedNameAsString() + ";";
+  if (auto *T = dyn_cast<TypedefNameDecl>(D))
+    return Value + T->getUnderlyingType().getAsString(TypePP) + ";";
+  if (auto *T = dyn_cast<TypeDecl>(D))
+    if (T->getTypeForDecl())
+      Value +=
+          T->getTypeForDecl()->getCanonicalTypeInternal().getAsString(TypePP) +
+          ";";
+  if (auto *U = dyn_cast<UsingDirectiveDecl>(D))
+    return U->getNominatedNamespace()->getName();
+  if (auto *A = dyn_cast<AccessSpecDecl>(D)) {
+    CharSourceRange Range(A->getSourceRange(), false);
     return Lexer::getSourceText(Range, AST.getSourceManager(),
                                 AST.getLangOpts());
   }
-  if (auto *X = DTN.get<IntegerLiteral>()) {
+  return Value;
+}
+
+std::string SyntaxTree::Impl::getStmtValue(const Stmt *S) const {
+  if (auto *U = dyn_cast<UnaryOperator>(S))
+    return UnaryOperator::getOpcodeStr(U->getOpcode());
+  if (auto *B = dyn_cast<BinaryOperator>(S))
+    return B->getOpcodeStr();
+  if (auto *M = dyn_cast<MemberExpr>(S))
+    return M->getMemberDecl()->getQualifiedNameAsString();
+  if (auto *I = dyn_cast<IntegerLiteral>(S)) {
     SmallString<256> Str;
-    X->getValue().toString(Str, /*Radix=*/10, /*Signed=*/false);
+    I->getValue().toString(Str, /*Radix=*/10, /*Signed=*/false);
     return Str.str();
   }
-  if (auto *X = DTN.get<StringLiteral>())
-    return X->getString();
-  if (auto *X = DTN.get<ValueDecl>())
-    return X->getNameAsString() + "(" + X->getType().getAsString() + ")";
-  if (DTN.get<DeclStmt>() || DTN.get<TranslationUnitDecl>())
-    return "";
-  std::string Value;
-  if (auto *X = DTN.get<DeclRefExpr>()) {
-    if (X->hasQualifier()) {
-      llvm::raw_string_ostream OS(Value);
-      PrintingPolicy PP(AST.getLangOpts());
-      X->getQualifier()->print(OS, PP);
-    }
-    Value += X->getDecl()->getNameAsString();
-    return Value;
+  if (auto *F = dyn_cast<FloatingLiteral>(S)) {
+    SmallString<256> Str;
+    F->getValue().toString(Str);
+    return Str.str();
   }
-  if (auto *X = DTN.get<NamedDecl>())
-    Value += X->getNameAsString() + ";";
-  if (auto *X = DTN.get<TypedefNameDecl>())
-    return Value + X->getUnderlyingType().getAsString() + ";";
-  if (DTN.get<NamespaceDecl>())
-    return Value;
-  if (auto *X = DTN.get<TypeDecl>())
-    if (X->getTypeForDecl())
-      Value +=
-          X->getTypeForDecl()->getCanonicalTypeInternal().getAsString() + ";";
-  if (DTN.get<Decl>())
-    return Value;
-  if (DTN.get<Stmt>())
-    return "";
-  llvm_unreachable("Fatal: unhandled AST node.\n");
+  if (auto *D = dyn_cast<DeclRefExpr>(S))
+    return D->getDecl()->getQualifiedNameAsString();
+  if (auto *String = dyn_cast<StringLiteral>(S))
+    return String->getString();
+  if (auto *B = dyn_cast<CXXBoolLiteralExpr>(S))
+    return B->getValue() ? "true" : "false";
+  return "";
 }
 
 /// Identifies a node in a subtree by its postorder offset, starting at 1.
@@ -649,6 +669,22 @@ ast_type_traits::ASTNodeKind Node::getType() const {
 
 StringRef Node::getTypeLabel() const { return getType().asStringRef(); }
 
+llvm::Optional<std::string> Node::getQualifiedIdentifier() const {
+  if (auto *ND = ASTNode.get<NamedDecl>()) {
+    if (ND->getDeclName().isIdentifier())
+      return ND->getQualifiedNameAsString();
+  }
+  return llvm::None;
+}
+
+llvm::Optional<StringRef> Node::getIdentifier() const {
+  if (auto *ND = ASTNode.get<NamedDecl>()) {
+    if (ND->getDeclName().isIdentifier())
+      return ND->getName();
+  }
+  return llvm::None;
+}
+
 namespace {
 // Compares nodes by their depth.
 struct HeightLess {
@@ -712,23 +748,6 @@ bool ASTDiff::Impl::identical(NodeId Id1, NodeId Id2) const {
   return true;
 }
 
-bool ASTDiff::Impl::canBeAddedToMapping(const Mapping &M, NodeId Id1,
-                                        NodeId Id2) const {
-  assert(isMatchingPossible(Id1, Id2) &&
-         "Matching must be possible in the first place.");
-  if (M.hasSrcDst(Id1, Id2))
-    return false;
-  if (Options.EnableMatchingWithUnmatchableParents)
-    return true;
-  const Node &N1 = T1.getNode(Id1);
-  const Node &N2 = T2.getNode(Id2);
-  NodeId P1 = N1.Parent;
-  NodeId P2 = N2.Parent;
-  // Only allow matching if parents can be matched.
-  return (P1.isInvalid() && P2.isInvalid()) ||
-         (P1.isValid() && P2.isValid() && isMatchingPossible(P1, P2));
-}
-
 bool ASTDiff::Impl::isMatchingPossible(NodeId Id1, NodeId Id2) const {
   return Options.isMatchingAllowed(T1.getNode(Id1), T2.getNode(Id2));
 }
@@ -743,29 +762,36 @@ bool ASTDiff::Impl::haveSameParents(const Mapping &M, NodeId Id1,
 
 void ASTDiff::Impl::addOptimalMapping(Mapping &M, NodeId Id1,
                                       NodeId Id2) const {
-  if (std::max(T1.getNumberOfDescendants(Id1),
-               T2.getNumberOfDescendants(Id2)) >= Options.MaxSize)
+  if (std::max(T1.getNumberOfDescendants(Id1), T2.getNumberOfDescendants(Id2)) >
+      Options.MaxSize)
     return;
   ZhangShashaMatcher Matcher(*this, T1, T2, Id1, Id2);
   std::vector<std::pair<NodeId, NodeId>> R = Matcher.getMatchingNodes();
   for (const auto Tuple : R) {
     NodeId Src = Tuple.first;
     NodeId Dst = Tuple.second;
-    if (canBeAddedToMapping(M, Src, Dst))
+    if (!M.hasSrc(Src) && !M.hasDst(Dst))
       M.link(Src, Dst);
   }
 }
 
-double ASTDiff::Impl::getSimilarity(const Mapping &M, NodeId Id1,
-                                    NodeId Id2) const {
-  if (Id1.isInvalid() || Id2.isInvalid())
-    return 0.0;
+double ASTDiff::Impl::getJaccardSimilarity(const Mapping &M, NodeId Id1,
+                                           NodeId Id2) const {
   int CommonDescendants = 0;
   const Node &N1 = T1.getNode(Id1);
-  for (NodeId Id = Id1 + 1; Id <= N1.RightMostDescendant; ++Id)
-    CommonDescendants += int(T2.isInSubtree(M.getDst(Id), Id2));
-  return 2.0 * CommonDescendants /
-         (T1.getNumberOfDescendants(Id1) + T2.getNumberOfDescendants(Id2));
+  // Count the common descendants, excluding the subtree root.
+  for (NodeId Src = Id1 + 1; Src <= N1.RightMostDescendant; ++Src) {
+    NodeId Dst = M.getDst(Src);
+    CommonDescendants += int(Dst.isValid() && T2.isInSubtree(Dst, Id2));
+  }
+  // We need to subtract 1 to get the number of descendants excluding the root.
+  double Denominator = T1.getNumberOfDescendants(Id1) - 1 +
+                       T2.getNumberOfDescendants(Id2) - 1 - CommonDescendants;
+  // CommonDescendants is less than the size of one subtree.
+  assert(Denominator >= 0 && "Expected non-negative denominator.");
+  if (Denominator == 0)
+    return 0;
+  return CommonDescendants / Denominator;
 }
 
 NodeId ASTDiff::Impl::findCandidate(const Mapping &M, NodeId Id1) const {
@@ -776,7 +802,7 @@ NodeId ASTDiff::Impl::findCandidate(const Mapping &M, NodeId Id1) const {
       continue;
     if (M.hasDst(Id2))
       continue;
-    double Similarity = getSimilarity(M, Id1, Id2);
+    double Similarity = getJaccardSimilarity(M, Id1, Id2);
     if (Similarity >= Options.MinSimilarity && Similarity > HighestSimilarity) {
       HighestSimilarity = Similarity;
       Candidate = Id2;
@@ -796,15 +822,15 @@ void ASTDiff::Impl::matchBottomUp(Mapping &M) const {
       }
       break;
     }
-    const Node &N1 = T1.getNode(Id1);
     bool Matched = M.hasSrc(Id1);
+    const Node &N1 = T1.getNode(Id1);
     bool MatchedChildren =
         std::any_of(N1.Children.begin(), N1.Children.end(),
                     [&](NodeId Child) { return M.hasSrc(Child); });
     if (Matched || !MatchedChildren)
       continue;
     NodeId Id2 = findCandidate(M, Id1);
-    if (Id2.isValid() && canBeAddedToMapping(M, Id1, Id2)) {
+    if (Id2.isValid()) {
       M.link(Id1, Id2);
       addOptimalMapping(M, Id1, Id2);
     }
@@ -815,7 +841,7 @@ Mapping ASTDiff::Impl::matchTopDown() const {
   PriorityList L1(T1);
   PriorityList L2(T2);
 
-  Mapping M(T1.getSize(), T2.getSize());
+  Mapping M(T1.getSize() + T2.getSize());
 
   L1.push(T1.getRootId());
   L2.push(T2.getRootId());
@@ -838,7 +864,7 @@ Mapping ASTDiff::Impl::matchTopDown() const {
     H2 = L2.pop();
     for (NodeId Id1 : H1) {
       for (NodeId Id2 : H2) {
-        if (identical(Id1, Id2) && canBeAddedToMapping(M, Id1, Id2)) {
+        if (identical(Id1, Id2) && !M.hasSrc(Id1) && !M.hasDst(Id2)) {
           for (int I = 0, E = T1.getNumberOfDescendants(Id1); I < E; ++I)
             M.link(Id1 + I, Id2 + I);
         }
@@ -865,6 +891,8 @@ ASTDiff::Impl::Impl(SyntaxTree::Impl &T1, SyntaxTree::Impl &T2,
 
 void ASTDiff::Impl::computeMapping() {
   TheMapping = matchTopDown();
+  if (Options.StopAfterTopDown)
+    return;
   matchBottomUp(TheMapping);
 }
 

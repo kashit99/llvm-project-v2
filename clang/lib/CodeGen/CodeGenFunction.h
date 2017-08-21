@@ -1117,7 +1117,7 @@ private:
         auto IP = CGF.Builder.saveAndClearIP();
         CGF.EmitBlock(Stack.back().ExitBlock.getBlock());
         CodeGen(CGF);
-        CGF.EmitBranch(Stack.back().ContBlock.getBlock());
+        CGF.EmitBranchThroughCleanup(Stack.back().ContBlock);
         CGF.Builder.restoreIP(IP);
         Stack.back().HasBeenEmitted = true;
       }
@@ -1643,9 +1643,10 @@ public:
 
   void EmitForwardingCallToLambda(const CXXMethodDecl *LambdaCallOperator,
                                   CallArgList &CallArgs);
+  void EmitLambdaToBlockPointerBody(FunctionArgList &Args);
   void EmitLambdaBlockInvokeBody();
   void EmitLambdaDelegatingInvokeBody(const CXXMethodDecl *MD);
-  void EmitLambdaStaticInvokeBody(const CXXMethodDecl *MD);
+  void EmitLambdaStaticInvokeFunction(const CXXMethodDecl *MD);
   void EmitAsanPrologueOrEpilogue(bool Prologue);
 
   /// \brief Emit the unified return block, trying to avoid its emission when
@@ -2761,9 +2762,7 @@ public:
   /// and initializes them with the values according to OpenMP standard.
   ///
   /// \param D Directive (possibly) with the 'linear' clause.
-  /// \return true if at least one linear variable is found that should be
-  /// initialized with the value of the original variable, false otherwise.
-  bool EmitOMPLinearClauseInit(const OMPLoopDirective &D);
+  void EmitOMPLinearClauseInit(const OMPLoopDirective &D);
 
   typedef const llvm::function_ref<void(CodeGenFunction & /*CGF*/,
                                         llvm::Value * /*OutlinedFn*/,
@@ -3497,14 +3496,6 @@ public:
   /// of a class template.
   void EmitCXXGuardedInit(const VarDecl &D, llvm::GlobalVariable *DeclPtr,
                           bool PerformInit);
-
-  enum class GuardKind { VariableGuard, TlsGuard };
-
-  /// Emit a branch to select whether or not to perform guarded initialization.
-  void EmitCXXGuardedInitBranch(llvm::Value *NeedsInit,
-                                llvm::BasicBlock *InitBlock,
-                                llvm::BasicBlock *NoInitBlock,
-                                GuardKind Kind, const VarDecl *D);
 
   /// GenerateCXXGlobalInitFunc - Generates code for initializing global
   /// variables.

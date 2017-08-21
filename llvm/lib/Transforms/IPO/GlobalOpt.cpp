@@ -404,8 +404,11 @@ static bool IsUserOfGlobalSafeForSRA(User *U, GlobalValue *GV) {
     }
   }
 
-  return llvm::all_of(U->users(),
-                      [](User *UU) { return isSafeSROAElementUse(UU); });
+  for (User *UU : U->users())
+    if (!isSafeSROAElementUse(UU))
+      return false;
+
+  return true;
 }
 
 /// Look at all uses of the global and decide whether it is safe for us to

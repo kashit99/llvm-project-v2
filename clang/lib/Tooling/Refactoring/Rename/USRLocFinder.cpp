@@ -23,7 +23,6 @@
 #include "clang/Lex/Lexer.h"
 #include "clang/Tooling/Core/Lookup.h"
 #include "clang/Tooling/Refactoring/RecursiveSymbolVisitor.h"
-#include "clang/Tooling/Refactoring/Rename/SymbolName.h"
 #include "clang/Tooling/Refactoring/Rename/USRFinder.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
@@ -69,9 +68,11 @@ public:
 
   // Non-visitors:
 
-  /// \brief Returns a set of unique symbol occurrences. Duplicate or
-  /// overlapping occurrences are erroneous and should be reported!
-  SymbolOccurrences takeOccurrences() { return std::move(Occurrences); }
+  // \brief Returns a list of unique locations. Duplicate or overlapping
+  // locations are erroneous and should be reported!
+  const std::vector<clang::SourceLocation> &getLocationsFound() const {
+    return LocationsFound;
+  }
 
 private:
   void checkAndAddLocation(SourceLocation Loc) {
@@ -81,18 +82,17 @@ private:
     StringRef TokenName =
         Lexer::getSourceText(CharSourceRange::getTokenRange(BeginLoc, EndLoc),
                              Context.getSourceManager(), Context.getLangOpts());
-    size_t Offset = TokenName.find(PrevName.getNamePieces()[0]);
+    size_t Offset = TokenName.find(PrevName);
 
     // The token of the source location we find actually has the old
     // name.
     if (Offset != StringRef::npos)
-      Occurrences.emplace_back(PrevName, SymbolOccurrence::MatchingSymbol,
-                               BeginLoc.getLocWithOffset(Offset));
+      LocationsFound.push_back(BeginLoc.getLocWithOffset(Offset));
   }
 
   const std::set<std::string> USRSet;
-  const SymbolName PrevName;
-  SymbolOccurrences Occurrences;
+  const std::string PrevName;
+  std::vector<clang::SourceLocation> LocationsFound;
   const ASTContext &Context;
 };
 
@@ -391,11 +391,12 @@ private:
 
 } // namespace
 
-SymbolOccurrences getOccurrencesOfUSRs(ArrayRef<std::string> USRs,
-                                       StringRef PrevName, Decl *Decl) {
+std::vector<SourceLocation>
+getLocationsOfUSRs(const std::vector<std::string> &USRs, StringRef PrevName,
+                   Decl *Decl) {
   USRLocFindingASTVisitor Visitor(USRs, PrevName, Decl->getASTContext());
   Visitor.TraverseDecl(Decl);
-  return Visitor.takeOccurrences();
+  return Visitor.getLocationsFound();
 }
 
 std::vector<tooling::AtomicChange>

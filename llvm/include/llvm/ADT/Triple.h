@@ -100,7 +100,6 @@ public:
   enum SubArchType {
     NoSubArch,
 
-    ARMSubArch_v8_3a,
     ARMSubArch_v8_2a,
     ARMSubArch_v8_1a,
     ARMSubArch_v8,
@@ -168,6 +167,7 @@ public:
     RTEMS,
     NaCl,       // Native Client
     CNK,        // BG/P Compute-Node Kernel
+    Bitrig,
     AIX,
     CUDA,       // NVIDIA CUDA
     NVCL,       // NVIDIA OpenCL
@@ -489,6 +489,10 @@ public:
     return getOS() == Triple::Solaris;
   }
 
+  bool isOSBitrig() const {
+    return getOS() == Triple::Bitrig;
+  }
+
   bool isOSIAMCU() const {
     return getOS() == Triple::ELFIAMCU;
   }
@@ -502,11 +506,6 @@ public:
 
   bool isOSContiki() const {
     return getOS() == Triple::Contiki;
-  }
-
-  /// Tests whether the OS is Haiku.
-  bool isOSHaiku() const {
-    return getOS() == Triple::Haiku;
   }
 
   /// Checks if the environment could be MSVC.
@@ -633,16 +632,6 @@ public:
   /// Tests whether the target is NVPTX (32- or 64-bit).
   bool isNVPTX() const {
     return getArch() == Triple::nvptx || getArch() == Triple::nvptx64;
-  }
-
-  /// Tests whether the target is Thumb (little and big endian).
-  bool isThumb() const {
-    return getArch() == Triple::thumb || getArch() == Triple::thumbeb;
-  }
-
-  /// Tests whether the target is ARM (little and big endian).
-  bool isARM() const {
-    return getArch() == Triple::arm || getArch() == Triple::armeb;
   }
 
   /// Tests wether the target supports comdat

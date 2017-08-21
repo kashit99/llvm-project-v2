@@ -1054,7 +1054,7 @@ addConstexprToLambdaDeclSpecifier(Parser &P, SourceLocation ConstexprLoc,
                                   DeclSpec &DS) {
   if (ConstexprLoc.isValid()) {
     P.Diag(ConstexprLoc, !P.getLangOpts().CPlusPlus1z
-                             ? diag::ext_constexpr_on_lambda_cxx17
+                             ? diag::ext_constexpr_on_lambda_cxx1z
                              : diag::warn_cxx14_compat_constexpr_on_lambda);
     const char *PrevSpec = nullptr;
     unsigned DiagID = 0;
@@ -1281,8 +1281,7 @@ ExprResult Parser::ParseLambdaExpressionAfterIntroducer(
 
   // FIXME: Rename BlockScope -> ClosureScope if we decide to continue using
   // it.
-  unsigned ScopeFlags = Scope::BlockScope | Scope::FnScope | Scope::DeclScope |
-                        Scope::CompoundStmtScope;
+  unsigned ScopeFlags = Scope::BlockScope | Scope::FnScope | Scope::DeclScope;
   ParseScope BodyScope(this, ScopeFlags);
 
   Actions.ActOnStartOfLambdaDefinition(Intro, D, getCurScope());

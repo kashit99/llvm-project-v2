@@ -27,8 +27,8 @@
 #include <locale>
 #include <type_traits>
 
-template <class T>
-void test(const T &) {}
+template <class _Tp>
+void test(const _Tp &) {}
 
 int main()
 {

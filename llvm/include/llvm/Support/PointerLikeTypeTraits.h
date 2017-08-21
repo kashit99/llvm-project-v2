@@ -22,7 +22,11 @@ namespace llvm {
 
 /// A traits type that is used to handle pointer types and things that are just
 /// wrappers for pointers as a uniform entity.
-template <typename T> struct PointerLikeTypeTraits;
+template <typename T> class PointerLikeTypeTraits {
+  // getAsVoidPointer
+  // getFromVoidPointer
+  // getNumLowBitsAvailable
+};
 
 namespace detail {
 /// A tiny meta function to compute the log2 of a compile time constant.
@@ -33,14 +37,16 @@ template <> struct ConstantLog2<1> : std::integral_constant<size_t, 0> {};
 }
 
 // Provide PointerLikeTypeTraits for non-cvr pointers.
-template <typename T> struct PointerLikeTypeTraits<T *> {
+template <typename T> class PointerLikeTypeTraits<T *> {
+public:
   static inline void *getAsVoidPointer(T *P) { return P; }
   static inline T *getFromVoidPointer(void *P) { return static_cast<T *>(P); }
 
   enum { NumLowBitsAvailable = detail::ConstantLog2<alignof(T)>::value };
 };
 
-template <> struct PointerLikeTypeTraits<void *> {
+template <> class PointerLikeTypeTraits<void *> {
+public:
   static inline void *getAsVoidPointer(void *P) { return P; }
   static inline void *getFromVoidPointer(void *P) { return P; }
 
@@ -55,9 +61,10 @@ template <> struct PointerLikeTypeTraits<void *> {
 };
 
 // Provide PointerLikeTypeTraits for const things.
-template <typename T> struct PointerLikeTypeTraits<const T> {
+template <typename T> class PointerLikeTypeTraits<const T> {
   typedef PointerLikeTypeTraits<T> NonConst;
 
+public:
   static inline const void *getAsVoidPointer(const T P) {
     return NonConst::getAsVoidPointer(P);
   }
@@ -68,9 +75,10 @@ template <typename T> struct PointerLikeTypeTraits<const T> {
 };
 
 // Provide PointerLikeTypeTraits for const pointers.
-template <typename T> struct PointerLikeTypeTraits<const T *> {
+template <typename T> class PointerLikeTypeTraits<const T *> {
   typedef PointerLikeTypeTraits<T *> NonConst;
 
+public:
   static inline const void *getAsVoidPointer(const T *P) {
     return NonConst::getAsVoidPointer(const_cast<T *>(P));
   }
@@ -81,7 +89,8 @@ template <typename T> struct PointerLikeTypeTraits<const T *> {
 };
 
 // Provide PointerLikeTypeTraits for uintptr_t.
-template <> struct PointerLikeTypeTraits<uintptr_t> {
+template <> class PointerLikeTypeTraits<uintptr_t> {
+public:
   static inline void *getAsVoidPointer(uintptr_t P) {
     return reinterpret_cast<void *>(P);
   }

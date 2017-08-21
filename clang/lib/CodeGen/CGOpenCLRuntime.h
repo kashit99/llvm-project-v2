@@ -48,9 +48,9 @@ public:
 
   virtual llvm::Type *convertOpenCLSpecificType(const Type *T);
 
-  virtual llvm::Type *getPipeType(const PipeType *T);
+  virtual llvm::Type *getPipeType();
 
-  llvm::PointerType *getSamplerType(const Type *T);
+  llvm::PointerType *getSamplerType();
 
   // \brief Returnes a value which indicates the size in bytes of the pipe
   // element.

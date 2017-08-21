@@ -892,10 +892,8 @@ SelectionDAG::SelectionDAG(const TargetMachine &tm, CodeGenOpt::Level OL)
 }
 
 void SelectionDAG::init(MachineFunction &NewMF,
-                        OptimizationRemarkEmitter &NewORE,
-                        Pass *PassPtr) {
+                        OptimizationRemarkEmitter &NewORE) {
   MF = &NewMF;
-  SDAGISelPass = PassPtr;
   ORE = &NewORE;
   TLI = getSubtarget().getTargetLowering();
   TSI = getSubtarget().getSelectionDAGInfo();
@@ -1951,69 +1949,6 @@ SDValue SelectionDAG::FoldSetCC(EVT VT, SDValue N1, SDValue N2,
   }
 
   // Could not fold it.
-  return SDValue();
-}
-
-/// See if the specified operand can be simplified with the knowledge that only
-/// the bits specified by Mask are used.
-SDValue SelectionDAG::GetDemandedBits(SDValue V, const APInt &Mask) {
-  switch (V.getOpcode()) {
-  default:
-    break;
-  case ISD::Constant: {
-    const ConstantSDNode *CV = cast<ConstantSDNode>(V.getNode());
-    assert(CV && "Const value should be ConstSDNode.");
-    const APInt &CVal = CV->getAPIntValue();
-    APInt NewVal = CVal & Mask;
-    if (NewVal != CVal)
-      return getConstant(NewVal, SDLoc(V), V.getValueType());
-    break;
-  }
-  case ISD::OR:
-  case ISD::XOR:
-    // If the LHS or RHS don't contribute bits to the or, drop them.
-    if (MaskedValueIsZero(V.getOperand(0), Mask))
-      return V.getOperand(1);
-    if (MaskedValueIsZero(V.getOperand(1), Mask))
-      return V.getOperand(0);
-    break;
-  case ISD::SRL:
-    // Only look at single-use SRLs.
-    if (!V.getNode()->hasOneUse())
-      break;
-    if (ConstantSDNode *RHSC = dyn_cast<ConstantSDNode>(V.getOperand(1))) {
-      // See if we can recursively simplify the LHS.
-      unsigned Amt = RHSC->getZExtValue();
-
-      // Watch out for shift count overflow though.
-      if (Amt >= Mask.getBitWidth())
-        break;
-      APInt NewMask = Mask << Amt;
-      if (SDValue SimplifyLHS = GetDemandedBits(V.getOperand(0), NewMask))
-        return getNode(ISD::SRL, SDLoc(V), V.getValueType(), SimplifyLHS,
-                       V.getOperand(1));
-    }
-    break;
-  case ISD::AND: {
-    // X & -1 -> X (ignoring bits which aren't demanded).
-    ConstantSDNode *AndVal = isConstOrConstSplat(V.getOperand(1));
-    if (AndVal && Mask.isSubsetOf(AndVal->getAPIntValue()))
-      return V.getOperand(0);
-    break;
-  }
-  case ISD::ANY_EXTEND: {
-    SDValue Src = V.getOperand(0);
-    unsigned SrcBitWidth = Src.getScalarValueSizeInBits();
-    // Being conservative here - only peek through if we only demand bits in the
-    // non-extended source (even though the extended bits are technically undef).
-    if (Mask.getActiveBits() > SrcBitWidth)
-      break;
-    APInt SrcMask = Mask.trunc(SrcBitWidth);
-    if (SDValue DemandedSrc = GetDemandedBits(Src, SrcMask))
-      return getNode(ISD::ANY_EXTEND, SDLoc(V), V.getValueType(), DemandedSrc);
-    break;
-  }
-  }
   return SDValue();
 }
 
@@ -3968,31 +3903,18 @@ SDValue SelectionDAG::FoldConstantArithmetic(unsigned Opcode, const SDLoc &DL,
   assert(BV1->getNumOperands() == BV2->getNumOperands() && "Out of sync!");
 
   EVT SVT = VT.getScalarType();
-  EVT LegalSVT = SVT;
-  if (NewNodesMustHaveLegalTypes && LegalSVT.isInteger()) {
-    LegalSVT = TLI->getTypeToTransformTo(*getContext(), LegalSVT);
-    if (LegalSVT.bitsLT(SVT))
-      return SDValue();
-  }
   SmallVector<SDValue, 4> Outputs;
   for (unsigned I = 0, E = BV1->getNumOperands(); I != E; ++I) {
     SDValue V1 = BV1->getOperand(I);
     SDValue V2 = BV2->getOperand(I);
 
-    if (SVT.isInteger()) {
-        if (V1->getValueType(0).bitsGT(SVT))
-          V1 = getNode(ISD::TRUNCATE, DL, SVT, V1);
-        if (V2->getValueType(0).bitsGT(SVT))
-          V2 = getNode(ISD::TRUNCATE, DL, SVT, V2);
-    }
-
+    // Avoid BUILD_VECTOR nodes that perform implicit truncation.
+    // FIXME: This is valid and could be handled by truncation.
     if (V1->getValueType(0) != SVT || V2->getValueType(0) != SVT)
       return SDValue();
 
     // Fold one vector element.
     SDValue ScalarResult = getNode(Opcode, DL, SVT, V1, V2);
-    if (LegalSVT != SVT)
-      ScalarResult = getNode(ISD::SIGN_EXTEND, DL, LegalSVT, ScalarResult);
 
     // Scalar folding only succeeded if the result is a constant or UNDEF.
     if (!ScalarResult.isUndef() && ScalarResult.getOpcode() != ISD::Constant &&
@@ -4011,7 +3933,6 @@ SDValue SelectionDAG::FoldConstantArithmetic(unsigned Opcode, const SDLoc &DL,
   return getBuildVector(VT, SDLoc(), Outputs);
 }
 
-// TODO: Merge with FoldConstantArithmetic
 SDValue SelectionDAG::FoldConstantVectorArithmetic(unsigned Opcode,
                                                    const SDLoc &DL, EVT VT,
                                                    ArrayRef<SDValue> Ops,
@@ -4372,15 +4293,6 @@ SDValue SelectionDAG::getNode(unsigned Opcode, const SDLoc &DL, EVT VT,
 
         return getNode(ISD::EXTRACT_VECTOR_ELT, DL, VT, N1.getOperand(0), N2);
       }
-    }
-
-    // EXTRACT_VECTOR_ELT of v1iX EXTRACT_SUBVECTOR could be formed
-    // when vector types are scalarized and v1iX is legal.
-    // vextract (v1iX extract_subvector(vNiX, Idx)) -> vextract(vNiX,Idx)
-    if (N1.getOpcode() == ISD::EXTRACT_SUBVECTOR &&
-        N1.getValueType().getVectorNumElements() == 1) {
-      return getNode(ISD::EXTRACT_VECTOR_ELT, DL, VT, N1.getOperand(0),
-                     N1.getOperand(1));
     }
     break;
   case ISD::EXTRACT_ELEMENT:
@@ -6666,7 +6578,7 @@ SDNode* SelectionDAG::mutateStrictFPToFP(SDNode *Node) {
   unsigned NewOpc;
   bool IsUnary = false;
   switch (OrigOpc) {
-  default:
+  default: 
     llvm_unreachable("mutateStrictFPToFP called with unexpected opcode!");
   case ISD::STRICT_FADD: NewOpc = ISD::FADD; break;
   case ISD::STRICT_FSUB: NewOpc = ISD::FSUB; break;
@@ -6702,7 +6614,7 @@ SDNode* SelectionDAG::mutateStrictFPToFP(SDNode *Node) {
   else
     Res = MorphNodeTo(Node, NewOpc, VTs, { Node->getOperand(1),
                                            Node->getOperand(2) });
-
+  
   // MorphNodeTo can operate in two ways: if an existing node with the
   // specified operands exists, it can just return it.  Otherwise, it
   // updates the node in place to have the requested operands.
@@ -6715,7 +6627,7 @@ SDNode* SelectionDAG::mutateStrictFPToFP(SDNode *Node) {
     RemoveDeadNode(Node);
   }
 
-  return Res;
+  return Res; 
 }
 
 /// getMachineNode - These are used for target selectors to create a new node
@@ -6879,8 +6791,8 @@ SDNode *SelectionDAG::getNodeIfExists(unsigned Opcode, SDVTList VTList,
 /// getDbgValue - Creates a SDDbgValue node.
 ///
 /// SDNode
-SDDbgValue *SelectionDAG::getDbgValue(DIVariable *Var, DIExpression *Expr,
-                                      SDNode *N, unsigned R, bool IsIndirect,
+SDDbgValue *SelectionDAG::getDbgValue(MDNode *Var, MDNode *Expr, SDNode *N,
+                                      unsigned R, bool IsIndirect,
                                       const DebugLoc &DL, unsigned O) {
   assert(cast<DILocalVariable>(Var)->isValidLocationForIntrinsic(DL) &&
          "Expected inlined-at fields to agree");
@@ -6889,8 +6801,7 @@ SDDbgValue *SelectionDAG::getDbgValue(DIVariable *Var, DIExpression *Expr,
 }
 
 /// Constant
-SDDbgValue *SelectionDAG::getConstantDbgValue(DIVariable *Var,
-                                              DIExpression *Expr,
+SDDbgValue *SelectionDAG::getConstantDbgValue(MDNode *Var, MDNode *Expr,
                                               const Value *C,
                                               const DebugLoc &DL, unsigned O) {
   assert(cast<DILocalVariable>(Var)->isValidLocationForIntrinsic(DL) &&
@@ -6899,9 +6810,8 @@ SDDbgValue *SelectionDAG::getConstantDbgValue(DIVariable *Var,
 }
 
 /// FrameIndex
-SDDbgValue *SelectionDAG::getFrameIndexDbgValue(DIVariable *Var,
-                                                DIExpression *Expr, unsigned FI,
-                                                const DebugLoc &DL,
+SDDbgValue *SelectionDAG::getFrameIndexDbgValue(MDNode *Var, MDNode *Expr,
+                                                unsigned FI, const DebugLoc &DL,
                                                 unsigned O) {
   assert(cast<DILocalVariable>(Var)->isValidLocationForIntrinsic(DL) &&
          "Expected inlined-at fields to agree");

@@ -1999,7 +1999,7 @@ bool X86FrameLowering::spillCalleeSavedRegisters(
 
 bool X86FrameLowering::restoreCalleeSavedRegisters(MachineBasicBlock &MBB,
                                                MachineBasicBlock::iterator MI,
-                                          std::vector<CalleeSavedInfo> &CSI,
+                                        const std::vector<CalleeSavedInfo> &CSI,
                                           const TargetRegisterInfo *TRI) const {
   if (CSI.empty())
     return false;

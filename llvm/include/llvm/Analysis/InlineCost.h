@@ -105,12 +105,6 @@ public:
     return Cost;
   }
 
-  /// \brief Get the threshold against which the cost was computed
-  int getThreshold() const {
-    assert(isVariable() && "Invalid access of InlineCost");
-    return Threshold;
-  }
-
   /// \brief Get the cost delta from the threshold for inlining.
   /// Only valid if the cost is of the variable kind. Returns a negative
   /// value if the cost is too high to inline.
@@ -144,10 +138,6 @@ struct InlineParams {
 
   /// Threshold to use when the callsite is considered hot.
   Optional<int> HotCallSiteThreshold;
-
-  /// Threshold to use when the callsite is considered hot relative to function
-  /// entry.
-  Optional<int> LocallyHotCallSiteThreshold;
 
   /// Threshold to use when the callsite is considered cold.
   Optional<int> ColdCallSiteThreshold;

@@ -1,4 +1,3 @@
-
 //===----------------------------------------------------------------------===//
 //
 //                     The LLVM Compiler Infrastructure
@@ -11,7 +10,7 @@
 // <numeric>
 // UNSUPPORTED: c++98, c++03, c++11, c++14
 
-// template<class InputIterator, class OutputIterator, class T,
+// template<class InputIterator, class OutputIterator, class T, 
 //          class BinaryOperation, class UnaryOperation>
 //   OutputIterator transform_inclusive_scan(InputIterator first, InputIterator last,
 //                                           OutputIterator result,
@@ -26,20 +25,20 @@
 
 #include "test_iterators.h"
 
-template <class T = void>
-struct identity : std::unary_function<T, T>
+template <class _Tp = void>
+struct identity : std::unary_function<_Tp, _Tp>
 {
-    constexpr const T& operator()(const T& x) const { return x;}
+    constexpr const _Tp& operator()(const _Tp& __x) const { return __x;}
 };
 
 template <>
 struct identity<void>
 {
-    template <class T>
-    constexpr auto operator()(T&& x) const
-    _NOEXCEPT_(noexcept(_VSTD::forward<T>(x)))
-    -> decltype        (_VSTD::forward<T>(x))
-        { return        _VSTD::forward<T>(x); }
+    template <class _Tp>
+    constexpr auto operator()(_Tp&& __x) const
+    _NOEXCEPT_(noexcept(_VSTD::forward<_Tp>(__x)))
+    -> decltype        (_VSTD::forward<_Tp>(__x))
+        { return        _VSTD::forward<_Tp>(__x); }
 };
 
 template <class Iter1, class BOp, class UOp, class Iter2>
@@ -65,7 +64,7 @@ test()
 {
           int ia[]     = {  1,  3,   5,   7,    9};
     const int pResI0[] = {  1,  4,   9,  16,   25};        // with identity
-    const int mResI0[] = {  1,  3,  15, 105,  945};
+    const int mResI0[] = {  1,  3,  15, 105,  945};        
     const int pResN0[] = { -1, -4,  -9, -16,  -25};        // with negate
     const int mResN0[] = { -1,  3, -15, 105, -945};
     const unsigned sa = sizeof(ia) / sizeof(ia[0]);
@@ -91,8 +90,8 @@ void basic_tests()
     std::vector<int> v(10);
     std::fill(v.begin(), v.end(), 3);
     std::transform_inclusive_scan(v.begin(), v.end(), v.begin(), std::plus<>(), identity<>());
-    std::copy(v.begin(), v.end(), std::ostream_iterator<int>(std::cout, " "));
-    std::cout << std::endl;
+ 	std::copy(v.begin(), v.end(), std::ostream_iterator<int>(std::cout, " "));
+	std::cout << std::endl;	
     for (size_t i = 0; i < v.size(); ++i)
         assert(v[i] == (int)(i+1) * 3);
     }
@@ -123,7 +122,7 @@ void basic_tests()
 int main()
 {
     basic_tests();
-
+    
 //  All the iterator categories
     test<input_iterator        <const int*> >();
     test<forward_iterator      <const int*> >();

@@ -1092,7 +1092,7 @@ bool AArch64FrameLowering::spillCalleeSavedRegisters(
 
 bool AArch64FrameLowering::restoreCalleeSavedRegisters(
     MachineBasicBlock &MBB, MachineBasicBlock::iterator MI,
-    std::vector<CalleeSavedInfo> &CSI,
+    const std::vector<CalleeSavedInfo> &CSI,
     const TargetRegisterInfo *TRI) const {
   MachineFunction &MF = *MBB.getParent();
   const TargetInstrInfo &TII = *MF.getSubtarget().getInstrInfo();

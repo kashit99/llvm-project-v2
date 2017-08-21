@@ -565,8 +565,7 @@ bool RecurrenceDescriptor::isFirstOrderRecurrence(
     auto *I = Phi->user_back();
     if (I->isCast() && (I->getParent() == Phi->getParent()) && I->hasOneUse() &&
         DT->dominates(Previous, I->user_back())) {
-      if (!DT->dominates(Previous, I)) // Otherwise we're good w/o sinking.
-        SinkAfter[I] = Previous;
+      SinkAfter[I] = Previous;
       return true;
     }
   }

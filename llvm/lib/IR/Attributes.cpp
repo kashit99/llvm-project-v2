@@ -327,8 +327,6 @@ std::string Attribute::getAsString(bool InAttrGrp) const {
     return "sspstrong";
   if (hasAttribute(Attribute::SafeStack))
     return "safestack";
-  if (hasAttribute(Attribute::StrictFP))
-    return "strictfp";
   if (hasAttribute(Attribute::StructRet))
     return "sret";
   if (hasAttribute(Attribute::SanitizeThread))

@@ -1188,8 +1188,7 @@ void TempMDNodeDeleter::operator()(MDNode *Node) const {
 /// particular Metadata subclass.
 template <class T>
 class TypedMDOperandIterator
-    : public std::iterator<std::input_iterator_tag, T *, std::ptrdiff_t, void,
-                           T *> {
+    : std::iterator<std::input_iterator_tag, T *, std::ptrdiff_t, void, T *> {
   MDNode::op_iterator I = nullptr;
 
 public:
@@ -1303,13 +1302,7 @@ public:
     if (!Use)
       return;
     *Use = MD;
-
-    if (*Use)
-      MetadataTracking::track(*Use);
-
-    Metadata *T = cast<Metadata>(this);
-    MetadataTracking::untrack(T);
-    assert(!Use && "Use is still being tracked despite being untracked!");
+    Use = nullptr;
   }
 };
 

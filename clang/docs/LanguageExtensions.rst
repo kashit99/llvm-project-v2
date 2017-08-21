@@ -1929,13 +1929,7 @@ provided, with values corresponding to the enumerators of C11's
 ``memory_order`` enumeration.
 
 (Note that Clang additionally provides GCC-compatible ``__atomic_*``
-builtins and OpenCL 2.0 ``__opencl_atomic_*`` builtins. The OpenCL 2.0
-atomic builtins are an explicit form of the corresponding OpenCL 2.0
-builtin function, and are named with a ``__opencl_`` prefix. The macros
-``__OPENCL_MEMORY_SCOPE_WORK_ITEM``, ``__OPENCL_MEMORY_SCOPE_WORK_GROUP``,
-``__OPENCL_MEMORY_SCOPE_DEVICE``, ``__OPENCL_MEMORY_SCOPE_ALL_SVM_DEVICES``,
-and ``__OPENCL_MEMORY_SCOPE_SUB_GROUP`` are provided, with values
-corresponding to the enumerators of OpenCL's ``memory_scope`` enumeration.)
+builtins)
 
 Low-level ARM exclusive memory builtins
 ---------------------------------------

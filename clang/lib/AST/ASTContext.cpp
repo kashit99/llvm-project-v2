@@ -1182,14 +1182,7 @@ void ASTContext::InitBuiltinTypes(const TargetInfo &Target,
   ObjCSuperType = QualType();
 
   // void * type
-  if (LangOpts.OpenCLVersion >= 200) {
-    auto Q = VoidTy.getQualifiers();
-    Q.setAddressSpace(LangAS::opencl_generic);
-    VoidPtrTy = getPointerType(getCanonicalType(
-        getQualifiedType(VoidTy.getUnqualifiedType(), Q)));
-  } else {
-    VoidPtrTy = getPointerType(VoidTy);
-  }
+  VoidPtrTy = getPointerType(VoidTy);
 
   // nullptr type (C++0x 2.14.7)
   InitBuiltinType(NullPtrTy,           BuiltinType::NullPtr);
@@ -1631,7 +1624,6 @@ TypeInfo ASTContext::getTypeInfoImpl(const Type *T) const {
   uint64_t Width = 0;
   unsigned Align = 8;
   bool AlignIsRequired = false;
-  unsigned AS = 0;
   switch (T->getTypeClass()) {
 #define TYPE(Class, Base)
 #define ABSTRACT_TYPE(Class, Base)
@@ -1778,18 +1770,28 @@ TypeInfo ASTContext::getTypeInfoImpl(const Type *T) const {
       Width = Target->getPointerWidth(0); 
       Align = Target->getPointerAlign(0);
       break;
-    case BuiltinType::OCLSampler:
+    case BuiltinType::OCLSampler: {
+      auto AS = getTargetAddressSpace(LangAS::opencl_constant);
+      Width = Target->getPointerWidth(AS);
+      Align = Target->getPointerAlign(AS);
+      break;
+    }
     case BuiltinType::OCLEvent:
     case BuiltinType::OCLClkEvent:
     case BuiltinType::OCLQueue:
     case BuiltinType::OCLReserveID:
+      // Currently these types are pointers to opaque types.
+      Width = Target->getPointerWidth(0);
+      Align = Target->getPointerAlign(0);
+      break;
 #define IMAGE_TYPE(ImgType, Id, SingletonId, Access, Suffix) \
     case BuiltinType::Id:
 #include "clang/Basic/OpenCLImageTypes.def"
-      AS = getTargetAddressSpace(Target->getOpenCLTypeAddrSpace(T));
-      Width = Target->getPointerWidth(AS);
-      Align = Target->getPointerAlign(AS);
-      break;
+      {
+        auto AS = getTargetAddressSpace(Target->getOpenCLImageAddrSpace());
+        Width = Target->getPointerWidth(AS);
+        Align = Target->getPointerAlign(AS);
+      }
     }
     break;
   case Type::ObjCObjectPointer:
@@ -1797,7 +1799,8 @@ TypeInfo ASTContext::getTypeInfoImpl(const Type *T) const {
     Align = Target->getPointerAlign(0);
     break;
   case Type::BlockPointer: {
-    AS = getTargetAddressSpace(cast<BlockPointerType>(T)->getPointeeType());
+    unsigned AS = getTargetAddressSpace(
+        cast<BlockPointerType>(T)->getPointeeType());
     Width = Target->getPointerWidth(AS);
     Align = Target->getPointerAlign(AS);
     break;
@@ -1806,13 +1809,14 @@ TypeInfo ASTContext::getTypeInfoImpl(const Type *T) const {
   case Type::RValueReference: {
     // alignof and sizeof should never enter this code path here, so we go
     // the pointer route.
-    AS = getTargetAddressSpace(cast<ReferenceType>(T)->getPointeeType());
+    unsigned AS = getTargetAddressSpace(
+        cast<ReferenceType>(T)->getPointeeType());
     Width = Target->getPointerWidth(AS);
     Align = Target->getPointerAlign(AS);
     break;
   }
   case Type::Pointer: {
-    AS = getTargetAddressSpace(cast<PointerType>(T)->getPointeeType());
+    unsigned AS = getTargetAddressSpace(cast<PointerType>(T)->getPointeeType());
     Width = Target->getPointerWidth(AS);
     Align = Target->getPointerAlign(AS);
     break;
@@ -4075,11 +4079,6 @@ ASTContext::applyObjCProtocolQualifiers(QualType type,
                   ArrayRef<ObjCProtocolDecl *> protocols, bool &hasError,
                   bool allowOnPointerType) const {
   hasError = false;
-
-  if (const ObjCTypeParamType *objT =
-      dyn_cast<ObjCTypeParamType>(type.getTypePtr())) {
-    return getObjCTypeParamType(objT->getDecl(), protocols);
-  }
 
   // Apply protocol qualifiers to ObjCObjectPointerType.
   if (allowOnPointerType) {

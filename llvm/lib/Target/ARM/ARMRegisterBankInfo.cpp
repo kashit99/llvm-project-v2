@@ -24,6 +24,10 @@
 
 using namespace llvm;
 
+#ifndef LLVM_BUILD_GLOBAL_ISEL
+#error "You shouldn't build this"
+#endif
+
 // FIXME: TableGen this.
 // If it grows too much and TableGen still isn't ready to do the job, extract it
 // into an ARMGenRegisterBankInfo.def (similar to AArch64).
@@ -250,7 +254,6 @@ ARMRegisterBankInfo::getInstrMapping(const MachineInstr &MI) const {
   }
   case G_CONSTANT:
   case G_FRAME_INDEX:
-  case G_GLOBAL_VALUE:
     OperandsMapping =
         getOperandsMapping({&ARM::ValueMappings[ARM::GPR3OpsIdx], nullptr});
     break;

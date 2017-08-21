@@ -91,11 +91,6 @@ static cl::opt<unsigned> LoopToColdBlockRatio(
              "(frequency of block) is greater than this ratio"),
     cl::init(5), cl::Hidden);
 
-static cl::opt<bool> ForceLoopColdBlock(
-    "force-loop-cold-block",
-    cl::desc("Force outlining cold blocks from loops."),
-    cl::init(false), cl::Hidden);
-
 static cl::opt<bool>
     PreciseRotationCost("precise-rotation-cost",
                         cl::desc("Model the cost of loop rotation more "
@@ -143,7 +138,7 @@ static cl::opt<unsigned> TailDupPlacementAggressiveThreshold(
     "tail-dup-placement-aggressive-threshold",
     cl::desc("Instruction cutoff for aggressive tail duplication during "
              "layout. Used at -O3. Tail merging during layout is forced to "
-             "have a threshold that won't conflict."), cl::init(4),
+             "have a threshold that won't conflict."), cl::init(3),
     cl::Hidden);
 
 // Heuristic for tail duplication.
@@ -2151,7 +2146,7 @@ MachineBlockPlacement::collectLoopBlockSet(const MachineLoop &L) {
   // will be merged into the first outer loop chain for which this block is not
   // cold anymore. This needs precise profile data and we only do this when
   // profile data is available.
-  if (F->getFunction()->getEntryCount() || ForceLoopColdBlock) {
+  if (F->getFunction()->getEntryCount()) {
     BlockFrequency LoopFreq(0);
     for (auto LoopPred : L.getHeader()->predecessors())
       if (!L.contains(LoopPred))

@@ -68,14 +68,14 @@ llvm::Triple::ArchType darwin::getArchTypeForMachOArchName(StringRef Str) {
 
 void darwin::setTripleTypeForMachOArchName(llvm::Triple &T, StringRef Str) {
   const llvm::Triple::ArchType Arch = getArchTypeForMachOArchName(Str);
-  llvm::ARM::ArchKind ArchKind = llvm::ARM::parseArch(Str);
+  unsigned ArchKind = llvm::ARM::parseArch(Str);
   T.setArch(Arch);
 
   if (Str == "x86_64h")
     T.setArchName(Str);
-  else if (ArchKind == llvm::ARM::ArchKind::ARMV6M ||
-           ArchKind == llvm::ARM::ArchKind::ARMV7M ||
-           ArchKind == llvm::ARM::ArchKind::ARMV7EM) {
+  else if (ArchKind == llvm::ARM::AK_ARMV6M ||
+           ArchKind == llvm::ARM::AK_ARMV7M ||
+           ArchKind == llvm::ARM::AK_ARMV7EM) {
     T.setOS(llvm::Triple::UnknownOS);
     T.setObjectFormat(llvm::Triple::MachO);
   }
@@ -436,6 +436,10 @@ void darwin::Linker::ConstructJob(Compilation &C, const JobAction &JA,
   // more information.
   ArgStringList CmdArgs;
 
+  Args.ClaimAllArgs(options::OPT_index_store_path);
+  Args.ClaimAllArgs(options::OPT_index_ignore_system_symbols);
+  Args.ClaimAllArgs(options::OPT_index_record_codegen_name);
+
   /// Hack(tm) to ignore linking errors when we are doing ARC migration.
   if (Args.hasArg(options::OPT_ccc_arcmt_check,
                   options::OPT_ccc_arcmt_migrate)) {
@@ -549,9 +553,10 @@ void darwin::Linker::ConstructJob(Compilation &C, const JobAction &JA,
         Args.MakeArgString(Twine("-threads=") + llvm::to_string(Parallelism)));
   }
 
-  if (getToolChain().ShouldLinkCXXStdlib(Args))
-    getToolChain().AddCXXStdlibLibArgs(Args, CmdArgs);
   if (!Args.hasArg(options::OPT_nostdlib, options::OPT_nodefaultlibs)) {
+    if (getToolChain().getDriver().CCCIsCXX())
+      getToolChain().AddCXXStdlibLibArgs(Args, CmdArgs);
+
     // link_ssp spec is empty.
 
     // Let the tool chain choose which runtime library to link.
@@ -739,8 +744,8 @@ static const char *ArmMachOArchName(StringRef Arch) {
 }
 
 static const char *ArmMachOArchNameCPU(StringRef CPU) {
-  llvm::ARM::ArchKind ArchKind = llvm::ARM::parseCPUArch(CPU);
-  if (ArchKind == llvm::ARM::ArchKind::INVALID)
+  unsigned ArchKind = llvm::ARM::parseCPUArch(CPU);
+  if (ArchKind == llvm::ARM::AK_INVALID)
     return nullptr;
   StringRef Arch = llvm::ARM::getArchName(ArchKind);
 
@@ -2018,7 +2023,6 @@ SanitizerMask Darwin::getSupportedSanitizers() const {
   Res |= SanitizerKind::Address;
   Res |= SanitizerKind::Leak;
   Res |= SanitizerKind::Fuzzer;
-  Res |= SanitizerKind::FuzzerNoLink;
   if (isTargetMacOS()) {
     if (!isMacosxVersionLT(10, 9))
       Res |= SanitizerKind::Vptr;

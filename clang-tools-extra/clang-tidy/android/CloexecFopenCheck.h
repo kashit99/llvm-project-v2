@@ -10,7 +10,7 @@
 #ifndef LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_ANDROID_CLOEXEC_FOPEN_H
 #define LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_ANDROID_CLOEXEC_FOPEN_H
 
-#include "CloexecCheck.h"
+#include "../ClangTidy.h"
 
 namespace clang {
 namespace tidy {
@@ -23,10 +23,10 @@ namespace android {
 /// constant propagation.
 ///
 /// http://clang.llvm.org/extra/clang-tidy/checks/android-cloexec-fopen.html
-class CloexecFopenCheck : public CloexecCheck {
+class CloexecFopenCheck : public ClangTidyCheck {
 public:
   CloexecFopenCheck(StringRef Name, ClangTidyContext *Context)
-      : CloexecCheck(Name, Context) {}
+      : ClangTidyCheck(Name, Context) {}
   void registerMatchers(ast_matchers::MatchFinder *Finder) override;
   void check(const ast_matchers::MatchFinder::MatchResult &Result) override;
 };

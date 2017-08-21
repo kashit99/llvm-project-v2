@@ -30,8 +30,8 @@
 
 #include "test_macros.h"
 
-template <class T>
-void where(const T &) {}
+template <class _Tp>
+void where(const _Tp &) {}
 
 void
 test1()

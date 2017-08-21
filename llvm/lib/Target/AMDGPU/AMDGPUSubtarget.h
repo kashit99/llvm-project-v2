@@ -16,7 +16,6 @@
 #define LLVM_LIB_TARGET_AMDGPU_AMDGPUSUBTARGET_H
 
 #include "AMDGPU.h"
-#include "AMDGPUCallLowering.h"
 #include "R600FrameLowering.h"
 #include "R600ISelLowering.h"
 #include "R600InstrInfo.h"
@@ -26,9 +25,7 @@
 #include "SIMachineFunctionInfo.h"
 #include "Utils/AMDGPUBaseInfo.h"
 #include "llvm/ADT/Triple.h"
-#include "llvm/CodeGen/GlobalISel/InstructionSelector.h"
-#include "llvm/CodeGen/GlobalISel/LegalizerInfo.h"
-#include "llvm/CodeGen/GlobalISel/RegisterBankInfo.h"
+#include "llvm/CodeGen/GlobalISel/GISelAccessor.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/SelectionDAGTargetInfo.h"
 #include "llvm/MC/MCInstrItineraries.h"
@@ -139,13 +136,13 @@ protected:
   // Subtarget statically properties set by tablegen
   bool FP64;
   bool IsGCN;
+  bool GCN1Encoding;
   bool GCN3Encoding;
   bool CIInsts;
   bool GFX9Insts;
   bool SGPRInitBug;
   bool HasSMemRealTime;
   bool Has16BitInsts;
-  bool HasIntClamp;
   bool HasVOP3PInsts;
   bool HasMovrel;
   bool HasVGPRIndexMode;
@@ -162,7 +159,6 @@ protected:
   bool FlatInstOffsets;
   bool FlatGlobalInsts;
   bool FlatScratchInsts;
-  bool AddNoCarryInsts;
   bool R600ALUInst;
   bool CaymanISA;
   bool CFALUBug;
@@ -240,10 +236,6 @@ public:
 
   bool has16BitInsts() const {
     return Has16BitInsts;
-  }
-
-  bool hasIntClamp() const {
-    return HasIntClamp;
   }
 
   bool hasVOP3PInsts() const {
@@ -425,10 +417,6 @@ public:
 
   bool hasFlatScratchInsts() const {
     return FlatScratchInsts;
-  }
-
-  bool hasAddNoCarry() const {
-    return AddNoCarryInsts;
   }
 
   bool isMesaKernel(const MachineFunction &MF) const {
@@ -638,12 +626,7 @@ private:
   SIInstrInfo InstrInfo;
   SIFrameLowering FrameLowering;
   SITargetLowering TLInfo;
-
-  /// GlobalISel related APIs.
-  std::unique_ptr<AMDGPUCallLowering> CallLoweringInfo;
-  std::unique_ptr<InstructionSelector> InstSelector;
-  std::unique_ptr<LegalizerInfo> Legalizer;
-  std::unique_ptr<RegisterBankInfo> RegBankInfo;
+  std::unique_ptr<GISelAccessor> GISel;
 
 public:
   SISubtarget(const Triple &TT, StringRef CPU, StringRef FS,
@@ -662,23 +645,31 @@ public:
   }
 
   const CallLowering *getCallLowering() const override {
-    return CallLoweringInfo.get();
+    assert(GISel && "Access to GlobalISel APIs not set");
+    return GISel->getCallLowering();
   }
 
   const InstructionSelector *getInstructionSelector() const override {
-    return InstSelector.get();
+    assert(GISel && "Access to GlobalISel APIs not set");
+    return GISel->getInstructionSelector();
   }
 
   const LegalizerInfo *getLegalizerInfo() const override {
-    return Legalizer.get();
+    assert(GISel && "Access to GlobalISel APIs not set");
+    return GISel->getLegalizerInfo();
   }
 
   const RegisterBankInfo *getRegBankInfo() const override {
-    return RegBankInfo.get();
+    assert(GISel && "Access to GlobalISel APIs not set");
+    return GISel->getRegBankInfo();
   }
 
   const SIRegisterInfo *getRegisterInfo() const override {
     return &InstrInfo.getRegisterInfo();
+  }
+
+  void setGISelAccessor(GISelAccessor &GISel) {
+    this->GISel.reset(&GISel);
   }
 
   // XXX - Why is this here if it isn't in the default pass set?
@@ -768,8 +759,7 @@ public:
     return getGeneration() >= AMDGPUSubtarget::GFX9;
   }
 
-  unsigned getKernArgSegmentSize(const MachineFunction &MF,
-                                 unsigned ExplictArgBytes) const;
+  unsigned getKernArgSegmentSize(const MachineFunction &MF, unsigned ExplictArgBytes) const;
 
   /// Return the maximum number of waves per SIMD for kernels using \p SGPRs SGPRs
   unsigned getOccupancyWithNumSGPRs(unsigned SGPRs) const;

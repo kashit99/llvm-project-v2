@@ -874,10 +874,11 @@ struct DenseMapInfo<clang::Selector> {
 template <>
 struct isPodLike<clang::Selector> { static const bool value = true; };
 
-template <typename T> struct PointerLikeTypeTraits;
+template <typename T> class PointerLikeTypeTraits;
 
 template<>
-struct PointerLikeTypeTraits<clang::Selector> {
+class PointerLikeTypeTraits<clang::Selector> {
+public:
   static inline const void *getAsVoidPointer(clang::Selector P) {
     return P.getAsOpaquePtr();
   }
@@ -892,7 +893,8 @@ struct PointerLikeTypeTraits<clang::Selector> {
 // Provide PointerLikeTypeTraits for IdentifierInfo pointers, which
 // are not guaranteed to be 8-byte aligned.
 template<>
-struct PointerLikeTypeTraits<clang::IdentifierInfo*> {
+class PointerLikeTypeTraits<clang::IdentifierInfo*> {
+public:
   static inline void *getAsVoidPointer(clang::IdentifierInfo* P) {
     return P;
   }
@@ -905,7 +907,8 @@ struct PointerLikeTypeTraits<clang::IdentifierInfo*> {
 };
 
 template<>
-struct PointerLikeTypeTraits<const clang::IdentifierInfo*> {
+class PointerLikeTypeTraits<const clang::IdentifierInfo*> {
+public:
   static inline const void *getAsVoidPointer(const clang::IdentifierInfo* P) {
     return P;
   }

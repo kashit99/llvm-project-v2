@@ -19,8 +19,7 @@ namespace bugprone {
 
 namespace {
 AST_MATCHER(CXXRecordDecl, isNotTriviallyCopyable) {
-  // For incomplete types, assume they are TriviallyCopyable.
-  return Node.hasDefinition() ? !Node.isTriviallyCopyable() : false;
+  return !Node.isTriviallyCopyable();
 }
 } // namespace
 

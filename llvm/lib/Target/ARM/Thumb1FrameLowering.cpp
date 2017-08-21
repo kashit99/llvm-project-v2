@@ -780,7 +780,7 @@ spillCalleeSavedRegisters(MachineBasicBlock &MBB,
 bool Thumb1FrameLowering::
 restoreCalleeSavedRegisters(MachineBasicBlock &MBB,
                             MachineBasicBlock::iterator MI,
-                            std::vector<CalleeSavedInfo> &CSI,
+                            const std::vector<CalleeSavedInfo> &CSI,
                             const TargetRegisterInfo *TRI) const {
   if (CSI.empty())
     return false;

@@ -250,11 +250,6 @@ protected:
   //
   virtual StringRef getOutlinedHelperName() const { return ".omp_outlined."; }
 
-  /// Emits \p Callee function call with arguments \p Args with location \p Loc.
-  void emitCall(CodeGenFunction &CGF, llvm::Value *Callee,
-                ArrayRef<llvm::Value *> Args = llvm::None,
-                SourceLocation Loc = SourceLocation()) const;
-
 private:
   /// \brief Default const ident_t object used for initialization of all other
   /// ident_t objects.
@@ -806,35 +801,6 @@ public:
                                    unsigned IVSize, bool IVSigned, bool Ordered,
                                    const DispatchRTInput &DispatchValues);
 
-  /// Struct with the values to be passed to the static runtime function
-  struct StaticRTInput {
-    /// Size of the iteration variable in bits.
-    unsigned IVSize = 0;
-    /// Sign of the iteration variable.
-    bool IVSigned = false;
-    /// true if loop is ordered, false otherwise.
-    bool Ordered = false;
-    /// Address of the output variable in which the flag of the last iteration
-    /// is returned.
-    Address IL = Address::invalid();
-    /// Address of the output variable in which the lower iteration number is
-    /// returned.
-    Address LB = Address::invalid();
-    /// Address of the output variable in which the upper iteration number is
-    /// returned.
-    Address UB = Address::invalid();
-    /// Address of the output variable in which the stride value is returned
-    /// necessary to generated the static_chunked scheduled loop.
-    Address ST = Address::invalid();
-    /// Value of the chunk for the static_chunked scheduled loop. For the
-    /// default (nullptr) value, the chunk 1 will be used.
-    llvm::Value *Chunk = nullptr;
-    StaticRTInput(unsigned IVSize, bool IVSigned, bool Ordered, Address IL,
-                  Address LB, Address UB, Address ST,
-                  llvm::Value *Chunk = nullptr)
-        : IVSize(IVSize), IVSigned(IVSigned), Ordered(Ordered), IL(IL), LB(LB),
-          UB(UB), ST(ST), Chunk(Chunk) {}
-  };
   /// \brief Call the appropriate runtime routine to initialize it before start
   /// of loop.
   ///
@@ -842,29 +808,55 @@ public:
   /// specify a ordered clause on the loop construct.
   /// Depending on the loop schedule, it is necessary to call some runtime
   /// routine before start of the OpenMP loop to get the loop upper / lower
-  /// bounds LB and UB and stride ST.
+  /// bounds \a LB and \a UB and stride \a ST.
   ///
   /// \param CGF Reference to current CodeGenFunction.
   /// \param Loc Clang source location.
-  /// \param DKind Kind of the directive.
   /// \param ScheduleKind Schedule kind, specified by the 'schedule' clause.
-  /// \param Values Input arguments for the construct.
+  /// \param IVSize Size of the iteration variable in bits.
+  /// \param IVSigned Sign of the iteration variable.
+  /// \param Ordered true if loop is ordered, false otherwise.
+  /// \param IL Address of the output variable in which the flag of the
+  /// last iteration is returned.
+  /// \param LB Address of the output variable in which the lower iteration
+  /// number is returned.
+  /// \param UB Address of the output variable in which the upper iteration
+  /// number is returned.
+  /// \param ST Address of the output variable in which the stride value is
+  /// returned necessary to generated the static_chunked scheduled loop.
+  /// \param Chunk Value of the chunk for the static_chunked scheduled loop.
+  /// For the default (nullptr) value, the chunk 1 will be used.
   ///
   virtual void emitForStaticInit(CodeGenFunction &CGF, SourceLocation Loc,
-                                 OpenMPDirectiveKind DKind,
                                  const OpenMPScheduleTy &ScheduleKind,
-                                 const StaticRTInput &Values);
+                                 unsigned IVSize, bool IVSigned, bool Ordered,
+                                 Address IL, Address LB, Address UB, Address ST,
+                                 llvm::Value *Chunk = nullptr);
 
   ///
   /// \param CGF Reference to current CodeGenFunction.
   /// \param Loc Clang source location.
   /// \param SchedKind Schedule kind, specified by the 'dist_schedule' clause.
-  /// \param Values Input arguments for the construct.
+  /// \param IVSize Size of the iteration variable in bits.
+  /// \param IVSigned Sign of the iteration variable.
+  /// \param Ordered true if loop is ordered, false otherwise.
+  /// \param IL Address of the output variable in which the flag of the
+  /// last iteration is returned.
+  /// \param LB Address of the output variable in which the lower iteration
+  /// number is returned.
+  /// \param UB Address of the output variable in which the upper iteration
+  /// number is returned.
+  /// \param ST Address of the output variable in which the stride value is
+  /// returned necessary to generated the static_chunked scheduled loop.
+  /// \param Chunk Value of the chunk for the static_chunked scheduled loop.
+  /// For the default (nullptr) value, the chunk 1 will be used.
   ///
-  virtual void emitDistributeStaticInit(CodeGenFunction &CGF,
-                                        SourceLocation Loc,
+  virtual void emitDistributeStaticInit(CodeGenFunction &CGF, SourceLocation Loc,
                                         OpenMPDistScheduleClauseKind SchedKind,
-                                        const StaticRTInput &Values);
+                                        unsigned IVSize, bool IVSigned,
+                                        bool Ordered, Address IL, Address LB,
+                                        Address UB, Address ST,
+                                        llvm::Value *Chunk = nullptr);
 
   /// \brief Call the appropriate runtime routine to notify that we finished
   /// iteration of the ordered loop with the dynamic scheduling.
@@ -1332,30 +1324,6 @@ public:
   /// \param C 'depend' clause with 'sink|source' dependency kind.
   virtual void emitDoacrossOrdered(CodeGenFunction &CGF,
                                    const OMPDependClause *C);
-
-  /// Translates the native parameter of outlined function if this is required
-  /// for target.
-  /// \param FD Field decl from captured record for the paramater.
-  /// \param NativeParam Parameter itself.
-  virtual const VarDecl *translateParameter(const FieldDecl *FD,
-                                            const VarDecl *NativeParam) const {
-    return NativeParam;
-  }
-
-  /// Gets the address of the native argument basing on the address of the
-  /// target-specific parameter.
-  /// \param NativeParam Parameter itself.
-  /// \param TargetParam Corresponding target-specific parameter.
-  virtual Address getParameterAddress(CodeGenFunction &CGF,
-                                      const VarDecl *NativeParam,
-                                      const VarDecl *TargetParam) const;
-
-  /// Emits call of the outlined function with the provided arguments,
-  /// translating these arguments to correct target-specific arguments.
-  virtual void
-  emitOutlinedFunctionCall(CodeGenFunction &CGF, SourceLocation Loc,
-                           llvm::Value *OutlinedFn,
-                           ArrayRef<llvm::Value *> Args = llvm::None) const;
 };
 
 } // namespace CodeGen

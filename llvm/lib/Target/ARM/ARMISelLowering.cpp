@@ -1785,7 +1785,7 @@ ARMTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
     isTailCall = IsEligibleForTailCallOptimization(Callee, CallConv,
                     isVarArg, isStructRet, MF.getFunction()->hasStructRetAttr(),
                                                    Outs, OutVals, Ins, DAG);
-    if (!isTailCall && CLI.CS && CLI.CS.isMustTailCall())
+    if (!isTailCall && CLI.CS && CLI.CS->isMustTailCall())
       report_fatal_error("failed to perform tail call elimination on a call "
                          "site marked musttail");
     // We don't support GuaranteedTailCallOpt for ARM, only automatically
@@ -2032,7 +2032,7 @@ ARMTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
     // more times in this block, we can improve codesize by calling indirectly
     // as BLXr has a 16-bit encoding.
     auto *GV = cast<GlobalAddressSDNode>(Callee)->getGlobal();
-    auto *BB = CLI.CS.getParent();
+    auto *BB = CLI.CS->getParent();
     bool PreferIndirect =
         Subtarget->isThumb() && MF.getFunction()->optForMinSize() &&
         count_if(GV->users(), [&BB](const User *U) {
@@ -5800,13 +5800,6 @@ static bool isVTBLMask(ArrayRef<int> M, EVT VT) {
   return VT == MVT::v8i8 && M.size() == 8;
 }
 
-static unsigned SelectPairHalf(unsigned Elements, ArrayRef<int> Mask,
-                               unsigned Index) {
-  if (Mask.size() == Elements * 2)
-    return Index / Elements;
-  return Mask[Index] == 0 ? 0 : 1;
-}
-
 // Checks whether the shuffle mask represents a vector transpose (VTRN) by
 // checking that pairs of elements in the shuffle mask represent the same index
 // in each vector, incrementing the expected index by 2 at each step.
@@ -5843,7 +5836,10 @@ static bool isVTRNMask(ArrayRef<int> M, EVT VT, unsigned &WhichResult) {
   // element is undefined, e.g. [-1, 4, 2, 6] will be rejected, because only
   // M[0] is used to determine WhichResult
   for (unsigned i = 0; i < M.size(); i += NumElts) {
-    WhichResult = SelectPairHalf(NumElts, M, i);
+    if (M.size() == NumElts * 2)
+      WhichResult = i / NumElts;
+    else
+      WhichResult = M[i] == 0 ? 0 : 1;
     for (unsigned j = 0; j < NumElts; j += 2) {
       if ((M[i+j] >= 0 && (unsigned) M[i+j] != j + WhichResult) ||
           (M[i+j+1] >= 0 && (unsigned) M[i+j+1] != j + NumElts + WhichResult))
@@ -5870,7 +5866,10 @@ static bool isVTRN_v_undef_Mask(ArrayRef<int> M, EVT VT, unsigned &WhichResult){
     return false;
 
   for (unsigned i = 0; i < M.size(); i += NumElts) {
-    WhichResult = SelectPairHalf(NumElts, M, i);
+    if (M.size() == NumElts * 2)
+      WhichResult = i / NumElts;
+    else
+      WhichResult = M[i] == 0 ? 0 : 1;
     for (unsigned j = 0; j < NumElts; j += 2) {
       if ((M[i+j] >= 0 && (unsigned) M[i+j] != j + WhichResult) ||
           (M[i+j+1] >= 0 && (unsigned) M[i+j+1] != j + WhichResult))
@@ -5902,7 +5901,7 @@ static bool isVUZPMask(ArrayRef<int> M, EVT VT, unsigned &WhichResult) {
     return false;
 
   for (unsigned i = 0; i < M.size(); i += NumElts) {
-    WhichResult = SelectPairHalf(NumElts, M, i);
+    WhichResult = M[i] == 0 ? 0 : 1;
     for (unsigned j = 0; j < NumElts; ++j) {
       if (M[i+j] >= 0 && (unsigned) M[i+j] != 2 * j + WhichResult)
         return false;
@@ -5933,7 +5932,7 @@ static bool isVUZP_v_undef_Mask(ArrayRef<int> M, EVT VT, unsigned &WhichResult){
 
   unsigned Half = NumElts / 2;
   for (unsigned i = 0; i < M.size(); i += NumElts) {
-    WhichResult = SelectPairHalf(NumElts, M, i);
+    WhichResult = M[i] == 0 ? 0 : 1;
     for (unsigned j = 0; j < NumElts; j += Half) {
       unsigned Idx = WhichResult;
       for (unsigned k = 0; k < Half; ++k) {
@@ -5973,7 +5972,7 @@ static bool isVZIPMask(ArrayRef<int> M, EVT VT, unsigned &WhichResult) {
     return false;
 
   for (unsigned i = 0; i < M.size(); i += NumElts) {
-    WhichResult = SelectPairHalf(NumElts, M, i);
+    WhichResult = M[i] == 0 ? 0 : 1;
     unsigned Idx = WhichResult * NumElts / 2;
     for (unsigned j = 0; j < NumElts; j += 2) {
       if ((M[i+j] >= 0 && (unsigned) M[i+j] != Idx) ||
@@ -6006,7 +6005,7 @@ static bool isVZIP_v_undef_Mask(ArrayRef<int> M, EVT VT, unsigned &WhichResult){
     return false;
 
   for (unsigned i = 0; i < M.size(); i += NumElts) {
-    WhichResult = SelectPairHalf(NumElts, M, i);
+    WhichResult = M[i] == 0 ? 0 : 1;
     unsigned Idx = WhichResult * NumElts / 2;
     for (unsigned j = 0; j < NumElts; j += 2) {
       if ((M[i+j] >= 0 && (unsigned) M[i+j] != Idx) ||
@@ -6521,7 +6520,9 @@ SDValue ARMTargetLowering::ReconstructShuffle(SDValue Op,
 /// support *some* VECTOR_SHUFFLE operations, those with specific masks.
 /// By default, if a target supports the VECTOR_SHUFFLE node, all mask values
 /// are assumed to be legal.
-bool ARMTargetLowering::isShuffleMaskLegal(ArrayRef<int> M, EVT VT) const {
+bool
+ARMTargetLowering::isShuffleMaskLegal(const SmallVectorImpl<int> &M,
+                                      EVT VT) const {
   if (VT.getVectorNumElements() == 4 &&
       (VT.is128BitVector() || VT.is64BitVector())) {
     unsigned PFIndexes[4];
@@ -8784,6 +8785,7 @@ ARMTargetLowering::EmitLowered__chkstk(MachineInstr &MI,
   switch (TM.getCodeModel()) {
   case CodeModel::Small:
   case CodeModel::Medium:
+  case CodeModel::Default:
   case CodeModel::Kernel:
     BuildMI(*MBB, MI, DL, TII.get(ARM::tBL))
         .add(predOps(ARMCC::AL))
@@ -8791,11 +8793,10 @@ ARMTargetLowering::EmitLowered__chkstk(MachineInstr &MI,
         .addReg(ARM::R4, RegState::Implicit | RegState::Kill)
         .addReg(ARM::R4, RegState::Implicit | RegState::Define)
         .addReg(ARM::R12,
-                RegState::Implicit | RegState::Define | RegState::Dead)
-        .addReg(ARM::CPSR,
                 RegState::Implicit | RegState::Define | RegState::Dead);
     break;
-  case CodeModel::Large: {
+  case CodeModel::Large:
+  case CodeModel::JITDefault: {
     MachineRegisterInfo &MRI = MBB->getParent()->getRegInfo();
     unsigned Reg = MRI.createVirtualRegister(&ARM::rGPRRegClass);
 
@@ -8807,8 +8808,6 @@ ARMTargetLowering::EmitLowered__chkstk(MachineInstr &MI,
         .addReg(ARM::R4, RegState::Implicit | RegState::Kill)
         .addReg(ARM::R4, RegState::Implicit | RegState::Define)
         .addReg(ARM::R12,
-                RegState::Implicit | RegState::Define | RegState::Dead)
-        .addReg(ARM::CPSR,
                 RegState::Implicit | RegState::Define | RegState::Dead);
     break;
   }
@@ -12362,13 +12361,8 @@ bool ARMTargetLowering::isLegalT2ScaledAddressingMode(const AddrMode &AM,
     Scale = Scale & ~1;
     return Scale == 2 || Scale == 4 || Scale == 8;
   case MVT::i64:
-    // FIXME: What are we trying to model here? ldrd doesn't have an r + r
-    // version in Thumb mode.
     // r + r
-    if (Scale == 1)
-      return true;
-    // r * 2 (this can be lowered to r + r).
-    if (!AM.HasBaseReg && Scale == 2)
+    if (((unsigned)AM.HasBaseReg + Scale) <= 2)
       return true;
     return false;
   case MVT::isVoid:
@@ -12386,7 +12380,7 @@ bool ARMTargetLowering::isLegalT2ScaledAddressingMode(const AddrMode &AM,
 /// by AM is legal for this target, for a load/store of the specified type.
 bool ARMTargetLowering::isLegalAddressingMode(const DataLayout &DL,
                                               const AddrMode &AM, Type *Ty,
-                                              unsigned AS, Instruction *I) const {
+                                              unsigned AS) const {
   EVT VT = getValueType(DL, Ty, true);
   if (!isLegalAddressImmediate(AM.BaseOffs, VT, Subtarget))
     return false;
@@ -12426,11 +12420,8 @@ bool ARMTargetLowering::isLegalAddressingMode(const DataLayout &DL,
       return isPowerOf2_32(Scale & ~1);
     case MVT::i16:
     case MVT::i64:
-      // r +/- r
-      if (Scale == 1 || (AM.HasBaseReg && Scale == -1))
-        return true;
-      // r * 2 (this can be lowered to r + r).
-      if (!AM.HasBaseReg && Scale == 2)
+      // r + r
+      if (((unsigned)AM.HasBaseReg + Scale) <= 2)
         return true;
       return false;
 
@@ -13407,7 +13398,7 @@ bool ARMTargetLowering::shouldConvertConstantLoadToIntImm(const APInt &Imm,
   return true;
 }
 
-bool ARMTargetLowering::isExtractSubvectorCheap(EVT ResVT, EVT SrcVT,
+bool ARMTargetLowering::isExtractSubvectorCheap(EVT ResVT,
                                                 unsigned Index) const {
   if (!isOperationLegalOrCustom(ISD::EXTRACT_SUBVECTOR, ResVT))
     return false;

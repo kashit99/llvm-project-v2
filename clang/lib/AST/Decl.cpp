@@ -12,7 +12,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/AST/Decl.h"
-#include "Linkage.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/ASTLambda.h"
 #include "clang/AST/ASTMutationListener.h"
@@ -100,6 +99,38 @@ TranslationUnitDecl::TranslationUnitDecl(ASTContext &ctx)
 // and 'matcher' is a type only matters when looking for attributes
 // and settings from the immediate context.
 
+const unsigned IgnoreExplicitVisibilityBit = 2;
+const unsigned IgnoreAllVisibilityBit = 4;
+
+/// Kinds of LV computation.  The linkage side of the computation is
+/// always the same, but different things can change how visibility is
+/// computed.
+enum LVComputationKind {
+  /// Do an LV computation for, ultimately, a type.
+  /// Visibility may be restricted by type visibility settings and
+  /// the visibility of template arguments.
+  LVForType = NamedDecl::VisibilityForType,
+
+  /// Do an LV computation for, ultimately, a non-type declaration.
+  /// Visibility may be restricted by value visibility settings and
+  /// the visibility of template arguments.
+  LVForValue = NamedDecl::VisibilityForValue,
+
+  /// Do an LV computation for, ultimately, a type that already has
+  /// some sort of explicit visibility.  Visibility may only be
+  /// restricted by the visibility of template arguments.
+  LVForExplicitType = (LVForType | IgnoreExplicitVisibilityBit),
+
+  /// Do an LV computation for, ultimately, a non-type declaration
+  /// that already has some sort of explicit visibility.  Visibility
+  /// may only be restricted by the visibility of template arguments.
+  LVForExplicitValue = (LVForValue | IgnoreExplicitVisibilityBit),
+
+  /// Do an LV computation when we only care about the linkage.
+  LVForLinkageOnly =
+      LVForValue | IgnoreExplicitVisibilityBit | IgnoreAllVisibilityBit
+};
+
 /// Does this computation kind permit us to consider additional
 /// visibility settings from attributes and the like?
 static bool hasExplicitVisibilityAlready(LVComputationKind computation) {
@@ -185,21 +216,30 @@ static Optional<Visibility> getVisibilityOf(const NamedDecl *D,
     return getVisibilityFromAttr(A);
   }
 
+  // If we're on Mac OS X, an 'availability' for Mac OS X attribute
+  // implies visibility(default).
+  if (D->getASTContext().getTargetInfo().getTriple().isOSDarwin()) {
+    for (const auto *A : D->specific_attrs<AvailabilityAttr>())
+      if (A->getPlatform()->getName().equals("macos"))
+        return DefaultVisibility;
+  }
+
   return None;
 }
 
-LinkageInfo LinkageComputer::getLVForType(const Type &T,
-                                          LVComputationKind computation) {
+static LinkageInfo
+getLVForType(const Type &T, LVComputationKind computation) {
   if (computation == LVForLinkageOnly)
     return LinkageInfo(T.getLinkage(), DefaultVisibility, true);
-  return getTypeLinkageAndVisibility(&T);
+  return T.getLinkageAndVisibility();
 }
 
 /// \brief Get the most restrictive linkage for the types in the given
 /// template parameter list.  For visibility purposes, template
 /// parameters are part of the signature of a template.
-LinkageInfo LinkageComputer::getLVForTemplateParameterList(
-    const TemplateParameterList *Params, LVComputationKind computation) {
+static LinkageInfo
+getLVForTemplateParameterList(const TemplateParameterList *Params,
+                              LVComputationKind computation) {
   LinkageInfo LV;
   for (const NamedDecl *P : *Params) {
     // Template type parameters are the most common and never
@@ -224,7 +264,7 @@ LinkageInfo LinkageComputer::getLVForTemplateParameterList(
       for (unsigned i = 0, n = NTTP->getNumExpansionTypes(); i != n; ++i) {
         QualType type = NTTP->getExpansionType(i);
         if (!type->isDependentType())
-          LV.merge(getTypeLinkageAndVisibility(type));
+          LV.merge(type->getLinkageAndVisibility());
       }
       continue;
     }
@@ -251,6 +291,10 @@ LinkageInfo LinkageComputer::getLVForTemplateParameterList(
   return LV;
 }
 
+/// getLVForDecl - Get the linkage and visibility for the given declaration.
+static LinkageInfo getLVForDecl(const NamedDecl *D,
+                                LVComputationKind computation);
+
 static const Decl *getOutermostFuncOrBlockContext(const Decl *D) {
   const Decl *Ret = nullptr;
   const DeclContext *DC = D->getDeclContext();
@@ -267,9 +311,8 @@ static const Decl *getOutermostFuncOrBlockContext(const Decl *D) {
 ///
 /// Note that we don't take an LVComputationKind because we always
 /// want to honor the visibility of template arguments in the same way.
-LinkageInfo
-LinkageComputer::getLVForTemplateArgumentList(ArrayRef<TemplateArgument> Args,
-                                              LVComputationKind computation) {
+static LinkageInfo getLVForTemplateArgumentList(ArrayRef<TemplateArgument> Args,
+                                                LVComputationKind computation) {
   LinkageInfo LV;
 
   for (const TemplateArgument &Arg : Args) {
@@ -291,7 +334,7 @@ LinkageComputer::getLVForTemplateArgumentList(ArrayRef<TemplateArgument> Args,
       continue;
 
     case TemplateArgument::NullPtr:
-      LV.merge(getTypeLinkageAndVisibility(Arg.getNullPtrType()));
+      LV.merge(Arg.getNullPtrType()->getLinkageAndVisibility());
       continue;
 
     case TemplateArgument::Template:
@@ -311,9 +354,9 @@ LinkageComputer::getLVForTemplateArgumentList(ArrayRef<TemplateArgument> Args,
   return LV;
 }
 
-LinkageInfo
-LinkageComputer::getLVForTemplateArgumentList(const TemplateArgumentList &TArgs,
-                                              LVComputationKind computation) {
+static LinkageInfo
+getLVForTemplateArgumentList(const TemplateArgumentList &TArgs,
+                             LVComputationKind computation) {
   return getLVForTemplateArgumentList(TArgs.asArray(), computation);
 }
 
@@ -336,10 +379,10 @@ static bool shouldConsiderTemplateVisibility(const FunctionDecl *fn,
 /// LVForValue.
 ///
 /// \param[out] LV the computation to use for the parent
-void LinkageComputer::mergeTemplateLV(
-    LinkageInfo &LV, const FunctionDecl *fn,
-    const FunctionTemplateSpecializationInfo *specInfo,
-    LVComputationKind computation) {
+static void
+mergeTemplateLV(LinkageInfo &LV, const FunctionDecl *fn,
+                const FunctionTemplateSpecializationInfo *specInfo,
+                LVComputationKind computation) {
   bool considerVisibility =
     shouldConsiderTemplateVisibility(fn, specInfo);
 
@@ -414,9 +457,9 @@ static bool shouldConsiderTemplateVisibility(
 
 /// Merge in template-related linkage and visibility for the given
 /// class template specialization.
-void LinkageComputer::mergeTemplateLV(
-    LinkageInfo &LV, const ClassTemplateSpecializationDecl *spec,
-    LVComputationKind computation) {
+static void mergeTemplateLV(LinkageInfo &LV,
+                            const ClassTemplateSpecializationDecl *spec,
+                            LVComputationKind computation) {
   bool considerVisibility = shouldConsiderTemplateVisibility(spec, computation);
 
   // Merge information from the template parameters, but ignore
@@ -466,9 +509,9 @@ static bool shouldConsiderTemplateVisibility(
 /// Merge in template-related linkage and visibility for the given
 /// variable template specialization. As usual, follow class template
 /// specialization logic up to initialization.
-void LinkageComputer::mergeTemplateLV(LinkageInfo &LV,
-                                      const VarTemplateSpecializationDecl *spec,
-                                      LVComputationKind computation) {
+static void mergeTemplateLV(LinkageInfo &LV,
+                            const VarTemplateSpecializationDecl *spec,
+                            LVComputationKind computation) {
   bool considerVisibility = shouldConsiderTemplateVisibility(spec, computation);
 
   // Merge information from the template parameters, but ignore
@@ -568,9 +611,8 @@ static LinkageInfo getExternalLinkageFor(const NamedDecl *D) {
   return LinkageInfo::external();
 }
 
-LinkageInfo
-LinkageComputer::getLVForNamespaceScopeDecl(const NamedDecl *D,
-                                            LVComputationKind computation) {
+static LinkageInfo getLVForNamespaceScopeDecl(const NamedDecl *D,
+                                              LVComputationKind computation) {
   assert(D->getDeclContext()->getRedeclContext()->isFileContext() &&
          "Not a name having namespace scope");
   ASTContext &Context = D->getASTContext();
@@ -610,7 +652,7 @@ LinkageComputer::getLVForNamespaceScopeDecl(const NamedDecl *D,
          PrevVar = PrevVar->getPreviousDecl()) {
       if (PrevVar->getStorageClass() == SC_PrivateExtern &&
           Var->getStorageClass() == SC_None)
-        return getDeclLinkageAndVisibility(PrevVar);
+        return PrevVar->getLinkageAndVisibility();
       // Explicitly declared static.
       if (PrevVar->getStorageClass() == SC_Static)
         return getInternalLinkageFor(Var);
@@ -849,9 +891,8 @@ LinkageComputer::getLVForNamespaceScopeDecl(const NamedDecl *D,
   return LV;
 }
 
-LinkageInfo
-LinkageComputer::getLVForClassMember(const NamedDecl *D,
-                                     LVComputationKind computation) {
+static LinkageInfo getLVForClassMember(const NamedDecl *D,
+                                       LVComputationKind computation) {
   // Only certain class members have linkage.  Note that fields don't
   // really have linkage, but it's convenient to say they do for the
   // purposes of calculating linkage of pointer-to-data-member
@@ -1008,13 +1049,15 @@ LinkageComputer::getLVForClassMember(const NamedDecl *D,
 
 void NamedDecl::anchor() { }
 
+static LinkageInfo computeLVForDecl(const NamedDecl *D,
+                                    LVComputationKind computation);
+
 bool NamedDecl::isLinkageValid() const {
   if (!hasCachedLinkage())
     return true;
 
-  Linkage L =
-      LinkageComputer{}.computeLVForDecl(this, LVForLinkageOnly).getLinkage();
-  return L == getCachedLinkage();
+  return computeLVForDecl(this, LVForLinkageOnly).getLinkage() ==
+         getCachedLinkage();
 }
 
 ObjCStringFormatFamily NamedDecl::getObjCFStringFormattingFamily() const {
@@ -1033,11 +1076,13 @@ ObjCStringFormatFamily NamedDecl::getObjCFStringFormattingFamily() const {
 Linkage NamedDecl::getLinkageInternal() const {
   // We don't care about visibility here, so ask for the cheapest
   // possible visibility analysis.
-  return LinkageComputer{}.getLVForDecl(this, LVForLinkageOnly).getLinkage();
+  return getLVForDecl(this, LVForLinkageOnly).getLinkage();
 }
 
 LinkageInfo NamedDecl::getLinkageAndVisibility() const {
-  return LinkageComputer{}.getDeclLinkageAndVisibility(this);
+  LVComputationKind computation =
+    (usesTypeVisibility(this) ? LVForType : LVForValue);
+  return getLVForDecl(this, computation);
 }
 
 static Optional<Visibility>
@@ -1115,9 +1160,8 @@ NamedDecl::getExplicitVisibility(ExplicitVisibilityKind kind) const {
   return getExplicitVisibilityAux(this, kind, false);
 }
 
-LinkageInfo LinkageComputer::getLVForClosure(const DeclContext *DC,
-                                             Decl *ContextDecl,
-                                             LVComputationKind computation) {
+static LinkageInfo getLVForClosure(const DeclContext *DC, Decl *ContextDecl,
+                                   LVComputationKind computation) {
   // This lambda has its linkage/visibility determined by its owner.
   if (ContextDecl) {
     if (isa<ParmVarDecl>(ContextDecl))
@@ -1134,8 +1178,8 @@ LinkageInfo LinkageComputer::getLVForClosure(const DeclContext *DC,
   return LinkageInfo::external();
 }
 
-LinkageInfo LinkageComputer::getLVForLocalDecl(const NamedDecl *D,
-                                               LVComputationKind computation) {
+static LinkageInfo getLVForLocalDecl(const NamedDecl *D,
+                                     LVComputationKind computation) {
   if (const auto *Function = dyn_cast<FunctionDecl>(D)) {
     if (Function->isInAnonymousNamespace() &&
         !Function->isInExternCContext())
@@ -1228,8 +1272,8 @@ getOutermostEnclosingLambda(const CXXRecordDecl *Record) {
   return Ret;
 }
 
-LinkageInfo LinkageComputer::computeLVForDecl(const NamedDecl *D,
-                                              LVComputationKind computation) {
+static LinkageInfo computeLVForDecl(const NamedDecl *D,
+                                    LVComputationKind computation) {
   // Internal_linkage attribute overrides other considerations.
   if (D->hasAttr<InternalLinkageAttr>())
     return getInternalLinkageFor(D);
@@ -1348,55 +1392,56 @@ LinkageInfo LinkageComputer::computeLVForDecl(const NamedDecl *D,
   return LinkageInfo::none();
 }
 
-/// getLVForDecl - Get the linkage and visibility for the given declaration.
-LinkageInfo LinkageComputer::getLVForDecl(const NamedDecl *D,
-                                          LVComputationKind computation) {
-  // Internal_linkage attribute overrides other considerations.
-  if (D->hasAttr<InternalLinkageAttr>())
-    return getInternalLinkageFor(D);
+namespace clang {
+class LinkageComputer {
+public:
+  static LinkageInfo getLVForDecl(const NamedDecl *D,
+                                  LVComputationKind computation) {
+    // Internal_linkage attribute overrides other considerations.
+    if (D->hasAttr<InternalLinkageAttr>())
+      return getInternalLinkageFor(D);
 
-  if (computation == LVForLinkageOnly && D->hasCachedLinkage())
-    return LinkageInfo(D->getCachedLinkage(), DefaultVisibility, false);
+    if (computation == LVForLinkageOnly && D->hasCachedLinkage())
+      return LinkageInfo(D->getCachedLinkage(), DefaultVisibility, false);
 
-  if (llvm::Optional<LinkageInfo> LI = lookup(D, computation))
-    return *LI;
+    LinkageInfo LV = computeLVForDecl(D, computation);
+    if (D->hasCachedLinkage())
+      assert(D->getCachedLinkage() == LV.getLinkage());
 
-  LinkageInfo LV = computeLVForDecl(D, computation);
-  if (D->hasCachedLinkage())
-    assert(D->getCachedLinkage() == LV.getLinkage());
-
-  D->setCachedLinkage(LV.getLinkage());
-  cache(D, computation, LV);
+    D->setCachedLinkage(LV.getLinkage());
 
 #ifndef NDEBUG
-  // In C (because of gnu inline) and in c++ with microsoft extensions an
-  // static can follow an extern, so we can have two decls with different
-  // linkages.
-  const LangOptions &Opts = D->getASTContext().getLangOpts();
-  if (!Opts.CPlusPlus || Opts.MicrosoftExt)
-    return LV;
+    // In C (because of gnu inline) and in c++ with microsoft extensions an
+    // static can follow an extern, so we can have two decls with different
+    // linkages.
+    const LangOptions &Opts = D->getASTContext().getLangOpts();
+    if (!Opts.CPlusPlus || Opts.MicrosoftExt)
+      return LV;
 
-  // We have just computed the linkage for this decl. By induction we know
-  // that all other computed linkages match, check that the one we just
-  // computed also does.
-  NamedDecl *Old = nullptr;
-  for (auto I : D->redecls()) {
-    auto *T = cast<NamedDecl>(I);
-    if (T == D)
-      continue;
-    if (!T->isInvalidDecl() && T->hasCachedLinkage()) {
-      Old = T;
-      break;
+    // We have just computed the linkage for this decl. By induction we know
+    // that all other computed linkages match, check that the one we just
+    // computed also does.
+    NamedDecl *Old = nullptr;
+    for (auto I : D->redecls()) {
+      auto *T = cast<NamedDecl>(I);
+      if (T == D)
+        continue;
+      if (!T->isInvalidDecl() && T->hasCachedLinkage()) {
+        Old = T;
+        break;
+      }
     }
-  }
-  assert(!Old || Old->getCachedLinkage() == D->getCachedLinkage());
+    assert(!Old || Old->getCachedLinkage() == D->getCachedLinkage());
 #endif
 
-  return LV;
+    return LV;
+  }
+};
 }
 
-LinkageInfo LinkageComputer::getDeclLinkageAndVisibility(const NamedDecl *D) {
-  return getLVForDecl(D, usesTypeVisibility(D) ? LVForType : LVForValue);
+static LinkageInfo getLVForDecl(const NamedDecl *D,
+                                LVComputationKind computation) {
+  return clang::LinkageComputer::getLVForDecl(D, computation);
 }
 
 void NamedDecl::printName(raw_ostream &os) const {

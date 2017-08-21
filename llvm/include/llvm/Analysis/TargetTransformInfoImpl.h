@@ -230,7 +230,7 @@ public:
 
   bool isLegalAddressingMode(Type *Ty, GlobalValue *BaseGV, int64_t BaseOffset,
                              bool HasBaseReg, int64_t Scale,
-                             unsigned AddrSpace, Instruction *I = nullptr) {
+                             unsigned AddrSpace) {
     // Guess that only reg and reg+reg addressing is allowed. This heuristic is
     // taken from the implementation of LSR.
     return !BaseGV && BaseOffset == 0 && (Scale == 0 || Scale == 1);
@@ -262,7 +262,7 @@ public:
     return -1;
   }
 
-  bool LSRWithInstrQueries() { return false; }
+  bool isFoldableMemAccessOffset(Instruction *I, int64_t Offset) { return true; }
 
   bool isTruncateFree(Type *Ty1, Type *Ty2) { return false; }
 
@@ -423,10 +423,10 @@ public:
 
   unsigned getAddressComputationCost(Type *Tp, ScalarEvolution *,
                                      const SCEV *) {
-    return 0;
+    return 0; 
   }
 
-  unsigned getArithmeticReductionCost(unsigned, Type *, bool) { return 1; }
+  unsigned getReductionCost(unsigned, Type *, bool) { return 1; }
 
   unsigned getCostOfKeepingLiveOverCall(ArrayRef<Type *> Tys) { return 0; }
 
@@ -587,7 +587,7 @@ protected:
     APInt StrideVal = Step->getAPInt();
     if (StrideVal.getBitWidth() > 64)
       return false;
-    // FIXME: Need to take absolute value for negative stride case.
+    // FIXME: need to take absolute value for negtive stride case  
     return StrideVal.getSExtValue() < MergeDistance;
   }
 };

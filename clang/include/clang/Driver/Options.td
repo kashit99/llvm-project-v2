@@ -320,13 +320,6 @@ def objcmt_whitelist_dir_path: Joined<["-"], "objcmt-whitelist-dir-path=">, Flag
 def : Joined<["-"], "objcmt-white-list-dir-path=">, Flags<[CC1Option]>,
     Alias<objcmt_whitelist_dir_path>;
 
-def index_store_path : Separate<["-"], "index-store-path">, Flags<[CC1Option]>,
-  HelpText<"Enable indexing with the specified data store path">;
-def index_ignore_system_symbols : Flag<["-"], "index-ignore-system-symbols">, Flags<[CC1Option]>,
-  HelpText<"Ignore symbols from system headers">;
-def index_record_codegen_name : Flag<["-"], "index-record-codegen-name">, Flags<[CC1Option]>,
-  HelpText<"Record the codegen name for symbols">;
-
 // Make sure all other -ccc- options are rejected.
 def ccc_ : Joined<["-"], "ccc-">, Group<internal_Group>, Flags<[Unsupported]>;
 
@@ -466,6 +459,10 @@ def Xcuda_fatbinary : Separate<["-"], "Xcuda-fatbinary">,
   HelpText<"Pass <arg> to fatbinary invocation">, MetaVarName<"<arg>">;
 def Xcuda_ptxas : Separate<["-"], "Xcuda-ptxas">,
   HelpText<"Pass <arg> to the ptxas assembler">, MetaVarName<"<arg>">;
+def Xopenmp_target : Separate<["-"], "Xopenmp-target">,
+  HelpText<"Pass <arg> to the target offloading toolchain.">, MetaVarName<"<arg>">;
+def Xopenmp_target_EQ : JoinedAndSeparate<["-"], "Xopenmp-target=">,
+  HelpText<"Pass <arg> to the specified target offloading toolchain. The triple that identifies the toolchain must be provided after the equals sign.">, MetaVarName<"<arg>">;
 def z : Separate<["-"], "z">, Flags<[LinkerInput, RenderAsInput]>,
   HelpText<"Pass -z <arg> to the linker">, MetaVarName<"<arg>">,
   Group<Link_Group>;
@@ -691,21 +688,6 @@ def fno_profile_instr_use : Flag<["-"], "fno-profile-instr-use">,
     HelpText<"Disable using instrumentation data for profile-guided optimization">;
 def fno_profile_use : Flag<["-"], "fno-profile-use">,
     Alias<fno_profile_instr_use>;
-
-def fapinotes : Flag<["-"], "fapinotes">, Group<f_clang_Group>,
-  Flags<[CC1Option]>, HelpText<"Enable external API notes support">;
-def fapinotes_modules : Flag<["-"], "fapinotes-modules">, Group<f_clang_Group>,
-  Flags<[CC1Option]>, HelpText<"Enable module-based external API notes support">;
-def fno_apinotes : Flag<["-"], "fno-apinotes">, Group<f_clang_Group>,
-  Flags<[CC1Option]>, HelpText<"Disable external API notes support">;
-def fno_apinotes_modules : Flag<["-"], "fno-apinotes-modules">, Group<f_clang_Group>,
-  Flags<[CC1Option]>, HelpText<"Disable module-based external API notes support">;
-def fapinotes_cache_path : Joined<["-"], "fapinotes-cache-path=">,
-  Group<i_Group>, Flags<[DriverOption, CC1Option]>, MetaVarName<"<directory>">,
-  HelpText<"Specify the API notes cache path">;
-def fapinotes_swift_version : Joined<["-"], "fapinotes-swift-version=">,
-  Group<f_clang_Group>, Flags<[CC1Option]>, MetaVarName<"<version>">,
-  HelpText<"Specify the Swift version to use when filtering API notes">;
 
 def fblocks : Flag<["-"], "fblocks">, Group<f_Group>, Flags<[CC1Option]>,
   HelpText<"Enable the 'blocks' language feature">;
@@ -1329,6 +1311,10 @@ def fopenmp_targets_EQ : CommaJoined<["-"], "fopenmp-targets=">, Flags<[DriverOp
   HelpText<"Specify comma-separated list of triples OpenMP offloading targets to be supported">;
 def fopenmp_dump_offload_linker_script : Flag<["-"], "fopenmp-dump-offload-linker-script">, Group<f_Group>, 
   Flags<[NoArgumentUnused]>;
+def fopenmp_relocatable_target : Flag<["-"], "fopenmp-relocatable-target">, Group<f_Group>, Flags<[CC1Option, NoArgumentUnused]>,
+  HelpText<"OpenMP target code is compiled as relocatable using the -c flag. For OpenMP targets the code is relocatable by default.">;
+def fnoopenmp_relocatable_target : Flag<["-"], "fnoopenmp-relocatable-target">, Group<f_Group>, Flags<[CC1Option, NoArgumentUnused]>,
+  HelpText<"Do not compile OpenMP target code as relocatable.">;
 def fno_optimize_sibling_calls : Flag<["-"], "fno-optimize-sibling-calls">, Group<f_Group>;
 def foptimize_sibling_calls : Flag<["-"], "foptimize-sibling-calls">, Group<f_Group>;
 def force__cpusubtype__ALL : Flag<["-"], "force_cpusubtype_ALL">;
@@ -1604,8 +1590,6 @@ def help : Flag<["-", "--"], "help">, Flags<[CC1Option,CC1AsOption]>,
   HelpText<"Display available options">;
 def index_header_map : Flag<["-"], "index-header-map">, Flags<[CC1Option]>,
   HelpText<"Make the next included directory (-I or -F) an indexer header map">;
-def iapinotes_modules : JoinedOrSeparate<["-"], "iapinotes-modules">, Group<clang_i_Group>, Flags<[CC1Option]>,
-  HelpText<"Add directory to the API notes search path referenced by module name">, MetaVarName<"<directory>">;
 def idirafter : JoinedOrSeparate<["-"], "idirafter">, Group<clang_i_Group>, Flags<[CC1Option]>,
   HelpText<"Add directory to AFTER include search path">;
 def iframework : JoinedOrSeparate<["-"], "iframework">, Group<clang_i_Group>, Flags<[CC1Option]>,
@@ -2059,6 +2043,28 @@ def mfp64 : Flag<["-"], "mfp64">, Group<m_Group>,
   HelpText<"Use 64-bit floating point registers (MIPS only)">;
 def mfp32 : Flag<["-"], "mfp32">, Group<m_Group>,
   HelpText<"Use 32-bit floating point registers (MIPS only)">;
+def mgpopt : Flag<["-"], "mgpopt">, Group<m_Group>,
+  HelpText<"Use GP relative accesses for symbols known to be in a small"
+           " data section (MIPS)">;
+def mno_gpopt : Flag<["-"], "mno-gpopt">, Group<m_Group>,
+  HelpText<"Do not use GP relative accesses for symbols known to be in a small"
+           " data section (MIPS)">;
+def mlocal_sdata : Flag<["-"], "mlocal-sdata">, Group<m_Group>,
+  HelpText<"Extend the -G behaviour to object local data (MIPS)">;
+def mno_local_sdata : Flag<["-"], "mno-local-sdata">, Group<m_Group>,
+  HelpText<"Do not extend the -G behaviour to object local data (MIPS)">;
+def mextern_sdata : Flag<["-"], "mextern-sdata">, Group<m_Group>,
+  HelpText<"Assume that externally defined data is in the small data if it"
+           " meets the -G <size> threshold (MIPS)">;
+def mno_extern_sdata : Flag<["-"], "mno-extern-sdata">, Group<m_Group>,
+  HelpText<"Do not assume that externally defined data is in the small data if"
+           " it meets the -G <size> threshold (MIPS)">;
+def membedded_data : Flag<["-"], "membedded-data">, Group<m_Group>,
+  HelpText<"Place constants in the .rodata section instead of the .sdata "
+           "section even if they meet the -G <size> threshold (MIPS)">;
+def mno_embedded_data : Flag<["-"], "mno-embedded-data">, Group<m_Group>,
+  HelpText<"Do not place constants in the .rodata section instead of the "
+           ".sdata if they meet the -G <size> threshold (MIPS)">;
 def mnan_EQ : Joined<["-"], "mnan=">, Group<m_Group>;
 def mabicalls : Flag<["-"], "mabicalls">, Group<m_Group>,
   HelpText<"Enable SVR4-style position-independent code (Mips only)">;
@@ -2152,6 +2158,7 @@ def nostdlibinc : Flag<["-"], "nostdlibinc">;
 def nostdincxx : Flag<["-"], "nostdinc++">, Flags<[CC1Option]>,
   HelpText<"Disable standard #include directories for the C++ standard library">;
 def nostdlib : Flag<["-"], "nostdlib">;
+def nostdlibxx : Flag<["-"], "nostdlib++">;
 def object : Flag<["-"], "object">;
 def o : JoinedOrSeparate<["-"], "o">, Flags<[DriverOption, RenderAsInput, CC1Option, CC1AsOption]>,
   HelpText<"Write output to <file>">, MetaVarName<"<file>">;

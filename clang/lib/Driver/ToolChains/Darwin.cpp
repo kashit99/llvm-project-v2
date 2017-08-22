@@ -68,14 +68,14 @@ llvm::Triple::ArchType darwin::getArchTypeForMachOArchName(StringRef Str) {
 
 void darwin::setTripleTypeForMachOArchName(llvm::Triple &T, StringRef Str) {
   const llvm::Triple::ArchType Arch = getArchTypeForMachOArchName(Str);
-  unsigned ArchKind = llvm::ARM::parseArch(Str);
+  llvm::ARM::ArchKind ArchKind = llvm::ARM::parseArch(Str);
   T.setArch(Arch);
 
   if (Str == "x86_64h")
     T.setArchName(Str);
-  else if (ArchKind == llvm::ARM::AK_ARMV6M ||
-           ArchKind == llvm::ARM::AK_ARMV7M ||
-           ArchKind == llvm::ARM::AK_ARMV7EM) {
+  else if (ArchKind == llvm::ARM::ArchKind::ARMV6M ||
+           ArchKind == llvm::ARM::ArchKind::ARMV7M ||
+           ArchKind == llvm::ARM::ArchKind::ARMV7EM) {
     T.setOS(llvm::Triple::UnknownOS);
     T.setObjectFormat(llvm::Triple::MachO);
   }
@@ -436,10 +436,6 @@ void darwin::Linker::ConstructJob(Compilation &C, const JobAction &JA,
   // more information.
   ArgStringList CmdArgs;
 
-  Args.ClaimAllArgs(options::OPT_index_store_path);
-  Args.ClaimAllArgs(options::OPT_index_ignore_system_symbols);
-  Args.ClaimAllArgs(options::OPT_index_record_codegen_name);
-
   /// Hack(tm) to ignore linking errors when we are doing ARC migration.
   if (Args.hasArg(options::OPT_ccc_arcmt_check,
                   options::OPT_ccc_arcmt_migrate)) {
@@ -553,10 +549,9 @@ void darwin::Linker::ConstructJob(Compilation &C, const JobAction &JA,
         Args.MakeArgString(Twine("-threads=") + llvm::to_string(Parallelism)));
   }
 
+  if (getToolChain().ShouldLinkCXXStdlib(Args))
+    getToolChain().AddCXXStdlibLibArgs(Args, CmdArgs);
   if (!Args.hasArg(options::OPT_nostdlib, options::OPT_nodefaultlibs)) {
-    if (getToolChain().getDriver().CCCIsCXX())
-      getToolChain().AddCXXStdlibLibArgs(Args, CmdArgs);
-
     // link_ssp spec is empty.
 
     // Let the tool chain choose which runtime library to link.
@@ -744,8 +739,8 @@ static const char *ArmMachOArchName(StringRef Arch) {
 }
 
 static const char *ArmMachOArchNameCPU(StringRef CPU) {
-  unsigned ArchKind = llvm::ARM::parseCPUArch(CPU);
-  if (ArchKind == llvm::ARM::AK_INVALID)
+  llvm::ARM::ArchKind ArchKind = llvm::ARM::parseCPUArch(CPU);
+  if (ArchKind == llvm::ARM::ArchKind::INVALID)
     return nullptr;
   StringRef Arch = llvm::ARM::getArchName(ArchKind);
 
@@ -935,18 +930,6 @@ void MachO::AddLinkRuntimeLib(const ArgList &Args, ArgStringList &CmdArgs,
   }
 }
 
-void MachO::AddFuzzerLinkArgs(const ArgList &Args, ArgStringList &CmdArgs) const {
-
-  // Go up one directory from Clang to find the libfuzzer archive file.
-  StringRef ParentDir = llvm::sys::path::parent_path(getDriver().InstalledDir);
-  SmallString<128> P(ParentDir);
-  llvm::sys::path::append(P, "lib", "libLLVMFuzzer.a");
-  CmdArgs.push_back(Args.MakeArgString(P));
-
-  // Libfuzzer is written in C++ and requires libcxx.
-  AddCXXStdlibLibArgs(Args, CmdArgs);
-}
-
 StringRef Darwin::getPlatformFamily() const {
   switch (TargetPlatform) {
     case DarwinPlatformKind::MacOS:
@@ -1008,13 +991,14 @@ void Darwin::addProfileRTLibs(const ArgList &Args,
 
 void DarwinClang::AddLinkSanitizerLibArgs(const ArgList &Args,
                                           ArgStringList &CmdArgs,
-                                          StringRef Sanitizer) const {
+                                          StringRef Sanitizer,
+                                          bool Shared) const {
   AddLinkRuntimeLib(
       Args, CmdArgs,
       (Twine("libclang_rt.") + Sanitizer + "_" +
-       getOSLibraryNameSuffix() + "_dynamic.dylib").str(),
+       getOSLibraryNameSuffix() + (Shared ? "_dynamic.dylib" : ".a")).str(),
       /*AlwaysLink*/ true, /*IsEmbedded*/ false,
-      /*AddRPath*/ true);
+      /*AddRPath*/ Shared);
 }
 
 ToolChain::RuntimeLibType DarwinClang::GetRuntimeLibType(
@@ -1058,8 +1042,12 @@ void DarwinClang::AddLinkRuntimeLibArgs(const ArgList &Args,
     AddLinkSanitizerLibArgs(Args, CmdArgs, "ubsan");
   if (Sanitize.needsTsanRt())
     AddLinkSanitizerLibArgs(Args, CmdArgs, "tsan");
-  if (Sanitize.needsFuzzer() && !Args.hasArg(options::OPT_dynamiclib))
-    AddFuzzerLinkArgs(Args, CmdArgs);
+  if (Sanitize.needsFuzzer() && !Args.hasArg(options::OPT_dynamiclib)) {
+    AddLinkSanitizerLibArgs(Args, CmdArgs, "fuzzer", /*shared=*/false);
+
+    // Libfuzzer is written in C++ and requires libcxx.
+    AddCXXStdlibLibArgs(Args, CmdArgs);
+  }
   if (Sanitize.needsStatsRt()) {
     StringRef OS = isTargetMacOS() ? "osx" : "iossim";
     AddLinkRuntimeLib(Args, CmdArgs,
@@ -1850,7 +1838,12 @@ Darwin::TranslateArgs(const DerivedArgList &Args, StringRef BoundArch,
 }
 
 bool MachO::IsUnwindTablesDefault(const ArgList &Args) const {
-  return !UseSjLjExceptions(Args);
+  // Unwind tables are not emitted if -fno-exceptions is supplied (except when
+  // targeting x86_64).
+  return getArch() == llvm::Triple::x86_64 ||
+         (!UseSjLjExceptions(Args) &&
+          Args.hasFlag(options::OPT_fexceptions, options::OPT_fno_exceptions,
+                       true));
 }
 
 bool MachO::UseDwarfDebugFlags() const {
@@ -2023,6 +2016,7 @@ SanitizerMask Darwin::getSupportedSanitizers() const {
   Res |= SanitizerKind::Address;
   Res |= SanitizerKind::Leak;
   Res |= SanitizerKind::Fuzzer;
+  Res |= SanitizerKind::FuzzerNoLink;
   if (isTargetMacOS()) {
     if (!isMacosxVersionLT(10, 9))
       Res |= SanitizerKind::Vptr;

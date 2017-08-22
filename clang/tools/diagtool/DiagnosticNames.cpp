@@ -41,7 +41,6 @@ static const DiagnosticRecord BuiltinDiagnosticsByID[] = {
 #include "clang/Basic/DiagnosticCommentKinds.inc"
 #include "clang/Basic/DiagnosticSemaKinds.inc"
 #include "clang/Basic/DiagnosticAnalysisKinds.inc"
-#include "clang/Basic/DiagnosticRefactoringKinds.inc"
 #undef DIAG
 };
 

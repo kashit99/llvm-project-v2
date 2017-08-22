@@ -591,7 +591,7 @@ bool DwarfStreamer::init(Triple TheTriple, StringRef OutputFilename) {
 
   MOFI.reset(new MCObjectFileInfo);
   MC.reset(new MCContext(MAI.get(), MRI.get(), MOFI.get()));
-  MOFI->InitMCObjectFileInfo(TheTriple, /*PIC*/ false, CodeModel::Default, *MC);
+  MOFI->InitMCObjectFileInfo(TheTriple, /*PIC*/ false, *MC);
 
   MCTargetOptions Options;
   MAB = TheTarget->createMCAsmBackend(*MRI, TripleName, "", Options);
@@ -3358,6 +3358,8 @@ void DwarfLinker::loadClangModule(StringRef Filename, StringRef ModulePath,
       Unit->markEverythingAsKept();
     }
   }
+  if (!Unit->getOrigUnit().getUnitDIE().hasChildren())
+    return;
   if (Options.Verbose) {
     outs().indent(Indent);
     outs() << "cloning .debug_info from " << Filename << "\n";

@@ -62,6 +62,7 @@ def DoublePromotion : DiagGroup<"double-promotion">;
 def EnumTooLarge : DiagGroup<"enum-too-large">;
 def UnsupportedNan : DiagGroup<"unsupported-nan">;
 def UnsupportedCB : DiagGroup<"unsupported-cb">;
+def UnsupportedGPOpt : DiagGroup<"unsupported-gpopt">;
 def NonLiteralNullConversion : DiagGroup<"non-literal-null-conversion">;
 def NullConversion : DiagGroup<"null-conversion">;
 def ImplicitConversionFloatingPointToBool :
@@ -167,6 +168,9 @@ def CXXPre14CompatPedantic : DiagGroup<"c++98-c++11-compat-pedantic",
 def CXXPre1zCompat : DiagGroup<"c++98-c++11-c++14-compat">;
 def CXXPre1zCompatPedantic : DiagGroup<"c++98-c++11-c++14-compat-pedantic",
                                        [CXXPre1zCompat]>;
+def CXXPre2aCompat : DiagGroup<"c++98-c++11-c++14-c++17-compat">;
+def CXXPre2aCompatPedantic : DiagGroup<"c++98-c++11-c++14-c++17-compat-pedantic",
+                                       [CXXPre2aCompat]>;
 
 def CXX98CompatBindToTemporaryCopy :
   DiagGroup<"c++98-compat-bind-to-temporary-copy">;
@@ -224,6 +228,8 @@ def CXX17Compat : DiagGroup<"c++17-compat", [DeprecatedRegister,
                                              DeprecatedIncrementBool,
                                              CXX17CompatMangling]>;
 def : DiagGroup<"c++1z-compat", [CXX17Compat]>;
+
+def CXX2aCompat : DiagGroup<"c++2a-compat">;
 
 def ExitTimeDestructors : DiagGroup<"exit-time-destructors">;
 def FlexibleArrayExtensions : DiagGroup<"flexible-array-extensions">;
@@ -300,7 +306,6 @@ def MissingFieldInitializers : DiagGroup<"missing-field-initializers">;
 def ModuleBuild : DiagGroup<"module-build">;
 def ModuleConflict : DiagGroup<"module-conflict">;
 def ModuleFileExtension : DiagGroup<"module-file-extension">;
-def IndexStore : DiagGroup<"index-store">;
 def NewlineEOF : DiagGroup<"newline-eof">;
 def Nullability : DiagGroup<"nullability">;
 def NullabilityDeclSpec : DiagGroup<"nullability-declspec">;
@@ -407,9 +412,6 @@ def StringCompare : DiagGroup<"string-compare">;
 def StringPlusInt : DiagGroup<"string-plus-int">;
 def StringPlusChar : DiagGroup<"string-plus-char">;
 def StrncatSize : DiagGroup<"strncat-size">;
-
-def SwiftNameAttribute : DiagGroup<"swift-name-attribute">;
-
 def TautologicalOutOfRangeCompare : DiagGroup<"tautological-constant-out-of-range-compare">;
 def TautologicalPointerCompare : DiagGroup<"tautological-pointer-compare">;
 def TautologicalOverlapCompare : DiagGroup<"tautological-overlap-compare">;
@@ -459,6 +461,8 @@ def CoveredSwitchDefault : DiagGroup<"covered-switch-default">;
 def SwitchBool     : DiagGroup<"switch-bool">;
 def SwitchEnum     : DiagGroup<"switch-enum">;
 def Switch         : DiagGroup<"switch">;
+def EnumCompareSwitch : DiagGroup<"enum-compare-switch">;
+def EnumCompare       : DiagGroup<"enum-compare", [EnumCompareSwitch]>;
 def ImplicitFallthroughPerFunction :
   DiagGroup<"implicit-fallthrough-per-function">;
 def ImplicitFallthrough  : DiagGroup<"implicit-fallthrough",
@@ -479,8 +483,10 @@ def IgnoredPragmaIntrinsic : DiagGroup<"ignored-pragma-intrinsic">;
 def UnknownPragmas : DiagGroup<"unknown-pragmas">;
 def IgnoredPragmas : DiagGroup<"ignored-pragmas", [IgnoredPragmaIntrinsic]>;
 def PragmaClangAttribute : DiagGroup<"pragma-clang-attribute">;
+def PragmaPackSuspiciousInclude : DiagGroup<"pragma-pack-suspicious-include">;
+def PragmaPack : DiagGroup<"pragma-pack", [PragmaPackSuspiciousInclude]>;
 def Pragmas : DiagGroup<"pragmas", [UnknownPragmas, IgnoredPragmas,
-                                    PragmaClangAttribute]>;
+                                    PragmaClangAttribute, PragmaPack]>;
 def UnknownWarningOption : DiagGroup<"unknown-warning-option">;
 def NSobjectAttribute : DiagGroup<"NSObject-attribute">;
 def IndependentClassAttribute : DiagGroup<"IndependentClass-attribute">;
@@ -780,6 +786,10 @@ def CXX14 : DiagGroup<"c++14-extensions", [CXX14BinaryLiteral]>;
 // A warning group for warnings about using C++1z features as extensions in
 // earlier C++ versions.
 def CXX17 : DiagGroup<"c++17-extensions">;
+
+// A warning group for warnings about using C++2a features as extensions in
+// earlier C++ versions.
+def CXX2a : DiagGroup<"c++2a-extensions">;
 
 def : DiagGroup<"c++0x-extensions", [CXX11]>;
 def : DiagGroup<"c++1y-extensions", [CXX14]>;

@@ -8,7 +8,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/Frontend/CompilerInstance.h"
-#include "clang/APINotes/APINotesReader.h"
 #include "clang/AST/ASTConsumer.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/Decl.h"
@@ -29,7 +28,6 @@
 #include "clang/Frontend/TextDiagnosticPrinter.h"
 #include "clang/Frontend/Utils.h"
 #include "clang/Frontend/VerifyDiagnosticConsumer.h"
-#include "clang/Index/IndexingAction.h"
 #include "clang/Lex/HeaderSearch.h"
 #include "clang/Lex/PTHManager.h"
 #include "clang/Lex/Preprocessor.h"
@@ -474,7 +472,7 @@ std::string CompilerInstance::getSpecificModuleCachePath() {
   SmallString<256> SpecificModuleCache(getHeaderSearchOpts().ModuleCachePath);
   if (!SpecificModuleCache.empty() && !getHeaderSearchOpts().DisableModuleHash)
     llvm::sys::path::append(SpecificModuleCache,
-                            getInvocation().getModuleHash(getDiagnostics()));
+                            getInvocation().getModuleHash());
   return SpecificModuleCache.str();
 }
 
@@ -634,27 +632,6 @@ void CompilerInstance::createSema(TranslationUnitKind TUKind,
                                   CodeCompleteConsumer *CompletionConsumer) {
   TheSema.reset(new Sema(getPreprocessor(), getASTContext(), getASTConsumer(),
                          TUKind, CompletionConsumer));
-
-  // Set up API notes.
-  TheSema->APINotes.setSwiftVersion(getAPINotesOpts().SwiftVersion);
-
-  // If we're building a module and are supposed to load API notes,
-  // notify the API notes manager.
-  if (auto currentModule = getPreprocessor().getCurrentModule()) {
-    (void)TheSema->APINotes.loadCurrentModuleAPINotes(
-            currentModule,
-            getLangOpts().APINotesModules,
-            getAPINotesOpts().ModuleSearchPaths);
-    // Check for any attributes we should add to the module
-    for (auto reader : TheSema->APINotes.getCurrentModuleReaders()) {
-      // swift_infer_import_as_member
-      if (reader->getModuleOptions().SwiftInferImportAsMember) {
-        currentModule->IsSwiftInferImportAsMember = true;
-        break;
-      }
-    }
-  }
-
   // Attach the external sema source if there is any.
   if (ExternalSemaSrc) {
     TheSema->addExternalSource(ExternalSemaSrc.get());
@@ -782,9 +759,15 @@ std::unique_ptr<llvm::raw_pwrite_stream> CompilerInstance::createOutputFile(
 
   if (UseTemporary) {
     // Create a temporary file.
-    SmallString<128> TempPath;
-    TempPath = OutFile;
+    // Insert -%%%%%%%% before the extension (if any), and because some tools
+    // (noticeable, clang's own GlobalModuleIndex.cpp) glob for build
+    // artifacts, also append .tmp.
+    StringRef OutputExtension = llvm::sys::path::extension(OutFile);
+    SmallString<128> TempPath =
+        StringRef(OutFile).drop_back(OutputExtension.size());
     TempPath += "-%%%%%%%%";
+    TempPath += OutputExtension;
+    TempPath += ".tmp";
     int fd;
     std::error_code EC =
         llvm::sys::fs::createUniqueFile(TempPath, fd, TempPath);
@@ -1123,11 +1106,9 @@ compileModuleImpl(CompilerInstance &ImportingInstance, SourceLocation ImportLoc,
   PPOpts.RetainRemappedFileBuffers = true;
     
   Invocation->getDiagnosticOpts().VerifyDiagnostics = 0;
-  assert(ImportingInstance.getInvocation().getModuleHash(
-             ImportingInstance.getDiagnostics()) ==
-             Invocation->getModuleHash(ImportingInstance.getDiagnostics()) &&
-         "Module hash mismatch!");
-
+  assert(ImportingInstance.getInvocation().getModuleHash() ==
+         Invocation->getModuleHash() && "Module hash mismatch!");
+  
   // Construct a compiler instance that will be used to actually create the
   // module.  Since we're sharing a PCMCache,
   // CompilerInstance::CompilerInstance is responsible for finalizing the
@@ -1171,18 +1152,8 @@ compileModuleImpl(CompilerInstance &ImportingInstance, SourceLocation ImportLoc,
   llvm::CrashRecoveryContext CRC;
   CRC.RunSafelyOnThread(
       [&]() {
-        // FIXME: I have no idea what the best way to do this is, but it's
-        // probably not this. Interfaces changed upstream.
-        std::unique_ptr<FrontendAction> Action(
-            new GenerateModuleFromModuleMapAction);
-
-        if (!FrontendOpts.IndexStorePath.empty()) {
-#if defined(__APPLE__)
-          Action = index::createIndexDataRecordingAction(FrontendOpts,
-                                                         std::move(Action));
-#endif
-        }
-        Instance.ExecuteAction(*Action);
+        GenerateModuleFromModuleMapAction Action;
+        Instance.ExecuteAction(Action);
       },
       ThreadStackSize);
 

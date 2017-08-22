@@ -11,10 +11,11 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "clang/Sema/SemaInternal.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/ASTDiagnostic.h"
-#include "clang/AST/CXXInheritance.h"
 #include "clang/AST/CharUnits.h"
+#include "clang/AST/CXXInheritance.h"
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/EvaluatedExprVisitor.h"
 #include "clang/AST/ExprCXX.h"
@@ -25,13 +26,11 @@
 #include "clang/AST/TypeLoc.h"
 #include "clang/AST/TypeOrdering.h"
 #include "clang/Basic/TargetInfo.h"
-#include "clang/Edit/RefactoringFixits.h"
 #include "clang/Lex/Preprocessor.h"
 #include "clang/Sema/Initialization.h"
 #include "clang/Sema/Lookup.h"
 #include "clang/Sema/Scope.h"
 #include "clang/Sema/ScopeInfo.h"
-#include "clang/Sema/SemaInternal.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
@@ -603,14 +602,14 @@ static bool EqEnumVals(const std::pair<llvm::APSInt, EnumConstantDecl*>& lhs,
 
 /// GetTypeBeforeIntegralPromotion - Returns the pre-promotion type of
 /// potentially integral-promoted expression @p expr.
-static QualType GetTypeBeforeIntegralPromotion(Expr *&expr) {
-  if (ExprWithCleanups *cleanups = dyn_cast<ExprWithCleanups>(expr))
-    expr = cleanups->getSubExpr();
-  while (ImplicitCastExpr *impcast = dyn_cast<ImplicitCastExpr>(expr)) {
-    if (impcast->getCastKind() != CK_IntegralCast) break;
-    expr = impcast->getSubExpr();
+static QualType GetTypeBeforeIntegralPromotion(const Expr *&E) {
+  if (const auto *CleanUps = dyn_cast<ExprWithCleanups>(E))
+    E = CleanUps->getSubExpr();
+  while (const auto *ImpCast = dyn_cast<ImplicitCastExpr>(E)) {
+    if (ImpCast->getCastKind() != CK_IntegralCast) break;
+    E = ImpCast->getSubExpr();
   }
-  return expr->getType();
+  return E->getType();
 }
 
 ExprResult Sema::CheckSwitchCondition(SourceLocation SwitchLoc, Expr *Cond) {
@@ -744,6 +743,30 @@ static bool ShouldDiagnoseSwitchCaseNotInEnum(const Sema &S,
   return true;
 }
 
+static void checkEnumTypesInSwitchStmt(Sema &S, const Expr *Cond,
+                                       const Expr *Case) {
+  QualType CondType = GetTypeBeforeIntegralPromotion(Cond);
+  QualType CaseType = Case->getType();
+
+  const EnumType *CondEnumType = CondType->getAs<EnumType>();
+  const EnumType *CaseEnumType = CaseType->getAs<EnumType>();
+  if (!CondEnumType || !CaseEnumType)
+    return;
+
+  // Ignore anonymous enums.
+  if (!CondEnumType->getDecl()->getIdentifier())
+    return;
+  if (!CaseEnumType->getDecl()->getIdentifier())
+    return;
+
+  if (S.Context.hasSameUnqualifiedType(CondType, CaseType))
+    return;
+
+  S.Diag(Case->getExprLoc(), diag::warn_comparison_of_mixed_enum_types_switch)
+      << CondType << CaseType << Cond->getSourceRange()
+      << Case->getSourceRange();
+}
+
 StmtResult
 Sema::ActOnFinishSwitchStmt(SourceLocation SwitchLoc, Stmt *Switch,
                             Stmt *BodyStmt) {
@@ -761,7 +784,7 @@ Sema::ActOnFinishSwitchStmt(SourceLocation SwitchLoc, Stmt *Switch,
 
   QualType CondType = CondExpr->getType();
 
-  Expr *CondExprBeforePromotion = CondExpr;
+  const Expr *CondExprBeforePromotion = CondExpr;
   QualType CondTypeBeforePromotion =
       GetTypeBeforeIntegralPromotion(CondExprBeforePromotion);
 
@@ -843,6 +866,8 @@ Sema::ActOnFinishSwitchStmt(SourceLocation SwitchLoc, Stmt *Switch,
         HasDependentValue = true;
         break;
       }
+
+      checkEnumTypesInSwitchStmt(*this, CondExpr, Lo);
 
       llvm::APSInt LoVal;
 
@@ -1161,22 +1186,14 @@ Sema::ActOnFinishSwitchStmt(SourceLocation SwitchLoc, Stmt *Switch,
 
       // Produce a nice diagnostic if multiple values aren't handled.
       if (!UnhandledNames.empty()) {
-        {
-          DiagnosticBuilder DB =
-              Diag(CondExpr->getExprLoc(), TheDefaultStmt
-                                               ? diag::warn_def_missing_case
-                                               : diag::warn_missing_case)
-              << (int)UnhandledNames.size();
+        DiagnosticBuilder DB = Diag(CondExpr->getExprLoc(),
+                                    TheDefaultStmt ? diag::warn_def_missing_case
+                                                   : diag::warn_missing_case)
+                               << (int)UnhandledNames.size();
 
-          for (size_t I = 0, E = std::min(UnhandledNames.size(), (size_t)3);
-               I != E; ++I)
-            DB << UnhandledNames[I];
-        }
-        auto DB =
-            Diag(CondExpr->getExprLoc(), diag::note_fill_in_missing_cases);
-        edit::fillInMissingSwitchEnumCases(
-            Context, SS, ED, CurContext,
-            [&](const FixItHint &Hint) { DB << Hint; });
+        for (size_t I = 0, E = std::min(UnhandledNames.size(), (size_t)3);
+             I != E; ++I)
+          DB << UnhandledNames[I];
       }
 
       if (!hasCasesNotInSwitch)

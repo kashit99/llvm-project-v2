@@ -7142,12 +7142,7 @@ CGObjCNonFragileABIMac::GetClassGlobal(StringRef Name,
   }
 
   assert(GV->getLinkage() == L);
-
-  if (IsForDefinition ||
-      GV->getValueType() == ObjCTypes.ClassnfABITy)
-    return GV;
-
-  return llvm::ConstantExpr::getBitCast(GV, ObjCTypes.ClassnfABIPtrTy);
+  return GV;
 }
 
 llvm::Value *

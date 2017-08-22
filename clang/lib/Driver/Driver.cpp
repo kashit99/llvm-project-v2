@@ -12,7 +12,6 @@
 #include "ToolChains/AMDGPU.h"
 #include "ToolChains/AVR.h"
 #include "ToolChains/Ananas.h"
-#include "ToolChains/Bitrig.h"
 #include "ToolChains/Clang.h"
 #include "ToolChains/CloudABI.h"
 #include "ToolChains/Contiki.h"
@@ -69,6 +68,7 @@
 #include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/Process.h"
 #include "llvm/Support/Program.h"
+#include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/raw_ostream.h"
 #include <map>
 #include <memory>
@@ -87,7 +87,7 @@ Driver::Driver(StringRef ClangExecutable, StringRef DefaultTargetTriple,
     : Opts(createDriverOptTable()), Diags(Diags), VFS(std::move(VFS)),
       Mode(GCCMode), SaveTemps(SaveTempsNone), BitcodeEmbed(EmbedNone),
       LTOMode(LTOK_None), ClangExecutable(ClangExecutable),
-      SysRoot(DEFAULT_SYSROOT), UseStdLib(true),
+      SysRoot(DEFAULT_SYSROOT), 
       DriverTitle("clang LLVM compiler"), CCPrintOptionsFilename(nullptr),
       CCPrintHeadersFilename(nullptr), CCLogDiagnosticsFilename(nullptr),
       CCCPrintBindings(false), CCPrintHeaders(false), CCLogDiagnostics(false),
@@ -524,7 +524,7 @@ void Driver::CreateOffloadingDeviceToolChains(Compilation &C,
     auto &CudaTC = ToolChains[CudaTriple.str() + "/" + HostTriple.str()];
     if (!CudaTC) {
       CudaTC = llvm::make_unique<toolchains::CudaToolChain>(
-          *this, CudaTriple, *HostTC, C.getInputArgs());
+          *this, CudaTriple, *HostTC, C.getInputArgs(), Action::OFK_Cuda);
     }
     C.addOffloadDeviceToolChain(CudaTC.get(), Action::OFK_Cuda);
   }
@@ -579,10 +579,10 @@ void Driver::CreateOffloadingDeviceToolChains(Compilation &C,
                   C.getSingleOffloadToolChain<Action::OFK_Host>();
               assert(HostTC && "Host toolchain should be always defined.");
               auto &CudaTC =
-                  ToolChains[TT.str() + "/" + HostTC->getTriple().str()];
+                  ToolChains[TT.str() + "/" + HostTC->getTriple().normalize()];
               if (!CudaTC)
                 CudaTC = llvm::make_unique<toolchains::CudaToolChain>(
-                    *this, TT, *HostTC, C.getInputArgs());
+                    *this, TT, *HostTC, C.getInputArgs(), Action::OFK_OpenMP);
               TC = CudaTC.get();
             } else
               TC = &getToolChain(C.getInputArgs(), TT);
@@ -678,8 +678,6 @@ Compilation *Driver::BuildCompilation(ArrayRef<const char *> ArgList) {
     SysRoot = A->getValue();
   if (const Arg *A = Args.getLastArg(options::OPT__dyld_prefix_EQ))
     DyldPrefix = A->getValue();
-  if (Args.hasArg(options::OPT_nostdlib))
-    UseStdLib = false;
 
   if (const Arg *A = Args.getLastArg(options::OPT_resource_dir))
     ResourceDir = A->getValue();
@@ -995,9 +993,7 @@ void Driver::generateCompilationDiagnostics(Compilation &C,
   }
 
   // Assume associated files are based off of the first temporary file.
-  CrashReportInfo CrashInfo(
-      TempFiles[0], VFS,
-      C.getArgs().getLastArgValue(options::OPT_index_store_path));
+  CrashReportInfo CrashInfo(TempFiles[0], VFS);
 
   std::string Script = CrashInfo.Filename.rsplit('.').first.str() + ".sh";
   std::error_code EC;
@@ -1128,7 +1124,8 @@ void Driver::PrintHelp(bool ShowHidden) const {
     ExcludedFlagsBitmask |= HelpHidden;
 
   getOpts().PrintHelp(llvm::outs(), Name.c_str(), DriverTitle.c_str(),
-                      IncludedFlagsBitmask, ExcludedFlagsBitmask);
+                      IncludedFlagsBitmask, ExcludedFlagsBitmask,
+                      /*ShowAllAliases=*/false);
 }
 
 void Driver::PrintVersion(const Compilation &C, raw_ostream &OS) const {
@@ -3227,6 +3224,12 @@ InputInfo Driver::BuildJobsForActionNoCache(
   InputInfoList OffloadDependencesInputInfo;
   bool BuildingForOffloadDevice = TargetDeviceOffloadKind != Action::OFK_None;
   if (const OffloadAction *OA = dyn_cast<OffloadAction>(A)) {
+    // The 'Darwin' toolchain is initialized only when its arguments are
+    // computed. Get the default arguments for OFK_None to ensure that
+    // initialization is performed before processing the offload action.
+    // FIXME: Remove when darwin's toolchain is initialized during construction.
+    C.getArgsForToolChain(TC, BoundArch, Action::OFK_None);
+
     // The offload action is expected to be used in four different situations.
     //
     // a) Set a toolchain/architecture/kind for a host action:
@@ -3404,7 +3407,7 @@ InputInfo Driver::BuildJobsForActionNoCache(
       // Get the unique string identifier for this dependence and cache the
       // result.
       CachedResults[{A, GetTriplePlusArchString(
-                            UI.DependentToolChain, UI.DependentBoundArch,
+                            UI.DependentToolChain, BoundArch,
                             UI.DependentOffloadKind)}] = CurI;
     }
 
@@ -3679,7 +3682,12 @@ std::string Driver::GetFilePath(StringRef Name, const ToolChain &TC) const {
       return P.str();
   }
 
-  SmallString<128> P(ResourceDir);
+  SmallString<128> R(ResourceDir);
+  llvm::sys::path::append(R, Name);
+  if (llvm::sys::fs::exists(Twine(R)))
+    return R.str();
+
+  SmallString<128> P(TC.getCompilerRTPath());
   llvm::sys::path::append(P, Name);
   if (llvm::sys::fs::exists(Twine(P)))
     return P.str();
@@ -3811,9 +3819,6 @@ const ToolChain &Driver::getToolChain(const ArgList &Args,
       break;
     case llvm::Triple::OpenBSD:
       TC = llvm::make_unique<toolchains::OpenBSD>(*this, Target, Args);
-      break;
-    case llvm::Triple::Bitrig:
-      TC = llvm::make_unique<toolchains::Bitrig>(*this, Target, Args);
       break;
     case llvm::Triple::NetBSD:
       TC = llvm::make_unique<toolchains::NetBSD>(*this, Target, Args);

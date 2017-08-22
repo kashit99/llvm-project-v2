@@ -1657,7 +1657,7 @@ SelectionDAGBuilder::EmitBranchForMergedCondition(const Value *Cond,
       }
 
       CaseBlock CB(Condition, BOp->getOperand(0), BOp->getOperand(1), nullptr,
-                   TBB, FBB, CurBB, TProb, FProb);
+                   TBB, FBB, CurBB, getCurSDLoc(), TProb, FProb);
       SwitchCases.push_back(CB);
       return;
     }
@@ -1666,7 +1666,7 @@ SelectionDAGBuilder::EmitBranchForMergedCondition(const Value *Cond,
   // Create a CaseBlock record representing this branch.
   ISD::CondCode Opc = InvertCond ? ISD::SETNE : ISD::SETEQ;
   CaseBlock CB(Opc, Cond, ConstantInt::getTrue(*DAG.getContext()),
-               nullptr, TBB, FBB, CurBB, TProb, FProb);
+               nullptr, TBB, FBB, CurBB, getCurSDLoc(), TProb, FProb);
   SwitchCases.push_back(CB);
 }
 
@@ -1905,7 +1905,7 @@ void SelectionDAGBuilder::visitBr(const BranchInst &I) {
 
   // Create a CaseBlock record representing this branch.
   CaseBlock CB(ISD::SETEQ, CondVal, ConstantInt::getTrue(*DAG.getContext()),
-               nullptr, Succ0MBB, Succ1MBB, BrMBB);
+               nullptr, Succ0MBB, Succ1MBB, BrMBB, getCurSDLoc());
 
   // Use visitSwitchCase to actually insert the fast branch sequence for this
   // cond branch.
@@ -1918,7 +1918,7 @@ void SelectionDAGBuilder::visitSwitchCase(CaseBlock &CB,
                                           MachineBasicBlock *SwitchBB) {
   SDValue Cond;
   SDValue CondLHS = getValue(CB.CmpLHS);
-  SDLoc dl = getCurSDLoc();
+  SDLoc dl = CB.DL;
 
   // Build the setcc now.
   if (!CB.CmpMHS) {
@@ -5104,17 +5104,17 @@ SelectionDAGBuilder::visitIntrinsicCall(const CallInst &I, unsigned Intrinsic) {
 
     // Static allocas are handled more efficiently in the variable frame index
     // side table.
-    const auto *AI =
-        dyn_cast<AllocaInst>(Address->stripInBoundsConstantOffsets());
-    if (AI && AI->isStaticAlloca() && FuncInfo.StaticAllocaMap.count(AI))
-      return nullptr;
+    if (const auto *AI =
+            dyn_cast<AllocaInst>(Address->stripInBoundsConstantOffsets()))
+      if (AI->isStaticAlloca() && FuncInfo.StaticAllocaMap.count(AI))
+        return nullptr;
 
     // Byval arguments with frame indices were already handled after argument
     // lowering and before isel.
-    const auto *Arg =
-        dyn_cast<Argument>(Address->stripInBoundsConstantOffsets());
-    if (Arg && FuncInfo.getArgumentFrameIndex(Arg) != INT_MAX)
-      return nullptr;
+    if (const auto *Arg =
+            dyn_cast<Argument>(Address->stripInBoundsConstantOffsets()))
+      if (FuncInfo.getArgumentFrameIndex(Arg) != INT_MAX)
+        return nullptr;
 
     SDValue &N = NodeMap[Address];
     if (!N.getNode() && isa<Argument>(Address))
@@ -6083,7 +6083,7 @@ SelectionDAGBuilder::lowerInvokable(TargetLowering::CallLoweringInfo &CLI,
     if (MF.hasEHFunclets()) {
       assert(CLI.CS);
       WinEHFuncInfo *EHInfo = DAG.getMachineFunction().getWinEHFuncInfo();
-      EHInfo->addIPToStateRange(cast<InvokeInst>(CLI.CS->getInstruction()),
+      EHInfo->addIPToStateRange(cast<InvokeInst>(CLI.CS.getInstruction()),
                                 BeginLabel, EndLabel);
     } else {
       MF.addInvoke(FuncInfo.MBBMap[EHPadBB], BeginLabel, EndLabel);
@@ -6555,10 +6555,10 @@ void SelectionDAGBuilder::visitCall(const CallInst &I) {
 
     // Check for well-known libc/libm calls.  If the function is internal, it
     // can't be a library call.  Don't do the check if marked as nobuiltin for
-    // some reason.
+    // some reason or the call site requires strict floating point semantics.
     LibFunc Func;
-    if (!I.isNoBuiltin() && !F->hasLocalLinkage() && F->hasName() &&
-        LibInfo->getLibFunc(*F, Func) &&
+    if (!I.isNoBuiltin() && !I.isStrictFP() && !F->hasLocalLinkage() &&
+        F->hasName() && LibInfo->getLibFunc(*F, Func) &&
         LibInfo->hasOptimizedCodeGen(Func)) {
       switch (Func) {
       default: break;
@@ -7015,6 +7015,7 @@ static bool createVirtualRegs(SmallVector<unsigned, 4> &Regs, unsigned NumRegs,
   return true;
 }
 
+namespace {
 class ExtraFlags {
   unsigned Flags = 0;
 
@@ -7048,6 +7049,7 @@ public:
 
   unsigned get() const { return Flags; }
 };
+} // namespace
 
 /// visitInlineAsm - Handle a call to an InlineAsm object.
 ///
@@ -8150,8 +8152,7 @@ TargetLowering::LowerCallTo(TargetLowering::CallLoweringInfo &CLI) const {
       }
 
       getCopyToParts(CLI.DAG, CLI.DL, Op, &Parts[0], NumParts, PartVT,
-                     CLI.CS ? CLI.CS->getInstruction() : nullptr, ExtendKind,
-                     true);
+                     CLI.CS.getInstruction(), ExtendKind, true);
 
       for (unsigned j = 0; j != NumParts; ++j) {
         // if it isn't first piece, alignment must be 1
@@ -9572,8 +9573,8 @@ void SelectionDAGBuilder::lowerWorkItem(SwitchWorkListItem W, Value *Cond,
         }
 
         // The false probability is the sum of all unhandled cases.
-        CaseBlock CB(CC, LHS, RHS, MHS, I->MBB, Fallthrough, CurMBB, I->Prob,
-                     UnhandledProbs);
+        CaseBlock CB(CC, LHS, RHS, MHS, I->MBB, Fallthrough, CurMBB,
+                     getCurSDLoc(), I->Prob, UnhandledProbs);
 
         if (CurMBB == SwitchMBB)
           visitSwitchCase(CB, SwitchMBB);
@@ -9724,7 +9725,7 @@ void SelectionDAGBuilder::splitWorkItem(SwitchWorkList &WorkList,
 
   // Create the CaseBlock record that will be used to lower the branch.
   CaseBlock CB(ISD::SETLT, Cond, Pivot, nullptr, LeftMBB, RightMBB, W.MBB,
-               LeftProb, RightProb);
+               getCurSDLoc(), LeftProb, RightProb);
 
   if (W.MBB == SwitchMBB)
     visitSwitchCase(CB, SwitchMBB);

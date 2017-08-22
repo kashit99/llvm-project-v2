@@ -211,6 +211,7 @@ class SelectionDAG {
   const SelectionDAGTargetInfo *TSI = nullptr;
   const TargetLowering *TLI = nullptr;
   MachineFunction *MF;
+  Pass *SDAGISelPass = nullptr;
   LLVMContext *Context;
   CodeGenOpt::Level OptLevel;
 
@@ -366,13 +367,16 @@ public:
   ~SelectionDAG();
 
   /// Prepare this SelectionDAG to process code in the given MachineFunction.
-  void init(MachineFunction &NewMF, OptimizationRemarkEmitter &NewORE);
+  void init(MachineFunction &NewMF, OptimizationRemarkEmitter &NewORE,
+            Pass *PassPtr);
 
   /// Clear state and free memory necessary to make this
   /// SelectionDAG ready to process a new block.
   void clear();
 
   MachineFunction &getMachineFunction() const { return *MF; }
+  const Pass *getPass() const { return SDAGISelPass; }
+
   const DataLayout &getDataLayout() const { return MF->getDataLayout(); }
   const TargetMachine &getTarget() const { return TM; }
   const TargetSubtargetInfo &getSubtarget() const { return MF->getSubtarget(); }
@@ -1166,16 +1170,19 @@ public:
                           const SDNodeFlags Flags = SDNodeFlags());
 
   /// Creates a SDDbgValue node.
-  SDDbgValue *getDbgValue(MDNode *Var, MDNode *Expr, SDNode *N, unsigned R,
-                          bool IsIndirect, const DebugLoc &DL, unsigned O);
+  SDDbgValue *getDbgValue(DIVariable *Var, DIExpression *Expr, SDNode *N,
+                          unsigned R, bool IsIndirect, const DebugLoc &DL,
+                          unsigned O);
 
   /// Constant
-  SDDbgValue *getConstantDbgValue(MDNode *Var, MDNode *Expr, const Value *C,
-                                  const DebugLoc &DL, unsigned O);
+  SDDbgValue *getConstantDbgValue(DIVariable *Var, DIExpression *Expr,
+                                  const Value *C, const DebugLoc &DL,
+                                  unsigned O);
 
   /// FrameIndex
-  SDDbgValue *getFrameIndexDbgValue(MDNode *Var, MDNode *Expr, unsigned FI,
-                                    const DebugLoc &DL, unsigned O);
+  SDDbgValue *getFrameIndexDbgValue(DIVariable *Var, DIExpression *Expr,
+                                    unsigned FI, const DebugLoc &DL,
+                                    unsigned O);
 
   /// Remove the specified node from the system. If any of its
   /// operands then becomes dead, remove them as well. Inform UpdateListener
@@ -1305,6 +1312,14 @@ public:
   /// Constant fold a setcc to true or false.
   SDValue FoldSetCC(EVT VT, SDValue N1, SDValue N2, ISD::CondCode Cond,
                     const SDLoc &dl);
+
+  /// See if the specified operand can be simplified with the knowledge that only
+  /// the bits specified by Mask are used.  If so, return the simpler operand,
+  /// otherwise return a null SDValue.
+  ///
+  /// (This exists alongside SimplifyDemandedBits because GetDemandedBits can
+  /// simplify nodes with multiple uses more aggressively.)
+  SDValue GetDemandedBits(SDValue V, const APInt &Mask);
 
   /// Return true if the sign bit of Op is known to be zero.
   /// We use this predicate to simplify operations downstream.

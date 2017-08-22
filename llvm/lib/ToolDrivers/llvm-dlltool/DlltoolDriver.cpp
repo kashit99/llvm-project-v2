@@ -56,21 +56,16 @@ public:
 
 } // namespace
 
-std::vector<std::unique_ptr<MemoryBuffer>> OwningMBs;
-
 // Opens a file. Path has to be resolved already.
-// Newly created memory buffers are owned by this driver.
-Optional<MemoryBufferRef> openFile(StringRef Path) {
+static std::unique_ptr<MemoryBuffer> openFile(const Twine &Path) {
   ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> MB = MemoryBuffer::getFile(Path);
 
   if (std::error_code EC = MB.getError()) {
-    llvm::errs() << "fail openFile: " << EC.message() << "\n";
-    return None;
+    llvm::errs() << "cannot open file " << Path << ": " << EC.message() << "\n";
+    return nullptr;
   }
 
-  MemoryBufferRef MBRef = MB.get()->getMemBufferRef();
-  OwningMBs.push_back(std::move(MB.get())); // take ownership
-  return MBRef;
+  return std::move(*MB);
 }
 
 static MachineTypes getEmulation(StringRef S) {
@@ -78,10 +73,11 @@ static MachineTypes getEmulation(StringRef S) {
       .Case("i386", IMAGE_FILE_MACHINE_I386)
       .Case("i386:x86-64", IMAGE_FILE_MACHINE_AMD64)
       .Case("arm", IMAGE_FILE_MACHINE_ARMNT)
+      .Case("arm64", IMAGE_FILE_MACHINE_ARM64)
       .Default(IMAGE_FILE_MACHINE_UNKNOWN);
 }
 
-static std::string getImplibPath(std::string Path) {
+static std::string getImplibPath(StringRef Path) {
   SmallString<128> Out = StringRef("lib");
   Out.append(Path);
   sys::path::replace_extension(Out, ".a");
@@ -121,7 +117,8 @@ int llvm::dlltoolDriverMain(llvm::ArrayRef<const char *> ArgsArr) {
     return 1;
   }
 
-  Optional<MemoryBufferRef> MB = openFile(Args.getLastArg(OPT_d)->getValue());
+  std::unique_ptr<MemoryBuffer> MB =
+      openFile(Args.getLastArg(OPT_d)->getValue());
   if (!MB)
     return 1;
 
@@ -160,6 +157,22 @@ int llvm::dlltoolDriverMain(llvm::ArrayRef<const char *> ArgsArr) {
   std::string Path = Args.getLastArgValue(OPT_l);
   if (Path.empty())
     Path = getImplibPath(Def->OutputFile);
+
+  if (Machine == IMAGE_FILE_MACHINE_I386 && Args.getLastArg(OPT_k)) {
+    for (COFFShortExport& E : Def->Exports) {
+      if (E.isWeak() || (!E.Name.empty() && E.Name[0] == '?'))
+        continue;
+      E.SymbolName = E.Name;
+      // Trim off the trailing decoration. Symbols will always have a
+      // starting prefix here (either _ for cdecl/stdcall, @ for fastcall
+      // or ? for C++ functions). (Vectorcall functions also will end up having
+      // a prefix here, even if they shouldn't.)
+      E.Name = E.Name.substr(0, E.Name.find('@', 1));
+      // By making sure E.SymbolName != E.Name for decorated symbols,
+      // writeImportLibrary writes these symbols with the type
+      // IMPORT_NAME_UNDECORATE.
+    }
+  }
 
   if (writeImportLibrary(Def->OutputFile, Path, Def->Exports, Machine, true))
     return 1;

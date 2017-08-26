@@ -9,6 +9,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "FuzzerInterface.h"
 #include "llvm-c/Target.h"
 #include "llvm/MC/SubtargetFeature.h"
 #include "llvm/MC/MCAsmBackend.h"

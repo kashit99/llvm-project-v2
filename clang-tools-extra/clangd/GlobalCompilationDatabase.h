@@ -28,7 +28,7 @@ namespace clangd {
 /// Returns a default compile command to use for \p File.
 tooling::CompileCommand getDefaultCompileCommand(PathRef File);
 
-/// Provides compilation arguments used for parsing C and C++ files.
+/// Provides compilation arguments used for building ClangdUnit.
 class GlobalCompilationDatabase {
 public:
   virtual ~GlobalCompilationDatabase() = default;

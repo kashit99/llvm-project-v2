@@ -87,6 +87,9 @@ def NonParmVar : SubsetSubject<Var,
 def NonBitField : SubsetSubject<Field,
                                 [{!S->isBitField()}]>;
 
+def ObjCClassMethod : SubsetSubject<ObjCMethod,
+                                    [{!S->isInstanceMethod()}]>;
+
 def ObjCInstanceMethod : SubsetSubject<ObjCMethod,
                                        [{S->isInstanceMethod()}]>;
 
@@ -195,6 +198,9 @@ class VariadicEnumArgument<string name, string type, list<string> values,
   list<string> Enums = enums;
 }
 
+// Represents an attribute wrapped by another attribute.
+class AttrArgument<string name, bit opt = 0> : Argument<name, opt>;
+
 // This handles one spelling of an attribute.
 class Spelling<string name, string variety> {
   string Name = name;
@@ -264,15 +270,14 @@ class TargetArch<list<string> arches> {
 }
 def TargetARM : TargetArch<["arm", "thumb", "armeb", "thumbeb"]>;
 def TargetAVR : TargetArch<["avr"]>;
-def TargetMips32 : TargetArch<["mips", "mipsel"]>;
-def TargetAnyMips : TargetArch<["mips", "mipsel", "mips64", "mips64el"]>;
+def TargetMips : TargetArch<["mips", "mipsel"]>;
 def TargetMSP430 : TargetArch<["msp430"]>;
 def TargetX86 : TargetArch<["x86"]>;
 def TargetAnyX86 : TargetArch<["x86", "x86_64"]>;
-def TargetWindows : TargetArch<["x86", "x86_64", "arm", "thumb", "aarch64"]> {
+def TargetWindows : TargetArch<["x86", "x86_64", "arm", "thumb"]> {
   let OSes = ["Win32"];
 }
-def TargetMicrosoftCXXABI : TargetArch<["x86", "x86_64", "arm", "thumb", "aarch64"]> {
+def TargetMicrosoftCXXABI : TargetArch<["x86", "x86_64", "arm", "thumb"]> {
   let CXXABIs = ["Microsoft"];
 }
 
@@ -655,6 +660,7 @@ def Availability : InheritableAttr {
              .Case("macos_app_extension", "macOS (App Extension)")
              .Case("tvos_app_extension", "tvOS (App Extension)")
              .Case("watchos_app_extension", "watchOS (App Extension)")
+             .Case("swift", "Swift")
              .Default(llvm::StringRef());
 }
 static llvm::StringRef getPlatformNameSourceSpelling(llvm::StringRef Platform) {
@@ -1161,13 +1167,13 @@ def MSP430Interrupt : InheritableAttr, TargetSpecificAttr<TargetMSP430> {
   let Documentation = [Undocumented];
 }
 
-def Mips16 : InheritableAttr, TargetSpecificAttr<TargetMips32> {
+def Mips16 : InheritableAttr, TargetSpecificAttr<TargetMips> {
   let Spellings = [GCC<"mips16">];
   let Subjects = SubjectList<[Function], ErrorDiag>;
   let Documentation = [Undocumented];
 }
 
-def MipsInterrupt : InheritableAttr, TargetSpecificAttr<TargetMips32> {
+def MipsInterrupt : InheritableAttr, TargetSpecificAttr<TargetMips> {
   // NOTE: If you add any additional spellings, ARMInterrupt's,
   // MSP430Interrupt's and AnyX86Interrupt's spellings must match.
   let Spellings = [GNU<"interrupt">];
@@ -1183,22 +1189,10 @@ def MipsInterrupt : InheritableAttr, TargetSpecificAttr<TargetMips32> {
   let Documentation = [MipsInterruptDocs];
 }
 
-def MicroMips : InheritableAttr, TargetSpecificAttr<TargetMips32> {
+def MicroMips : InheritableAttr, TargetSpecificAttr<TargetMips> {
   let Spellings = [GCC<"micromips">];
   let Subjects = SubjectList<[Function], ErrorDiag>;
   let Documentation = [MicroMipsDocs];
-}
-
-def MipsLongCall : InheritableAttr, TargetSpecificAttr<TargetAnyMips> {
-  let Spellings = [GCC<"long_call">, GCC<"far">];
-  let Subjects = SubjectList<[Function]>;
-  let Documentation = [MipsLongCallStyleDocs];
-}
-
-def MipsShortCall : InheritableAttr, TargetSpecificAttr<TargetAnyMips> {
-  let Spellings = [GCC<"short_call">, GCC<"near">];
-  let Subjects = SubjectList<[Function]>;
-  let Documentation = [MipsShortCallStyleDocs];
 }
 
 def Mode : Attr {
@@ -1277,13 +1271,13 @@ def NoInline : InheritableAttr {
   let Documentation = [Undocumented];
 }
 
-def NoMips16 : InheritableAttr, TargetSpecificAttr<TargetMips32> {
+def NoMips16 : InheritableAttr, TargetSpecificAttr<TargetMips> {
   let Spellings = [GCC<"nomips16">];
   let Subjects = SubjectList<[Function], ErrorDiag>;
   let Documentation = [Undocumented];
 }
 
-def NoMicroMips : InheritableAttr, TargetSpecificAttr<TargetMips32> {
+def NoMicroMips : InheritableAttr, TargetSpecificAttr<TargetMips> {
   let Spellings = [GCC<"nomicromips">];
   let Subjects = SubjectList<[Function], ErrorDiag>;
   let Documentation = [MicroMipsDocs];
@@ -1396,6 +1390,12 @@ def ObjCKindOf : TypeAttr {
   let Documentation = [Undocumented];
 }
 
+def NoEscape : InheritableAttr {
+  let Spellings = [GCC<"noescape">];
+  let Subjects = SubjectList<[ParmVar], WarnDiag, "ExpectedParameter">;
+  let Documentation = [Undocumented];
+}
+
 def AssumeAligned : InheritableAttr {
   let Spellings = [GCC<"assume_aligned">];
   let Subjects = SubjectList<[ObjCMethod, Function]>;
@@ -1464,6 +1464,12 @@ def ObjCBridgeRelated : InheritableAttr {
           IdentifierArgument<"InstanceMethod", 1>];
   let HasCustomParsing = 1;
   let Documentation = [Undocumented];
+}
+
+def NSErrorDomain : Attr {
+  let Spellings = [GNU<"ns_error_domain">];
+  let Args = [IdentifierArgument<"ErrorDomain">];
+  let Documentation = [NSErrorDomainDocs];
 }
 
 def NSReturnsRetained : InheritableAttr {
@@ -1550,6 +1556,12 @@ def ObjCSubclassingRestricted : InheritableAttr {
   let Spellings = [GNU<"objc_subclassing_restricted">];
   let Subjects = SubjectList<[ObjCInterface], ErrorDiag>;
   let Documentation = [ObjCSubclassingRestrictedDocs];
+}
+
+def ObjCCompleteDefinition : InheritableAttr {
+  let Spellings = [GNU<"objc_complete_definition">];
+  let Subjects = SubjectList<[ObjCInterface], ErrorDiag>;
+  let Documentation = [Undocumented];
 }
 
 def ObjCExplicitProtocolImpl : InheritableAttr {
@@ -1652,6 +1664,92 @@ def Regparm : TypeAttr {
   let Spellings = [GCC<"regparm">];
   let Args = [UnsignedArgument<"NumParams">];
   let Documentation = [RegparmDocs];
+}
+
+def SwiftBridge : Attr {
+  let Spellings = [GNU<"swift_bridge">];
+  let Subjects = SubjectList<[Tag, TypedefName, ObjCInterface, ObjCProtocol],
+                             ErrorDiag, "ExpectedType">;
+  let Args = [StringArgument<"SwiftType">];
+  let Documentation = [SwiftBridgeDocs];
+}
+
+def SwiftObjCMembers : Attr {
+  let Spellings = [GNU<"swift_objc_members">];
+  let Subjects = SubjectList<[ObjCInterface], ErrorDiag>;
+  let Documentation = [SwiftObjCMembersDocs];
+}
+
+def SwiftError : InheritableAttr {
+  let Spellings = [GCC<"swift_error">];
+  let Args = [EnumArgument<"Convention", "ConventionKind",
+               ["none", "nonnull_error", "null_result", "zero_result", "nonzero_result"],
+               ["None", "NonNullError", "NullResult", "ZeroResult", "NonZeroResult"]>];
+  let Subjects = SubjectList<[ObjCMethod, Function], ErrorDiag>;
+  let Documentation = [SwiftErrorDocs];
+}
+
+def SwiftName : InheritableAttr {
+  let Spellings = [GCC<"swift_name">];
+  let Args = [StringArgument<"Name">];
+  // Proper subject list disabled because of the custom error needed.
+  // Let's avoid merge conflicts for now.
+//  let Subjects = SubjectList<[EnumConstant, ObjCProtocol, ObjCClassMethod],
+//                             ErrorDiag, "ExpectedSwiftNameSubjects">;
+  let Documentation = [Undocumented];
+}
+
+def SwiftNewtype : InheritableAttr {
+  let Spellings = [GNU<"swift_newtype">, GNU<"swift_wrapper">];
+  let Subjects = SubjectList<[TypedefName], ErrorDiag, "ExpectedType">;
+  let Args = [EnumArgument<"NewtypeKind", "NewtypeKind",
+               ["struct", "enum"],
+               ["NK_Struct", "NK_Enum"]>];
+  let Documentation = [SwiftNewtypeDocs];
+}
+
+def SwiftPrivate : InheritableAttr {
+  let Spellings = [GCC<"swift_private">];
+  let Documentation = [Undocumented];
+}
+
+def SwiftImportAsNonGeneric : InheritableAttr {
+  // This attribute has no spellings as it is only ever created implicitly
+  // from API notes.
+  let Spellings = [];
+  let SemaHandler = 0;
+  let Documentation = [Undocumented];
+}
+
+def SwiftImportPropertyAsAccessors : InheritableAttr { 
+  // This attribute has no spellings as it is only ever created implicitly
+  // from API notes.
+  let Spellings = [];
+  let SemaHandler = 0;
+  let Documentation = [Undocumented];
+}
+
+def SwiftVersioned : Attr {
+  // This attribute has no spellings as it is only ever created implicitly
+  // from API notes.
+  let Spellings = [];
+  let Args = [VersionArgument<"Version">, AttrArgument<"AttrToAdd">];
+  let SemaHandler = 0;
+  let Documentation = [Undocumented];
+}
+
+def SwiftVersionedRemoval : Attr {
+  // This attribute has no spellings as it is only ever created implicitly
+  // from API notes.
+  let Spellings = [];
+  let Args = [VersionArgument<"Version">, UnsignedArgument<"RawKind">];
+  let SemaHandler = 0;
+  let Documentation = [Undocumented];
+  let AdditionalMembers = [{
+    attr::Kind getAttrKindToRemove() const {
+      return static_cast<attr::Kind>(getRawKind());
+    }
+  }];
 }
 
 def ReqdWorkGroupSize : InheritableAttr {
@@ -2139,7 +2237,7 @@ def AssertCapability : InheritableAttr {
   let TemplateDependent = 1;
   let ParseArgumentsAsUnevaluated = 1;
   let DuplicatesAllowedWhileMerging = 1;
-  let Args = [VariadicExprArgument<"Args">];
+  let Args = [ExprArgument<"Expr">];
   let Accessors = [Accessor<"isShared",
                     [GNU<"assert_shared_capability">,
                      CXX11<"clang", "assert_shared_capability">]>];

@@ -14,6 +14,8 @@
 #ifndef SCUDO_ALLOCATOR_H_
 #define SCUDO_ALLOCATOR_H_
 
+#include "scudo_flags.h"
+
 #include "sanitizer_common/sanitizer_allocator.h"
 
 #if !SANITIZER_LINUX

@@ -83,7 +83,7 @@ namespace clang {
       return false;                                                            \
   } while (false)
 
-/// \brief A class that does preorder or postorder
+/// \brief A class that does preordor or postorder
 /// depth-first traversal on the entire Clang AST and visits each node.
 ///
 /// This class performs three distinct tasks:
@@ -266,12 +266,6 @@ public:
   // FIXME: take a TemplateArgumentLoc* (or TemplateArgumentListInfo) instead.
   bool TraverseTemplateArguments(const TemplateArgument *Args,
                                  unsigned NumArgs);
-
-  /// \brief Recursively visit a base specifier. This can be overridden by a
-  /// subclass.
-  ///
-  /// \returns false if the visitation was terminated early, true otherwise.
-  bool TraverseCXXBaseSpecifier(const CXXBaseSpecifier &Base);
 
   /// \brief Recursively visit a constructor initializer.  This
   /// automatically dispatches to another visitor for the initializer
@@ -496,8 +490,6 @@ public:
   }                                                                            \
   bool Visit##CLASS##Decl(CLASS##Decl *D) { return true; }
 #include "clang/AST/DeclNodes.inc"
-
-  bool canIgnoreChildDeclWhileTraversingDeclContext(const Decl *Child);
 
 private:
   // These are helper methods used by more than one Traverse* method.
@@ -1347,20 +1339,14 @@ DEF_TRAVERSE_TYPELOC(PipeType, { TRY_TO(TraverseTypeLoc(TL.getValueLoc())); })
 // than those.
 
 template <typename Derived>
-bool RecursiveASTVisitor<Derived>::canIgnoreChildDeclWhileTraversingDeclContext(
-    const Decl *Child) {
-  // BlockDecls and CapturedDecls are traversed through BlockExprs and
-  // CapturedStmts respectively.
-  return isa<BlockDecl>(Child) || isa<CapturedDecl>(Child);
-}
-
-template <typename Derived>
 bool RecursiveASTVisitor<Derived>::TraverseDeclContextHelper(DeclContext *DC) {
   if (!DC)
     return true;
 
   for (auto *Child : DC->decls()) {
-    if (!canIgnoreChildDeclWhileTraversingDeclContext(Child))
+    // BlockDecls and CapturedDecls are traversed through BlockExprs and
+    // CapturedStmts respectively.
+    if (!isa<BlockDecl>(Child) && !isa<CapturedDecl>(Child))
       TRY_TO(TraverseDecl(Child));
   }
 
@@ -1783,19 +1769,12 @@ bool RecursiveASTVisitor<Derived>::TraverseRecordHelper(RecordDecl *D) {
 }
 
 template <typename Derived>
-bool RecursiveASTVisitor<Derived>::TraverseCXXBaseSpecifier(
-    const CXXBaseSpecifier &Base) {
-  TRY_TO(TraverseTypeLoc(Base.getTypeSourceInfo()->getTypeLoc()));
-  return true;
-}
-
-template <typename Derived>
 bool RecursiveASTVisitor<Derived>::TraverseCXXRecordHelper(CXXRecordDecl *D) {
   if (!TraverseRecordHelper(D))
     return false;
   if (D->isCompleteDefinition()) {
     for (const auto &I : D->bases()) {
-      TRY_TO(TraverseCXXBaseSpecifier(I));
+      TRY_TO(TraverseTypeLoc(I.getTypeSourceInfo()->getTypeLoc()));
     }
     // We don't traverse the friends or the conversions, as they are
     // already in decls_begin()/decls_end().
@@ -3056,30 +3035,6 @@ bool RecursiveASTVisitor<Derived>::VisitOMPTaskReductionClause(
   for (auto *E : C->reduction_ops()) {
     TRY_TO(TraverseStmt(E));
   }
-  return true;
-}
-
-template <typename Derived>
-bool RecursiveASTVisitor<Derived>::VisitOMPInReductionClause(
-    OMPInReductionClause *C) {
-  TRY_TO(TraverseNestedNameSpecifierLoc(C->getQualifierLoc()));
-  TRY_TO(TraverseDeclarationNameInfo(C->getNameInfo()));
-  TRY_TO(VisitOMPClauseList(C));
-  TRY_TO(VisitOMPClauseWithPostUpdate(C));
-  for (auto *E : C->privates()) {
-    TRY_TO(TraverseStmt(E));
-  }
-  for (auto *E : C->lhs_exprs()) {
-    TRY_TO(TraverseStmt(E));
-  }
-  for (auto *E : C->rhs_exprs()) {
-    TRY_TO(TraverseStmt(E));
-  }
-  for (auto *E : C->reduction_ops()) {
-    TRY_TO(TraverseStmt(E));
-  }
-  for (auto *E : C->taskgroup_descriptors())
-    TRY_TO(TraverseStmt(E));
   return true;
 }
 

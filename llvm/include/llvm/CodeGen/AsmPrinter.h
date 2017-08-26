@@ -235,15 +235,13 @@ public:
 
   // The table will contain these structs that point to the sled, the function
   // containing the sled, and what kind of sled (and whether they should always
-  // be instrumented). We also use a version identifier that the runtime can use
-  // to decide what to do with the sled, depending on the version of the sled.
+  // be instrumented).
   struct XRayFunctionEntry {
     const MCSymbol *Sled;
     const MCSymbol *Function;
     SledKind Kind;
     bool AlwaysInstrument;
     const class Function *Fn;
-    uint8_t Version;
 
     void emit(int, MCStreamer *, const MCSymbol *) const;
   };
@@ -251,12 +249,8 @@ public:
   // All the sleds to be emitted.
   SmallVector<XRayFunctionEntry, 4> Sleds;
 
-  // A unique ID used for ELF sections associated with a particular function.
-  unsigned XRayFnUniqueID = 0;
-
   // Helper function to record a given XRay sled.
-  void recordSled(MCSymbol *Sled, const MachineInstr &MI, SledKind Kind,
-                  uint8_t Version = 0);
+  void recordSled(MCSymbol *Sled, const MachineInstr &MI, SledKind Kind);
 
   /// Emit a table with all XRay instrumentation points.
   void emitXRayTable();
@@ -300,7 +294,7 @@ public:
   void emitFrameAlloc(const MachineInstr &MI);
 
   enum CFIMoveType { CFI_M_None, CFI_M_EH, CFI_M_Debug };
-  CFIMoveType needsCFIMoves() const;
+  CFIMoveType needsCFIMoves();
 
   /// Returns false if needsCFIMoves() == CFI_M_EH for any function
   /// in the module.

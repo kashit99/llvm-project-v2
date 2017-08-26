@@ -1016,8 +1016,7 @@ SVal SimpleSValBuilder::simplifySVal(ProgramStateRef State, SVal V) {
               SVB.getKnownValue(State, nonloc::SymbolVal(S)))
         return Loc::isLocType(S->getType()) ? (SVal)SVB.makeIntLocVal(*I)
                                             : (SVal)SVB.makeIntVal(*I);
-      return Loc::isLocType(S->getType()) ? (SVal)SVB.makeLoc(S) 
-                                          : nonloc::SymbolVal(S);
+      return nonloc::SymbolVal(S);
     }
 
     // TODO: Support SymbolCast. Support IntSymExpr when/if we actually

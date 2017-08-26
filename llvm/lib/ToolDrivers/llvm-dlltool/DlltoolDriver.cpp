@@ -41,7 +41,7 @@ enum {
 #include "Options.inc"
 #undef PREFIX
 
-static const llvm::opt::OptTable::Info InfoTable[] = {
+static const llvm::opt::OptTable::Info infoTable[] = {
 #define OPTION(X1, X2, ID, KIND, GROUP, ALIAS, X7, X8, X9, X10, X11, X12)      \
   {X1, X2, X10,         X11,         OPT_##ID, llvm::opt::Option::KIND##Class, \
    X9, X8, OPT_##GROUP, OPT_##ALIAS, X7,       X12},
@@ -51,21 +51,26 @@ static const llvm::opt::OptTable::Info InfoTable[] = {
 
 class DllOptTable : public llvm::opt::OptTable {
 public:
-  DllOptTable() : OptTable(InfoTable, false) {}
+  DllOptTable() : OptTable(infoTable, false) {}
 };
 
 } // namespace
 
+std::vector<std::unique_ptr<MemoryBuffer>> OwningMBs;
+
 // Opens a file. Path has to be resolved already.
-static std::unique_ptr<MemoryBuffer> openFile(const Twine &Path) {
+// Newly created memory buffers are owned by this driver.
+Optional<MemoryBufferRef> openFile(StringRef Path) {
   ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> MB = MemoryBuffer::getFile(Path);
 
   if (std::error_code EC = MB.getError()) {
-    llvm::errs() << "cannot open file " << Path << ": " << EC.message() << "\n";
-    return nullptr;
+    llvm::errs() << "fail openFile: " << EC.message() << "\n";
+    return None;
   }
 
-  return std::move(*MB);
+  MemoryBufferRef MBRef = MB.get()->getMemBufferRef();
+  OwningMBs.push_back(std::move(MB.get())); // take ownership
+  return MBRef;
 }
 
 static MachineTypes getEmulation(StringRef S) {
@@ -73,11 +78,10 @@ static MachineTypes getEmulation(StringRef S) {
       .Case("i386", IMAGE_FILE_MACHINE_I386)
       .Case("i386:x86-64", IMAGE_FILE_MACHINE_AMD64)
       .Case("arm", IMAGE_FILE_MACHINE_ARMNT)
-      .Case("arm64", IMAGE_FILE_MACHINE_ARM64)
       .Default(IMAGE_FILE_MACHINE_UNKNOWN);
 }
 
-static std::string getImplibPath(StringRef Path) {
+static std::string getImplibPath(std::string Path) {
   SmallString<128> Out = StringRef("lib");
   Out.append(Path);
   sys::path::replace_extension(Out, ".a");
@@ -117,8 +121,7 @@ int llvm::dlltoolDriverMain(llvm::ArrayRef<const char *> ArgsArr) {
     return 1;
   }
 
-  std::unique_ptr<MemoryBuffer> MB =
-      openFile(Args.getLastArg(OPT_d)->getValue());
+  Optional<MemoryBufferRef> MB = openFile(Args.getLastArg(OPT_d)->getValue());
   if (!MB)
     return 1;
 

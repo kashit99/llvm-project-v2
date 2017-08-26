@@ -33,7 +33,7 @@ struct Noisy {
   Noisy(Noisy const&) = delete;
 #else
   // FIXME: This test depends on copy elision taking place in C++14
-  // (pre-C++17 guaranteed copy elision)
+  // (pre-c++17 guaranteed copy elision)
   Noisy(Noisy const&);
 #endif
 };

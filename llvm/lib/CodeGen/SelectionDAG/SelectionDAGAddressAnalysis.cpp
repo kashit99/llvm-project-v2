@@ -14,7 +14,6 @@
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/SelectionDAG.h"
 #include "llvm/CodeGen/SelectionDAGNodes.h"
-#include "llvm/Target/TargetLowering.h"
 
 namespace llvm {
 
@@ -56,7 +55,7 @@ bool BaseIndexOffset::equalBaseIndex(BaseIndexOffset &Other,
 /// Parses tree in Ptr for base, index, offset addresses.
 BaseIndexOffset BaseIndexOffset::match(SDValue Ptr, const SelectionDAG &DAG) {
   // (((B + I*M) + c)) + c ...
-  SDValue Base = DAG.getTargetLoweringInfo().unwrapAddress(Ptr);
+  SDValue Base = Ptr;
   SDValue Index = SDValue();
   int64_t Offset = 0;
   bool IsIndexSignExt = false;

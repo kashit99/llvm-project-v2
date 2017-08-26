@@ -19,15 +19,13 @@ namespace bugprone {
 
 namespace {
 AST_MATCHER(CXXRecordDecl, isNotTriviallyCopyable) {
-  // For incomplete types, assume they are TriviallyCopyable.
-  return Node.hasDefinition() ? !Node.isTriviallyCopyable() : false;
+  return !Node.isTriviallyCopyable();
 }
 } // namespace
 
 void UndefinedMemoryManipulationCheck::registerMatchers(MatchFinder *Finder) {
   const auto NotTriviallyCopyableObject =
-      hasType(ast_matchers::hasCanonicalType(
-          pointsTo(cxxRecordDecl(isNotTriviallyCopyable()))));
+      hasType(pointsTo(cxxRecordDecl(isNotTriviallyCopyable())));
 
   // Check whether destination object is not TriviallyCopyable.
   // Applicable to all three memory manipulation functions.
@@ -48,21 +46,13 @@ void UndefinedMemoryManipulationCheck::registerMatchers(MatchFinder *Finder) {
 
 void UndefinedMemoryManipulationCheck::check(
     const MatchFinder::MatchResult &Result) {
-  if (const auto *Call = Result.Nodes.getNodeAs<CallExpr>("dest")) {
-    QualType DestType = Call->getArg(0)->IgnoreImplicit()->getType();
-    if (!DestType->getPointeeType().isNull())
-      DestType = DestType->getPointeeType();
-    diag(Call->getLocStart(), "undefined behavior, destination object type %0 "
-                              "is not TriviallyCopyable")
-        << DestType;
+  if (const auto *Destination = Result.Nodes.getNodeAs<CallExpr>("dest")) {
+    diag(Destination->getLocStart(), "undefined behavior, destination "
+                                     "object is not TriviallyCopyable");
   }
-  if (const auto *Call = Result.Nodes.getNodeAs<CallExpr>("src")) {
-    QualType SourceType = Call->getArg(1)->IgnoreImplicit()->getType();
-    if (!SourceType->getPointeeType().isNull())
-      SourceType = SourceType->getPointeeType();
-    diag(Call->getLocStart(),
-         "undefined behavior, source object type %0 is not TriviallyCopyable")
-        << SourceType;
+  if (const auto *Source = Result.Nodes.getNodeAs<CallExpr>("src")) {
+    diag(Source->getLocStart(), "undefined behavior, source object is not "
+                                "TriviallyCopyable");
   }
 }
 

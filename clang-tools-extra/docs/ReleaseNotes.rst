@@ -1,6 +1,6 @@
-===================================================
-Extra Clang Tools 6.0.0 (In-Progress) Release Notes
-===================================================
+=====================================
+Extra Clang Tools 5.0.0 Release Notes
+=====================================
 
 .. contents::
    :local:
@@ -8,17 +8,11 @@ Extra Clang Tools 6.0.0 (In-Progress) Release Notes
 
 Written by the `LLVM Team <http://llvm.org/>`_
 
-.. warning::
-
-   These are in-progress notes for the upcoming Extra Clang Tools 6 release.
-   Release notes for previous releases can be found on
-   `the Download Page <http://releases.llvm.org/download.html>`_.
-
 Introduction
 ============
 
 This document contains the release notes for the Extra Clang Tools, part of the
-Clang release 6.0.0. Here we describe the status of the Extra Clang Tools in
+Clang release 5.0.0. Here we describe the status of the Extra Clang Tools in
 some detail, including major improvements from the previous release and new
 feature work. All LLVM releases may be downloaded from the `LLVM releases web
 site <http://llvm.org/releases/>`_.
@@ -32,118 +26,129 @@ main Clang web page, this document applies to the *next* release, not
 the current one. To see the release notes for a specific release, please
 see the `releases page <http://llvm.org/releases/>`_.
 
-What's New in Extra Clang Tools 6.0.0?
+What's New in Extra Clang Tools 5.0.0?
 ======================================
-
-Some of the major new features and improvements to Extra Clang Tools are listed
-here. Generic improvements to Extra Clang Tools as a whole or to its underlying
-infrastructure are described first, followed by tool-specific sections.
-
-Major New Features
-------------------
-
-...
-
-Improvements to clang-query
----------------------------
-
-The improvements are...
-
-Improvements to clang-rename
-----------------------------
-
-The improvements are...
 
 Improvements to clang-tidy
 --------------------------
 
-- Renamed checks to use correct term "implicit conversion" instead of "implicit
-  cast" and modified messages and option names accordingly:
+- New `android-cloexec-creat
+  <http://clang.llvm.org/extra/clang-tidy/checks/android-cloexec-creat.html>`_ check
 
-    * **performance-implicit-cast-in-loop** was renamed to
-      `performance-implicit-conversion-in-loop
-      <http://clang.llvm.org/extra/clang-tidy/checks/performance-implicit-conversion-in-loop.html>`_
-    * **readability-implicit-bool-cast** was renamed to
-      `readability-implicit-bool-conversion
-      <http://clang.llvm.org/extra/clang-tidy/checks/readability-implicit-bool-conversion.html>`_;
-      the check's options were renamed as follows:
-      ``AllowConditionalIntegerCasts`` -> ``AllowIntegerConditions``,
-      ``AllowConditionalPointerCasts`` -> ``AllowPointerConditions``.
+  Detect usage of ``creat()``.
 
-- New `android-cloexec-accept
-  <http://clang.llvm.org/extra/clang-tidy/checks/android-cloexec-accept.html>`_ check
+- New `android-cloexec-open
+  <http://clang.llvm.org/extra/clang-tidy/checks/android-cloexec-open.html>`_ check
 
-  Detects usage of ``accept()``.
+  Checks if the required file flag ``O_CLOEXEC`` exists in ``open()``,
+  ``open64()`` and ``openat()``.
 
-- New `android-cloexec-accept4
-  <http://clang.llvm.org/extra/clang-tidy/checks/android-cloexec-accept4.html>`_ check
+- New `android-cloexec-fopen
+  <http://clang.llvm.org/extra/clang-tidy/checks/android-cloexec-fopen.html>`_ check
+
+  Checks if the required mode ``e`` exists in the mode argument of ``fopen()``.
+
+- New `android-cloexec-socket
+  <http://clang.llvm.org/extra/clang-tidy/checks/android-cloexec-socket.html>`_ check
 
   Checks if the required file flag ``SOCK_CLOEXEC`` is present in the argument of
-  ``accept4()``.
+  ``socket()``.
 
-- New `android-cloexec-dup
-  <http://clang.llvm.org/extra/clang-tidy/checks/android-cloexec-dup.html>`_ check
+- New `bugprone-suspicious-memset-usage
+  <http://clang.llvm.org/extra/clang-tidy/checks/bugprone-suspicious-memset-usage.html>`_ check
 
-  Detects usage of ``dup()``.
+  Finds ``memset()`` calls with potential mistakes in their arguments.
+  Replaces and extends the ``google-runtime-memset`` check.
 
-- New `android-cloexec-inotify-init
-  <http://clang.llvm.org/extra/clang-tidy/checks/android-cloexec-inotify-init.html>`_ check
+- New `bugprone-undefined-memory-manipulation
+  <http://clang.llvm.org/extra/clang-tidy/checks/bugprone-undefined-memory-manipulation.html>`_ check
 
-  Detects usage of ``inotify_init()``.
+  Finds calls of memory manipulation functions ``memset()``, ``memcpy()`` and
+  ``memmove()`` on not TriviallyCopyable objects resulting in undefined behavior.
 
-- New `android-cloexec-epoll-create1
-  <http://clang.llvm.org/extra/clang-tidy/checks/android-cloexec-epoll-create1.html>`_ check
+- New `cert-dcl21-cpp
+  <http://clang.llvm.org/extra/clang-tidy/checks/cert-dcl21-cpp.html>`_ check
 
-  Checks if the required file flag ``EPOLL_CLOEXEC`` is present in the argument of
-  ``epoll_create1()``.
+  Checks if the overloaded postfix ``operator++/--`` returns a constant object.
 
-- New `android-cloexec-epoll-create
-  <http://clang.llvm.org/extra/clang-tidy/checks/android-cloexec-epoll-create.html>`_ check
+- New `cert-dcl58-cpp
+  <http://clang.llvm.org/extra/clang-tidy/checks/cert-dcl58-cpp.html>`_ check
 
-  Detects usage of ``epoll_create()``.
+  Finds modification of the ``std`` or ``posix`` namespace.
 
-- New `android-cloexec-memfd_create
-  <http://clang.llvm.org/extra/clang-tidy/checks/android-cloexec-memfd_create.html>`_ check
+- Improved `cppcoreguidelines-no-malloc
+  <http://clang.llvm.org/extra/clang-tidy/checks/cppcoreguidelines-no-malloc.html>`_ check
 
-  Checks if the required file flag ``MFD_CLOEXEC`` is present in the argument
-  of ``memfd_create()``.
+  Allow custom memory management functions to be considered as well.
 
-- New `bugprone-integer-division
-  <http://clang.llvm.org/extra/clang-tidy/checks/bugprone-integer-division.html>`_ check
+- New `misc-forwarding-reference-overload
+  <http://clang.llvm.org/extra/clang-tidy/checks/misc-forwarding-reference-overload.html>`_ check
 
-  Finds cases where integer division in a floating point context is likely to
-  cause unintended loss of precision.
+  Finds perfect forwarding constructors that can unintentionally hide copy or move constructors.
 
-- New `hicpp-exception-baseclass
-  <http://clang.llvm.org/extra/clang-tidy/checks/hicpp-exception-baseclass.html>`_ check
+- New `misc-lambda-function-name <http://clang.llvm.org/extra/clang-tidy/checks/misc-lambda-function-name.html>`_ check
 
-  Ensures that all exception will be instances of ``std::exception`` and classes 
-  that are derived from it.
+  Finds uses of ``__func__`` or ``__FUNCTION__`` inside lambdas.
 
-- New `android-cloexec-inotify-init1
-  <http://clang.llvm.org/extra/clang-tidy/checks/android-cloexec-inotify-init1.html>`_ check
+- New `modernize-replace-random-shuffle
+  <http://clang.llvm.org/extra/clang-tidy/checks/modernize-replace-random-shuffle.html>`_ check
 
-  Checks if the required file flag ``IN_CLOEXEC`` is present in the argument of
-  ``inotify_init1()``.
+  Finds and fixes usage of ``std::random_shuffle`` as the function has been removed from C++17.
 
-- New `readability-static-accessed-through-instance
-  <http://clang.llvm.org/extra/clang-tidy/checks/readability-static-accessed-through-instance.html>`_ check
+- New `modernize-return-braced-init-list
+  <http://clang.llvm.org/extra/clang-tidy/checks/modernize-return-braced-init-list.html>`_ check
 
-  Finds member expressions that access static members through instances and
-  replaces them with uses of the appropriate qualified-id.
+  Finds and replaces explicit calls to the constructor in a return statement by
+  a braced initializer list so that the return type is not needlessly repeated.
 
-- Added `modernize-use-emplace.IgnoreImplicitConstructors
-  <http://clang.llvm.org/extra/clang-tidy/checks/modernize-use-emplace.html#cmdoption-arg-IgnoreImplicitConstructors>`_
-  option.
+- New `modernize-unary-static-assert-check
+  <http://clang.llvm.org/extra/clang-tidy/checks/modernize-unary-static-assert.html>`_ check
 
-- Added alias `hicpp-braces-around-statements <http://clang.llvm.org/extra/clang-tidy/checks/hicpp-braces-around-statements.html>`_ 
+  The check diagnoses any ``static_assert`` declaration with an empty string literal
+  and provides a fix-it to replace the declaration with a single-argument ``static_assert`` declaration.
 
-Improvements to include-fixer
------------------------------
+- Improved `modernize-use-emplace
+  <http://clang.llvm.org/extra/clang-tidy/checks/modernize-use-emplace.html>`_ check
 
-The improvements are...
+  Removes unnecessary ``std::make_pair`` and ``std::make_tuple`` calls in
+  push_back calls and turns them into emplace_back. The check now also is able
+  to remove user-defined make functions from ``push_back`` calls on containers
+  of custom tuple-like types by providing `TupleTypes` and `TupleMakeFunctions`.
 
-Improvements to modularize
---------------------------
+- New `modernize-use-noexcept
+  <http://clang.llvm.org/extra/clang-tidy/checks/modernize-use-noexcept.html>`_ check
 
-The improvements are...
+  Replaces dynamic exception specifications with ``noexcept`` or a user defined macro.
+
+- New `performance-inefficient-vector-operation
+  <http://clang.llvm.org/extra/clang-tidy/checks/performance-inefficient-vector-operation.html>`_ check
+
+  Finds possible inefficient vector operations in for loops that may cause
+  unnecessary memory reallocations.
+
+- Added `NestingThreshold` to `readability-function-size
+  <http://clang.llvm.org/extra/clang-tidy/checks/readability-function-size.html>`_ check
+
+  Finds compound statements which create next nesting level after `NestingThreshold` and emits a warning.
+
+- Added `ParameterThreshold` to `readability-function-size
+  <http://clang.llvm.org/extra/clang-tidy/checks/readability-function-size.html>`_ check
+
+  Finds functions that have more than `ParameterThreshold` parameters and emits a warning.
+
+- New `readability-misleading-indentation
+  <http://clang.llvm.org/extra/clang-tidy/checks/readability-misleading-indentation.html>`_ check
+
+  Finds misleading indentation where braces should be introduced or the code should be reformatted.
+
+- Support clang-formatting of the code around applied fixes (``-format-style``
+  command-line option).
+
+- New `bugprone` module
+
+  Adds checks that target bugprone code constructs.
+
+- New `hicpp` module
+
+  Adds checks that implement the `High Integrity C++ Coding Standard <http://www.codingstandard.com/section/index/>`_ and other safety
+  standards. Many checks are aliased to other modules.

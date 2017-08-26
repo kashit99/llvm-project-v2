@@ -237,7 +237,6 @@ void clangd::regiterCallbackHandlers(JSONRPCDispatcher &Dispatcher,
   Dispatcher.registerHandler(
       "textDocument/completion",
       llvm::make_unique<CompletionHandler>(Out, Callbacks));
-  Dispatcher.registerHandler(
-      "textDocument/definition",
+  Dispatcher.registerHandler("textDocument/definition",
       llvm::make_unique<GotoDefinitionHandler>(Out, Callbacks));
 }

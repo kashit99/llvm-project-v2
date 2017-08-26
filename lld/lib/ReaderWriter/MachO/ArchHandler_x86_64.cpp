@@ -116,10 +116,6 @@ public:
     return unwindFDEToFunction;
   }
 
-  Reference::KindValue lazyImmediateLocationKind() override {
-    return lazyImmediateLocation;
-  }
-
   Reference::KindValue unwindRefToEhFrameKind() override {
     return unwindInfoToEhFrame;
   }

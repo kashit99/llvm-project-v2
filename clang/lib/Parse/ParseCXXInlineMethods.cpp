@@ -47,6 +47,7 @@ NamedDecl *Parser::ParseCXXInlineMethodDef(AccessSpecifier AS,
                                            VS, ICIS_NoInit);
     if (FnD) {
       Actions.ProcessDeclAttributeList(getCurScope(), FnD, AccessAttrs);
+      Actions.ProcessAPINotes(FnD);
       if (PureSpecLoc.isValid())
         Actions.ActOnPureSpecifier(FnD, PureSpecLoc);
     }
@@ -509,8 +510,7 @@ void Parser::ParseLexedMethodDef(LexedMethod &LM) {
 
   // Parse the method body. Function body parsing code is similar enough
   // to be re-used for method bodies as well.
-  ParseScope FnScope(this, Scope::FnScope | Scope::DeclScope |
-                               Scope::CompoundStmtScope);
+  ParseScope FnScope(this, Scope::FnScope|Scope::DeclScope);
   Actions.ActOnStartOfFunctionDef(getCurScope(), LM.D);
 
   if (Tok.is(tok::kw_try)) {

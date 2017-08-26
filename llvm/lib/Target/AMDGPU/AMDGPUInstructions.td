@@ -247,7 +247,6 @@ class GlobalLoad <SDPatternOperator op> : GlobalMemOp <
 >;
 
 def global_load : GlobalLoad <load>;
-def global_atomic_load : GlobalLoad<atomic_load>;
 
 // Global address space stores
 class GlobalStore <SDPatternOperator op> : GlobalMemOp <
@@ -702,16 +701,14 @@ def cvt_flr_i32_f32 : PatFrag <
   [{ (void)N; return TM.Options.NoNaNsFPMath; }]
 >;
 
-class IMad24Pat<Instruction Inst, bit HasClamp = 0> : Pat <
+class IMad24Pat<Instruction Inst> : Pat <
   (add (AMDGPUmul_i24 i32:$src0, i32:$src1), i32:$src2),
-  !if(HasClamp, (Inst $src0, $src1, $src2, (i1 0)),
-                (Inst $src0, $src1, $src2))
+  (Inst $src0, $src1, $src2)
 >;
 
-class UMad24Pat<Instruction Inst, bit HasClamp = 0> : Pat <
+class UMad24Pat<Instruction Inst> : Pat <
   (add (AMDGPUmul_u24 i32:$src0, i32:$src1), i32:$src2),
-  !if(HasClamp, (Inst $src0, $src1, $src2, (i1 0)),
-                (Inst $src0, $src1, $src2))
+  (Inst $src0, $src1, $src2)
 >;
 
 class RcpPat<Instruction RcpInst, ValueType vt> : Pat <

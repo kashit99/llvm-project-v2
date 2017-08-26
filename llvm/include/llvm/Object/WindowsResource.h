@@ -85,12 +85,6 @@ struct WinResHeaderSuffix {
   support::ulittle32_t Characteristics;
 };
 
-class EmptyResError : public GenericBinaryError {
-public:
-  EmptyResError(Twine Msg, object_error ECOverride)
-      : GenericBinaryError(Msg, ECOverride) {}
-};
-
 class ResourceEntryRef {
 public:
   Error moveNext(bool &End);
@@ -109,11 +103,10 @@ public:
 private:
   friend class WindowsResource;
 
-  ResourceEntryRef(BinaryStreamRef Ref, const WindowsResource *Owner);
-  Error loadNext();
+  ResourceEntryRef(BinaryStreamRef Ref, const WindowsResource *Owner,
+                   Error &Err);
 
-  static Expected<ResourceEntryRef> create(BinaryStreamRef Ref,
-                                           const WindowsResource *Owner);
+  Error loadNext();
 
   BinaryStreamReader Reader;
   bool IsStringType;

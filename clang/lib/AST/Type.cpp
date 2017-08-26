@@ -12,7 +12,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/AST/Type.h"
-#include "Linkage.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/Attr.h"
 #include "clang/AST/CharUnits.h"
@@ -1082,24 +1081,13 @@ QualType QualType::substObjCTypeArgs(
 
     // Replace an Objective-C type parameter reference with the corresponding
     // type argument.
-    if (const auto *OTPTy = dyn_cast<ObjCTypeParamType>(splitType.Ty)) {
-      if (auto *typeParam = dyn_cast<ObjCTypeParamDecl>(OTPTy->getDecl())) {
+    if (const auto *typedefTy = dyn_cast<TypedefType>(splitType.Ty)) {
+      if (auto *typeParam = dyn_cast<ObjCTypeParamDecl>(typedefTy->getDecl())) {
         // If we have type arguments, use them.
         if (!typeArgs.empty()) {
+          // FIXME: Introduce SubstObjCTypeParamType ?
           QualType argType = typeArgs[typeParam->getIndex()];
-          if (OTPTy->qual_empty())
-            return ctx.getQualifiedType(argType, splitType.Quals);
-
-          // Apply protocol lists if exists.
-          bool hasError;
-          SmallVector<ObjCProtocolDecl*, 8> protocolsVec;
-          protocolsVec.append(OTPTy->qual_begin(),
-                              OTPTy->qual_end());
-          ArrayRef<ObjCProtocolDecl *> protocolsToApply = protocolsVec;
-          QualType resultTy = ctx.applyObjCProtocolQualifiers(argType,
-              protocolsToApply, hasError, true/*allowOnPointerType*/);
-
-          return ctx.getQualifiedType(resultTy, splitType.Quals);
+          return ctx.getQualifiedType(argType, splitType.Quals);
         }
 
         switch (context) {
@@ -3429,7 +3417,9 @@ bool Type::hasUnnamedOrLocalType() const {
   return TypeBits.hasLocalOrUnnamedType();
 }
 
-LinkageInfo LinkageComputer::computeTypeLinkageInfo(const Type *T) {
+static LinkageInfo computeLinkageInfo(QualType T);
+
+static LinkageInfo computeLinkageInfo(const Type *T) {
   switch (T->getTypeClass()) {
 #define TYPE(Class,Base)
 #define NON_CANONICAL_TYPE(Class,Base) case Type::Class:
@@ -3453,76 +3443,73 @@ LinkageInfo LinkageComputer::computeTypeLinkageInfo(const Type *T) {
 
   case Type::Record:
   case Type::Enum:
-    return getDeclLinkageAndVisibility(cast<TagType>(T)->getDecl());
+    return cast<TagType>(T)->getDecl()->getLinkageAndVisibility();
 
   case Type::Complex:
-    return computeTypeLinkageInfo(cast<ComplexType>(T)->getElementType());
+    return computeLinkageInfo(cast<ComplexType>(T)->getElementType());
   case Type::Pointer:
-    return computeTypeLinkageInfo(cast<PointerType>(T)->getPointeeType());
+    return computeLinkageInfo(cast<PointerType>(T)->getPointeeType());
   case Type::BlockPointer:
-    return computeTypeLinkageInfo(cast<BlockPointerType>(T)->getPointeeType());
+    return computeLinkageInfo(cast<BlockPointerType>(T)->getPointeeType());
   case Type::LValueReference:
   case Type::RValueReference:
-    return computeTypeLinkageInfo(cast<ReferenceType>(T)->getPointeeType());
+    return computeLinkageInfo(cast<ReferenceType>(T)->getPointeeType());
   case Type::MemberPointer: {
     const MemberPointerType *MPT = cast<MemberPointerType>(T);
-    LinkageInfo LV = computeTypeLinkageInfo(MPT->getClass());
-    LV.merge(computeTypeLinkageInfo(MPT->getPointeeType()));
+    LinkageInfo LV = computeLinkageInfo(MPT->getClass());
+    LV.merge(computeLinkageInfo(MPT->getPointeeType()));
     return LV;
   }
   case Type::ConstantArray:
   case Type::IncompleteArray:
   case Type::VariableArray:
-    return computeTypeLinkageInfo(cast<ArrayType>(T)->getElementType());
+    return computeLinkageInfo(cast<ArrayType>(T)->getElementType());
   case Type::Vector:
   case Type::ExtVector:
-    return computeTypeLinkageInfo(cast<VectorType>(T)->getElementType());
+    return computeLinkageInfo(cast<VectorType>(T)->getElementType());
   case Type::FunctionNoProto:
-    return computeTypeLinkageInfo(cast<FunctionType>(T)->getReturnType());
+    return computeLinkageInfo(cast<FunctionType>(T)->getReturnType());
   case Type::FunctionProto: {
     const FunctionProtoType *FPT = cast<FunctionProtoType>(T);
-    LinkageInfo LV = computeTypeLinkageInfo(FPT->getReturnType());
+    LinkageInfo LV = computeLinkageInfo(FPT->getReturnType());
     for (const auto &ai : FPT->param_types())
-      LV.merge(computeTypeLinkageInfo(ai));
+      LV.merge(computeLinkageInfo(ai));
     return LV;
   }
   case Type::ObjCInterface:
-    return getDeclLinkageAndVisibility(cast<ObjCInterfaceType>(T)->getDecl());
+    return cast<ObjCInterfaceType>(T)->getDecl()->getLinkageAndVisibility();
   case Type::ObjCObject:
-    return computeTypeLinkageInfo(cast<ObjCObjectType>(T)->getBaseType());
+    return computeLinkageInfo(cast<ObjCObjectType>(T)->getBaseType());
   case Type::ObjCObjectPointer:
-    return computeTypeLinkageInfo(
-        cast<ObjCObjectPointerType>(T)->getPointeeType());
+    return computeLinkageInfo(cast<ObjCObjectPointerType>(T)->getPointeeType());
   case Type::Atomic:
-    return computeTypeLinkageInfo(cast<AtomicType>(T)->getValueType());
+    return computeLinkageInfo(cast<AtomicType>(T)->getValueType());
   case Type::Pipe:
-    return computeTypeLinkageInfo(cast<PipeType>(T)->getElementType());
+    return computeLinkageInfo(cast<PipeType>(T)->getElementType());
   }
 
   llvm_unreachable("unhandled type class");
+}
+
+static LinkageInfo computeLinkageInfo(QualType T) {
+  return computeLinkageInfo(T.getTypePtr());
 }
 
 bool Type::isLinkageValid() const {
   if (!TypeBits.isCacheValid())
     return true;
 
-  Linkage L = LinkageComputer{}
-                  .computeTypeLinkageInfo(getCanonicalTypeInternal())
-                  .getLinkage();
-  return L == TypeBits.getLinkage();
-}
-
-LinkageInfo LinkageComputer::getTypeLinkageAndVisibility(const Type *T) {
-  if (!T->isCanonicalUnqualified())
-    return computeTypeLinkageInfo(T->getCanonicalTypeInternal());
-
-  LinkageInfo LV = computeTypeLinkageInfo(T);
-  assert(LV.getLinkage() == T->getLinkage());
-  return LV;
+  return computeLinkageInfo(getCanonicalTypeInternal()).getLinkage() ==
+    TypeBits.getLinkage();
 }
 
 LinkageInfo Type::getLinkageAndVisibility() const {
-  return LinkageComputer{}.getTypeLinkageAndVisibility(this);
+  if (!isCanonicalUnqualified())
+    return computeLinkageInfo(getCanonicalTypeInternal());
+
+  LinkageInfo LV = computeLinkageInfo(this);
+  assert(LV.getLinkage() == getLinkage());
+  return LV;
 }
 
 Optional<NullabilityKind> Type::getNullability(const ASTContext &context) const {

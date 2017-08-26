@@ -16,9 +16,6 @@
 #define LLVM_CLANG_TOOLING_REFACTOR_RENAME_RENAMING_ACTION_H
 
 #include "clang/Tooling/Refactoring.h"
-#include "clang/Tooling/Refactoring/AtomicChange.h"
-#include "clang/Tooling/Refactoring/Rename/SymbolOccurrences.h"
-#include "llvm/Support/Error.h"
 
 namespace clang {
 class ASTConsumer;
@@ -44,13 +41,6 @@ private:
   std::map<std::string, tooling::Replacements> &FileToReplaces;
   bool PrintLocations;
 };
-
-/// Returns source replacements that correspond to the rename of the given
-/// symbol occurrences.
-llvm::Expected<std::vector<AtomicChange>>
-createRenameReplacements(const SymbolOccurrences &Occurrences,
-                         const SourceManager &SM,
-                         ArrayRef<StringRef> NewNameStrings);
 
 /// Rename all symbols identified by the given USRs.
 class QualifiedRenamingAction {

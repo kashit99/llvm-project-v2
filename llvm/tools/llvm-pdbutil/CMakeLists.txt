@@ -32,3 +32,7 @@ add_llvm_tool(llvm-pdbutil
   StreamUtil.cpp
   YAMLOutputStyle.cpp
   )
+
+if(LLVM_USE_SANITIZE_COVERAGE)
+  add_subdirectory(fuzzer)
+endif()

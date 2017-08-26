@@ -15,11 +15,9 @@
 #ifndef LLVM_CLANG_LIB_CODEGEN_TARGETINFO_H
 #define LLVM_CLANG_LIB_CODEGEN_TARGETINFO_H
 
-#include "CodeGenModule.h"
 #include "CGValue.h"
 #include "clang/AST/Type.h"
 #include "clang/Basic/LLVM.h"
-#include "clang/Basic/SyncScope.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringRef.h"
 
@@ -36,6 +34,7 @@ class Decl;
 namespace CodeGen {
 class ABIInfo;
 class CallArgList;
+class CodeGenModule;
 class CodeGenFunction;
 class CGFunctionInfo;
 
@@ -56,8 +55,7 @@ public:
   /// setTargetAttributes - Provides a convenient hook to handle extra
   /// target-specific attributes for the given global.
   virtual void setTargetAttributes(const Decl *D, llvm::GlobalValue *GV,
-                                   CodeGen::CodeGenModule &M,
-                                   ForDefinition_t IsForDefinition) const {}
+                                   CodeGen::CodeGenModule &M) const {}
 
   /// emitTargetMD - Provides a convenient hook to handle extra
   /// target-specific metadata for the given global.
@@ -261,10 +259,6 @@ public:
   virtual llvm::Constant *
   performAddrSpaceCast(CodeGenModule &CGM, llvm::Constant *V, unsigned SrcAddr,
                        unsigned DestAddr, llvm::Type *DestTy) const;
-
-  /// Get the syncscope used in LLVM IR.
-  virtual llvm::SyncScope::ID getLLVMSyncScopeID(SyncScope S,
-                                                 llvm::LLVMContext &C) const;
 };
 
 } // namespace CodeGen

@@ -98,10 +98,3 @@ void checkMultiDimansionalArray() {
   int a[5][5];
    *(*(a+1)+2) = 2;
 }
-
-unsigned ptrSubtractionNoCrash(char *Begin, char *End) {
-  auto N = End - Begin;
-  if (Begin)
-    return 0;
-  return N;
-}

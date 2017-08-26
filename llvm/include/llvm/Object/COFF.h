@@ -753,7 +753,7 @@ private:
   const debug_directory *DebugDirectoryBegin;
   const debug_directory *DebugDirectoryEnd;
   // Either coff_load_configuration32 or coff_load_configuration64.
-  const void *LoadConfig = nullptr;
+  const void *LoadConfig;
 
   std::error_code getString(uint32_t offset, StringRef &Res) const;
 

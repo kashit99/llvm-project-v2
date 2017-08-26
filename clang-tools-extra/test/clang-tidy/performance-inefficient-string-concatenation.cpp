@@ -19,8 +19,6 @@ std::string g(std::string) {}
 int main() {
   std::string mystr1, mystr2;
   std::wstring mywstr1, mywstr2;
-  auto myautostr1 = mystr1;
-  auto myautostr2 = mystr2;
 
   for (int i = 0; i < 10; ++i) {
     f(mystr1 + mystr2 + mystr1);
@@ -35,8 +33,6 @@ int main() {
     // CHECK-MESSAGES: :[[@LINE-1]]:5: warning: string concatenation
     mywstr1 = mywstr2 + mywstr2 + mywstr2;
     // CHECK-MESSAGES: :[[@LINE-1]]:33: warning: string concatenation
-    myautostr1 = myautostr1 + myautostr2;
-    // CHECK-MESSAGES: :[[@LINE-1]]:5: warning: string concatenation
 
     mywstr1 = mywstr2 + mywstr2;
     mystr1 = mystr2 + mystr2;

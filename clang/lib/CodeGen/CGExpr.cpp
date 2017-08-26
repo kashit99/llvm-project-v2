@@ -49,7 +49,7 @@ using namespace CodeGen;
 
 llvm::Value *CodeGenFunction::EmitCastToVoidPtr(llvm::Value *value) {
   unsigned addressSpace =
-      cast<llvm::PointerType>(value->getType())->getAddressSpace();
+    cast<llvm::PointerType>(value->getType())->getAddressSpace();
 
   llvm::PointerType *destType = Int8PtrTy;
   if (addressSpace)
@@ -695,17 +695,17 @@ void CodeGenFunction::EmitTypeCheck(TypeCheckKind TCK, SourceLocation Loc,
   //    -- the [pointer or glvalue] is used to access a non-static data member
   //       or call a non-static member function
   CXXRecordDecl *RD = Ty->getAsCXXRecordDecl();
+  bool HasNullCheck = IsGuaranteedNonNull || IsNonNull;
   if (SanOpts.has(SanitizerKind::Vptr) &&
-      !SkippedChecks.has(SanitizerKind::Vptr) &&
+      !SkippedChecks.has(SanitizerKind::Vptr) && HasNullCheck &&
       (TCK == TCK_MemberAccess || TCK == TCK_MemberCall ||
        TCK == TCK_DowncastPointer || TCK == TCK_DowncastReference ||
        TCK == TCK_UpcastToVirtualBase) &&
       RD && RD->hasDefinition() && RD->isDynamicClass()) {
     // Ensure that the pointer is non-null before loading it. If there is no
-    // compile-time guarantee, reuse the run-time null check or emit a new one.
+    // compile-time guarantee, reuse the run-time null check.
     if (!IsGuaranteedNonNull) {
-      if (!IsNonNull)
-        IsNonNull = Builder.CreateIsNotNull(Ptr);
+      assert(IsNonNull && "Missing run-time null check");
       if (!Done)
         Done = createBasicBlock("vptr.null");
       llvm::BasicBlock *VptrNotNull = createBasicBlock("vptr.not.null");
@@ -1337,25 +1337,6 @@ CodeGenFunction::tryEmitAsConstant(DeclRefExpr *refExpr) {
     return ConstantEmission::forReference(C);
 
   return ConstantEmission::forValue(C);
-}
-
-static DeclRefExpr *tryToConvertMemberExprToDeclRefExpr(CodeGenFunction &CGF,
-                                                        const MemberExpr *ME) {
-  if (auto *VD = dyn_cast<VarDecl>(ME->getMemberDecl())) {
-    // Try to emit static variable member expressions as DREs.
-    return DeclRefExpr::Create(
-        CGF.getContext(), NestedNameSpecifierLoc(), SourceLocation(), VD,
-        /*RefersToEnclosingVariableOrCapture=*/false, ME->getExprLoc(),
-        ME->getType(), ME->getValueKind());
-  }
-  return nullptr;
-}
-
-CodeGenFunction::ConstantEmission
-CodeGenFunction::tryEmitAsConstant(const MemberExpr *ME) {
-  if (DeclRefExpr *DRE = tryToConvertMemberExprToDeclRefExpr(*this, ME))
-    return tryEmitAsConstant(DRE);
-  return ConstantEmission();
 }
 
 llvm::Value *CodeGenFunction::EmitLoadOfScalar(LValue lvalue,
@@ -2319,7 +2300,6 @@ LValue CodeGenFunction::EmitDeclRefLValue(const DeclRefExpr *E) {
 
     // Check for captured variables.
     if (E->refersToEnclosingVariableOrCapture()) {
-      VD = VD->getCanonicalDecl();
       if (auto *FD = LambdaCaptureFields.lookup(VD))
         return EmitCapturedFieldLValue(*this, FD, CXXABIThisValue);
       else if (CapturedStmtInfo) {
@@ -3559,11 +3539,6 @@ EmitExtVectorElementExpr(const ExtVectorElementExpr *E) {
 }
 
 LValue CodeGenFunction::EmitMemberExpr(const MemberExpr *E) {
-  if (DeclRefExpr *DRE = tryToConvertMemberExprToDeclRefExpr(*this, E)) {
-    EmitIgnoredExpr(E->getBase());
-    return EmitDeclRefLValue(DRE);
-  }
-
   Expr *BaseExpr = E->getBase();
   // If this is s.x, emit s as an lvalue.  If it is s->x, emit s as a scalar.
   LValue BaseLV;
@@ -3589,6 +3564,9 @@ LValue CodeGenFunction::EmitMemberExpr(const MemberExpr *E) {
     setObjCGCLValueClass(getContext(), E, LV);
     return LV;
   }
+
+  if (auto *VD = dyn_cast<VarDecl>(ND))
+    return EmitGlobalVarDeclLValue(*this, E, VD);
 
   if (const auto *FD = dyn_cast<FunctionDecl>(ND))
     return EmitFunctionDeclLValue(*this, E, FD);

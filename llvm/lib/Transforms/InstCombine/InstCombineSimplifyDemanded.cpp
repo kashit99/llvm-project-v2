@@ -521,25 +521,26 @@ Value *InstCombiner::SimplifyDemandedUseBits(Value *V, APInt DemandedMask,
       if (SimplifyDemandedBits(I, 0, DemandedMaskIn, Known, Depth + 1))
         return I;
 
-      unsigned SignBits = ComputeNumSignBits(I->getOperand(0), Depth + 1, CxtI);
-
       assert(!Known.hasConflict() && "Bits known to be one AND zero?");
-      // Compute the new bits that are at the top now plus sign bits.
-      APInt HighBits(APInt::getHighBitsSet(
-          BitWidth, std::min(SignBits + ShiftAmt - 1, BitWidth)));
+      // Compute the new bits that are at the top now.
+      APInt HighBits(APInt::getHighBitsSet(BitWidth, ShiftAmt));
       Known.Zero.lshrInPlace(ShiftAmt);
       Known.One.lshrInPlace(ShiftAmt);
 
+      // Handle the sign bits.
+      APInt SignMask(APInt::getSignMask(BitWidth));
+      // Adjust to where it is now in the mask.
+      SignMask.lshrInPlace(ShiftAmt);
+
       // If the input sign bit is known to be zero, or if none of the top bits
       // are demanded, turn this into an unsigned shift right.
-      assert(BitWidth > ShiftAmt && "Shift amount not saturated?");
-      if (Known.Zero[BitWidth-ShiftAmt-1] ||
+      if (BitWidth <= ShiftAmt || Known.Zero[BitWidth-ShiftAmt-1] ||
           !DemandedMask.intersects(HighBits)) {
         BinaryOperator *LShr = BinaryOperator::CreateLShr(I->getOperand(0),
                                                           I->getOperand(1));
         LShr->setIsExact(cast<BinaryOperator>(I)->isExact());
         return InsertNewInstWith(LShr, *I);
-      } else if (Known.One[BitWidth-ShiftAmt-1]) { // New bits are known one.
+      } else if (Known.One.intersects(SignMask)) { // New bits are known one.
         Known.One |= HighBits;
       }
     }

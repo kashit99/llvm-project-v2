@@ -246,12 +246,12 @@ AlignTokenSequence(unsigned Start, unsigned End, unsigned Column, F &&Matches,
 
   for (unsigned i = Start; i != End; ++i) {
     if (ScopeStack.size() != 0 &&
-        Changes[i].nestingAndIndentLevel() <
-            Changes[ScopeStack.back()].nestingAndIndentLevel())
+        Changes[i].indentAndNestingLevel() <
+            Changes[ScopeStack.back()].indentAndNestingLevel())
       ScopeStack.pop_back();
 
-    if (i != Start && Changes[i].nestingAndIndentLevel() >
-                          Changes[i - 1].nestingAndIndentLevel())
+    if (i != Start && Changes[i].indentAndNestingLevel() >
+                          Changes[i - 1].indentAndNestingLevel())
       ScopeStack.push_back(i);
 
     bool InsideNestedScope = ScopeStack.size() != 0;
@@ -327,8 +327,8 @@ static unsigned AlignTokens(const FormatStyle &Style, F &&Matches,
 
   // Measure the scope level (i.e. depth of (), [], {}) of the first token, and
   // abort when we hit any token in a higher scope than the starting one.
-  auto NestingAndIndentLevel = StartAt < Changes.size()
-                                   ? Changes[StartAt].nestingAndIndentLevel()
+  auto IndentAndNestingLevel = StartAt < Changes.size()
+                                   ? Changes[StartAt].indentAndNestingLevel()
                                    : std::pair<unsigned, unsigned>(0, 0);
 
   // Keep track of the number of commas before the matching tokens, we will only
@@ -359,7 +359,7 @@ static unsigned AlignTokens(const FormatStyle &Style, F &&Matches,
 
   unsigned i = StartAt;
   for (unsigned e = Changes.size(); i != e; ++i) {
-    if (Changes[i].nestingAndIndentLevel() < NestingAndIndentLevel)
+    if (Changes[i].indentAndNestingLevel() < IndentAndNestingLevel)
       break;
 
     if (Changes[i].NewlinesBefore != 0) {
@@ -375,7 +375,7 @@ static unsigned AlignTokens(const FormatStyle &Style, F &&Matches,
 
     if (Changes[i].Tok->is(tok::comma)) {
       ++CommasBeforeMatch;
-    } else if (Changes[i].nestingAndIndentLevel() > NestingAndIndentLevel) {
+    } else if (Changes[i].indentAndNestingLevel() > IndentAndNestingLevel) {
       // Call AlignTokens recursively, skipping over this scope block.
       unsigned StoppedAt = AlignTokens(Style, Matches, Changes, i);
       i = StoppedAt - 1;
@@ -608,9 +608,8 @@ void WhitespaceManager::generateChanges() {
     if (C.CreateReplacement) {
       std::string ReplacementText = C.PreviousLinePostfix;
       if (C.ContinuesPPDirective)
-        appendEscapedNewlineText(ReplacementText, C.NewlinesBefore,
-                                 C.PreviousEndOfTokenColumn,
-                                 C.EscapedNewlineColumn);
+        appendNewlineText(ReplacementText, C.NewlinesBefore,
+                          C.PreviousEndOfTokenColumn, C.EscapedNewlineColumn);
       else
         appendNewlineText(ReplacementText, C.NewlinesBefore);
       appendIndentText(ReplacementText, C.Tok->IndentLevel,
@@ -646,17 +645,16 @@ void WhitespaceManager::appendNewlineText(std::string &Text,
     Text.append(UseCRLF ? "\r\n" : "\n");
 }
 
-void WhitespaceManager::appendEscapedNewlineText(std::string &Text,
-                                                 unsigned Newlines,
-                                                 unsigned PreviousEndOfTokenColumn,
-                                                 unsigned EscapedNewlineColumn) {
+void WhitespaceManager::appendNewlineText(std::string &Text, unsigned Newlines,
+                                          unsigned PreviousEndOfTokenColumn,
+                                          unsigned EscapedNewlineColumn) {
   if (Newlines > 0) {
-    unsigned Spaces =
-        std::max<int>(1, EscapedNewlineColumn - PreviousEndOfTokenColumn - 1);
+    unsigned Offset =
+        std::min<int>(EscapedNewlineColumn - 2, PreviousEndOfTokenColumn);
     for (unsigned i = 0; i < Newlines; ++i) {
-      Text.append(Spaces, ' ');
+      Text.append(EscapedNewlineColumn - Offset - 1, ' ');
       Text.append(UseCRLF ? "\\\r\n" : "\\\n");
-      Spaces = std::max<int>(0, EscapedNewlineColumn - 1);
+      Offset = 0;
     }
   }
 }

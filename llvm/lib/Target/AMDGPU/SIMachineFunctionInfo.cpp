@@ -1,4 +1,4 @@
-//===- SIMachineFunctionInfo.cpp - SI Machine Function Info ---------------===//
+//===-- SIMachineFunctionInfo.cpp -------- SI Machine Function Info -------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -8,19 +8,13 @@
 //===----------------------------------------------------------------------===//
 
 #include "SIMachineFunctionInfo.h"
-#include "AMDGPUArgumentUsageInfo.h"
 #include "AMDGPUSubtarget.h"
-#include "SIRegisterInfo.h"
-#include "Utils/AMDGPUBaseInfo.h"
-#include "llvm/ADT/Optional.h"
-#include "llvm/CodeGen/MachineBasicBlock.h"
+#include "SIInstrInfo.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
-#include "llvm/CodeGen/MachineFunction.h"
+#include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
-#include "llvm/IR/CallingConv.h"
 #include "llvm/IR/Function.h"
-#include <cassert>
-#include <vector>
+#include "llvm/IR/LLVMContext.h"
 
 #define MAX_LANES 64
 
@@ -28,6 +22,44 @@ using namespace llvm;
 
 SIMachineFunctionInfo::SIMachineFunctionInfo(const MachineFunction &MF)
   : AMDGPUMachineFunction(MF),
+    TIDReg(AMDGPU::NoRegister),
+    ScratchRSrcReg(AMDGPU::PRIVATE_RSRC_REG),
+    ScratchWaveOffsetReg(AMDGPU::SCRATCH_WAVE_OFFSET_REG),
+    FrameOffsetReg(AMDGPU::FP_REG),
+    StackPtrOffsetReg(AMDGPU::SP_REG),
+    PrivateSegmentBufferUserSGPR(AMDGPU::NoRegister),
+    DispatchPtrUserSGPR(AMDGPU::NoRegister),
+    QueuePtrUserSGPR(AMDGPU::NoRegister),
+    KernargSegmentPtrUserSGPR(AMDGPU::NoRegister),
+    DispatchIDUserSGPR(AMDGPU::NoRegister),
+    FlatScratchInitUserSGPR(AMDGPU::NoRegister),
+    PrivateSegmentSizeUserSGPR(AMDGPU::NoRegister),
+    GridWorkGroupCountXUserSGPR(AMDGPU::NoRegister),
+    GridWorkGroupCountYUserSGPR(AMDGPU::NoRegister),
+    GridWorkGroupCountZUserSGPR(AMDGPU::NoRegister),
+    WorkGroupIDXSystemSGPR(AMDGPU::NoRegister),
+    WorkGroupIDYSystemSGPR(AMDGPU::NoRegister),
+    WorkGroupIDZSystemSGPR(AMDGPU::NoRegister),
+    WorkGroupInfoSystemSGPR(AMDGPU::NoRegister),
+    PrivateSegmentWaveByteOffsetSystemSGPR(AMDGPU::NoRegister),
+    WorkItemIDXVGPR(AMDGPU::NoRegister),
+    WorkItemIDYVGPR(AMDGPU::NoRegister),
+    WorkItemIDZVGPR(AMDGPU::NoRegister),
+    PSInputAddr(0),
+    PSInputEnable(0),
+    ReturnsVoid(true),
+    FlatWorkGroupSizes(0, 0),
+    WavesPerEU(0, 0),
+    DebuggerWorkGroupIDStackObjectIndices({{0, 0, 0}}),
+    DebuggerWorkItemIDStackObjectIndices({{0, 0, 0}}),
+    LDSWaveSpillSize(0),
+    NumUserSGPRs(0),
+    NumSystemSGPRs(0),
+    HasSpilledSGPRs(false),
+    HasSpilledVGPRs(false),
+    HasNonSpillStackObjects(false),
+    NumSpilledSGPRs(0),
+    NumSpilledVGPRs(0),
     PrivateSegmentBuffer(false),
     DispatchPtr(false),
     QueuePtr(false),
@@ -45,8 +77,7 @@ SIMachineFunctionInfo::SIMachineFunctionInfo(const MachineFunction &MF)
     WorkItemIDX(false),
     WorkItemIDY(false),
     WorkItemIDZ(false),
-    ImplicitBufferPtr(false),
-    ImplicitArgPtr(false) {
+    ImplicitBufferPtr(false) {
   const SISubtarget &ST = MF.getSubtarget<SISubtarget>();
   const Function *F = MF.getFunction();
   FlatWorkGroupSizes = ST.getFlatWorkGroupSizes(*F);
@@ -60,22 +91,13 @@ SIMachineFunctionInfo::SIMachineFunctionInfo(const MachineFunction &MF)
     FrameOffsetReg = AMDGPU::SGPR5;
     StackPtrOffsetReg = AMDGPU::SGPR32;
 
-    ArgInfo.PrivateSegmentBuffer =
-      ArgDescriptor::createRegister(ScratchRSrcReg);
-    ArgInfo.PrivateSegmentWaveByteOffset =
-      ArgDescriptor::createRegister(ScratchWaveOffsetReg);
-
-    if (F->hasFnAttribute("amdgpu-implicitarg-ptr"))
-      ImplicitArgPtr = true;
-  } else {
-    if (F->hasFnAttribute("amdgpu-implicitarg-ptr"))
-      KernargSegmentPtr = true;
+    // FIXME: Not really a system SGPR.
+    PrivateSegmentWaveByteOffsetSystemSGPR = ScratchWaveOffsetReg;
   }
 
   CallingConv::ID CC = F->getCallingConv();
   if (CC == CallingConv::AMDGPU_KERNEL || CC == CallingConv::SPIR_KERNEL) {
-    if (!F->arg_empty())
-      KernargSegmentPtr = true;
+    KernargSegmentPtr = !F->arg_empty();
     WorkGroupIDX = true;
     WorkItemIDX = true;
   } else if (CC == CallingConv::AMDGPU_PS) {
@@ -123,11 +145,10 @@ SIMachineFunctionInfo::SIMachineFunctionInfo(const MachineFunction &MF)
     if (HasStackObjects || MaySpill) {
       PrivateSegmentWaveByteOffset = true;
 
-    // HS and GS always have the scratch wave offset in SGPR5 on GFX9.
-    if (ST.getGeneration() >= AMDGPUSubtarget::GFX9 &&
-        (CC == CallingConv::AMDGPU_HS || CC == CallingConv::AMDGPU_GS))
-      ArgInfo.PrivateSegmentWaveByteOffset
-        = ArgDescriptor::createRegister(AMDGPU::SGPR5);
+      // HS and GS always have the scratch wave offset in SGPR5 on GFX9.
+      if (ST.getGeneration() >= AMDGPUSubtarget::GFX9 &&
+          (CC == CallingConv::AMDGPU_HS || CC == CallingConv::AMDGPU_GS))
+        PrivateSegmentWaveByteOffsetSystemSGPR = AMDGPU::SGPR5;
     }
   }
 
@@ -162,63 +183,52 @@ SIMachineFunctionInfo::SIMachineFunctionInfo(const MachineFunction &MF)
 
 unsigned SIMachineFunctionInfo::addPrivateSegmentBuffer(
   const SIRegisterInfo &TRI) {
-  ArgInfo.PrivateSegmentBuffer =
-    ArgDescriptor::createRegister(TRI.getMatchingSuperReg(
-    getNextUserSGPR(), AMDGPU::sub0, &AMDGPU::SReg_128RegClass));
+  PrivateSegmentBufferUserSGPR = TRI.getMatchingSuperReg(
+    getNextUserSGPR(), AMDGPU::sub0, &AMDGPU::SReg_128RegClass);
   NumUserSGPRs += 4;
-  return ArgInfo.PrivateSegmentBuffer.getRegister();
+  return PrivateSegmentBufferUserSGPR;
 }
 
 unsigned SIMachineFunctionInfo::addDispatchPtr(const SIRegisterInfo &TRI) {
-  ArgInfo.DispatchPtr = ArgDescriptor::createRegister(TRI.getMatchingSuperReg(
-    getNextUserSGPR(), AMDGPU::sub0, &AMDGPU::SReg_64RegClass));
+  DispatchPtrUserSGPR = TRI.getMatchingSuperReg(
+    getNextUserSGPR(), AMDGPU::sub0, &AMDGPU::SReg_64RegClass);
   NumUserSGPRs += 2;
-  return ArgInfo.DispatchPtr.getRegister();
+  return DispatchPtrUserSGPR;
 }
 
 unsigned SIMachineFunctionInfo::addQueuePtr(const SIRegisterInfo &TRI) {
-  ArgInfo.QueuePtr = ArgDescriptor::createRegister(TRI.getMatchingSuperReg(
-    getNextUserSGPR(), AMDGPU::sub0, &AMDGPU::SReg_64RegClass));
+  QueuePtrUserSGPR = TRI.getMatchingSuperReg(
+    getNextUserSGPR(), AMDGPU::sub0, &AMDGPU::SReg_64RegClass);
   NumUserSGPRs += 2;
-  return ArgInfo.QueuePtr.getRegister();
+  return QueuePtrUserSGPR;
 }
 
 unsigned SIMachineFunctionInfo::addKernargSegmentPtr(const SIRegisterInfo &TRI) {
-  ArgInfo.KernargSegmentPtr
-    = ArgDescriptor::createRegister(TRI.getMatchingSuperReg(
-    getNextUserSGPR(), AMDGPU::sub0, &AMDGPU::SReg_64RegClass));
+  KernargSegmentPtrUserSGPR = TRI.getMatchingSuperReg(
+    getNextUserSGPR(), AMDGPU::sub0, &AMDGPU::SReg_64RegClass);
   NumUserSGPRs += 2;
-  return ArgInfo.KernargSegmentPtr.getRegister();
+  return KernargSegmentPtrUserSGPR;
 }
 
 unsigned SIMachineFunctionInfo::addDispatchID(const SIRegisterInfo &TRI) {
-  ArgInfo.DispatchID = ArgDescriptor::createRegister(TRI.getMatchingSuperReg(
-    getNextUserSGPR(), AMDGPU::sub0, &AMDGPU::SReg_64RegClass));
+  DispatchIDUserSGPR = TRI.getMatchingSuperReg(
+    getNextUserSGPR(), AMDGPU::sub0, &AMDGPU::SReg_64RegClass);
   NumUserSGPRs += 2;
-  return ArgInfo.DispatchID.getRegister();
+  return DispatchIDUserSGPR;
 }
 
 unsigned SIMachineFunctionInfo::addFlatScratchInit(const SIRegisterInfo &TRI) {
-  ArgInfo.FlatScratchInit = ArgDescriptor::createRegister(TRI.getMatchingSuperReg(
-    getNextUserSGPR(), AMDGPU::sub0, &AMDGPU::SReg_64RegClass));
+  FlatScratchInitUserSGPR = TRI.getMatchingSuperReg(
+    getNextUserSGPR(), AMDGPU::sub0, &AMDGPU::SReg_64RegClass);
   NumUserSGPRs += 2;
-  return ArgInfo.FlatScratchInit.getRegister();
+  return FlatScratchInitUserSGPR;
 }
 
 unsigned SIMachineFunctionInfo::addImplicitBufferPtr(const SIRegisterInfo &TRI) {
-  ArgInfo.ImplicitBufferPtr = ArgDescriptor::createRegister(TRI.getMatchingSuperReg(
-    getNextUserSGPR(), AMDGPU::sub0, &AMDGPU::SReg_64RegClass));
+  ImplicitBufferPtrUserSGPR = TRI.getMatchingSuperReg(
+    getNextUserSGPR(), AMDGPU::sub0, &AMDGPU::SReg_64RegClass);
   NumUserSGPRs += 2;
-  return ArgInfo.ImplicitBufferPtr.getRegister();
-}
-
-static bool isCalleeSavedReg(const MCPhysReg *CSRegs, MCPhysReg Reg) {
-  for (unsigned I = 0; CSRegs[I]; ++I) {
-    if (CSRegs[I] == Reg)
-      return true;
-  }
-
-  return false;
+  return ImplicitBufferPtrUserSGPR;
 }
 
 /// Reserve a slice of a VGPR to support spilling for FrameIndex \p FI.
@@ -242,8 +252,6 @@ bool SIMachineFunctionInfo::allocateSGPRSpillToVGPR(MachineFunction &MF,
 
   int NumLanes = Size / 4;
 
-  const MCPhysReg *CSRegs = TRI->getCalleeSavedRegs(&MF);
-
   // Make sure to handle the case where a wide SGPR spill may span between two
   // VGPRs.
   for (int I = 0; I < NumLanes; ++I, ++NumVGPRSpillLanes) {
@@ -260,21 +268,14 @@ bool SIMachineFunctionInfo::allocateSGPRSpillToVGPR(MachineFunction &MF,
         return false;
       }
 
-      Optional<int> CSRSpillFI;
-      if (FrameInfo.hasCalls() && CSRegs && isCalleeSavedReg(CSRegs, LaneVGPR)) {
-        // TODO: Should this be a CreateSpillStackObject? This is technically a
-        // weird CSR spill.
-        CSRSpillFI = FrameInfo.CreateStackObject(4, 4, false);
-      }
-
-      SpillVGPRs.push_back(SGPRSpillVGPRCSR(LaneVGPR, CSRSpillFI));
+      SpillVGPRs.push_back(LaneVGPR);
 
       // Add this register as live-in to all blocks to avoid machine verifer
       // complaining about use of an undefined physical register.
       for (MachineBasicBlock &BB : MF)
         BB.addLiveIn(LaneVGPR);
     } else {
-      LaneVGPR = SpillVGPRs.back().VGPR;
+      LaneVGPR = SpillVGPRs.back();
     }
 
     SpillLanes.push_back(SpilledReg(LaneVGPR, VGPRIndex));

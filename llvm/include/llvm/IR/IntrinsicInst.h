@@ -167,7 +167,6 @@ namespace llvm {
     };
 
     bool isUnaryOp() const;
-    bool isTernaryOp() const;
     RoundingMode getRoundingMode() const;
     ExceptionBehavior getExceptionBehavior() const;
 
@@ -179,7 +178,6 @@ namespace llvm {
       case Intrinsic::experimental_constrained_fmul:
       case Intrinsic::experimental_constrained_fdiv:
       case Intrinsic::experimental_constrained_frem:
-      case Intrinsic::experimental_constrained_fma:
       case Intrinsic::experimental_constrained_sqrt:
       case Intrinsic::experimental_constrained_pow:
       case Intrinsic::experimental_constrained_powi:

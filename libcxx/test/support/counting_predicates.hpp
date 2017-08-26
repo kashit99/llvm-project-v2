@@ -12,11 +12,8 @@
 
 
 template <typename Predicate, typename Arg>
-struct unary_counting_predicate {
+struct unary_counting_predicate : public std::unary_function<Arg, bool>  {
 public:
-    typedef Arg argument_type;
-    typedef bool result_type;
-
     unary_counting_predicate(Predicate p) : p_(p), count_(0) {}
     ~unary_counting_predicate() {}
 
@@ -31,11 +28,8 @@ private:
 
 
 template <typename Predicate, typename Arg1, typename Arg2=Arg1>
-struct binary_counting_predicate {
+struct binary_counting_predicate : public std::binary_function<Arg1, Arg2, bool> {
 public:
-    typedef Arg1 first_argument_type;
-    typedef Arg2 second_argument_type;
-    typedef bool result_type;
 
     binary_counting_predicate ( Predicate p ) : p_(p), count_(0) {}
     ~binary_counting_predicate() {}

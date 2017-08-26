@@ -73,12 +73,10 @@
 
 using namespace llvm;
 
-static cl::opt<int> PrintRegMaskNumRegs(
-    "print-regmask-num-regs",
-    cl::desc("Number of registers to limit to when "
-             "printing regmask operands in IR dumps. "
-             "unlimited = -1"),
-    cl::init(32), cl::Hidden);
+static cl::opt<bool> PrintWholeRegMask(
+    "print-whole-regmask",
+    cl::desc("Print the full contents of regmask operands in IR dumps"),
+    cl::init(true), cl::Hidden);
 
 //===----------------------------------------------------------------------===//
 // MachineOperand Implementation
@@ -211,19 +209,6 @@ void MachineOperand::ChangeToFrameIndex(int Idx) {
 
   OpKind = MO_FrameIndex;
   setIndex(Idx);
-}
-
-void MachineOperand::ChangeToTargetIndex(unsigned Idx, int64_t Offset,
-                                         unsigned char TargetFlags) {
-  assert((!isReg() || !isTied()) &&
-         "Cannot change a tied operand into a FrameIndex");
-
-  removeRegFromUses();
-
-  OpKind = MO_TargetIndex;
-  setIndex(Idx);
-  setOffset(Offset);
-  setTargetFlags(TargetFlags);
 }
 
 /// ChangeToRegister - Replace this operand with a new register operand of
@@ -518,8 +503,7 @@ void MachineOperand::print(raw_ostream &OS, ModuleSlotTracker &MST,
       unsigned MaskWord = i / 32;
       unsigned MaskBit = i % 32;
       if (getRegMask()[MaskWord] & (1 << MaskBit)) {
-        if (PrintRegMaskNumRegs < 0 ||
-            NumRegsEmitted <= static_cast<unsigned>(PrintRegMaskNumRegs)) {
+        if (PrintWholeRegMask || NumRegsEmitted <= 10) {
           OS << " " << PrintReg(i, TRI);
           NumRegsEmitted++;
         }
@@ -620,9 +604,8 @@ MachinePointerInfo MachinePointerInfo::getGOT(MachineFunction &MF) {
 }
 
 MachinePointerInfo MachinePointerInfo::getStack(MachineFunction &MF,
-                                                int64_t Offset,
-                                                uint8_t ID) {
-  return MachinePointerInfo(MF.getPSVManager().getStack(), Offset,ID);
+                                                int64_t Offset) {
+  return MachinePointerInfo(MF.getPSVManager().getStack(), Offset);
 }
 
 MachineMemOperand::MachineMemOperand(MachinePointerInfo ptrinfo, Flags f,

@@ -382,8 +382,6 @@ public:
     bool UpperBound;
     /// Allow peeling off loop iterations for loops with low dynamic tripcount.
     bool AllowPeeling;
-    /// Allow unrolling of all the iterations of the runtime loop remainder.
-    bool UnrollRemainder;
   };
 
   /// \brief Get target-customized preferences for the generic loop unrolling
@@ -422,12 +420,10 @@ public:
   /// this target, for a load/store of the specified type.
   /// The type may be VoidTy, in which case only return true if the addressing
   /// mode is legal for a load/store of any legal type.
-  /// If target returns true in LSRWithInstrQueries(), I may be valid.
   /// TODO: Handle pre/postinc as well.
   bool isLegalAddressingMode(Type *Ty, GlobalValue *BaseGV, int64_t BaseOffset,
                              bool HasBaseReg, int64_t Scale,
-                             unsigned AddrSpace = 0,
-                             Instruction *I = nullptr) const;
+                             unsigned AddrSpace = 0) const;
 
   /// \brief Return true if LSR cost of C1 is lower than C1.
   bool isLSRCostLess(TargetTransformInfo::LSRCost &C1,
@@ -457,12 +453,12 @@ public:
                            bool HasBaseReg, int64_t Scale,
                            unsigned AddrSpace = 0) const;
 
-  /// \brief Return true if the loop strength reduce pass should make
-  /// Instruction* based TTI queries to isLegalAddressingMode(). This is
-  /// needed on SystemZ, where e.g. a memcpy can only have a 12 bit unsigned
-  /// immediate offset and no index register.
-  bool LSRWithInstrQueries() const;
-
+  /// \brief Return true if target supports the load / store
+  /// instruction with the given Offset on the form reg + Offset. It
+  /// may be that Offset is too big for a certain type (register
+  /// class).
+  bool isFoldableMemAccessOffset(Instruction *I, int64_t Offset) const;
+  
   /// \brief Return true if it's free to truncate a value of type Ty1 to type
   /// Ty2. e.g. On x86 it's free to truncate a i32 value in register EAX to i16
   /// by referencing its sub-register AX.
@@ -603,22 +599,6 @@ public:
   /// \return The size of a cache line in bytes.
   unsigned getCacheLineSize() const;
 
-  /// The possible cache levels
-  enum class CacheLevel {
-    L1D,   // The L1 data cache
-    L2D,   // The L2 data cache
-
-    // We currently do not model L3 caches, as their sizes differ widely between
-    // microarchitectures. Also, we currently do not have a use for L3 cache
-    // size modeling yet.
-  };
-
-  /// \return The size of the cache level in bytes, if available.
-  llvm::Optional<unsigned> getCacheSize(CacheLevel Level) const;
-
-  /// \return The associativity of the cache level, if available.
-  llvm::Optional<unsigned> getCacheAssociativity(CacheLevel Level) const;
-
   /// \return How much before a load we should place the prefetch instruction.
   /// This is currently measured in number of instructions.
   unsigned getPrefetchDistance() const;
@@ -723,8 +703,7 @@ public:
   /// Split:
   ///  (v0, v1, v2, v3)
   ///  ((v0+v2), (v1+v3), undef, undef)
-  int getArithmeticReductionCost(unsigned Opcode, Type *Ty,
-                                 bool IsPairwiseForm) const;
+  int getReductionCost(unsigned Opcode, Type *Ty, bool IsPairwiseForm) const;
 
   /// \returns The cost of Intrinsic instructions. Analyses the real arguments.
   /// Three cases are handled: 1. scalar instruction 2. vector instruction
@@ -903,8 +882,7 @@ public:
   virtual bool isLegalAddressingMode(Type *Ty, GlobalValue *BaseGV,
                                      int64_t BaseOffset, bool HasBaseReg,
                                      int64_t Scale,
-                                     unsigned AddrSpace,
-                                     Instruction *I) = 0;
+                                     unsigned AddrSpace) = 0;
   virtual bool isLSRCostLess(TargetTransformInfo::LSRCost &C1,
                              TargetTransformInfo::LSRCost &C2) = 0;
   virtual bool isLegalMaskedStore(Type *DataType) = 0;
@@ -915,7 +893,7 @@ public:
   virtual int getScalingFactorCost(Type *Ty, GlobalValue *BaseGV,
                                    int64_t BaseOffset, bool HasBaseReg,
                                    int64_t Scale, unsigned AddrSpace) = 0;
-  virtual bool LSRWithInstrQueries() = 0;
+  virtual bool isFoldableMemAccessOffset(Instruction *I, int64_t Offset) = 0;
   virtual bool isTruncateFree(Type *Ty1, Type *Ty2) = 0;
   virtual bool isProfitableToHoist(Instruction *I) = 0;
   virtual bool isTypeLegal(Type *Ty) = 0;
@@ -953,8 +931,6 @@ public:
   virtual bool shouldConsiderAddressTypePromotion(
       const Instruction &I, bool &AllowPromotionWithoutCommonHeader) = 0;
   virtual unsigned getCacheLineSize() = 0;
-  virtual llvm::Optional<unsigned> getCacheSize(CacheLevel Level) = 0;
-  virtual llvm::Optional<unsigned> getCacheAssociativity(CacheLevel Level) = 0;
   virtual unsigned getPrefetchDistance() = 0;
   virtual unsigned getMinPrefetchStride() = 0;
   virtual unsigned getMaxPrefetchIterationsAhead() = 0;
@@ -989,8 +965,8 @@ public:
                                          ArrayRef<unsigned> Indices,
                                          unsigned Alignment,
                                          unsigned AddressSpace) = 0;
-  virtual int getArithmeticReductionCost(unsigned Opcode, Type *Ty,
-                                         bool IsPairwiseForm) = 0;
+  virtual int getReductionCost(unsigned Opcode, Type *Ty,
+                               bool IsPairwiseForm) = 0;
   virtual int getIntrinsicInstrCost(Intrinsic::ID ID, Type *RetTy,
                       ArrayRef<Type *> Tys, FastMathFlags FMF,
                       unsigned ScalarizationCostPassed) = 0;
@@ -1109,10 +1085,9 @@ public:
   }
   bool isLegalAddressingMode(Type *Ty, GlobalValue *BaseGV, int64_t BaseOffset,
                              bool HasBaseReg, int64_t Scale,
-                             unsigned AddrSpace,
-                             Instruction *I) override {
+                             unsigned AddrSpace) override {
     return Impl.isLegalAddressingMode(Ty, BaseGV, BaseOffset, HasBaseReg,
-                                      Scale, AddrSpace, I);
+                                      Scale, AddrSpace);
   }
   bool isLSRCostLess(TargetTransformInfo::LSRCost &C1,
                      TargetTransformInfo::LSRCost &C2) override {
@@ -1139,8 +1114,8 @@ public:
     return Impl.getScalingFactorCost(Ty, BaseGV, BaseOffset, HasBaseReg,
                                      Scale, AddrSpace);
   }
-  bool LSRWithInstrQueries() override {
-    return Impl.LSRWithInstrQueries();
+  bool isFoldableMemAccessOffset(Instruction *I, int64_t Offset) override {
+    return Impl.isFoldableMemAccessOffset(I, Offset);
   }
   bool isTruncateFree(Type *Ty1, Type *Ty2) override {
     return Impl.isTruncateFree(Ty1, Ty2);
@@ -1227,12 +1202,6 @@ public:
   unsigned getCacheLineSize() override {
     return Impl.getCacheLineSize();
   }
-  llvm::Optional<unsigned> getCacheSize(CacheLevel Level) override {
-    return Impl.getCacheSize(Level);
-  }
-  llvm::Optional<unsigned> getCacheAssociativity(CacheLevel Level) override {
-    return Impl.getCacheAssociativity(Level);
-  }
   unsigned getPrefetchDistance() override { return Impl.getPrefetchDistance(); }
   unsigned getMinPrefetchStride() override {
     return Impl.getMinPrefetchStride();
@@ -1298,9 +1267,9 @@ public:
     return Impl.getInterleavedMemoryOpCost(Opcode, VecTy, Factor, Indices,
                                            Alignment, AddressSpace);
   }
-  int getArithmeticReductionCost(unsigned Opcode, Type *Ty,
-                                 bool IsPairwiseForm) override {
-    return Impl.getArithmeticReductionCost(Opcode, Ty, IsPairwiseForm);
+  int getReductionCost(unsigned Opcode, Type *Ty,
+                       bool IsPairwiseForm) override {
+    return Impl.getReductionCost(Opcode, Ty, IsPairwiseForm);
   }
   int getIntrinsicInstrCost(Intrinsic::ID ID, Type *RetTy, ArrayRef<Type *> Tys,
                FastMathFlags FMF, unsigned ScalarizationCostPassed) override {

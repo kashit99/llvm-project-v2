@@ -38,7 +38,6 @@ class SanitizerArgs {
   bool AsanGlobalsDeadStripping = false;
   bool LinkCXXRuntimes = false;
   bool NeedPIE = false;
-  bool SafeStackRuntime = false;
   bool Stats = false;
   bool TsanMemoryAccess = true;
   bool TsanFuncEntryExit = true;
@@ -59,7 +58,9 @@ class SanitizerArgs {
   }
   bool needsUbsanRt() const;
   bool needsDfsanRt() const { return Sanitizers.has(SanitizerKind::DataFlow); }
-  bool needsSafeStackRt() const { return SafeStackRuntime; }
+  bool needsSafeStackRt() const {
+    return Sanitizers.has(SanitizerKind::SafeStack);
+  }
   bool needsCfiRt() const;
   bool needsCfiDiagRt() const;
   bool needsStatsRt() const { return Stats; }

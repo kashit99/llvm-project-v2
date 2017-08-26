@@ -29,5 +29,6 @@ int main()
     assert(!w2.owner_before(w1));
     assert(w1.owner_before(w3) || w3.owner_before(w1));
     assert(w3.owner_before(w1) == w3.owner_before(w2));
-    ASSERT_NOEXCEPT(w1.owner_before(w2));
+//  change to 'ASSERT_NOEXCEPT' when LWG2942 is adopted
+    LIBCPP_ASSERT_NOEXCEPT(w1.owner_before(w2));
 }

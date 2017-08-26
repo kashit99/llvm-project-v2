@@ -490,17 +490,6 @@ namespace {
       OS << "}\n";
     }
 
-    void writeASTVisitorTraversal(raw_ostream &OS) const override {
-      StringRef Name = getUpperName();
-      OS << "  if (A->is" << Name << "Expr()) {\n"
-         << "    if (!getDerived().TraverseStmt(A->get" << Name << "Expr()))\n" 
-         << "      return false;\n" 
-         << "  } else if (auto *TSI = A->get" << Name << "Type()) {\n"
-         << "    if (!getDerived().TraverseTypeLoc(TSI->getTypeLoc()))\n"
-         << "      return false;\n" 
-         << "  }\n";
-    }
-
     void writeCloneArgs(raw_ostream &OS) const override {
       OS << "is" << getLowerName() << "Expr, is" << getLowerName()
          << "Expr ? static_cast<void*>(" << getLowerName()
@@ -639,10 +628,6 @@ namespace {
       // This isn't elegant, but we have to go through public methods...
       OS << "A->" << getLowerName() << "_begin(), "
          << "A->" << getLowerName() << "_size()";
-    }
-
-    void writeASTVisitorTraversal(raw_ostream &OS) const override {
-      // FIXME: Traverse the elements.
     }
 
     void writeCtorBody(raw_ostream &OS) const override {
@@ -1168,12 +1153,6 @@ namespace {
       OS << "  }";
     }
 
-    void writeASTVisitorTraversal(raw_ostream &OS) const override {
-      OS << "  if (auto *TSI = A->get" << getUpperName() << "Loc())\n";
-      OS << "    if (!getDerived().TraverseTypeLoc(TSI->getTypeLoc()))\n";
-      OS << "      return false;\n";
-    }
-
     void writeTemplateInstantiationArgs(raw_ostream &OS) const override {
       OS << "A->get" << getUpperName() << "Loc()";
     }
@@ -1182,6 +1161,32 @@ namespace {
       OS << "    " << WritePCHRecord(
           getType(), "SA->get" + std::string(getUpperName()) + "Loc()");
     }
+  };
+
+  class AttrArgument : public SimpleArgument {
+  public:
+    AttrArgument(const Record &Arg, StringRef Attr)
+      : SimpleArgument(Arg, Attr, "Attr *")
+    {}
+
+    void writePCHReadDecls(raw_ostream &OS) const override {
+      OS << "    AttrVec vec;\n"
+            "    ReadAttributes(Record, vec);\n"
+            "    assert(vec.size() == 1);\n"
+            "    Attr *" << getLowerName() << " = vec.front();";
+    }
+
+    void writePCHWrite(raw_ostream &OS) const override {
+      OS << "    AddAttributes(SA->get" << getUpperName() << "());";
+    }
+
+    void writeDump(raw_ostream &OS) const override {}
+  
+    void writeDumpChildren(raw_ostream &OS) const override {
+      OS << "    dumpAttr(SA->get" << getUpperName() << "());\n";
+    }
+
+    void writeHasChildren(raw_ostream &OS) const override { OS << "true"; }
   };
 
 } // end anonymous namespace
@@ -1233,6 +1238,8 @@ createArgument(const Record &Arg, StringRef Attr,
     Ptr = llvm::make_unique<VariadicExprArgument>(Arg, Attr);
   else if (ArgName == "VersionArgument")
     Ptr = llvm::make_unique<VersionArgument>(Arg, Attr);
+  else if (ArgName == "AttrArgument")
+    Ptr = llvm::make_unique<AttrArgument>(Arg, Attr);
 
   if (!Ptr) {
     // Search in reverse order so that the most-derived type is handled first.

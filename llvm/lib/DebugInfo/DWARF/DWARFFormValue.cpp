@@ -396,7 +396,7 @@ bool DWARFFormValue::extractValue(const DWARFDataExtractor &Data,
   return true;
 }
 
-void DWARFFormValue::dump(raw_ostream &OS, DIDumpOptions DumpOpts) const {
+void DWARFFormValue::dump(raw_ostream &OS) const {
   uint64_t UValue = Value.uval;
   bool CURelativeOffset = false;
 
@@ -481,8 +481,7 @@ void DWARFFormValue::dump(raw_ostream &OS, DIDumpOptions DumpOpts) const {
     OS << Value.uval;
     break;
   case DW_FORM_strp:
-    if (!DumpOpts.Brief)
-      OS << format(" .debug_str[0x%8.8x] = ", (uint32_t)UValue);
+    OS << format(" .debug_str[0x%8.8x] = ", (uint32_t)UValue);
     dumpString(OS);
     break;
   case DW_FORM_strx:
@@ -541,7 +540,7 @@ void DWARFFormValue::dump(raw_ostream &OS, DIDumpOptions DumpOpts) const {
     break;
   }
 
-  if (CURelativeOffset && !DumpOpts.Brief) {
+  if (CURelativeOffset) {
     OS << " => {";
     WithColor(OS, syntax::Address).get()
         << format("0x%8.8" PRIx64, UValue + (U ? U->getOffset() : 0));

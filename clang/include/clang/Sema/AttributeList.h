@@ -106,12 +106,10 @@ public:
     AS_Microsoft,
     /// __ptr16, alignas(...), etc.
     AS_Keyword,
-    /// #pragma ...
-    AS_Pragma,
-    // Note TableGen depends on the order above.  Do not add or change the order
-    // without adding related code to TableGen/ClangAttrEmitter.cpp.
     /// Context-sensitive version of a keyword attribute.
     AS_ContextSensitiveKeyword,
+    /// #pragma ...
+    AS_Pragma,
   };
 
 private:

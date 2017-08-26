@@ -54,6 +54,8 @@ enum class SymbolKind : uint8_t {
 
   Parameter,
   Using,
+
+  CommentTag,
 };
 
 enum class SymbolLanguage {
@@ -72,6 +74,26 @@ enum class SymbolSubKind {
   AccessorSetter,
   UsingTypename,
   UsingValue,
+
+  // Swift sub-kinds
+
+  SwiftAccessorWillSet,
+  SwiftAccessorDidSet,
+  SwiftAccessorAddressor,
+  SwiftAccessorMutableAddressor,
+
+  SwiftExtensionOfStruct,
+  SwiftExtensionOfClass,
+  SwiftExtensionOfEnum,
+  SwiftExtensionOfProtocol,
+
+  SwiftPrefixOperator,
+  SwiftPostfixOperator,
+  SwiftInfixOperator,
+
+  SwiftSubscript,
+  SwiftAssociatedType,
+  SwiftGenericTypeParam,
 };
 
 /// Set of properties that provide additional info about a symbol.

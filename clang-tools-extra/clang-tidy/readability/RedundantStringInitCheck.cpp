@@ -47,8 +47,7 @@ void RedundantStringInitCheck::registerMatchers(MatchFinder *Finder) {
   //     string bar("");
   Finder->addMatcher(
       namedDecl(
-          varDecl(hasType(hasUnqualifiedDesugaredType(recordType(
-                      hasDeclaration(cxxRecordDecl(hasName("basic_string")))))),
+          varDecl(hasType(cxxRecordDecl(hasName("basic_string"))),
                   hasInitializer(expr(ignoringImplicit(anyOf(
                                           EmptyStringCtorExpr,
                                           EmptyStringCtorExprWithTemporaries)))

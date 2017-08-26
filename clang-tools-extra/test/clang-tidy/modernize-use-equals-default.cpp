@@ -204,4 +204,6 @@ OTC::~OTC() try {} catch(...) {}
     _base value;                          \
   };
 
-STRUCT_WITH_DEFAULT(unsigned char, InMacro)
+STRUCT_WITH_DEFAULT(unsigned char, Hex8Default)
+// CHECK-MESSAGES: :[[@LINE-1]]:1: warning: use '= default' to define a trivial default constructor
+// CHECK-MESSAGES: :[[@LINE-6]]:13: note:

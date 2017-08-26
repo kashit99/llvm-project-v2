@@ -144,10 +144,9 @@ bool TargetTransformInfo::isLegalAddressingMode(Type *Ty, GlobalValue *BaseGV,
                                                 int64_t BaseOffset,
                                                 bool HasBaseReg,
                                                 int64_t Scale,
-                                                unsigned AddrSpace,
-                                                Instruction *I) const {
+                                                unsigned AddrSpace) const {
   return TTIImpl->isLegalAddressingMode(Ty, BaseGV, BaseOffset, HasBaseReg,
-                                        Scale, AddrSpace, I);
+                                        Scale, AddrSpace);
 }
 
 bool TargetTransformInfo::isLSRCostLess(LSRCost &C1, LSRCost &C2) const {
@@ -167,7 +166,7 @@ bool TargetTransformInfo::isLegalMaskedGather(Type *DataType) const {
 }
 
 bool TargetTransformInfo::isLegalMaskedScatter(Type *DataType) const {
-  return TTIImpl->isLegalMaskedScatter(DataType);
+  return TTIImpl->isLegalMaskedGather(DataType);
 }
 
 bool TargetTransformInfo::prefersVectorizedAddressing() const {
@@ -185,8 +184,9 @@ int TargetTransformInfo::getScalingFactorCost(Type *Ty, GlobalValue *BaseGV,
   return Cost;
 }
 
-bool TargetTransformInfo::LSRWithInstrQueries() const {
-  return TTIImpl->LSRWithInstrQueries();
+bool TargetTransformInfo::isFoldableMemAccessOffset(Instruction *I,
+                                                    int64_t Offset) const {
+  return TTIImpl->isFoldableMemAccessOffset(I, Offset);
 }
 
 bool TargetTransformInfo::isTruncateFree(Type *Ty1, Type *Ty2) const {
@@ -319,16 +319,6 @@ bool TargetTransformInfo::shouldConsiderAddressTypePromotion(
 
 unsigned TargetTransformInfo::getCacheLineSize() const {
   return TTIImpl->getCacheLineSize();
-}
-
-llvm::Optional<unsigned> TargetTransformInfo::getCacheSize(CacheLevel Level)
-  const {
-  return TTIImpl->getCacheSize(Level);
-}
-
-llvm::Optional<unsigned> TargetTransformInfo::getCacheAssociativity(
-  CacheLevel Level) const {
-  return TTIImpl->getCacheAssociativity(Level);
 }
 
 unsigned TargetTransformInfo::getPrefetchDistance() const {
@@ -477,9 +467,9 @@ int TargetTransformInfo::getAddressComputationCost(Type *Tp,
   return Cost;
 }
 
-int TargetTransformInfo::getArithmeticReductionCost(unsigned Opcode, Type *Ty,
-                                                    bool IsPairwiseForm) const {
-  int Cost = TTIImpl->getArithmeticReductionCost(Opcode, Ty, IsPairwiseForm);
+int TargetTransformInfo::getReductionCost(unsigned Opcode, Type *Ty,
+                                          bool IsPairwiseForm) const {
+  int Cost = TTIImpl->getReductionCost(Opcode, Ty, IsPairwiseForm);
   assert(Cost >= 0 && "TTI should not produce negative costs!");
   return Cost;
 }

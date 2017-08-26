@@ -515,7 +515,8 @@ namespace llvm {
 
 /// \brief The clang::TemplateName class is effectively a pointer.
 template<>
-struct PointerLikeTypeTraits<clang::TemplateName> {
+class PointerLikeTypeTraits<clang::TemplateName> {
+public:
   static inline void *getAsVoidPointer(clang::TemplateName TN) {
     return TN.getAsVoidPointer();
   }

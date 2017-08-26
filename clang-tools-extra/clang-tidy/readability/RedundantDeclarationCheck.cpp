@@ -18,16 +18,11 @@ namespace clang {
 namespace tidy {
 namespace readability {
 
-RedundantDeclarationCheck::RedundantDeclarationCheck(StringRef Name,
-                                                     ClangTidyContext *Context)
-    : ClangTidyCheck(Name, Context),
-      IgnoreMacros(Options.getLocalOrGlobal("IgnoreMacros", true)) {}
-
 void RedundantDeclarationCheck::registerMatchers(MatchFinder *Finder) {
   Finder->addMatcher(
-      namedDecl(anyOf(varDecl(unless(isDefinition())),
-                      functionDecl(unless(anyOf(isDefinition(), isDefaulted(),
-                                                hasParent(friendDecl()))))))
+      namedDecl(
+          anyOf(varDecl(unless(isDefinition())),
+                functionDecl(unless(anyOf(isDefinition(), isDefaulted())))))
           .bind("Decl"),
       this);
 }
@@ -41,13 +36,6 @@ void RedundantDeclarationCheck::check(const MatchFinder::MatchResult &Result) {
     return;
   if (Prev->getLocation() == D->getLocation())
     return;
-  if (IgnoreMacros &&
-      (D->getLocation().isMacroID() || Prev->getLocation().isMacroID()))
-    return;
-  // Don't complain when the previous declaration is a friend declaration.
-  for (const auto &Parent : Result.Context->getParents(*Prev))
-    if (Parent.get<FriendDecl>())
-      return;
 
   const SourceManager &SM = *Result.SourceManager;
 

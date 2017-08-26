@@ -1,4 +1,4 @@
-//===- SIInstrInfo.h - SI Instruction Info Interface ------------*- C++ -*-===//
+//===-- SIInstrInfo.h - SI Instruction Info Interface -----------*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -12,32 +12,16 @@
 //
 //===----------------------------------------------------------------------===//
 
+
 #ifndef LLVM_LIB_TARGET_AMDGPU_SIINSTRINFO_H
 #define LLVM_LIB_TARGET_AMDGPU_SIINSTRINFO_H
 
 #include "AMDGPUInstrInfo.h"
 #include "SIDefines.h"
 #include "SIRegisterInfo.h"
-#include "Utils/AMDGPUBaseInfo.h"
-#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SetVector.h"
-#include "llvm/CodeGen/MachineBasicBlock.h"
-#include "llvm/CodeGen/MachineFunction.h"
-#include "llvm/CodeGen/MachineInstr.h"
-#include "llvm/CodeGen/MachineInstrBuilder.h"
-#include "llvm/CodeGen/MachineOperand.h"
-#include "llvm/MC/MCInstrDesc.h"
-#include "llvm/Support/Compiler.h"
-#include <cassert>
-#include <cstdint>
 
 namespace llvm {
-
-class APInt;
-class MachineRegisterInfo;
-class RegScavenger;
-class SISubtarget;
-class TargetRegisterClass;
 
 class SIInstrInfo final : public AMDGPUInstrInfo {
 private:
@@ -55,7 +39,7 @@ private:
     EXECZ = 3
   };
 
-  using SetVectorType = SmallSetVector<MachineInstr *, 32>;
+  typedef SmallSetVector<MachineInstr *, 32> SetVectorType;
 
   static unsigned getBranchOpcode(BranchPredicate Cond);
   static BranchPredicate getBranchPredicate(unsigned Opcode);
@@ -92,8 +76,9 @@ private:
                       MachineRegisterInfo &MRI,
                       MachineInstr &Inst) const;
 
-  void addUsersToMoveToVALUWorklist(unsigned Reg, MachineRegisterInfo &MRI,
-                                    SetVectorType &Worklist) const;
+  void addUsersToMoveToVALUWorklist(
+    unsigned Reg, MachineRegisterInfo &MRI,
+    SetVectorType &Worklist) const;
 
   void
   addSCCDefUsersToVALUWorklist(MachineInstr &SCCDefInst,
@@ -116,6 +101,7 @@ protected:
                                        unsigned OpIdx1) const override;
 
 public:
+
   enum TargetOperandFlags {
     MO_MASK = 0x7,
 
@@ -134,7 +120,7 @@ public:
     MO_REL32_HI = 5
   };
 
-  explicit SIInstrInfo(const SISubtarget &ST);
+  explicit SIInstrInfo(const SISubtarget &);
 
   const SIRegisterInfo &getRegisterInfo() const {
     return RI;
@@ -173,7 +159,7 @@ public:
 
   unsigned insertNE(MachineBasicBlock *MBB,
                     MachineBasicBlock::iterator I, const DebugLoc &DL,
-                    unsigned SrcReg, int Value) const;
+                    unsigned SrcReg, int Value)  const;
 
   unsigned insertEQ(MachineBasicBlock *MBB,
                     MachineBasicBlock::iterator I, const DebugLoc &DL,
@@ -241,6 +227,7 @@ public:
 
   bool reverseBranchCondition(
     SmallVectorImpl<MachineOperand> &Cond) const override;
+
 
   bool canInsertSelect(const MachineBasicBlock &MBB,
                        ArrayRef<MachineOperand> Cond,
@@ -433,14 +420,6 @@ public:
     return MI.getDesc().TSFlags & SIInstrFlags::FLAT;
   }
 
-  // Is a FLAT encoded instruction which accesses a specific segment,
-  // i.e. global_* or scratch_*.
-  static bool isSegmentSpecificFLAT(const MachineInstr &MI) {
-    auto Flags = MI.getDesc().TSFlags;
-    return (Flags & SIInstrFlags::FLAT) && !(Flags & SIInstrFlags::LGKM_CNT);
-  }
-
-  // Any FLAT encoded instruction, including global_* and scratch_*.
   bool isFLAT(uint16_t Opcode) const {
     return get(Opcode).TSFlags & SIInstrFlags::FLAT;
   }
@@ -515,10 +494,6 @@ public:
 
   static bool usesVM_CNT(const MachineInstr &MI) {
     return MI.getDesc().TSFlags & SIInstrFlags::VM_CNT;
-  }
-
-  static bool usesLGKM_CNT(const MachineInstr &MI) {
-    return MI.getDesc().TSFlags & SIInstrFlags::LGKM_CNT;
   }
 
   static bool sopkIsZext(const MachineInstr &MI) {
@@ -840,7 +815,6 @@ public:
 };
 
 namespace AMDGPU {
-
   LLVM_READONLY
   int getVOPe64(uint16_t Opcode);
 
@@ -881,8 +855,7 @@ namespace AMDGPU {
     TF_LONG_BRANCH_FORWARD = 1 << 0,
     TF_LONG_BRANCH_BACKWARD = 1 << 1
   };
-
-} // end namespace AMDGPU
+} // End namespace AMDGPU
 
 namespace SI {
 namespace KernelInputOffsets {
@@ -900,9 +873,9 @@ enum Offsets {
   LOCAL_SIZE_Z = 32
 };
 
-} // end namespace KernelInputOffsets
-} // end namespace SI
+} // End namespace KernelInputOffsets
+} // End namespace SI
 
-} // end namespace llvm
+} // End namespace llvm
 
-#endif // LLVM_LIB_TARGET_AMDGPU_SIINSTRINFO_H
+#endif

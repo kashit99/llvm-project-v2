@@ -20,44 +20,28 @@
 //===----------------------------------------------------------------------===//
 
 #include "LiveDebugVariables.h"
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/IntervalMap.h"
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallSet.h"
-#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Statistic.h"
-#include "llvm/ADT/StringRef.h"
 #include "llvm/CodeGen/LexicalScopes.h"
-#include "llvm/CodeGen/LiveInterval.h"
 #include "llvm/CodeGen/LiveIntervalAnalysis.h"
-#include "llvm/CodeGen/MachineBasicBlock.h"
 #include "llvm/CodeGen/MachineDominators.h"
 #include "llvm/CodeGen/MachineFunction.h"
-#include "llvm/CodeGen/MachineInstr.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
-#include "llvm/CodeGen/MachineOperand.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
-#include "llvm/CodeGen/SlotIndexes.h"
+#include "llvm/CodeGen/Passes.h"
 #include "llvm/CodeGen/VirtRegMap.h"
-#include "llvm/IR/DebugInfoMetadata.h"
-#include "llvm/IR/DebugLoc.h"
-#include "llvm/IR/Function.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/DebugInfo.h"
 #include "llvm/IR/Metadata.h"
-#include "llvm/MC/MCRegisterInfo.h"
-#include "llvm/Pass.h"
-#include "llvm/Support/Casting.h"
+#include "llvm/IR/Value.h"
 #include "llvm/Support/CommandLine.h"
-#include "llvm/Support/Compiler.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetInstrInfo.h"
-#include "llvm/Target/TargetOpcodes.h"
+#include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetRegisterInfo.h"
 #include "llvm/Target/TargetSubtargetInfo.h"
-#include <algorithm>
-#include <cassert>
-#include <iterator>
 #include <memory>
 #include <utility>
 
@@ -70,7 +54,6 @@ EnableLDV("live-debug-variables", cl::init(true),
           cl::desc("Enable the live debug variables pass"), cl::Hidden);
 
 STATISTIC(NumInsertedDebugValues, "Number of DBG_VALUEs inserted");
-
 char LiveDebugVariables::ID = 0;
 
 INITIALIZE_PASS_BEGIN(LiveDebugVariables, DEBUG_TYPE,
@@ -87,16 +70,12 @@ void LiveDebugVariables::getAnalysisUsage(AnalysisUsage &AU) const {
   MachineFunctionPass::getAnalysisUsage(AU);
 }
 
-LiveDebugVariables::LiveDebugVariables() : MachineFunctionPass(ID) {
+LiveDebugVariables::LiveDebugVariables() : MachineFunctionPass(ID), pImpl(nullptr) {
   initializeLiveDebugVariablesPass(*PassRegistry::getPassRegistry());
 }
 
 /// LocMap - Map of where a user value is live, and its location.
-using LocMap = IntervalMap<SlotIndex, unsigned, 4>;
-
-namespace {
-
-class LDVImpl;
+typedef IntervalMap<SlotIndex, unsigned, 4> LocMap;
 
 /// UserValue - A user value is a part of a debug info user variable.
 ///
@@ -107,6 +86,8 @@ class LDVImpl;
 /// user values are related if they refer to the same variable, or if they are
 /// held by the same virtual register. The equivalence class is the transitive
 /// closure of that relation.
+namespace {
+class LDVImpl;
 class UserValue {
   const MDNode *Variable;   ///< The debug info variable we are part of.
   const MDNode *Expression; ///< Any complex address expression.
@@ -114,7 +95,7 @@ class UserValue {
   DebugLoc dl;            ///< The debug location for the variable. This is
                           ///< used by dwarf writer to find lexical scope.
   UserValue *leader;      ///< Equivalence class leader.
-  UserValue *next = nullptr; ///< Next value in equivalence class, or null.
+  UserValue *next;        ///< Next value in equivalence class, or null.
 
   /// Numbered locations referenced by locmap.
   SmallVector<MachineOperand, 4> locations;
@@ -145,7 +126,7 @@ public:
   UserValue(const MDNode *var, const MDNode *expr, bool i, DebugLoc L,
             LocMap::Allocator &alloc)
       : Variable(var), Expression(expr), IsIndirect(i), dl(std::move(L)),
-        leader(this), locInts(alloc) {}
+        leader(this), next(nullptr), locInts(alloc) {}
 
   /// getLeader - Get the leader of this value's equivalence class.
   UserValue *getLeader() {
@@ -246,10 +227,10 @@ public:
   /// @param Kills   Points where the range of LocNo could be extended.
   /// @param NewDefs Append (Idx, LocNo) of inserted defs here.
   void addDefsFromCopies(LiveInterval *LI, unsigned LocNo,
-                       const SmallVectorImpl<SlotIndex> &Kills,
-                       SmallVectorImpl<std::pair<SlotIndex, unsigned>> &NewDefs,
-                       MachineRegisterInfo &MRI,
-                       LiveIntervals &LIS);
+                      const SmallVectorImpl<SlotIndex> &Kills,
+                      SmallVectorImpl<std::pair<SlotIndex, unsigned> > &NewDefs,
+                      MachineRegisterInfo &MRI,
+                      LiveIntervals &LIS);
 
   /// computeIntervals - Compute the live intervals of all locations after
   /// collecting all their def points.
@@ -271,33 +252,33 @@ public:
 
   /// getDebugLoc - Return DebugLoc of this UserValue.
   DebugLoc getDebugLoc() { return dl;}
-
   void print(raw_ostream &, const TargetRegisterInfo *);
 };
+} // namespace
 
 /// LDVImpl - Implementation of the LiveDebugVariables pass.
+namespace {
 class LDVImpl {
   LiveDebugVariables &pass;
   LocMap::Allocator allocator;
-  MachineFunction *MF = nullptr;
+  MachineFunction *MF;
   LiveIntervals *LIS;
   const TargetRegisterInfo *TRI;
 
   /// Whether emitDebugValues is called.
-  bool EmitDone = false;
-
+  bool EmitDone;
   /// Whether the machine function is modified during the pass.
-  bool ModifiedMF = false;
+  bool ModifiedMF;
 
   /// userValues - All allocated UserValue instances.
   SmallVector<std::unique_ptr<UserValue>, 8> userValues;
 
   /// Map virtual register to eq class leader.
-  using VRMap = DenseMap<unsigned, UserValue *>;
+  typedef DenseMap<unsigned, UserValue*> VRMap;
   VRMap virtRegToEqClass;
 
   /// Map user variable to eq class leader.
-  using UVMap = DenseMap<const MDNode *, UserValue *>;
+  typedef DenseMap<const MDNode *, UserValue*> UVMap;
   UVMap userVarMap;
 
   /// getUserValue - Find or create a UserValue.
@@ -324,8 +305,8 @@ class LDVImpl {
   void computeIntervals();
 
 public:
-  LDVImpl(LiveDebugVariables *ps) : pass(*ps) {}
-
+  LDVImpl(LiveDebugVariables *ps)
+      : pass(*ps), MF(nullptr), EmitDone(false), ModifiedMF(false) {}
   bool runOnMachineFunction(MachineFunction &mf);
 
   /// clear - Release all memory.
@@ -352,8 +333,7 @@ public:
 
   void print(raw_ostream&);
 };
-
-} // end anonymous namespace
+} // namespace
 
 #ifndef NDEBUG
 static void printDebugLoc(const DebugLoc &DL, raw_ostream &CommentOS,
@@ -466,7 +446,7 @@ UserValue *LDVImpl::getUserValue(const MDNode *Var, const MDNode *Expr,
   }
 
   userValues.push_back(
-      llvm::make_unique<UserValue>(Var, Expr, IsIndirect, DL, allocator));
+      make_unique<UserValue>(Var, Expr, IsIndirect, DL, allocator));
   UserValue *UV = userValues.back().get();
   Leader = UserValue::merge(Leader, UV);
   return UV;
@@ -584,9 +564,9 @@ void UserValue::extendDef(SlotIndex Idx, unsigned LocNo, LiveRange *LR,
 
 void
 UserValue::addDefsFromCopies(LiveInterval *LI, unsigned LocNo,
-                       const SmallVectorImpl<SlotIndex> &Kills,
-                       SmallVectorImpl<std::pair<SlotIndex, unsigned>> &NewDefs,
-                       MachineRegisterInfo &MRI, LiveIntervals &LIS) {
+                      const SmallVectorImpl<SlotIndex> &Kills,
+                      SmallVectorImpl<std::pair<SlotIndex, unsigned> > &NewDefs,
+                      MachineRegisterInfo &MRI, LiveIntervals &LIS) {
   if (Kills.empty())
     return;
   // Don't track copies from physregs, there are too many uses.

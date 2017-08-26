@@ -476,7 +476,11 @@ void ARMAsmPrinter::EmitStartOfAsmFile(Module &M) {
   // Use the triple's architecture and subarchitecture to determine
   // if we're thumb for the purposes of the top level code16 assembler
   // flag.
-  if (!M.getModuleInlineAsm().empty() && TT.isThumb())
+  bool isThumb = TT.getArch() == Triple::thumb ||
+                 TT.getArch() == Triple::thumbeb ||
+                 TT.getSubArch() == Triple::ARMSubArch_v7m ||
+                 TT.getSubArch() == Triple::ARMSubArch_v6m;
+  if (!M.getModuleInlineAsm().empty() && isThumb)
     OutStreamer->EmitAssemblerFlag(MCAF_Code16);
 }
 

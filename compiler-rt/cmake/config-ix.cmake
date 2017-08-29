@@ -174,7 +174,7 @@ endmacro()
 
 set(ARM64 aarch64)
 set(ARM32 arm armhf)
-set(X86 i386 i686)
+set(X86 i386)
 set(X86_64 x86_64)
 set(MIPS32 mips mipsel)
 set(MIPS64 mips64 mips64el)
@@ -471,7 +471,7 @@ else()
 endif()
 
 set(ALL_SANITIZERS asan;dfsan;msan;tsan;safestack;cfi;esan;scudo)
-set(COMPILER_RT_SANITIZERS_TO_BUILD ${ALL_SANITIZERS} CACHE STRING
+set(COMPILER_RT_SANITIZERS_TO_BUILD all CACHE STRING
     "sanitizers to build if supported on the target (all;${ALL_SANITIZERS})")
 list_replace(COMPILER_RT_SANITIZERS_TO_BUILD all "${ALL_SANITIZERS}")
 

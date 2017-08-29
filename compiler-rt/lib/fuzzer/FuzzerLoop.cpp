@@ -327,7 +327,7 @@ void Fuzzer::SetMaxMutationLen(size_t MaxMutationLen) {
 
 void Fuzzer::CheckExitOnSrcPosOrItem() {
   if (!Options.ExitOnSrcPos.empty()) {
-    static auto *PCsSet = new std::set<uintptr_t>;
+    static auto *PCsSet = new Set<uintptr_t>;
     auto HandlePC = [&](uintptr_t PC) {
       if (!PCsSet->insert(PC).second) return;
       std::string Descr = DescribePC("%F %L", PC + 1);
@@ -350,7 +350,7 @@ void Fuzzer::CheckExitOnSrcPosOrItem() {
 
 void Fuzzer::RereadOutputCorpus(size_t MaxSize) {
   if (Options.OutputCorpus.empty() || !Options.ReloadIntervalSec) return;
-  std::vector<Unit> AdditionalCorpus;
+  Vector<Unit> AdditionalCorpus;
   ReadDirToVectorOfUnits(Options.OutputCorpus.c_str(), &AdditionalCorpus,
                          &EpochOfLastReadOfOutputCorpus, MaxSize,
                          /*ExitOnError*/ false);
@@ -380,7 +380,8 @@ void Fuzzer::ShuffleCorpus(UnitVector *V) {
 }
 
 void Fuzzer::ShuffleAndMinimize(UnitVector *InitialCorpus) {
-  Printf("#0\tREAD units: %zd\n", InitialCorpus->size());
+  Printf("#0\tREAD units: %zd; rss: %zdMb\n", InitialCorpus->size(),
+         GetPeakRSSMb());
   if (Options.ShuffleAtStartUp)
     ShuffleCorpus(InitialCorpus);
 
@@ -624,8 +625,35 @@ void Fuzzer::MutateAndTestOne() {
   }
 }
 
-void Fuzzer::Loop() {
+void Fuzzer::ReadAndExecuteSeedCorpora(const Vector<std::string> &CorpusDirs) {
+  const size_t kMaxSaneLen = 1 << 20;
+  const size_t kMinDefaultLen = 4096;
+  size_t TemporaryMaxLen = Options.MaxLen ? Options.MaxLen : kMaxSaneLen;
+  UnitVector InitialCorpus;
+  for (auto &Inp : CorpusDirs) {
+    Printf("Loading corpus dir: %s\n", Inp.c_str());
+    ReadDirToVectorOfUnits(Inp.c_str(), &InitialCorpus, nullptr,
+                           TemporaryMaxLen, /*ExitOnError=*/false);
+  }
+  if (Options.MaxLen == 0) {
+    size_t MaxLen = 0;
+    for (auto &U : InitialCorpus)
+      MaxLen = std::max(U.size(), MaxLen);
+    SetMaxInputLen(std::min(std::max(kMinDefaultLen, MaxLen), kMaxSaneLen));
+  }
+
+  if (InitialCorpus.empty()) {
+    InitialCorpus.push_back(Unit({'\n'}));  // Valid ASCII input.
+    if (Options.Verbosity)
+      Printf("INFO: A corpus is not provided, starting from an empty corpus\n");
+  }
+  ShuffleAndMinimize(&InitialCorpus);
+}
+
+void Fuzzer::Loop(const Vector<std::string> &CorpusDirs) {
+  ReadAndExecuteSeedCorpora(CorpusDirs);
   TPC.SetPrintNewPCs(Options.PrintNewCovPcs);
+  TPC.SetPrintNewFuncs(Options.PrintNewCovFuncs);
   system_clock::time_point LastCorpusReload = system_clock::now();
   if (Options.DoCrossOver)
     MD.SetCorpus(&Corpus);

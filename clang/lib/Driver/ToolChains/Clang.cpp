@@ -2933,6 +2933,9 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
 
   addPGOAndCoverageFlags(C, D, Output, Args, CmdArgs);
 
+  if (auto *ABICompatArg = Args.getLastArg(options::OPT_fclang_abi_compat_EQ))
+    ABICompatArg->render(Args, CmdArgs);
+
   // Add runtime flag for PS4 when PGO or Coverage are enabled.
   if (getToolChain().getTriple().isPS4CPU())
     PS4cpu::addProfileRTArgs(getToolChain(), Args, CmdArgs);
@@ -3843,8 +3846,10 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
                     !IsWindowsMSVC || IsMSVC2015Compatible))
     CmdArgs.push_back("-fno-threadsafe-statics");
 
-  // -fno-delayed-template-parsing is default, except for Windows where MSVC STL
-  // needs it.
+  // -fno-delayed-template-parsing is default, except when targetting MSVC.
+  // Many old Windows SDK versions require this to parse.
+  // FIXME: MSVC introduced /Zc:twoPhase- to disable this behavior in their
+  // compiler. We should be able to disable this by default at some point.
   if (Args.hasFlag(options::OPT_fdelayed_template_parsing,
                    options::OPT_fno_delayed_template_parsing, IsWindowsMSVC))
     CmdArgs.push_back("-fdelayed-template-parsing");

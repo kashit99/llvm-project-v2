@@ -194,6 +194,8 @@ def warn_duplicate_declspec : Warning<"duplicate '%0' declaration specifier">,
   InGroup<DuplicateDeclSpecifier>;
 def ext_plain_complex : ExtWarn<
   "plain '_Complex' requires a type specifier; assuming '_Complex double'">;
+def ext_imaginary_constant : Extension<
+  "imaginary constants are a GNU extension">, InGroup<GNUImaginaryConstant>;
 def ext_integer_complex : Extension<
   "complex integer types are a GNU extension">, InGroup<GNUComplexInteger>;
 
@@ -391,7 +393,7 @@ def err_decomp_decl_context : Error<
   "decomposition declaration not permitted in this context">;
 def warn_cxx14_compat_decomp_decl : Warning<
   "decomposition declarations are incompatible with "
-  "C++ standards before C++17">, DefaultIgnore, InGroup<CXXPre1zCompat>;
+  "C++ standards before C++17">, DefaultIgnore, InGroup<CXXPre17Compat>;
 def ext_decomp_decl : ExtWarn<
   "decomposition declarations are a C++17 extension">, InGroup<CXX17>;
 def err_decomp_decl_spec : Error<
@@ -505,7 +507,7 @@ def warn_deprecated_copy_operation : Warning<
   "for %0 is deprecated because it has a user-declared "
   "%select{copy %select{assignment operator|constructor}1|destructor}2">,
   InGroup<Deprecated>, DefaultIgnore;
-def warn_cxx1z_compat_exception_spec_in_signature : Warning<
+def warn_cxx17_compat_exception_spec_in_signature : Warning<
   "mangled name of %0 will change in C++17 due to non-throwing exception "
   "specification in function signature">, InGroup<CXX17CompatMangling>;
 
@@ -581,6 +583,7 @@ def warn_redecl_library_builtin : Warning<
 def err_builtin_definition : Error<"definition of builtin function %0">;
 def err_arm_invalid_specialreg : Error<"invalid special register for builtin">;
 def err_invalid_cpu_supports : Error<"invalid cpu feature string for builtin">;
+def err_invalid_cpu_is : Error<"invalid cpu name for builtin">;
 def err_builtin_needs_feature : Error<"%0 needs target feature %1">;
 def err_function_needs_feature
     : Error<"always_inline function %1 requires target feature '%2', but would "
@@ -712,6 +715,19 @@ def err_pragma_options_align_mac68k_target_unsupported : Error<
 def warn_pragma_pack_invalid_alignment : Warning<
   "expected #pragma pack parameter to be '1', '2', '4', '8', or '16'">,
   InGroup<IgnoredPragmas>;
+def warn_pragma_pack_non_default_at_include : Warning<
+  "non-default #pragma pack value changes the alignment of struct or union "
+  "members in the included file">, InGroup<PragmaPackSuspiciousInclude>,
+  DefaultIgnore;
+def warn_pragma_pack_modified_after_include : Warning<
+  "the current #pragma pack aligment value is modified in the included "
+  "file">, InGroup<PragmaPack>;
+def warn_pragma_pack_no_pop_eof : Warning<"unterminated "
+  "'#pragma pack (push, ...)' at end of file">, InGroup<PragmaPack>;
+def note_pragma_pack_here : Note<
+  "previous '#pragma pack' directive that modifies alignment is here">;
+def note_pragma_pack_pop_instead_reset : Note<
+  "did you intend to use '#pragma pack (pop)' instead of '#pragma pack()'?">;
 // Follow the Microsoft implementation.
 def warn_pragma_pack_show : Warning<"value of #pragma pack(show) == %0">;
 def warn_pragma_pack_pop_identifer_and_alignment : Warning<
@@ -1181,12 +1197,6 @@ def warn_unimplemented_selector:  Warning<
   InGroup<Selector>, DefaultIgnore;
 def warn_unimplemented_protocol_method : Warning<
   "method %0 in protocol %1 not implemented">, InGroup<Protocol>;
-def warn_class_does_not_conform_protocol : Warning<
-  "%select{class|category}0 %1 does not conform to protocol"
-  "%plural{1: %3|2:s %3 and %4|3:s %3, %4 and %5|:s %3, %4, %5, ...}2">,
-  InGroup<Protocol>;
-def note_add_missing_protocol_stubs : Note<
-  "add stubs for missing protocol requirements">;
 def warn_multiple_selectors: Warning<
   "several methods with selector %0 of mismatched types are found "
   "for the @selector expression">,
@@ -1201,6 +1211,10 @@ def err_objc_method_unsupported_param_ret_type : Error<
   "%0 %select{parameter|return}1 type is unsupported; "
   "support for vector types for this target is introduced in %2">;
 
+def warn_messaging_unqualified_id : Warning<
+  "messaging unqualified id">, DefaultIgnore,
+  InGroup<DiagGroup<"objc-messaging-id">>;
+
 // C++ declarations
 def err_static_assert_expression_is_not_constant : Error<
   "static_assert expression is not an integral constant expression">;
@@ -1209,13 +1223,13 @@ def ext_static_assert_no_message : ExtWarn<
   "static_assert with no message is a C++17 extension">, InGroup<CXX17>;
 def warn_cxx14_compat_static_assert_no_message : Warning<
   "static_assert with no message is incompatible with C++ standards before C++17">,
-  DefaultIgnore, InGroup<CXXPre1zCompat>;
+  DefaultIgnore, InGroup<CXXPre17Compat>;
 
 def ext_inline_variable : ExtWarn<
   "inline variables are a C++17 extension">, InGroup<CXX17>;
 def warn_cxx14_compat_inline_variable : Warning<
   "inline variables are incompatible with C++ standards before C++17">,
-  DefaultIgnore, InGroup<CXXPre1zCompat>;
+  DefaultIgnore, InGroup<CXXPre17Compat>;
 
 def warn_inline_namespace_reopened_noninline : Warning<
   "inline namespace reopened as a non-inline namespace">;
@@ -2005,7 +2019,7 @@ def err_decltype_auto_compound_type : Error<
 def err_decltype_auto_initializer_list : Error<
   "cannot deduce 'decltype(auto)' from initializer list">;
 
-// C++1z deduced class template specialization types
+// C++17 deduced class template specialization types
 def err_deduced_class_template_compound_type : Error<
   "cannot %select{form pointer to|form reference to|form array of|"
   "form function returning|use parentheses when declaring variable with}0 "
@@ -2157,7 +2171,7 @@ def ext_for_range_begin_end_types_differ : ExtWarn<
   InGroup<CXX17>;
 def warn_for_range_begin_end_types_differ : Warning<
   "'begin' and 'end' returning different types (%0 and %1) is incompatible "
-  "with C++ standards before C++17">, InGroup<CXXPre1zCompat>, DefaultIgnore;
+  "with C++ standards before C++17">, InGroup<CXXPre17Compat>, DefaultIgnore;
 def note_in_for_range: Note<
   "when looking up '%select{begin|end}0' function for range expression "
   "of type %1">;
@@ -2393,8 +2407,9 @@ def err_attribute_requires_positive_integer : Error<
 def err_attribute_requires_opencl_version : Error<
   "%0 attribute requires OpenCL version %1%select{| or above}2">;
 def warn_unsupported_target_attribute
-    : Warning<"Ignoring unsupported '%0' in the target attribute string">,
-    InGroup<IgnoredAttributes>;
+    : Warning<"ignoring %select{unsupported|duplicate}0"
+              "%select{| architecture}1 '%2' in the target attribute string">,
+      InGroup<IgnoredAttributes>;
 def err_attribute_unsupported
     : Error<"%0 attribute is not supported for this target">;
 // The err_*_attribute_argument_not_int are separate because they're used by
@@ -2876,9 +2891,6 @@ def warn_mismatched_availability_override_unavail : Warning<
   InGroup<Availability>;
 def note_overridden_method : Note<
   "overridden method is here">;
-def warn_availability_swift_unavailable_deprecated_only : Warning<
-  "only 'unavailable' and 'deprecated' are supported for Swift availability">,
-  InGroup<Availability>;
 def note_protocol_method : Note<
   "protocol method is here">;
 
@@ -2888,25 +2900,11 @@ def warn_unguarded_availability :
 def warn_unguarded_availability_new :
   Warning<warn_unguarded_availability.Text>,
   InGroup<UnguardedAvailabilityNew>;
-def warn_partial_availability : Warning<"%0 is only available conditionally">,
-    InGroup<UnguardedAvailability>, DefaultIgnore;
-def warn_partial_availability_new : Warning<warn_partial_availability.Text>,
-  InGroup<UnguardedAvailabilityNew>;
-def note_partial_availability_silence : Note<
-  "annotate %select{%1|anonymous %1}0 with an availability attribute to silence">;
+def note_decl_unguarded_availability_silence : Note<
+  "annotate %select{%1|anonymous %1}0 with an availability attribute to silence this warning">;
 def note_unguarded_available_silence : Note<
   "enclose %0 in %select{an @available|a __builtin_available}1 check to silence"
   " this warning">;
-def warn_partial_message : Warning<"%0 is partial: %1">,
-    InGroup<UnguardedAvailability>, DefaultIgnore;
-def warn_partial_message_new : Warning<warn_partial_message.Text>,
-  InGroup<UnguardedAvailabilityNew>;
-def warn_partial_fwdclass_message : Warning<
-    "%0 may be partial because the receiver type is unknown">,
-    InGroup<UnguardedAvailability>, DefaultIgnore;
-def warn_partial_fwdclass_message_new :
-  Warning<warn_partial_fwdclass_message.Text>,
-  InGroup<UnguardedAvailabilityNew>;
 def warn_at_available_unchecked_use : Warning<
   "%select{@available|__builtin_available}0 does not guard availability here; "
   "use if (%select{@available|__builtin_available}0) instead">,
@@ -3072,6 +3070,8 @@ def warn_impcast_vector_scalar : Warning<
 def warn_impcast_complex_scalar : Warning<
   "implicit conversion discards imaginary component: %0 to %1">,
   InGroup<Conversion>, DefaultIgnore;
+def err_impcast_complex_scalar : Error<
+  "implicit conversion from %0 to %1 is not permitted in C++">;
 def warn_impcast_float_precision : Warning<
   "implicit conversion loses floating-point precision: %0 to %1">,
   InGroup<Conversion>, DefaultIgnore;
@@ -3197,6 +3197,9 @@ def warn_int_to_void_pointer_cast : Warning<
   "cast to %1 from smaller integer type %0">,
   InGroup<IntToVoidPointerCast>;
 
+def warn_attribute_ignored_for_field_of_type : Warning<
+  "%0 attribute ignored for field of type %1">,
+  InGroup<IgnoredAttributes>;
 def warn_no_underlying_type_specified_for_enum_bitfield : Warning<
   "enums in the Microsoft ABI are signed integers by default; consider giving "
   "the enum %0 an unsigned underlying type to make this code portable">,
@@ -3261,9 +3264,6 @@ def warn_attribute_nonnull_no_pointers : Warning<
   InGroup<IgnoredAttributes>;
 def warn_attribute_nonnull_parm_no_args : Warning<
   "'nonnull' attribute when used on parameters takes no arguments">,
-  InGroup<IgnoredAttributes>;
-def warn_attribute_noescape_non_pointer : Warning<
-  "'noescape' attribute ignored on parameter of non-pointer type %0">,
   InGroup<IgnoredAttributes>;
 def note_declared_nonnull : Note<
   "declared %select{'returns_nonnull'|'nonnull'}0 here">;
@@ -3389,68 +3389,6 @@ def err_objc_bridged_related_known_method : Error<
 
 def err_objc_attr_protocol_requires_definition : Error<
   "attribute %0 can only be applied to @protocol definitions, not forward declarations">;
-
-// Swift attributes
-def warn_attr_swift_name_decl_kind : Warning<
-  "%0 attribute cannot be applied to this declaration">,
-  InGroup<SwiftNameAttribute>;
-def warn_attr_swift_name_function : Warning<
-  "parameter of %0 attribute must be a Swift function name string">,
-  InGroup<SwiftNameAttribute>;
-def warn_attr_swift_name_function_no_prototype : Warning<
-  "%0 attribute can only be applied to function declarations with prototypes">,
-  InGroup<SwiftNameAttribute>;
-def warn_attr_swift_name_context_name_invalid_identifier : Warning<
-  "%0 attribute has invalid identifier for context name">,
-  InGroup<SwiftNameAttribute>;
-def warn_attr_swift_name_basename_invalid_identifier : Warning<
-  "%0 attribute has invalid identifier for base name">,
-  InGroup<SwiftNameAttribute>;
-def warn_attr_swift_name_parameter_invalid_identifier : Warning<
-  "%0 attribute has invalid identifier for parameter name">,
-  InGroup<SwiftNameAttribute>;
-def warn_attr_swift_name_missing_parameters : Warning<
-  "%0 attribute is missing parameter label clause">,
-  InGroup<SwiftNameAttribute>;
-def warn_attr_swift_name_subscript_not_accessor : Warning<
-  "%0 attribute for 'subscript' must be a getter or setter">,
-  InGroup<SwiftNameAttribute>;
-def warn_attr_swift_name_subscript_no_parameter : Warning<
-  "%0 attribute for 'subscript' must take at least one parameter">,
-  InGroup<SwiftNameAttribute>;
-def warn_attr_swift_name_subscript_getter_newValue : Warning<
-  "%0 attribute for 'subscript' getter cannot take a 'newValue:' parameter">,
-  InGroup<SwiftNameAttribute>;
-def warn_attr_swift_name_subscript_setter_no_newValue : Warning<
-  "%0 attribute for 'subscript' setter must take a 'newValue:' parameter">,
-  InGroup<SwiftNameAttribute>;
-def warn_attr_swift_name_subscript_setter_multiple_newValues : Warning<
-  "%0 attribute for 'subscript' setter cannot take multiple 'newValue:' parameters">,
-  InGroup<SwiftNameAttribute>;
-def warn_attr_swift_name_getter_parameters : Warning<
-  "%0 attribute for getter must not take any parameters besides 'self:'">,
-  InGroup<SwiftNameAttribute>;
-def warn_attr_swift_name_setter_parameters : Warning<
-  "%0 attribute for setter must take one parameter for new value">,
-  InGroup<SwiftNameAttribute>;
-def warn_attr_swift_name_multiple_selfs : Warning<
-  "%0 attribute cannot specify more than one 'self:' parameter">,
-  InGroup<SwiftNameAttribute>;
-def warn_attr_swift_name_static_subscript : Warning<
-  "%0 attribute for 'subscript' must take a 'self:' parameter">,
-  InGroup<SwiftNameAttribute>;
-def warn_attr_swift_name_num_params : Warning<
-  "too %select{few|many}0 parameters in %1 attribute (expected %2; got %3)">,
-  InGroup<SwiftNameAttribute>;
-def err_attr_swift_error_no_error_parameter : Error<
-  "%0 attribute can only be applied to a %select{function|method}1 "
-  "with an error parameter">;
-def err_attr_swift_error_return_type : Error<
-  "%0 attribute with '%1' convention can only be applied to a "
-  "%select{function|method}2 returning %select{an integral type|a pointer}3">;
-def warn_swift_newtype_attribute_non_typedef : Warning<
-  "'swift_newtype' attribute may be put on a typedef only; "
-  "attribute is ignored">, InGroup<DiagGroup<"swift-newtype-attribute">>;
 
 // Function Parameter Semantic Analysis.
 def err_param_with_void_type : Error<"argument may not have 'void' type">;
@@ -3980,7 +3918,7 @@ def err_template_nontype_parm_bad_type : Error<
 def warn_cxx14_compat_template_nontype_parm_auto_type : Warning<
   "non-type template parameters declared with %0 are incompatible with C++ "
   "standards before C++17">,
-  DefaultIgnore, InGroup<CXXPre1zCompat>;
+  DefaultIgnore, InGroup<CXXPre17Compat>;
 def err_template_param_default_arg_redefinition : Error<
   "template parameter redefines default argument">;
 def note_template_param_prev_default_arg : Note<
@@ -4154,6 +4092,13 @@ def err_pointer_to_member_call_drops_quals : Error<
 def err_pointer_to_member_oper_value_classify: Error<
   "pointer-to-member function type %0 can only be called on an "
   "%select{rvalue|lvalue}1">;
+def ext_pointer_to_const_ref_member_on_rvalue : Extension<
+  "invoking a pointer to a 'const &' member function on an rvalue is a C++2a extension">,
+  InGroup<CXX2a>, SFINAEFailure;
+def warn_cxx17_compat_pointer_to_const_ref_member_on_rvalue : Warning<
+  "invoking a pointer to a 'const &' member function on an rvalue is "
+  "incompatible with C++ standards before C++2a">,
+  InGroup<CXXPre2aCompatPedantic>, DefaultIgnore;
 def ext_ms_deref_template_argument: ExtWarn<
   "non-type template argument containing a dereference operation is a "
   "Microsoft extension">, InGroup<MicrosoftTemplate>;
@@ -5961,7 +5906,11 @@ def warn_runsigned_always_true_comparison : Warning<
 def warn_comparison_of_mixed_enum_types : Warning<
   "comparison of two values with different enumeration types"
   "%diff{ ($ and $)|}0,1">,
-  InGroup<DiagGroup<"enum-compare">>;
+  InGroup<EnumCompare>;
+def warn_comparison_of_mixed_enum_types_switch : Warning<
+  "comparison of two values with different enumeration types in switch statement"
+  "%diff{ ($ and $)|}0,1">,
+  InGroup<EnumCompareSwitch>;
 def warn_null_in_arithmetic_operation : Warning<
   "use of NULL in arithmetic operation">,
   InGroup<NullArithmetic>;
@@ -6532,8 +6481,6 @@ let CategoryName = "Lambda Issue" in {
     "%0 can appear only once in a capture list">;
   def err_reference_capture_with_reference_default : Error<
     "'&' cannot precede a capture when the capture default is '&'">;
-  def err_this_capture_with_copy_default : Error<
-    "'this' cannot be explicitly captured when the capture default is '='">;
   def err_copy_capture_with_copy_default : Error<
     "'&' must precede a capture when the capture default is '='">;
   def err_capture_does_not_name_variable : Error<
@@ -6600,12 +6547,20 @@ let CategoryName = "Lambda Issue" in {
   def err_init_capture_deduction_failure_from_init_list : Error<
     "cannot deduce type for lambda capture %0 from initializer list">;
 
-  // C++1z '*this' captures.
+  // C++17 '*this' captures.
   def warn_cxx14_compat_star_this_lambda_capture : Warning<
     "by value capture of '*this' is incompatible with C++ standards before C++17">,
-     InGroup<CXXPre1zCompat>, DefaultIgnore;
-  def ext_star_this_lambda_capture_cxx1z : ExtWarn<
+     InGroup<CXXPre17Compat>, DefaultIgnore;
+  def ext_star_this_lambda_capture_cxx17 : ExtWarn<
     "capture of '*this' by copy is a C++17 extension">, InGroup<CXX17>;
+
+  // C++2a [=, this] captures.
+  def warn_cxx17_compat_equals_this_lambda_capture : Warning<
+    "explicit capture of 'this' with a capture default of '=' is incompatible "
+    "with C++ standards before C++2a">, InGroup<CXXPre2aCompat>, DefaultIgnore;
+  def ext_equals_this_lambda_capture_cxx2a : ExtWarn<
+    "explicit capture of 'this' with a capture default of '=' "
+    "is a C++2a extension">, InGroup<CXX2a>;
 }
 
 def err_return_in_captured_stmt : Error<
@@ -7055,8 +7010,8 @@ def err_atomic_op_needs_atomic : Error<
   "address argument to atomic operation must be a pointer to _Atomic "
   "type (%0 invalid)">;
 def err_atomic_op_needs_non_const_atomic : Error<
-  "address argument to atomic operation must be a pointer to non-const _Atomic "
-  "type (%0 invalid)">;
+  "address argument to atomic operation must be a pointer to non-%select{const|constant}0 _Atomic "
+  "type (%1 invalid)">;
 def err_atomic_op_needs_non_const_pointer : Error<
   "address argument to atomic operation must be a pointer to non-const "
   "type (%0 invalid)">;
@@ -7072,6 +7027,8 @@ def err_atomic_op_bitwise_needs_atomic_int : Error<
 def warn_atomic_op_has_invalid_memory_order : Warning<
   "memory order argument to atomic operation is invalid">,
   InGroup<DiagGroup<"atomic-memory-ordering">>;
+def err_atomic_op_has_invalid_synch_scope : Error<
+  "synchronization scope argument to atomic operation is invalid">;
 
 def err_overflow_builtin_must_be_int : Error<
   "operand argument to overflow builtin must be an integer (%0 invalid)">;
@@ -7273,7 +7230,7 @@ def warn_unused_volatile : Warning<
 
 def ext_cxx14_attr : Extension<
   "use of the %0 attribute is a C++14 extension">, InGroup<CXX14>;
-def ext_cxx1z_attr : Extension<
+def ext_cxx17_attr : Extension<
   "use of the %0 attribute is a C++17 extension">, InGroup<CXX17>;
 
 def warn_unused_comparison : Warning<
@@ -7999,7 +7956,6 @@ def warn_missing_case : Warning<"%plural{"
   "3:enumeration values %1, %2, and %3 not handled in switch|"
   ":%0 enumeration values not handled in switch: %1, %2, %3...}0">,
   InGroup<Switch>;
-def note_fill_in_missing_cases : Note<"add missing switch cases">;
 
 def warn_unannotated_fallthrough : Warning<
   "unannotated fall-through between switch labels">,
@@ -8276,14 +8232,6 @@ def err_nsconsumed_attribute_mismatch : Error<
 def err_nsreturns_retained_attribute_mismatch : Error<
   "overriding method has mismatched ns_returns_%select{not_retained|retained}0"
   " attributes">;
-
-def err_nserrordomain_not_tagdecl : Error<
-  "ns_error_domain attribute only valid on "
-  "%select{enums, structs, and unions|enums, structs, unions, and classes}0">;
-def err_nserrordomain_invalid_decl : Error<
-  "domain argument %0 does not refer to global constant">;
-def err_nserrordomain_requires_identifier : Error<
-  "domain argument must be an identifier">;
   
 def note_getter_unavailable : Note<
   "or because setter is declared here, but no getter method %0 is found">;
@@ -8568,13 +8516,6 @@ def ext_opencl_ext_vector_type_rgba_selector: ExtWarn<
   InGroup<OpenCLUnsupportedRGBA>;
 } // end of sema category
 
-let CategoryName = "API Notes Issue" in {
-
-def err_incompatible_replacement_type : Error<
-  "API notes replacement type %0 has a different size from original type %1">;
-
-}
-
 let CategoryName = "OpenMP Issue" in {
 // OpenMP support.
 def err_omp_expected_var_arg : Error<
@@ -8608,6 +8549,8 @@ def err_omp_expected_var_name_member_expr : Error<
   "expected variable name%select{| or data member of current class}0">;
 def err_omp_expected_var_name_member_expr_or_array_item : Error<
   "expected variable name%select{|, data member of current class}0, array element or array section">;
+def err_omp_expected_addressable_lvalue_or_array_item : Error<
+  "expected addressable lvalue expression, array element or array section">;
 def err_omp_expected_named_var_member_or_array_expression: Error<
   "expected expression containing only member accesses and/or array sections based on named variables">;
 def err_omp_bit_fields_forbidden_in_clause : Error<
@@ -8760,6 +8703,12 @@ def err_omp_reduction_in_task : Error<
   "reduction variables may not be accessed in an explicit task">;
 def err_omp_reduction_id_not_compatible : Error<
   "list item of type %0 is not valid for specified reduction operation: unable to provide default initialization value">;
+def err_omp_in_reduction_not_task_reduction : Error<
+  "in_reduction variable must appear in a task_reduction clause">;
+def err_omp_reduction_identifier_mismatch : Error<
+  "in_reduction variable must have the same reduction operation as in a task_reduction clause">;
+def note_omp_previous_reduction_identifier : Note<
+  "previously marked as task_reduction with different reduction operation">;
 def err_omp_prohibited_region : Error<
   "region cannot be%select{| closely}0 nested inside '%1' region"
   "%select{|; perhaps you forget to enclose 'omp %3' directive into a parallel region?|"
@@ -8911,12 +8860,6 @@ def note_omp_critical_hint_here : Note<
   "%select{|previous }0'hint' clause with value '%1'">;
 def note_omp_critical_no_hint : Note<
   "%select{|previous }0directive with no 'hint' clause specified">;
-def err_omp_firstprivate_distribute_private_teams : Error<
-  "private variable in '#pragma omp teams' cannot be firstprivate in '#pragma omp distribute'">;
-def err_omp_firstprivate_and_lastprivate_in_distribute : Error<
-  "lastprivate variable cannot be firstprivate in '#pragma omp distribute'">;
-def err_omp_firstprivate_distribute_in_teams_reduction : Error<
-  "reduction variable in '#pragma omp teams' cannot be firstprivate in '#pragma omp distribute'">;
 def err_omp_depend_clause_thread_simd : Error<
   "'depend' clauses cannot be mixed with '%0' clause">;
 def err_omp_depend_sink_expected_loop_iteration : Error<

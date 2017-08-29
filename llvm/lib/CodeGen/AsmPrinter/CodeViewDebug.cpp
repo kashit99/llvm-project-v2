@@ -546,8 +546,6 @@ void CodeViewDebug::emitTypeInformation() {
   }
 }
 
-namespace {
-
 static SourceLanguage MapDWLangToCVLang(unsigned DWLang) {
   switch (DWLang) {
   case dwarf::DW_LANG_C:
@@ -573,6 +571,8 @@ static SourceLanguage MapDWLangToCVLang(unsigned DWLang) {
     return SourceLanguage::Cobol;
   case dwarf::DW_LANG_Java:
     return SourceLanguage::Java;
+  case dwarf::DW_LANG_D:
+    return SourceLanguage::D;
   default:
     // There's no CodeView representation for this language, and CV doesn't
     // have an "unknown" option for the language field, so we'll use MASM,
@@ -581,9 +581,11 @@ static SourceLanguage MapDWLangToCVLang(unsigned DWLang) {
   }
 }
 
+namespace {
 struct Version {
   int Part[4];
 };
+} // end anonymous namespace
 
 // Takes a StringRef like "clang 4.0.0.0 (other nonsense 123)" and parses out
 // the version number.
@@ -606,19 +608,18 @@ static Version parseVersion(StringRef Name) {
 
 static CPUType mapArchToCVCPUType(Triple::ArchType Type) {
   switch (Type) {
-    case Triple::ArchType::x86:
-      return CPUType::Pentium3;
-    case Triple::ArchType::x86_64:
-      return CPUType::X64;
-    case Triple::ArchType::thumb:
-      return CPUType::Thumb;
-    default:
-      report_fatal_error("target architecture doesn't map to a CodeView "
-                         "CPUType");
+  case Triple::ArchType::x86:
+    return CPUType::Pentium3;
+  case Triple::ArchType::x86_64:
+    return CPUType::X64;
+  case Triple::ArchType::thumb:
+    return CPUType::Thumb;
+  case Triple::ArchType::aarch64:
+    return CPUType::ARM64;
+  default:
+    report_fatal_error("target architecture doesn't map to a CodeView CPUType");
   }
 }
-
-} // end anonymous namespace
 
 void CodeViewDebug::emitCompilerInformation() {
   MCContext &Context = MMI->getContext();
@@ -1098,9 +1099,24 @@ void CodeViewDebug::beginFunctionImpl(const MachineFunction *MF) {
   }
 }
 
-void CodeViewDebug::addToUDTs(const DIType *Ty, TypeIndex TI) {
+static bool shouldEmitUdt(const DIType *T) {
+  while (true) {
+    if (!T || T->isForwardDecl())
+      return false;
+
+    const DIDerivedType *DT = dyn_cast<DIDerivedType>(T);
+    if (!DT)
+      return true;
+    T = DT->getBaseType().resolve();
+  }
+  return true;
+}
+
+void CodeViewDebug::addToUDTs(const DIType *Ty) {
   // Don't record empty UDTs.
   if (Ty->getName().empty())
+    return;
+  if (!shouldEmitUdt(Ty))
     return;
 
   SmallVector<StringRef, 5> QualifiedNameComponents;
@@ -1110,10 +1126,11 @@ void CodeViewDebug::addToUDTs(const DIType *Ty, TypeIndex TI) {
   std::string FullyQualifiedName =
       getQualifiedName(QualifiedNameComponents, getPrettyScopeName(Ty));
 
-  if (ClosestSubprogram == nullptr)
-    GlobalUDTs.emplace_back(std::move(FullyQualifiedName), TI);
-  else if (ClosestSubprogram == CurrentSubprogram)
-    LocalUDTs.emplace_back(std::move(FullyQualifiedName), TI);
+  if (ClosestSubprogram == nullptr) {
+    GlobalUDTs.emplace_back(std::move(FullyQualifiedName), Ty);
+  } else if (ClosestSubprogram == CurrentSubprogram) {
+    LocalUDTs.emplace_back(std::move(FullyQualifiedName), Ty);
+  }
 
   // TODO: What if the ClosestSubprogram is neither null or the current
   // subprogram?  Currently, the UDT just gets dropped on the floor.
@@ -1171,7 +1188,7 @@ TypeIndex CodeViewDebug::lowerTypeAlias(const DIDerivedType *Ty) {
   TypeIndex UnderlyingTypeIndex = getTypeIndex(UnderlyingTypeRef);
   StringRef TypeName = Ty->getName();
 
-  addToUDTs(Ty, UnderlyingTypeIndex);
+  addToUDTs(Ty);
 
   if (UnderlyingTypeIndex == TypeIndex(SimpleTypeKind::Int32Long) &&
       TypeName == "HRESULT")
@@ -1654,7 +1671,7 @@ struct llvm::ClassInfo {
 
   TypeIndex VShapeTI;
 
-  std::vector<const DICompositeType *> NestedClasses;
+  std::vector<const DIType *> NestedTypes;
 };
 
 void CodeViewDebug::clear() {
@@ -1705,12 +1722,14 @@ ClassInfo CodeViewDebug::collectClassInfo(const DICompositeType *Ty) {
       } else if (DDTy->getTag() == dwarf::DW_TAG_pointer_type &&
                  DDTy->getName() == "__vtbl_ptr_type") {
         Info.VShapeTI = getTypeIndex(DDTy);
+      } else if (DDTy->getTag() == dwarf::DW_TAG_typedef) {
+        Info.NestedTypes.push_back(DDTy);
       } else if (DDTy->getTag() == dwarf::DW_TAG_friend) {
         // Ignore friend members. It appears that MSVC emitted info about
         // friends in the past, but modern versions do not.
       }
     } else if (auto *Composite = dyn_cast<DICompositeType>(Element)) {
-      Info.NestedClasses.push_back(Composite);
+      Info.NestedTypes.push_back(Composite);
     }
     // Skip other unrecognized kinds of elements.
   }
@@ -1761,7 +1780,7 @@ TypeIndex CodeViewDebug::lowerCompleteTypeClass(const DICompositeType *Ty) {
     TypeTable.writeKnownType(USLR);
   }
 
-  addToUDTs(Ty, ClassTI);
+  addToUDTs(Ty);
 
   return ClassTI;
 }
@@ -1800,7 +1819,7 @@ TypeIndex CodeViewDebug::lowerCompleteTypeUnion(const DICompositeType *Ty) {
   UdtSourceLineRecord USLR(UnionTI, SIRI, Ty->getLine());
   TypeTable.writeKnownType(USLR);
 
-  addToUDTs(Ty, UnionTI);
+  addToUDTs(Ty);
 
   return UnionTI;
 }
@@ -1919,7 +1938,7 @@ CodeViewDebug::lowerRecordFieldList(const DICompositeType *Ty) {
   }
 
   // Create nested classes.
-  for (const DICompositeType *Nested : Info.NestedClasses) {
+  for (const DIType *Nested : Info.NestedTypes) {
     NestedTypeRecord R(getTypeIndex(DITypeRef(Nested)), Nested->getName());
     FLBR.writeMemberType(R);
     MemberCount++;
@@ -1927,7 +1946,7 @@ CodeViewDebug::lowerRecordFieldList(const DICompositeType *Ty) {
 
   TypeIndex FieldTI = FLBR.end(true);
   return std::make_tuple(FieldTI, Info.VShapeTI, MemberCount,
-                         !Info.NestedClasses.empty());
+                         !Info.NestedTypes.empty());
 }
 
 TypeIndex CodeViewDebug::getVBPTypeIndex() {
@@ -2200,8 +2219,11 @@ void CodeViewDebug::endCVSubsection(MCSymbol *EndLabel) {
 }
 
 void CodeViewDebug::emitDebugInfoForUDTs(
-    ArrayRef<std::pair<std::string, TypeIndex>> UDTs) {
-  for (const std::pair<std::string, codeview::TypeIndex> &UDT : UDTs) {
+    ArrayRef<std::pair<std::string, const DIType *>> UDTs) {
+  for (const auto &UDT : UDTs) {
+    const DIType *T = UDT.second;
+    assert(shouldEmitUdt(T));
+
     MCSymbol *UDTRecordBegin = MMI->getContext().createTempSymbol(),
              *UDTRecordEnd = MMI->getContext().createTempSymbol();
     OS.AddComment("Record length");
@@ -2212,7 +2234,7 @@ void CodeViewDebug::emitDebugInfoForUDTs(
     OS.EmitIntValue(unsigned(SymbolKind::S_UDT), 2);
 
     OS.AddComment("Type");
-    OS.EmitIntValue(UDT.second.getIndex(), 4);
+    OS.EmitIntValue(getCompleteTypeIndex(T).getIndex(), 4);
 
     emitNullTerminatedSymbolName(OS, UDT.first);
     OS.EmitLabel(UDTRecordEnd);

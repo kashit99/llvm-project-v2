@@ -24,13 +24,6 @@
 #include "llvm/CodeGen/LivePhysRegs.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
-#include "llvm/CodeGen/MachineInstrBuilder.h"
-#include "llvm/CodeGen/MachineInstrBundle.h"
-#include "llvm/IR/GlobalValue.h"
-#include "llvm/Support/CommandLine.h"
-#include "llvm/Support/raw_ostream.h" // FIXME: for debug only. remove!
-#include "llvm/Target/TargetFrameLowering.h"
-#include "llvm/Target/TargetRegisterInfo.h"
 
 using namespace llvm;
 
@@ -1030,8 +1023,11 @@ bool ARMExpandPseudo::ExpandMI(MachineBasicBlock &MBB,
         if (STI->isThumb())
           MIB.add(predOps(ARMCC::AL));
       } else if (RetOpcode == ARM::TCRETURNri) {
+        unsigned Opcode =
+          STI->isThumb() ? ARM::tTAILJMPr
+                         : (STI->hasV4TOps() ? ARM::TAILJMPr : ARM::TAILJMPr4);
         BuildMI(MBB, MBBI, dl,
-                TII.get(STI->isThumb() ? ARM::tTAILJMPr : ARM::TAILJMPr))
+                TII.get(Opcode))
             .addReg(JumpTarget.getReg(), RegState::Kill);
       }
 
@@ -1695,9 +1691,8 @@ bool ARMExpandPseudo::runOnMachineFunction(MachineFunction &MF) {
   AFI = MF.getInfo<ARMFunctionInfo>();
 
   bool Modified = false;
-  for (MachineFunction::iterator MFI = MF.begin(), E = MF.end(); MFI != E;
-       ++MFI)
-    Modified |= ExpandMBB(*MFI);
+  for (MachineBasicBlock &MBB : MF)
+    Modified |= ExpandMBB(MBB);
   if (VerifyARMPseudo)
     MF.verify(this, "After expanding ARM pseudo instructions.");
   return Modified;

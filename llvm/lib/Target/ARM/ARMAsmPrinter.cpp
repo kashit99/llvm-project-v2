@@ -476,11 +476,7 @@ void ARMAsmPrinter::EmitStartOfAsmFile(Module &M) {
   // Use the triple's architecture and subarchitecture to determine
   // if we're thumb for the purposes of the top level code16 assembler
   // flag.
-  bool isThumb = TT.getArch() == Triple::thumb ||
-                 TT.getArch() == Triple::thumbeb ||
-                 TT.getSubArch() == Triple::ARMSubArch_v7m ||
-                 TT.getSubArch() == Triple::ARMSubArch_v6m;
-  if (!M.getModuleInlineAsm().empty() && isThumb)
+  if (!M.getModuleInlineAsm().empty() && TT.isThumb())
     OutStreamer->EmitAssemblerFlag(MCAF_Code16);
 }
 
@@ -1276,6 +1272,7 @@ void ARMAsmPrinter::EmitInstruction(const MachineInstr *MI) {
       // Add 's' bit operand (always reg0 for this)
       .addReg(0));
 
+    assert(Subtarget->hasV4TOps());
     EmitToStreamer(*OutStreamer, MCInstBuilder(ARM::BX)
       .addReg(MI->getOperand(0).getReg()));
     return;
@@ -1896,6 +1893,7 @@ void ARMAsmPrinter::EmitInstruction(const MachineInstr *MI) {
       .addImm(ARMCC::AL)
       .addReg(0));
 
+    assert(Subtarget->hasV4TOps());
     EmitToStreamer(*OutStreamer, MCInstBuilder(ARM::BX)
       .addReg(ScratchReg)
       // Predicate.

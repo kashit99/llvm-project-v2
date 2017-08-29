@@ -573,6 +573,33 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
   if (!Opts.ProfileInstrumentUsePath.empty())
     setPGOUseInstrumentor(Opts, Opts.ProfileInstrumentUsePath);
 
+  if (Arg *A = Args.getLastArg(OPT_fclang_abi_compat_EQ)) {
+    Opts.setClangABICompat(CodeGenOptions::ClangABI::Latest);
+
+    StringRef Ver = A->getValue();
+    std::pair<StringRef, StringRef> VerParts = Ver.split('.');
+    unsigned Major, Minor = 0;
+
+    // Check the version number is valid: either 3.x (0 <= x <= 9) or
+    // y or y.0 (4 <= y <= current version).
+    if (!VerParts.first.startswith("0") &&
+        !VerParts.first.getAsInteger(10, Major) &&
+        3 <= Major && Major <= CLANG_VERSION_MAJOR &&
+        (Major == 3 ? VerParts.second.size() == 1 &&
+                      !VerParts.second.getAsInteger(10, Minor)
+                    : VerParts.first.size() == Ver.size() ||
+                      VerParts.second == "0")) {
+      // Got a valid version number.
+      if (Major == 3 && Minor <= 8)
+        Opts.setClangABICompat(CodeGenOptions::ClangABI::Ver3_8);
+      else if (Major <= 4)
+        Opts.setClangABICompat(CodeGenOptions::ClangABI::Ver4);
+    } else if (Ver != "latest") {
+      Diags.Report(diag::err_drv_invalid_value)
+          << A->getAsString(Args) << A->getValue();
+    }
+  }
+
   Opts.CoverageMapping =
       Args.hasFlag(OPT_fcoverage_mapping, OPT_fno_coverage_mapping, false);
   Opts.DumpCoverageMapping = Args.hasArg(OPT_dump_coverage_mapping);
@@ -651,6 +678,8 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
   Opts.MergeFunctions = Args.hasArg(OPT_fmerge_functions);
 
   Opts.NoUseJumpTables = Args.hasArg(OPT_fno_jump_tables);
+
+  Opts.ProfileSampleAccurate = Args.hasArg(OPT_fprofile_sample_accurate);
 
   Opts.PrepareForLTO = Args.hasArg(OPT_flto, OPT_flto_EQ);
   Opts.EmitSummaryIndex = false;
@@ -794,6 +823,9 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
   Opts.SanitizeCoverageNoPrune = Args.hasArg(OPT_fsanitize_coverage_no_prune);
   Opts.SanitizeCoverageInline8bitCounters =
       Args.hasArg(OPT_fsanitize_coverage_inline_8bit_counters);
+  Opts.SanitizeCoveragePCTable = Args.hasArg(OPT_fsanitize_coverage_pc_table);
+  Opts.SanitizeCoverageStackDepth =
+      Args.hasArg(OPT_fsanitize_coverage_stack_depth);
   Opts.SanitizeMemoryTrackOrigins =
       getLastArgIntValue(Args, OPT_fsanitize_memory_track_origins_EQ, 0, Diags);
   Opts.SanitizeMemoryUseAfterDtor =
@@ -1144,7 +1176,6 @@ bool clang::ParseDiagnosticArgs(DiagnosticOptions &Opts, ArgList &Args,
 
 static void ParseFileSystemArgs(FileSystemOptions &Opts, ArgList &Args) {
   Opts.WorkingDir = Args.getLastArgValue(OPT_working_directory);
-  Opts.APINotesCachePath = Args.getLastArgValue(OPT_fapinotes_cache_path);
 }
 
 /// Parse the argument to the -ftest-module-file-extension
@@ -1391,10 +1422,6 @@ static InputKind ParseFrontendArgs(FrontendOptions &Opts, ArgList &Args,
       << "ARC migration" << "ObjC migration";
   }
 
-  Opts.IndexStorePath = Args.getLastArgValue(OPT_index_store_path);
-  Opts.IndexIgnoreSystemSymbols = Args.hasArg(OPT_index_ignore_system_symbols);
-  Opts.IndexRecordCodegenName = Args.hasArg(OPT_index_record_codegen_name);
-
   InputKind DashX(InputKind::Unknown);
   if (const Arg *A = Args.getLastArg(OPT_x)) {
     StringRef XValue = A->getValue();
@@ -1624,18 +1651,6 @@ static void ParseHeaderSearchArgs(HeaderSearchOptions &Opts, ArgList &Args,
 
   for (const Arg *A : Args.filtered(OPT_ivfsoverlay))
     Opts.AddVFSOverlayFile(A->getValue());
-}
-
-static void ParseAPINotesArgs(APINotesOptions &Opts, ArgList &Args,
-                              DiagnosticsEngine &diags) {
-  using namespace options;
-  if (const Arg *A = Args.getLastArg(OPT_fapinotes_swift_version)) {
-    if (Opts.SwiftVersion.tryParse(A->getValue()))
-      diags.Report(diag::err_drv_invalid_value)
-        << A->getAsString(Args) << A->getValue();
-  }
-  for (const Arg *A : Args.filtered(OPT_iapinotes_modules))
-    Opts.ModuleSearchPaths.push_back(A->getValue());
 }
 
 void CompilerInvocation::setLangDefaults(LangOptions &Opts, InputKind IK,
@@ -2113,7 +2128,6 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
       Args.hasArg(OPT_fmodules_local_submodule_visibility) || Opts.ModulesTS;
   Opts.ModulesCodegen = Args.hasArg(OPT_fmodules_codegen);
   Opts.ModulesDebugInfo = Args.hasArg(OPT_fmodules_debuginfo);
-  Opts.ModulesHashErrorDiags = Args.hasArg(OPT_fmodules_hash_error_diagnostics);
   Opts.ModulesSearchAll = Opts.Modules &&
     !Args.hasArg(OPT_fno_modules_search_all) &&
     Args.hasArg(OPT_fmodules_search_all);
@@ -2200,8 +2214,6 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
   // is enabled.
   Opts.HalfArgsAndReturns = Args.hasArg(OPT_fallow_half_arguments_and_returns)
                             | Opts.NativeHalfArgsAndReturns;
-  Opts.APINotes = Args.hasArg(OPT_fapinotes);
-  Opts.APINotesModules = Args.hasArg(OPT_fapinotes_modules);
   Opts.GNUAsm = !Args.hasArg(OPT_fno_gnu_inline_asm);
 
   // __declspec is enabled by default for the PS4 by the driver, and also
@@ -2327,13 +2339,27 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
     }
   }
 
+  // Set the flag to prevent the implementation from emitting device exception
+  // handling code for those requiring so.
+  if (Opts.OpenMPIsDevice && T.isNVPTX()) {
+    Opts.Exceptions = 0;
+    Opts.CXXExceptions = 0;
+  }
+
   // Get the OpenMP target triples if any.
   if (Arg *A = Args.getLastArg(options::OPT_fopenmp_targets_EQ)) {
 
     for (unsigned i = 0; i < A->getNumValues(); ++i) {
       llvm::Triple TT(A->getValue(i));
 
-      if (TT.getArch() == llvm::Triple::UnknownArch)
+      if (TT.getArch() == llvm::Triple::UnknownArch ||
+          !(TT.getArch() == llvm::Triple::ppc ||
+            TT.getArch() == llvm::Triple::ppc64 ||
+            TT.getArch() == llvm::Triple::ppc64le ||
+            TT.getArch() == llvm::Triple::nvptx ||
+            TT.getArch() == llvm::Triple::nvptx64 ||
+            TT.getArch() == llvm::Triple::x86 ||
+            TT.getArch() == llvm::Triple::x86_64))
         Diags.Report(clang::diag::err_drv_invalid_omp_target) << A->getValue(i);
       else
         Opts.OMPTargetTriples.push_back(TT);
@@ -2647,8 +2673,6 @@ bool CompilerInvocation::CreateFromArgs(CompilerInvocation &Res,
                               Res.getTargetOpts());
   ParseHeaderSearchArgs(Res.getHeaderSearchOpts(), Args,
                         Res.getFileSystemOpts().WorkingDir);
-  ParseAPINotesArgs(Res.getAPINotesOpts(), Args, Diags);
-
   if (DashX.getFormat() == InputKind::Precompiled ||
       DashX.getLanguage() == InputKind::LLVM_IR) {
     // ObjCAAutoRefCount and Sanitize LangOpts are used to setup the
@@ -2669,13 +2693,6 @@ bool CompilerInvocation::CreateFromArgs(CompilerInvocation &Res,
                   Res.getPreprocessorOpts(), Diags);
     if (Res.getFrontendOpts().ProgramAction == frontend::RewriteObjC)
       LangOpts.ObjCExceptions = 1;
-
-    // -fapinotes and -fapinotes-modules requires -fapinotes-cache-path=<directory>.
-    if ((LangOpts.APINotes || LangOpts.APINotesModules) &&
-        Res.getFileSystemOpts().APINotesCachePath.empty()) {
-      Diags.Report(diag::err_no_apinotes_cache_path);
-      Success = false;
-    }
   }
 
   if (LangOpts.CUDA) {
@@ -2715,16 +2732,7 @@ bool CompilerInvocation::CreateFromArgs(CompilerInvocation &Res,
   return Success;
 }
 
-// Some extension diagnostics aren't explicitly mapped and require custom
-// logic in the dianognostic engine to be used, track -pedantic-errors
-static bool isExtHandlingFromDiagsError(DiagnosticsEngine &Diags) {
-  diag::Severity Ext = Diags.getExtensionHandlingBehavior();
-  if (Ext == diag::Severity::Warning && Diags.getWarningsAsErrors())
-    return true;
-  return Ext >= diag::Severity::Error;
-}
-
-std::string CompilerInvocation::getModuleHash(DiagnosticsEngine &Diags) const {
+std::string CompilerInvocation::getModuleHash() const {
   // Note: For QoI reasons, the things we use as a hash here should all be
   // dumped via the -module-info flag.
   using llvm::hash_code;
@@ -2793,19 +2801,7 @@ std::string CompilerInvocation::getModuleHash(DiagnosticsEngine &Diags) const {
   // Extend the signature with the module file extensions.
   const FrontendOptions &frontendOpts = getFrontendOpts();
   for (const auto &ext : frontendOpts.ModuleFileExtensions) {
-    code = hash_combine(code, ext->hashExtension(code));
-  }
-
-  // Extend the signature with the SWift version for API notes.
-  const APINotesOptions &apiNotesOpts = getAPINotesOpts();
-  if (apiNotesOpts.SwiftVersion) {
-    code = hash_combine(code, apiNotesOpts.SwiftVersion.getMajor());
-    if (auto minor = apiNotesOpts.SwiftVersion.getMinor())
-      code = hash_combine(code, *minor);
-    if (auto subminor = apiNotesOpts.SwiftVersion.getSubminor())
-      code = hash_combine(code, *subminor);
-    if (auto build = apiNotesOpts.SwiftVersion.getBuild())
-      code = hash_combine(code, *build);
+    code = ext->hashExtension(code);
   }
 
   // Extend the signature with the enabled sanitizers, if at least one is
@@ -2814,24 +2810,6 @@ std::string CompilerInvocation::getModuleHash(DiagnosticsEngine &Diags) const {
   SanHash.clear(getPPTransparentSanitizers());
   if (!SanHash.empty())
     code = hash_combine(code, SanHash.Mask);
-
-  // Check for a couple things (see checkDiagnosticMappings in ASTReader.cpp):
-  //  -Werror: consider all warnings into the hash
-  //  -Werror=something: consider only the specified into the hash
-  //  -pedantic-error
-  if (getLangOpts()->ModulesHashErrorDiags) {
-    bool ConsiderAllWarningsAsErrors = Diags.getWarningsAsErrors();
-    code = hash_combine(code, isExtHandlingFromDiagsError(Diags));
-    for (auto DiagIDMappingPair : Diags.getDiagnosticMappings()) {
-      diag::kind DiagID = DiagIDMappingPair.first;
-      auto CurLevel = Diags.getDiagnosticLevel(DiagID, SourceLocation());
-      if (CurLevel < DiagnosticsEngine::Error && !ConsiderAllWarningsAsErrors)
-        continue; // not significant
-      code = hash_combine(
-          code,
-          Diags.getDiagnosticIDs()->getWarningOptionForDiag(DiagID).str());
-    }
-  }
 
   return llvm::APInt(64, code).toString(36, /*Signed=*/false);
 }

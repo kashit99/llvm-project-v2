@@ -29053,6 +29053,40 @@ static SDValue combineShuffleOfConcatUndef(SDNode *N, SelectionDAG &DAG,
   return DAG.getVectorShuffle(VT, DL, Concat, DAG.getUNDEF(VT), Mask);
 }
 
+/// Eliminate a redundant shuffle of a horizontal math op.
+static SDValue foldShuffleOfHorizOp(SDNode *N) {
+  if (N->getOpcode() != ISD::VECTOR_SHUFFLE || !N->getOperand(1).isUndef())
+    return SDValue();
+
+  SDValue HOp = N->getOperand(0);
+  if (HOp.getOpcode() != X86ISD::HADD && HOp.getOpcode() != X86ISD::FHADD &&
+      HOp.getOpcode() != X86ISD::HSUB && HOp.getOpcode() != X86ISD::FHSUB)
+    return SDValue();
+
+  // 128-bit horizontal math instructions are defined to operate on adjacent
+  // lanes of each operand as:
+  // v4X32: A[0] + A[1] , A[2] + A[3] , B[0] + B[1] , B[2] + B[3]
+  // ...similarly for v2f64 and v8i16.
+  // TODO: 256-bit is not the same because...x86.
+  if (HOp.getOperand(0) != HOp.getOperand(1) || HOp.getValueSizeInBits() != 128)
+    return SDValue();
+
+  // When the operands of a horizontal math op are identical, the low half of
+  // the result is the same as the high half. If the shuffle is also replicating
+  // low and high halves, we don't need the shuffle.
+  // shuffle (hadd X, X), undef, [low half...high half] --> hadd X, X
+  ArrayRef<int> Mask = cast<ShuffleVectorSDNode>(N)->getMask();
+  // TODO: Other mask possibilities like {1,1} and {1,0} could be added here,
+  // but this should be tied to whatever horizontal op matching and shuffle
+  // canonicalization are producing.
+  if (isTargetShuffleEquivalent(Mask, { 0, 0 }) ||
+      isTargetShuffleEquivalent(Mask, { 0, 1, 0, 1 }) ||
+      isTargetShuffleEquivalent(Mask, { 0, 1, 2, 3, 0, 1, 2, 3 }))
+    return HOp;
+
+  return SDValue();
+}
+
 static SDValue combineShuffle(SDNode *N, SelectionDAG &DAG,
                               TargetLowering::DAGCombinerInfo &DCI,
                               const X86Subtarget &Subtarget) {
@@ -29061,9 +29095,13 @@ static SDValue combineShuffle(SDNode *N, SelectionDAG &DAG,
   const TargetLowering &TLI = DAG.getTargetLoweringInfo();
   // If we have legalized the vector types, look for blends of FADD and FSUB
   // nodes that we can fuse into an ADDSUB node.
-  if (TLI.isTypeLegal(VT))
+  if (TLI.isTypeLegal(VT)) {
     if (SDValue AddSub = combineShuffleToAddSubOrFMAddSub(N, Subtarget, DAG))
       return AddSub;
+
+    if (SDValue HAddSub = foldShuffleOfHorizOp(N))
+      return HAddSub;
+  }
 
   // During Type Legalization, when promoting illegal vector types,
   // the backend might introduce new shuffle dag nodes and bitcasts.
@@ -30939,11 +30977,40 @@ static bool checkBoolTestAndOrSetCCCombine(SDValue Cond, X86::CondCode &CC0,
   return true;
 }
 
+// When legalizing carry, we create carries via add X, -1
+// If that comes from an actual carry, via setcc, we use the
+// carry directly.
+static SDValue combineCarryThroughADD(SDValue EFLAGS) {
+  if (EFLAGS.getOpcode() == X86ISD::ADD) {
+    if (isAllOnesConstant(EFLAGS.getOperand(1))) {
+      SDValue Carry = EFLAGS.getOperand(0);
+      while (Carry.getOpcode() == ISD::TRUNCATE ||
+             Carry.getOpcode() == ISD::ZERO_EXTEND ||
+             Carry.getOpcode() == ISD::SIGN_EXTEND ||
+             Carry.getOpcode() == ISD::ANY_EXTEND ||
+             (Carry.getOpcode() == ISD::AND &&
+              isOneConstant(Carry.getOperand(1))))
+        Carry = Carry.getOperand(0);
+      if (Carry.getOpcode() == X86ISD::SETCC ||
+          Carry.getOpcode() == X86ISD::SETCC_CARRY) {
+        if (Carry.getConstantOperandVal(0) == X86::COND_B)
+          return Carry.getOperand(1);
+      }
+    }
+  }
+
+  return SDValue();
+}
+
 /// Optimize an EFLAGS definition used according to the condition code \p CC
 /// into a simpler EFLAGS value, potentially returning a new \p CC and replacing
 /// uses of chain values.
 static SDValue combineSetCCEFLAGS(SDValue EFLAGS, X86::CondCode &CC,
                                   SelectionDAG &DAG) {
+  if (CC == X86::COND_B)
+    if (SDValue Flags = combineCarryThroughADD(EFLAGS))
+      return Flags;
+
   if (SDValue R = checkBoolTestSetCCCombine(EFLAGS, CC))
     return R;
   return combineSetCCAtomicArith(EFLAGS, CC, DAG);
@@ -34987,27 +35054,13 @@ static SDValue combineSIntToFP(SDNode *N, SelectionDAG &DAG,
   return SDValue();
 }
 
-// Optimize RES, EFLAGS = X86ISD::ADD LHS, RHS
-static SDValue combineX86ADD(SDNode *N, SelectionDAG &DAG,
-                             X86TargetLowering::DAGCombinerInfo &DCI) {
-  // When legalizing carry, we create carries via add X, -1
-  // If that comes from an actual carry, via setcc, we use the
-  // carry directly.
-  if (isAllOnesConstant(N->getOperand(1)) && N->hasAnyUseOfValue(1)) {
-    SDValue Carry = N->getOperand(0);
-    while (Carry.getOpcode() == ISD::TRUNCATE ||
-           Carry.getOpcode() == ISD::ZERO_EXTEND ||
-           Carry.getOpcode() == ISD::SIGN_EXTEND ||
-           Carry.getOpcode() == ISD::ANY_EXTEND ||
-           (Carry.getOpcode() == ISD::AND &&
-            isOneConstant(Carry.getOperand(1))))
-      Carry = Carry.getOperand(0);
-
-    if (Carry.getOpcode() == X86ISD::SETCC ||
-        Carry.getOpcode() == X86ISD::SETCC_CARRY) {
-      if (Carry.getConstantOperandVal(0) == X86::COND_B)
-        return DCI.CombineTo(N, SDValue(N, 0), Carry.getOperand(1));
-    }
+static SDValue combineSBB(SDNode *N, SelectionDAG &DAG) {
+  if (SDValue Flags = combineCarryThroughADD(N->getOperand(2))) {
+    MVT VT = N->getSimpleValueType(0);
+    SDVTList VTs = DAG.getVTList(VT, MVT::i32);
+    return DAG.getNode(X86ISD::SBB, SDLoc(N), VTs,
+                       N->getOperand(0), N->getOperand(1),
+                       Flags);
   }
 
   return SDValue();
@@ -35034,6 +35087,14 @@ static SDValue combineADC(SDNode *N, SelectionDAG &DAG,
                                            N->getOperand(2)),
                                DAG.getConstant(1, DL, VT));
     return DCI.CombineTo(N, Res1, CarryOut);
+  }
+
+  if (SDValue Flags = combineCarryThroughADD(N->getOperand(2))) {
+    MVT VT = N->getSimpleValueType(0);
+    SDVTList VTs = DAG.getVTList(VT, MVT::i32);
+    return DAG.getNode(X86ISD::ADC, SDLoc(N), VTs,
+                       N->getOperand(0), N->getOperand(1),
+                       Flags);
   }
 
   return SDValue();
@@ -35721,7 +35782,7 @@ SDValue X86TargetLowering::PerformDAGCombine(SDNode *N,
   case X86ISD::CMOV:        return combineCMov(N, DAG, DCI, Subtarget);
   case ISD::ADD:            return combineAdd(N, DAG, Subtarget);
   case ISD::SUB:            return combineSub(N, DAG, Subtarget);
-  case X86ISD::ADD:         return combineX86ADD(N, DAG, DCI);
+  case X86ISD::SBB:         return combineSBB(N, DAG);
   case X86ISD::ADC:         return combineADC(N, DAG, DCI);
   case ISD::MUL:            return combineMul(N, DAG, DCI, Subtarget);
   case ISD::SHL:

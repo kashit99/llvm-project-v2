@@ -23,21 +23,28 @@
 #define LLVM_ANALYSIS_TARGETTRANSFORMINFO_H
 
 #include "llvm/ADT/Optional.h"
-#include "llvm/IR/IntrinsicInst.h"
-#include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Operator.h"
 #include "llvm/IR/PassManager.h"
 #include "llvm/Pass.h"
+#include "llvm/Support/AtomicOrdering.h"
 #include "llvm/Support/DataTypes.h"
 #include <functional>
 
 namespace llvm {
 
+namespace Intrinsic {
+enum ID : unsigned;
+}
+
 class Function;
 class GlobalValue;
+class IntrinsicInst;
+class LoadInst;
 class Loop;
-class ScalarEvolution;
 class SCEV;
+class ScalarEvolution;
+class StoreInst;
+class SwitchInst;
 class Type;
 class User;
 class Value;
@@ -106,6 +113,38 @@ public:
 
   /// \name Generic Target Information
   /// @{
+
+  /// \brief The kind of cost model.
+  ///
+  /// There are several different cost models that can be customized by the
+  /// target. The normalization of each cost model may be target specific.
+  enum TargetCostKind {
+    TCK_RecipThroughput, ///< Reciprocal throughput.
+    TCK_Latency,         ///< The latency of instruction.
+    TCK_CodeSize         ///< Instruction code size.
+  };
+
+  /// \brief Query the cost of a specified instruction.
+  ///
+  /// Clients should use this interface to query the cost of an existing
+  /// instruction. The instruction must have a valid parent (basic block).
+  ///
+  /// Note, this method does not cache the cost calculation and it
+  /// can be expensive in some cases.
+  int getInstructionCost(const Instruction *I, enum TargetCostKind kind) const {
+    switch (kind){
+    case TCK_RecipThroughput:
+      return getInstructionThroughput(I);
+
+    case TCK_Latency:
+      return getInstructionLatency(I);
+
+    case TCK_CodeSize:
+      return getUserCost(I);
+    }
+
+    return 0;
+  }
 
   /// \brief Underlying constants for 'cost' values in this interface.
   ///
@@ -725,6 +764,8 @@ public:
   ///  ((v0+v2), (v1+v3), undef, undef)
   int getArithmeticReductionCost(unsigned Opcode, Type *Ty,
                                  bool IsPairwiseForm) const;
+  int getMinMaxReductionCost(Type *Ty, Type *CondTy, bool IsPairwiseForm,
+                             bool IsUnsigned) const;
 
   /// \returns The cost of Intrinsic instructions. Analyses the real arguments.
   /// Three cases are handled: 1. scalar instruction 2. vector instruction
@@ -859,6 +900,14 @@ public:
   /// @}
 
 private:
+  /// \brief Estimate the latency of specified instruction.
+  /// Returns 1 as the default value.
+  int getInstructionLatency(const Instruction *I) const;
+
+  /// \brief Returns the expected throughput cost of the instruction.
+  /// Returns -1 if the cost is unknown.
+  int getInstructionThroughput(const Instruction *I) const;
+
   /// \brief The abstract base class used to type erase specific TTI
   /// implementations.
   class Concept;
@@ -991,6 +1040,8 @@ public:
                                          unsigned AddressSpace) = 0;
   virtual int getArithmeticReductionCost(unsigned Opcode, Type *Ty,
                                          bool IsPairwiseForm) = 0;
+  virtual int getMinMaxReductionCost(Type *Ty, Type *CondTy,
+                                     bool IsPairwiseForm, bool IsUnsigned) = 0;
   virtual int getIntrinsicInstrCost(Intrinsic::ID ID, Type *RetTy,
                       ArrayRef<Type *> Tys, FastMathFlags FMF,
                       unsigned ScalarizationCostPassed) = 0;
@@ -1033,6 +1084,7 @@ public:
   virtual bool useReductionIntrinsic(unsigned Opcode, Type *Ty,
                                      ReductionFlags) const = 0;
   virtual bool shouldExpandReduction(const IntrinsicInst *II) const = 0;
+  virtual int getInstructionLatency(const Instruction *I) = 0;
 };
 
 template <typename T>
@@ -1302,6 +1354,10 @@ public:
                                  bool IsPairwiseForm) override {
     return Impl.getArithmeticReductionCost(Opcode, Ty, IsPairwiseForm);
   }
+  int getMinMaxReductionCost(Type *Ty, Type *CondTy,
+                             bool IsPairwiseForm, bool IsUnsigned) override {
+    return Impl.getMinMaxReductionCost(Ty, CondTy, IsPairwiseForm, IsUnsigned);
+   }
   int getIntrinsicInstrCost(Intrinsic::ID ID, Type *RetTy, ArrayRef<Type *> Tys,
                FastMathFlags FMF, unsigned ScalarizationCostPassed) override {
     return Impl.getIntrinsicInstrCost(ID, RetTy, Tys, FMF,
@@ -1390,6 +1446,9 @@ public:
   }
   bool shouldExpandReduction(const IntrinsicInst *II) const override {
     return Impl.shouldExpandReduction(II);
+  }
+  int getInstructionLatency(const Instruction *I) override {
+    return Impl.getInstructionLatency(I);
   }
 };
 

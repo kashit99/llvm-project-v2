@@ -300,12 +300,16 @@ CompilerInstance::createDiagnostics(DiagnosticOptions *Opts,
 
 // File Manager
 
-void CompilerInstance::createFileManager() {
+FileManager *CompilerInstance::createFileManager() {
   if (!hasVirtualFileSystem()) {
-    // TODO: choose the virtual file system based on the CompilerInvocation.
-    setVirtualFileSystem(vfs::getRealFileSystem());
+    if (IntrusiveRefCntPtr<vfs::FileSystem> VFS =
+            createVFSFromCompilerInvocation(getInvocation(), getDiagnostics()))
+      setVirtualFileSystem(VFS);
+    else
+      return nullptr;
   }
   FileMgr = new FileManager(getFileSystemOpts(), VirtualFileSystem);
+  return FileMgr.get();
 }
 
 // Source Manager
@@ -838,8 +842,8 @@ bool CompilerInstance::InitializeSourceManager(
           : Input.isSystem() ? SrcMgr::C_System : SrcMgr::C_User;
 
   if (Input.isBuffer()) {
-    SourceMgr.setMainFileID(SourceMgr.createFileID(
-        std::unique_ptr<llvm::MemoryBuffer>(Input.getBuffer()), Kind));
+    SourceMgr.setMainFileID(SourceMgr.createFileID(SourceManager::Unowned,
+                                                   Input.getBuffer(), Kind));
     assert(SourceMgr.getMainFileID().isValid() &&
            "Couldn't establish MainFileID!");
     return true;

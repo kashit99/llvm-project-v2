@@ -5202,7 +5202,6 @@ private:
 
     int PairwiseRdxCost;
     int SplittingRdxCost;
-    bool IsUnsigned = true;
     switch (ReductionData.getKind()) {
     case RK_Arithmetic:
       PairwiseRdxCost =
@@ -5214,10 +5213,11 @@ private:
       break;
     case RK_Min:
     case RK_Max:
-      IsUnsigned = false;
     case RK_UMin:
     case RK_UMax: {
       Type *VecCondTy = CmpInst::makeCmpResultType(VecTy);
+      bool IsUnsigned = ReductionData.getKind() == RK_UMin ||
+                        ReductionData.getKind() == RK_UMax;
       PairwiseRdxCost =
           TTI->getMinMaxReductionCost(VecTy, VecCondTy,
                                       /*IsPairwiseForm=*/true, IsUnsigned);
@@ -5490,7 +5490,7 @@ static bool tryToVectorizeHorReductionOrInstOperands(
       for (auto *Op : Inst->operand_values())
         if (VisitedInstrs.insert(Op).second)
           if (auto *I = dyn_cast<Instruction>(Op))
-            if (!isa<PHINode>(Inst) && I->getParent() == BB)
+            if (!isa<PHINode>(I) && I->getParent() == BB)
               Stack.emplace_back(Op, Level);
   }
   return Res;

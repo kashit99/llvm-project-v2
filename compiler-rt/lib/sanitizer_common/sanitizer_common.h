@@ -308,9 +308,14 @@ void SetSoftRssLimitExceededCallback(void (*Callback)(bool exceeded));
 // Functions related to signal handling.
 typedef void (*SignalHandlerType)(int, void *, void *);
 HandleSignalMode GetHandleSignalMode(int signum);
-bool IsStackOverflow(int code, const SignalContext &sig);
 void InstallDeadlySignalHandlers(SignalHandlerType handler);
-const char *DescribeSignalOrException(int signo);
+// Signal reporting.
+void StartReportDeadlySignal();
+bool IsStackOverflow(const SignalContext &sig);
+// FIXME: Hide after moving more signal handling code into common.
+void MaybeReportNonExecRegion(uptr pc);
+void MaybeDumpInstructionBytes(uptr pc);
+void MaybeDumpRegisters(void *context);
 // Alternative signal stack (POSIX-only).
 void SetAlternateSignalStack();
 void UnsetAlternateSignalStack();
@@ -789,6 +794,7 @@ static inline void SanitizerBreakOptimization(void *arg) {
 }
 
 struct SignalContext {
+  void *siginfo;
   void *context;
   uptr addr;
   uptr pc;
@@ -798,9 +804,15 @@ struct SignalContext {
 
   enum WriteFlag { UNKNOWN, READ, WRITE } write_flag;
 
-  SignalContext(void *context, uptr addr, uptr pc, uptr sp, uptr bp,
-                bool is_memory_access, WriteFlag write_flag)
-      : context(context),
+  // VS2013 doesn't implement unrestricted unions, so we need a trivial default
+  // constructor
+  SignalContext() = default;
+  // SignalContext is going to keep pointers to siginfo and context without
+  // owning them.
+  SignalContext(void *siginfo, void *context, uptr addr, uptr pc, uptr sp,
+                uptr bp, bool is_memory_access, WriteFlag write_flag)
+      : siginfo(siginfo),
+        context(context),
         addr(addr),
         pc(pc),
         sp(sp),
@@ -815,6 +827,12 @@ struct SignalContext {
 
   // Returns true if the "context" indicates a memory write.
   static WriteFlag GetWriteFlag(void *context);
+
+  // Type of signal e.g. SIGSEGV or EXCEPTION_ACCESS_VIOLATION.
+  int GetType() const;
+
+  // String description of the signal.
+  const char *Describe() const;
 };
 
 void GetPcSpBp(void *context, uptr *pc, uptr *sp, uptr *bp);

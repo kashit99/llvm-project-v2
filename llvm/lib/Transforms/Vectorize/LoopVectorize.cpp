@@ -4526,10 +4526,10 @@ void InnerLoopVectorizer::widenPHIInstruction(Instruction *PN, unsigned UF,
 
       for (unsigned Part = 0; Part < UF; ++Part) {
         Value *In0 = getOrCreateVectorValue(P->getIncomingValue(In), Part);
-        // We might have single edge PHIs (blocks) - use an identity
-        // 'select' for the first PHI operand.
+        assert((Cond[Part] || NumIncoming == 1) &&
+               "Multiple predecessors with one predecessor having a full mask");
         if (In == 0)
-          Entry[Part] = Builder.CreateSelect(Cond[Part], In0, In0);
+          Entry[Part] = In0; // Initialize with the first incoming value.
         else
           // Select between the current value and the previous incoming edge
           // based on the incoming mask.
@@ -6241,6 +6241,7 @@ LoopVectorizationCostModel::computeFeasibleMaxVF(bool OptForSize,
   if (MaxVectorSize == 0) {
     DEBUG(dbgs() << "LV: The target has no vector registers.\n");
     MaxVectorSize = 1;
+    return MaxVectorSize;
   } else if (ConstTripCount && ConstTripCount < MaxVectorSize &&
              isPowerOf2_32(ConstTripCount)) {
     // We need to clamp the VF to be the ConstTripCount. There is no point in
@@ -6253,10 +6254,11 @@ LoopVectorizationCostModel::computeFeasibleMaxVF(bool OptForSize,
 
   unsigned MaxVF = MaxVectorSize;
   if (MaximizeBandwidth && !OptForSize) {
-    // Collect all viable vectorization factors.
+    // Collect all viable vectorization factors larger than the default MaxVF
+    // (i.e. MaxVectorSize).
     SmallVector<unsigned, 8> VFs;
     unsigned NewMaxVectorSize = WidestRegister / SmallestType;
-    for (unsigned VS = MaxVectorSize; VS <= NewMaxVectorSize; VS *= 2)
+    for (unsigned VS = MaxVectorSize * 2; VS <= NewMaxVectorSize; VS *= 2)
       VFs.push_back(VS);
 
     // For each VF calculate its register usage.

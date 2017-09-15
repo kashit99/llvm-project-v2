@@ -1173,10 +1173,6 @@ function(configure_lit_site_cfg input output)
     set(TARGET_TRIPLE "\"+config.target_triple+\"")
   endif()
 
-  string(CONCAT LIT_SITE_CFG_IN_FOOTER
-     "import lit.llvm\n"
-     "lit.llvm.initialize(lit_config, config)\n")
-
   configure_file(${input} ${output} @ONLY)
   get_filename_component(INPUT_DIR ${input} DIRECTORY)
   if (EXISTS "${INPUT_DIR}/lit.cfg")
@@ -1197,6 +1193,7 @@ function(add_lit_target target comment)
     list(APPEND LIT_ARGS --param build_mode=${CMAKE_CFG_INTDIR})
   endif ()
 
+  set(suffix "")
   if (WIN32 AND NOT CYGWIN)
     # llvm-lit needs suffix.py for multiprocess to find a main module.
     set(suffix .py)

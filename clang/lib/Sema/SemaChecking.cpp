@@ -6346,7 +6346,7 @@ CheckPrintfHandler::checkFormatExpr(const analyze_printf::PrintfSpecifier &FS,
       CastFix << ")";
 
       SmallVector<FixItHint,4> Hints;
-      if (!AT.matchesType(S.Context, IntendedTy))
+      if (!AT.matchesType(S.Context, IntendedTy) || ShouldNotPrintDirectly) 
         Hints.push_back(FixItHint::CreateReplacement(SpecRange, os.str()));
 
       if (const CStyleCastExpr *CCast = dyn_cast<CStyleCastExpr>(E)) {
@@ -8171,8 +8171,11 @@ struct IntRange {
     // For enum types, use the known bit width of the enumerators.
     if (const EnumType *ET = dyn_cast<EnumType>(T)) {
       EnumDecl *Enum = ET->getDecl();
+      // In C++11, enums without definitions can have an explicitly specified
+      // underlying type.  Use this type to compute the range.
       if (!Enum->isCompleteDefinition())
-        return IntRange(C.getIntWidth(QualType(T, 0)), false);
+        return IntRange(C.getIntWidth(QualType(T, 0)),
+                        !ET->isSignedIntegerOrEnumerationType());
 
       unsigned NumPositive = Enum->getNumPositiveBits();
       unsigned NumNegative = Enum->getNumNegativeBits();

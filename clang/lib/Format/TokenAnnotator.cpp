@@ -342,10 +342,10 @@ private:
     bool ColonFound = false;
 
     unsigned BindingIncrease = 1;
-    if (Left->is(TT_Unknown)) {
-      if (Left->isCppStructuredBinding(Style)) {
-        Left->Type = TT_StructuredBindingLSquare;
-      } else if (StartsObjCMethodExpr) {
+    if (Left->isCppStructuredBinding(Style)) {
+      Left->Type = TT_StructuredBindingLSquare;
+    } else if (Left->is(TT_Unknown)) {
+      if (StartsObjCMethodExpr) {
         Left->Type = TT_ObjCMethodExpr;
       } else if (Style.Language == FormatStyle::LK_JavaScript && Parent &&
                  Contexts.back().ContextKind == tok::l_brace &&
@@ -2185,6 +2185,8 @@ bool TokenAnnotator::spaceRequiredBetween(const AnnotatedLine &Line,
                                           const FormatToken &Right) {
   if (Left.is(tok::kw_return) && Right.isNot(tok::semi))
     return true;
+  if (Left.is(Keywords.kw_assert) && Style.Language == FormatStyle::LK_Java)
+    return true;
   if (Style.ObjCSpaceAfterProperty && Line.Type == LT_ObjCProperty &&
       Left.Tok.getObjCKeywordID() == tok::objc_property)
     return true;
@@ -2513,6 +2515,14 @@ bool TokenAnnotator::spaceRequiredBefore(const AnnotatedLine &Line,
                           TT_TemplateOpener));
   if ((Left.is(TT_TemplateOpener)) != (Right.is(TT_TemplateCloser)))
     return Style.SpacesInAngles;
+  // Space before TT_StructuredBindingLSquare.
+  if (Right.is(TT_StructuredBindingLSquare))
+    return !Left.isOneOf(tok::amp, tok::ampamp) ||
+           Style.PointerAlignment != FormatStyle::PAS_Right;
+  // Space before & or && following a TT_StructuredBindingLSquare.
+  if (Right.Next && Right.Next->is(TT_StructuredBindingLSquare) &&
+      Right.isOneOf(tok::amp, tok::ampamp))
+    return Style.PointerAlignment != FormatStyle::PAS_Left;
   if ((Right.is(TT_BinaryOperator) && !Left.is(tok::l_paren)) ||
       (Left.isOneOf(TT_BinaryOperator, TT_ConditionalExpr) &&
        !Right.is(tok::r_paren)))

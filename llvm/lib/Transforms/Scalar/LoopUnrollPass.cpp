@@ -1087,7 +1087,7 @@ public:
   Optional<bool> ProvidedUpperBound;
   Optional<bool> ProvidedAllowPeeling;
 
-  bool runOnLoop(Loop *L, LPPassManager &) override {
+  bool runOnLoop(Loop *L, LPPassManager &LPM) override {
     if (skipLoop(L))
       return false;
 
@@ -1105,11 +1105,15 @@ public:
     OptimizationRemarkEmitter ORE(&F);
     bool PreserveLCSSA = mustPreserveAnalysisID(LCSSAID);
 
-    return tryToUnrollLoop(L, DT, LI, SE, TTI, AC, ORE, PreserveLCSSA, OptLevel,
-                           ProvidedCount, ProvidedThreshold,
-                           ProvidedAllowPartial, ProvidedRuntime,
-                           ProvidedUpperBound, ProvidedAllowPeeling) !=
-           LoopUnrollResult::Unmodified;
+    LoopUnrollResult Result = tryToUnrollLoop(
+        L, DT, LI, SE, TTI, AC, ORE, PreserveLCSSA, OptLevel, ProvidedCount,
+        ProvidedThreshold, ProvidedAllowPartial, ProvidedRuntime,
+        ProvidedUpperBound, ProvidedAllowPeeling);
+
+    if (Result == LoopUnrollResult::FullyUnrolled)
+      LPM.markLoopAsDeleted(*L);
+
+    return Result != LoopUnrollResult::Unmodified;
   }
 
   /// This transformation requires natural loop information & requires that
@@ -1174,6 +1178,8 @@ PreservedAnalyses LoopFullUnrollPass::run(Loop &L, LoopAnalysisManager &AM,
   else
     OldLoops.insert(AR.LI.begin(), AR.LI.end());
 
+  std::string LoopName = L.getName();
+
   bool Changed =
       tryToUnrollLoop(&L, AR.DT, &AR.LI, AR.SE, AR.TTI, AR.AC, *ORE,
                       /*PreserveLCSSA*/ true, OptLevel, /*Count*/ None,
@@ -1223,7 +1229,7 @@ PreservedAnalyses LoopFullUnrollPass::run(Loop &L, LoopAnalysisManager &AM,
   Updater.addSiblingLoops(SibLoops);
 
   if (!IsCurrentLoopValid) {
-    Updater.markLoopAsDeleted(L);
+    Updater.markLoopAsDeleted(L, LoopName);
   } else {
     // We can only walk child loops if the current loop remained valid.
     if (UnrollRevisitChildLoops) {
@@ -1298,6 +1304,9 @@ PreservedAnalyses LoopUnrollPass::run(Function &F,
     // for unrolling is only needed to get optimization remarks emitted in
     // a forward order.
     Loop &L = *Worklist.pop_back_val();
+#ifndef NDEBUG
+    Loop *ParentL = L.getParentLoop();
+#endif
 
     // The API here is quite complex to call, but there are only two interesting
     // states we support: partial and full (or "simple") unrolling. However, to
@@ -1310,6 +1319,7 @@ PreservedAnalyses LoopUnrollPass::run(Function &F,
     // bloating it further.
     if (PSI && PSI->hasHugeWorkingSetSize())
       AllowPeeling = false;
+    std::string LoopName = L.getName();
     LoopUnrollResult Result =
         tryToUnrollLoop(&L, DT, &LI, SE, TTI, AC, ORE,
                         /*PreserveLCSSA*/ true, OptLevel, /*Count*/ None,
@@ -1319,14 +1329,13 @@ PreservedAnalyses LoopUnrollPass::run(Function &F,
 
     // The parent must not be damaged by unrolling!
 #ifndef NDEBUG
-    Loop *ParentL = L.getParentLoop();
     if (Result != LoopUnrollResult::Unmodified && ParentL)
       ParentL->verifyLoop();
 #endif
 
     // Clear any cached analysis results for L if we removed it completely.
     if (LAM && Result == LoopUnrollResult::FullyUnrolled)
-      LAM->clear(L);
+      LAM->clear(L, LoopName);
   }
 
   if (!Changed)

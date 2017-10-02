@@ -474,7 +474,7 @@ static bool requiresProcmaps() {
 }
 
 static void procmapsInit(InternalMmapVectorNoCtor<LoadedModule> *modules) {
-  MemoryMappingLayout memory_mapping(false);
+  MemoryMappingLayout memory_mapping(/*cache_enabled*/true);
   memory_mapping.DumpListOfModules(modules);
 }
 

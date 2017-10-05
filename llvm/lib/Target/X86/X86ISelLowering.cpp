@@ -8683,24 +8683,36 @@ static SDValue lowerVectorShuffleWithPACK(const SDLoc &DL, MVT VT,
   MVT PackSVT = MVT::getIntegerVT(BitSize * 2);
   MVT PackVT = MVT::getVectorVT(PackSVT, NumElts / 2);
 
-  // TODO - Add support for unary packs.
-  SmallVector<int, 32> BinaryMask;
-  createPackShuffleMask(VT, BinaryMask, false);
-
-  if (isShuffleEquivalent(V1, V2, Mask, BinaryMask)) {
-    SDValue VV1 = DAG.getBitcast(PackVT, V1);
-    SDValue VV2 = DAG.getBitcast(PackVT, V2);
-    if ((V1.isUndef() || DAG.ComputeNumSignBits(VV1) > BitSize) &&
-        (V2.isUndef() || DAG.ComputeNumSignBits(VV2) > BitSize))
+  auto LowerWithPACK = [&](SDValue N1, SDValue N2) {
+    SDValue VV1 = DAG.getBitcast(PackVT, N1);
+    SDValue VV2 = DAG.getBitcast(PackVT, N2);
+    if ((N1.isUndef() || DAG.ComputeNumSignBits(VV1) > BitSize) &&
+        (N2.isUndef() || DAG.ComputeNumSignBits(VV2) > BitSize))
       return DAG.getNode(X86ISD::PACKSS, DL, VT, VV1, VV2);
 
     if (Subtarget.hasSSE41() || PackSVT == MVT::i16) {
       APInt ZeroMask = APInt::getHighBitsSet(BitSize * 2, BitSize);
-      if ((V1.isUndef() || DAG.MaskedValueIsZero(VV1, ZeroMask)) &&
-          (V2.isUndef() || DAG.MaskedValueIsZero(VV2, ZeroMask)))
+      if ((N1.isUndef() || DAG.MaskedValueIsZero(VV1, ZeroMask)) &&
+          (N2.isUndef() || DAG.MaskedValueIsZero(VV2, ZeroMask)))
         return DAG.getNode(X86ISD::PACKUS, DL, VT, VV1, VV2);
     }
-  }
+
+    return SDValue();
+  };
+
+  // Try binary shuffle.
+  SmallVector<int, 32> BinaryMask;
+  createPackShuffleMask(VT, BinaryMask, false);
+  if (isShuffleEquivalent(V1, V2, Mask, BinaryMask))
+    if (SDValue Pack = LowerWithPACK(V1, V2))
+      return Pack;
+
+  // Try unary shuffle.
+  SmallVector<int, 32> UnaryMask;
+  createPackShuffleMask(VT, UnaryMask, true);
+  if (isShuffleEquivalent(V1, V2, Mask, UnaryMask))
+    if (SDValue Pack = LowerWithPACK(V1, V1))
+      return Pack;
 
   return SDValue();
 }
@@ -11497,6 +11509,11 @@ static SDValue lowerV8I16VectorShuffle(const SDLoc &DL, ArrayRef<int> Mask,
   // Use dedicated unpack instructions for masks that match their pattern.
   if (SDValue V =
           lowerVectorShuffleWithUNPCK(DL, MVT::v8i16, Mask, V1, V2, DAG))
+    return V;
+
+  // Use dedicated pack instructions for masks that match their pattern.
+  if (SDValue V = lowerVectorShuffleWithPACK(DL, MVT::v8i16, Mask, V1, V2, DAG,
+                                             Subtarget))
     return V;
 
   // Try to use byte rotation instructions.
@@ -26653,8 +26670,8 @@ X86TargetLowering::EmitSjLjDispatchBlock(MachineInstr &MI,
   SetupEntryBlockForSjLj(MI, BB, DispatchBB, FI);
 
   // Create the jump table and associated information
-  MachineJumpTableInfo *JTI =
-      MF->getOrCreateJumpTableInfo(getJumpTableEncoding());
+  unsigned JTE = getJumpTableEncoding();
+  MachineJumpTableInfo *JTI = MF->getOrCreateJumpTableInfo(JTE);
   unsigned MJTI = JTI->createJumpTableIndex(LPadList);
 
   const X86RegisterInfo &RI = TII->getRegisterInfo();
@@ -26677,7 +26694,8 @@ X86TargetLowering::EmitSjLjDispatchBlock(MachineInstr &MI,
         .addRegMask(RI.getNoPreservedMask());
   }
 
-  unsigned IReg = MRI->createVirtualRegister(&X86::GR32RegClass);
+  // IReg is used as an index in a memory operand and therefore can't be SP
+  unsigned IReg = MRI->createVirtualRegister(&X86::GR32_NOSPRegClass);
   addFrameReference(BuildMI(DispatchBB, DL, TII->get(X86::MOV32rm), IReg), FI,
                     Subtarget.is64Bit() ? 8 : 4);
   BuildMI(DispatchBB, DL, TII->get(X86::CMP32ri))
@@ -26685,13 +26703,67 @@ X86TargetLowering::EmitSjLjDispatchBlock(MachineInstr &MI,
       .addImm(LPadList.size());
   BuildMI(DispatchBB, DL, TII->get(X86::JAE_1)).addMBB(TrapBB);
 
-  BuildMI(DispContBB, DL,
-          TII->get(Subtarget.is64Bit() ? X86::JMP64m : X86::JMP32m))
-      .addReg(0)
-      .addImm(Subtarget.is64Bit() ? 8 : 4)
-      .addReg(IReg)
-      .addJumpTableIndex(MJTI)
-      .addReg(0);
+  if (Subtarget.is64Bit()) {
+    unsigned BReg = MRI->createVirtualRegister(&X86::GR64RegClass);
+    unsigned IReg64 = MRI->createVirtualRegister(&X86::GR64_NOSPRegClass);
+
+    // leaq .LJTI0_0(%rip), BReg
+    BuildMI(DispContBB, DL, TII->get(X86::LEA64r), BReg)
+        .addReg(X86::RIP)
+        .addImm(1)
+        .addReg(0)
+        .addJumpTableIndex(MJTI)
+        .addReg(0);
+    // movzx IReg64, IReg
+    BuildMI(DispContBB, DL, TII->get(TargetOpcode::SUBREG_TO_REG), IReg64)
+        .addImm(0)
+        .addReg(IReg)
+        .addImm(X86::sub_32bit);
+
+    switch (JTE) {
+    case MachineJumpTableInfo::EK_BlockAddress:
+      // jmpq *(BReg,IReg64,8)
+      BuildMI(DispContBB, DL, TII->get(X86::JMP64m))
+          .addReg(BReg)
+          .addImm(8)
+          .addReg(IReg64)
+          .addImm(0)
+          .addReg(0);
+      break;
+    case MachineJumpTableInfo::EK_LabelDifference32: {
+      unsigned OReg = MRI->createVirtualRegister(&X86::GR32RegClass);
+      unsigned OReg64 = MRI->createVirtualRegister(&X86::GR64RegClass);
+      unsigned TReg = MRI->createVirtualRegister(&X86::GR64RegClass);
+
+      // movl (BReg,IReg64,4), OReg
+      BuildMI(DispContBB, DL, TII->get(X86::MOV32rm), OReg)
+          .addReg(BReg)
+          .addImm(4)
+          .addReg(IReg64)
+          .addImm(0)
+          .addReg(0);
+      // movsx OReg64, OReg
+      BuildMI(DispContBB, DL, TII->get(X86::MOVSX64rr32), OReg64).addReg(OReg);
+      // addq BReg, OReg64, TReg
+      BuildMI(DispContBB, DL, TII->get(X86::ADD64rr), TReg)
+          .addReg(OReg64)
+          .addReg(BReg);
+      // jmpq *TReg
+      BuildMI(DispContBB, DL, TII->get(X86::JMP64r)).addReg(TReg);
+      break;
+    }
+    default:
+      llvm_unreachable("Unexpected jump table encoding");
+    }
+  } else {
+    // jmpl *.LJTI0_0(,IReg,4)
+    BuildMI(DispContBB, DL, TII->get(X86::JMP32m))
+        .addReg(0)
+        .addImm(4)
+        .addReg(IReg)
+        .addJumpTableIndex(MJTI)
+        .addReg(0);
+  }
 
   // Add the jump table entries as successors to the MBB.
   SmallPtrSet<MachineBasicBlock *, 8> SeenMBBs;
@@ -27143,20 +27215,24 @@ unsigned X86TargetLowering::ComputeNumSignBitsForTargetNode(
   }
 
   case X86ISD::VSHLI: {
+    // TODO: Add DemandedElts support.
     SDValue Src = Op.getOperand(0);
-    unsigned Tmp = DAG.ComputeNumSignBits(Src, Depth + 1);
     APInt ShiftVal = cast<ConstantSDNode>(Op.getOperand(1))->getAPIntValue();
     if (ShiftVal.uge(VTBits))
       return VTBits; // Shifted all bits out --> zero.
+    unsigned Tmp = DAG.ComputeNumSignBits(Src, Depth + 1);
     if (ShiftVal.uge(Tmp))
       return 1; // Shifted all sign bits out --> unknown.
     return Tmp - ShiftVal.getZExtValue();
   }
 
   case X86ISD::VSRAI: {
+    // TODO: Add DemandedElts support.
     SDValue Src = Op.getOperand(0);
-    unsigned Tmp = DAG.ComputeNumSignBits(Src, Depth + 1);
     APInt ShiftVal = cast<ConstantSDNode>(Op.getOperand(1))->getAPIntValue();
+    if (ShiftVal.uge(VTBits - 1))
+      return VTBits; // Sign splat.
+    unsigned Tmp = DAG.ComputeNumSignBits(Src, Depth + 1);
     ShiftVal += Tmp;
     return ShiftVal.uge(VTBits) ? VTBits : ShiftVal.getZExtValue();
   }
@@ -29429,9 +29505,8 @@ static SDValue combineBitcastvxi1(SelectionDAG &DAG, SDValue BitCast,
     FPCastVT = MVT::v4f32;
     // For cases such as (i4 bitcast (v4i1 setcc v4i64 v1, v2))
     // sign-extend to a 256-bit operation to avoid truncation.
-    if (N0->getOpcode() == ISD::SETCC &&
-        N0->getOperand(0)->getValueType(0).is256BitVector() &&
-        Subtarget.hasAVX()) {
+    if (N0->getOpcode() == ISD::SETCC && Subtarget.hasAVX() &&
+        N0->getOperand(0)->getValueType(0).is256BitVector()) {
       SExtVT = MVT::v4i64;
       FPCastVT = MVT::v4f64;
     }
@@ -29443,9 +29518,9 @@ static SDValue combineBitcastvxi1(SelectionDAG &DAG, SDValue BitCast,
     // If the setcc operand is 128-bit, prefer sign-extending to 128-bit over
     // 256-bit because the shuffle is cheaper than sign extending the result of
     // the compare.
-    if (N0->getOpcode() == ISD::SETCC &&
-        N0->getOperand(0)->getValueType(0).is256BitVector() &&
-        Subtarget.hasAVX()) {
+    if (N0->getOpcode() == ISD::SETCC && Subtarget.hasAVX() &&
+        (N0->getOperand(0)->getValueType(0).is256BitVector() ||
+         N0->getOperand(0)->getValueType(0).is512BitVector())) {
       SExtVT = MVT::v8i32;
       FPCastVT = MVT::v8f32;
     }

@@ -42,18 +42,18 @@ using namespace llvm::AMDGPU;
 AMDGPUTargetStreamer::AMDGPUTargetStreamer(MCStreamer &S)
     : MCTargetStreamer(S) {}
 
-void AMDGPUTargetStreamer::EmitStartOfCodeObjectMetadata(const Module &Mod) {
-  CodeObjectMetadataStreamer.begin(Mod);
+void AMDGPUTargetStreamer::EmitStartOfHSAMetadata(const Module &Mod) {
+  HSAMetadataStreamer.begin(Mod);
 }
 
-void AMDGPUTargetStreamer::EmitKernelCodeObjectMetadata(
+void AMDGPUTargetStreamer::EmitKernelHSAMetadata(
     const Function &Func, const amd_kernel_code_t &KernelCode) {
-  CodeObjectMetadataStreamer.emitKernel(Func, KernelCode);
+  HSAMetadataStreamer.emitKernel(Func, KernelCode);
 }
 
-void AMDGPUTargetStreamer::EmitEndOfCodeObjectMetadata() {
-  CodeObjectMetadataStreamer.end();
-  EmitCodeObjectMetadata(CodeObjectMetadataStreamer.toYamlString().get());
+void AMDGPUTargetStreamer::EmitEndOfHSAMetadata() {
+  HSAMetadataStreamer.end();
+  EmitHSAMetadata(HSAMetadataStreamer.toYamlString().get());
 }
 
 //===----------------------------------------------------------------------===//
@@ -100,23 +100,26 @@ void AMDGPUTargetAsmStreamer::EmitAMDGPUSymbolType(StringRef SymbolName,
   }
 }
 
-bool AMDGPUTargetAsmStreamer::EmitCodeObjectMetadata(StringRef YamlString) {
-  auto VerifiedYamlString = CodeObjectMetadataStreamer.toYamlString(YamlString);
+bool AMDGPUTargetAsmStreamer::EmitHSAMetadata(StringRef YamlString) {
+  auto VerifiedYamlString = HSAMetadataStreamer.toYamlString(YamlString);
   if (!VerifiedYamlString)
     return false;
 
-  OS << '\t' << AMDGPU::CodeObject::MetadataAssemblerDirectiveBegin << '\n';
+  OS << '\t' << AMDGPU::HSAMD::AssemblerDirectiveBegin << '\n';
   OS << VerifiedYamlString.get();
-  OS << '\t' << AMDGPU::CodeObject::MetadataAssemblerDirectiveEnd << '\n';
+  OS << '\t' << AMDGPU::HSAMD::AssemblerDirectiveEnd << '\n';
 
   return true;
 }
 
-bool AMDGPUTargetAsmStreamer::EmitPalMetadata(ArrayRef<uint32_t> Data) {
-  OS << "\t.amdgpu_pal_metadata";
-  for (auto I = Data.begin(), E = Data.end(); I != E; ++I)
-    OS << (I == Data.begin() ? " 0x" : ",0x") << Twine::utohexstr(*I);
-  OS << "\n";
+bool AMDGPUTargetAsmStreamer::EmitPALMetadata(
+    const PALMD::Metadata &PALMetadata) {
+  std::string PALMetadataString;
+  auto Error = PALMD::toString(PALMetadata, PALMetadataString);
+  if (Error)
+    return false;
+
+  OS << '\t' << PALMD::AssemblerDirective << PALMetadataString << '\n';
   return true;
 }
 
@@ -212,8 +215,8 @@ void AMDGPUTargetELFStreamer::EmitAMDGPUSymbolType(StringRef SymbolName,
   Symbol->setType(ELF::STT_AMDGPU_HSA_KERNEL);
 }
 
-bool AMDGPUTargetELFStreamer::EmitCodeObjectMetadata(StringRef YamlString) {
-  auto VerifiedYamlString = CodeObjectMetadataStreamer.toYamlString(YamlString);
+bool AMDGPUTargetELFStreamer::EmitHSAMetadata(StringRef YamlString) {
+  auto VerifiedYamlString = HSAMetadataStreamer.toYamlString(YamlString);
   if (!VerifiedYamlString)
     return false;
 
@@ -239,15 +242,15 @@ bool AMDGPUTargetELFStreamer::EmitCodeObjectMetadata(StringRef YamlString) {
   return true;
 }
 
-bool AMDGPUTargetELFStreamer::EmitPalMetadata(ArrayRef<uint32_t> Data) {
+bool AMDGPUTargetELFStreamer::EmitPALMetadata(
+    const PALMD::Metadata &PALMetadata) {
   EmitAMDGPUNote(
-    MCConstantExpr::create(Data.size() * sizeof(uint32_t), getContext()),
+    MCConstantExpr::create(PALMetadata.size() * sizeof(uint32_t), getContext()),
     ElfNote::NT_AMDGPU_PAL_METADATA,
     [&](MCELFStreamer &OS){
-      for (auto I : Data)
+      for (auto I : PALMetadata)
         OS.EmitIntValue(I, sizeof(uint32_t));
     }
   );
   return true;
 }
-

@@ -68,6 +68,13 @@ this fuzzer has reported are `on OSS Fuzz's tracker`__
 
 __ https://bugs.chromium.org/p/oss-fuzz/issues/list?q=proj-llvm+llvm-dwarfdump-fuzzer
 
+llvm-demangle-fuzzer
+---------------------
+
+A |generic fuzzer| for the Itanium demangler used in various LLVM tools. We've
+fuzzed __cxa_demangle to death, why not fuzz LLVM's implementation of the same
+function!
+
 llvm-isel-fuzzer
 ----------------
 
@@ -83,10 +90,15 @@ the following command would fuzz AArch64 with :doc:`GlobalISel`:
 
 Some flags can also be specified in the binary name itself in order to support
 OSS Fuzz, which has trouble with required arguments. To do this, you can copy
-or move ``llvm-isel-fuzzer`` to ``llvm-isel-fuzzer:x-y-z``, where x, y, and z
-are architecture names (``aarch64``, ``x86_64``), optimization levels (``O0``,
-``O2``), or specific keywords like ``gisel`` for enabling global instruction
-selection.
+or move ``llvm-isel-fuzzer`` to ``llvm-isel-fuzzer--x-y-z``, separating options
+from the binary name using "--". The valid options are architecture names
+(``aarch64``, ``x86_64``), optimization levels (``O0``, ``O2``), or specific
+keywords, like ``gisel`` for enabling global instruction selection. In this
+mode, the same example could be run like so:
+
+.. code-block:: shell
+
+   % bin/llvm-isel-fuzzer--aarch64-O0-gisel <corpus-dir>
 
 llvm-mc-assemble-fuzzer
 -----------------------
@@ -194,9 +206,9 @@ Configuring LLVM to Build Fuzzers
 
 Fuzzers will be built and linked to libFuzzer by default as long as you build
 LLVM with sanitizer coverage enabled. You would typically also enable at least
-one sanitizer for the fuzzers to be particularly likely, so the most common way
-to build the fuzzers is by adding the following two flags to your CMake
-invocation: ``-DLLVM_USE_SANITIZER=Address -DLLVM_USE_SANITIZE_COVERAGE=On``.
+one sanitizer to find bugs faster. The most common way to build the fuzzers is
+by adding the following two flags to your CMake invocation:
+``-DLLVM_USE_SANITIZER=Address -DLLVM_USE_SANITIZE_COVERAGE=On``.
 
 .. note:: If you have ``compiler-rt`` checked out in an LLVM tree when building
           with sanitizers, you'll want to specify ``-DLLVM_BUILD_RUNTIME=Off``
@@ -210,10 +222,17 @@ this did find issues, it didn't have a very good way to report problems in an
 actionable way. Because of this, we're moving towards using `OSS Fuzz`_ more
 instead.
 
-https://github.com/google/oss-fuzz/blob/master/projects/llvm/project.yaml
-https://bugs.chromium.org/p/oss-fuzz/issues/list?q=Proj-llvm
+You can browse the `LLVM project issue list`_ for the bugs found by
+`LLVM on OSS Fuzz`_. These are also mailed to the `llvm-bugs mailing
+list`_.
 
 .. _OSS Fuzz: https://github.com/google/oss-fuzz
+.. _LLVM project issue list:
+   https://bugs.chromium.org/p/oss-fuzz/issues/list?q=Proj-llvm
+.. _LLVM on OSS Fuzz:
+   https://github.com/google/oss-fuzz/blob/master/projects/llvm
+.. _llvm-bugs mailing list:
+   http://lists.llvm.org/cgi-bin/mailman/listinfo/llvm-bugs
 
 
 Utilities for Writing Fuzzers

@@ -305,9 +305,9 @@ AnalysisDeclContext *AnalysisDeclContextManager::getContext(const Decl *D) {
 }
 
 BodyFarm *AnalysisDeclContextManager::getBodyFarm() {
-  if (!BdyFrm)
-    BdyFrm = new BodyFarm(ASTCtx, Injector.get());
-  return BdyFrm;
+  if (!FunctionBodyFarm)
+    FunctionBodyFarm = llvm::make_unique<BodyFarm>(ASTCtx, Injector.get());
+  return FunctionBodyFarm.get();
 }
 
 const StackFrameContext *
@@ -601,11 +601,6 @@ AnalysisDeclContext::~AnalysisDeclContext() {
     llvm::DeleteContainerSeconds(*M);
     delete M;
   }
-}
-
-AnalysisDeclContextManager::~AnalysisDeclContextManager() {
-  if (BdyFrm)
-    delete BdyFrm;
 }
 
 LocationContext::~LocationContext() {}

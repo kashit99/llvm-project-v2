@@ -1712,10 +1712,11 @@ class MemCmpExpansion {
 
   CallInst *const CI;
   ResultBlock ResBlock;
-  const unsigned Size;
+  const uint64_t Size;
   unsigned MaxLoadSize;
-  unsigned NumLoadsNonOneByte;
-  const unsigned NumLoadsPerBlock;
+  uint64_t NumLoads;
+  uint64_t NumLoadsNonOneByte;
+  const uint64_t NumLoadsPerBlock;
   std::vector<BasicBlock *> LoadCmpBlocks;
   BasicBlock *EndBlock;
   PHINode *PhiRes;
@@ -1742,6 +1743,7 @@ class MemCmpExpansion {
     const uint64_t Offset;
   };
   SmallVector<LoadEntry, 8> LoadSequence;
+  void computeLoadSequence();
 
   void createLoadCmpBlocks();
   void createResultBlock();
@@ -1757,12 +1759,18 @@ class MemCmpExpansion {
   Value *getMemCmpEqZeroOneBlock();
   Value *getMemCmpOneBlock();
 
+  // Computes the decomposition. THis is the common code to compute the number
+  // of loads and the actual load sequence. `callback` is called with each load
+  // size and number of loads for the block size.
+  template <typename CallBackT>
+  void getDecomposition(CallBackT callback) const;
+
  public:
   MemCmpExpansion(CallInst *CI, uint64_t Size, unsigned MaxLoadSize,
                   unsigned NumLoadsPerBlock, const DataLayout &DL);
 
   unsigned getNumBlocks();
-  unsigned getNumLoads() const { return LoadSequence.size(); }
+  uint64_t getNumLoads() const { return NumLoads; }
 
   Value *getMemCmpExpansion();
 };
@@ -1784,6 +1792,7 @@ MemCmpExpansion::MemCmpExpansion(CallInst *const CI, uint64_t Size,
     : CI(CI),
       Size(Size),
       MaxLoadSize(MaxLoadSize),
+      NumLoads(0),
       NumLoadsNonOneByte(0),
       NumLoadsPerBlock(LoadsPerBlock),
       IsUsedForZeroCmp(isOnlyUsedInZeroEqualityComparison(CI)),
@@ -1793,22 +1802,24 @@ MemCmpExpansion::MemCmpExpansion(CallInst *const CI, uint64_t Size,
   while (this->MaxLoadSize > Size) {
     this->MaxLoadSize /= 2;
   }
-  // Compute the decomposition.
+  // Compute the number of loads. At that point we don't want to compute the
+  // actual decomposition because it might be too large to fit in memory.
+  getDecomposition([this](unsigned LoadSize, uint64_t NumLoadsForSize) {
+    NumLoads += NumLoadsForSize;
+  });
+}
+
+template <typename CallBackT>
+void MemCmpExpansion::getDecomposition(CallBackT callback) const {
   unsigned LoadSize = this->MaxLoadSize;
   assert(Size > 0 && "zero blocks");
-  uint64_t Offset = 0;
-  while (Size) {
+  uint64_t CurSize = Size;
+  while (CurSize) {
     assert(LoadSize > 0 && "zero load size");
-    const uint64_t NumLoadsForThisSize = Size / LoadSize;
+    const uint64_t NumLoadsForThisSize = CurSize / LoadSize;
     if (NumLoadsForThisSize > 0) {
-      for (uint64_t I = 0; I < NumLoadsForThisSize; ++I) {
-        LoadSequence.push_back({LoadSize, Offset});
-        Offset += LoadSize;
-      }
-      if (LoadSize > 1) {
-        ++NumLoadsNonOneByte;
-      }
-      Size = Size % LoadSize;
+      callback(LoadSize, NumLoadsForThisSize);
+      CurSize = CurSize % LoadSize;
     }
     // FIXME: This can result in a non-native load size (e.g. X86-32+SSE can
     // load 16 and 4 but not 8), which throws the load count off (e.g. in the
@@ -1816,6 +1827,21 @@ MemCmpExpansion::MemCmpExpansion(CallInst *const CI, uint64_t Size,
     // 4).
     LoadSize /= 2;
   }
+}
+
+void MemCmpExpansion::computeLoadSequence() {
+  uint64_t Offset = 0;
+  getDecomposition(
+      [this, &Offset](unsigned LoadSize, uint64_t NumLoadsForSize) {
+        for (uint64_t I = 0; I < NumLoadsForSize; ++I) {
+          LoadSequence.push_back({LoadSize, Offset});
+          Offset += LoadSize;
+        }
+        if (LoadSize > 1) {
+          ++NumLoadsNonOneByte;
+        }
+      });
+  assert(LoadSequence.size() == getNumLoads() && "mismatch in numbe rof loads");
 }
 
 unsigned MemCmpExpansion::getNumBlocks() {
@@ -2215,6 +2241,7 @@ Value *MemCmpExpansion::getMemCmpOneBlock() {
 // This function expands the memcmp call into an inline expansion and returns
 // the memcmp result.
 Value *MemCmpExpansion::getMemCmpExpansion() {
+  computeLoadSequence();
   // A memcmp with zero-comparison with only one block of load and compare does
   // not need to set up any extra blocks. This case could be handled in the DAG,
   // but since we have all of the machinery to flexibly expand any memcpy here,

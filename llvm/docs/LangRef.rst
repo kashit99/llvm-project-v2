@@ -527,6 +527,24 @@ the alias is accessed. It will not have any effect in the aliasee.
 For platforms without linker support of ELF TLS model, the -femulated-tls
 flag can be used to generate GCC compatible emulated TLS code.
 
+.. _runtime_preemption_model:
+
+Runtime Preemption Specifiers
+-----------------------------
+
+Global variables, functions and aliases may have an optional runtime preemption
+specifier. If a preemption specifier isn't given explicitly, then a
+symbol is assumed to be ``dso_preemptable``.
+
+``dso_preemptable``
+    Indicates that the function or variable may be replaced by a symbol from
+    outside the linkage unit at runtime.
+
+``dso_local``
+    The compiler may assume that a function or variable marked as ``dso_local``
+    will resolve to a symbol within the same linkage unit. Direct access will 
+    be generated even if the definition is not within this compilation unit.
+
 .. _namedtypes:
 
 Structure Types
@@ -579,7 +597,9 @@ Global variables in other translation units can also be declared, in which
 case they don't have an initializer.
 
 Either global variable definitions or declarations may have an explicit section
-to be placed in and may have an optional explicit alignment specified.
+to be placed in and may have an optional explicit alignment specified. If there 
+is a mismatch between the explicit or inferred section information for the 
+variable declaration and its definition the resulting behavior is undefined. 
 
 A variable may be defined as a global ``constant``, which indicates that
 the contents of the variable will **never** be modified (enabling better
@@ -622,6 +642,12 @@ target supports it, it will emit globals to the section specified.
 Additionally, the global can placed in a comdat if the target has the necessary
 support.
 
+External declarations may have an explicit section specified. Section 
+information is retained in LLVM IR for targets that make use of this 
+information. Attaching section information to an external declaration is an 
+assertion that its definition is located in the specified section. If the 
+definition is located in a different section, the behavior is undefined.   
+
 By default, global initializers are optimized by assuming that global
 variables defined within the module are not modified from their
 initial values before the start of the global initializer. This is
@@ -642,6 +668,7 @@ iterate over them as an array, alignment padding would break this
 iteration. The maximum alignment is ``1 << 29``.
 
 Globals can also have a :ref:`DLL storage class <dllstorageclass>`,
+an optional :ref:`runtime preemption specifier <runtime_preemption_model>`,
 an optional :ref:`global attributes <glattrs>` and
 an optional list of attached :ref:`metadata <metadata>`.
 
@@ -650,7 +677,8 @@ Variables and aliases can have a
 
 Syntax::
 
-      @<GlobalVarName> = [Linkage] [Visibility] [DLLStorageClass] [ThreadLocal]
+      @<GlobalVarName> = [Linkage] [PreemptionSpecifier] [Visibility]
+                         [DLLStorageClass] [ThreadLocal]
                          [(unnamed_addr|local_unnamed_addr)] [AddrSpace]
                          [ExternallyInitialized]
                          <global | constant> <Type> [<InitializerConstant>]
@@ -683,7 +711,8 @@ Functions
 ---------
 
 LLVM function definitions consist of the "``define``" keyword, an
-optional :ref:`linkage type <linkage>`, an optional :ref:`visibility
+optional :ref:`linkage type <linkage>`, an optional :ref:`runtime preemption
+specifier <runtime_preemption_model>`,  an optional :ref:`visibility
 style <visibility>`, an optional :ref:`DLL storage class <dllstorageclass>`,
 an optional :ref:`calling convention <callingconv>`,
 an optional ``unnamed_addr`` attribute, a return type, an optional
@@ -742,7 +771,7 @@ not be significant within the module.
 
 Syntax::
 
-    define [linkage] [visibility] [DLLStorageClass]
+    define [linkage] [PreemptionSpecifier] [visibility] [DLLStorageClass]
            [cconv] [ret attrs]
            <ResultType> @<FunctionName> ([argument list])
            [(unnamed_addr|local_unnamed_addr)] [fn Attrs] [section "name"]
@@ -769,12 +798,13 @@ Aliases have a name and an aliasee that is either a global value or a
 constant expression.
 
 Aliases may have an optional :ref:`linkage type <linkage>`, an optional
+:ref:`runtime preemption specifier <runtime_preemption_model>`, an optional
 :ref:`visibility style <visibility>`, an optional :ref:`DLL storage class
 <dllstorageclass>` and an optional :ref:`tls model <tls_model>`.
 
 Syntax::
 
-    @<Name> = [Linkage] [Visibility] [DLLStorageClass] [ThreadLocal] [(unnamed_addr|local_unnamed_addr)] alias <AliaseeTy>, <AliaseeTy>* @<Aliasee>
+    @<Name> = [Linkage] [PreemptionSpecifier] [Visibility] [DLLStorageClass] [ThreadLocal] [(unnamed_addr|local_unnamed_addr)] alias <AliaseeTy>, <AliaseeTy>* @<Aliasee>
 
 The linkage must be one of ``private``, ``internal``, ``linkonce``, ``weak``,
 ``linkonce_odr``, ``weak_odr``, ``external``. Note that some system linkers
@@ -1381,6 +1411,9 @@ example:
 ``naked``
     This attribute disables prologue / epilogue emission for the
     function. This can have very system-specific consequences.
+``no-jump-tables``
+    When this attribute is set to true, the jump tables and lookup tables that
+    can be generated from a switch case lowering are disabled.
 ``nobuiltin``
     This indicates that the callee function at a call site is not recognized as
     a built-in function. LLVM will retain the original call and not replace it
@@ -1641,6 +1674,12 @@ example:
     If a function that has an ``sspstrong`` attribute is inlined into a
     function that doesn't have an ``sspstrong`` attribute, then the
     resulting function will have an ``sspstrong`` attribute.
+``strictfp``
+    This attribute indicates that the function was called from a scope that
+    requires strict floating point semantics.  LLVM will not attempt any
+    optimizations that require assumptions about the floating point rounding
+    mode or that might alter the state of floating point status flags that
+    might otherwise be set or cleared by calling this function.
 ``"thunk"``
     This attribute indicates that the function will delegate to some other
     function with a tail call. The prototype of a thunk should not be used for
@@ -2016,8 +2055,11 @@ to the following rules:
 A pointer value is *based* on another pointer value according to the
 following rules:
 
--  A pointer value formed from a ``getelementptr`` operation is *based*
-   on the second value operand of the ``getelementptr``.
+-  A pointer value formed from a scalar ``getelementptr`` operation is *based* on
+   the pointer-typed operand of the ``getelementptr``.
+-  The pointer in lane *l* of the result of a vector ``getelementptr`` operation
+   is *based* on the pointer in lane *l* of the vector-of-pointers-typed operand
+   of the ``getelementptr``.
 -  The result value of a ``bitcast`` is *based* on the operand of the
    ``bitcast``.
 -  A pointer value formed by an ``inttoptr`` is *based* on all pointer
@@ -3142,14 +3184,11 @@ that does not have side effects (e.g. load and call are not supported).
 The following is the syntax for constant expressions:
 
 ``trunc (CST to TYPE)``
-    Truncate a constant to another type. The bit size of CST must be
-    larger than the bit size of TYPE. Both types must be integers.
+    Perform the :ref:`trunc operation <i_trunc>` on constants.
 ``zext (CST to TYPE)``
-    Zero extend a constant to another type. The bit size of CST must be
-    smaller than the bit size of TYPE. Both types must be integers.
+    Perform the :ref:`zext operation <i_zext>` on constants.
 ``sext (CST to TYPE)``
-    Sign extend a constant to another type. The bit size of CST must be
-    smaller than the bit size of TYPE. Both types must be integers.
+    Perform the :ref:`sext operation <i_sext>` on constants.
 ``fptrunc (CST to TYPE)``
     Truncate a floating point constant to another floating point type.
     The size of CST must be larger than the size of TYPE. Both types
@@ -3183,19 +3222,14 @@ The following is the syntax for constant expressions:
     be scalars, or vectors of the same number of elements. If the value
     won't fit in the floating point type, the results are undefined.
 ``ptrtoint (CST to TYPE)``
-    Convert a pointer typed constant to the corresponding integer
-    constant. ``TYPE`` must be an integer type. ``CST`` must be of
-    pointer type. The ``CST`` value is zero extended, truncated, or
-    unchanged to make it fit in ``TYPE``.
+    Perform the :ref:`ptrtoint operation <i_ptrtoint>` on constants.
 ``inttoptr (CST to TYPE)``
-    Convert an integer constant to a pointer constant. TYPE must be a
-    pointer type. CST must be of integer type. The CST value is zero
-    extended, truncated, or unchanged to make it fit in a pointer size.
+    Perform the :ref:`inttoptr operation <i_inttoptr>` on constants.
     This one is *really* dangerous!
 ``bitcast (CST to TYPE)``
-    Convert a constant, CST, to another TYPE. The constraints of the
-    operands are the same as those for the :ref:`bitcast
-    instruction <i_bitcast>`.
+    Convert a constant, CST, to another TYPE.
+    The constraints of the operands are the same as those for the
+    :ref:`bitcast instruction <i_bitcast>`.
 ``addrspacecast (CST to TYPE)``
     Convert a constant pointer or constant vector of pointer, CST, to another
     TYPE in a different address space. The constraints of the operands are the
@@ -3208,9 +3242,9 @@ The following is the syntax for constant expressions:
 ``select (COND, VAL1, VAL2)``
     Perform the :ref:`select operation <i_select>` on constants.
 ``icmp COND (VAL1, VAL2)``
-    Performs the :ref:`icmp operation <i_icmp>` on constants.
+    Perform the :ref:`icmp operation <i_icmp>` on constants.
 ``fcmp COND (VAL1, VAL2)``
-    Performs the :ref:`fcmp operation <i_fcmp>` on constants.
+    Perform the :ref:`fcmp operation <i_fcmp>` on constants.
 ``extractelement (VAL, IDX)``
     Perform the :ref:`extractelement operation <i_extractelement>` on
     constants.
@@ -4857,6 +4891,23 @@ Example (assuming 64-bit pointers):
     ...
     !0 = !{ i64 0, i64 256 }
     !1 = !{ i64 -1, i64 -1 }
+
+'``callees``' Metadata
+^^^^^^^^^^^^^^^^^^^^^^
+
+``callees`` metadata may be attached to indirect call sites. If ``callees``
+metadata is attached to a call site, and any callee is not among the set of
+functions provided by the metadata, the behavior is undefined. The intent of
+this metadata is to facilitate optimizations such as indirect-call promotion.
+For example, in the code below, the call instruction may only target the
+``add`` or ``sub`` functions:
+
+.. code-block:: llvm
+
+    %result = call i64 %binop(i64 %x, i64 %y), !callees !0
+
+    ...
+    !0 = !{i64 (i64, i64)* @add, i64 (i64, i64)* @sub}
 
 '``unpredictable``' Metadata
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -7705,9 +7756,9 @@ Semantics:
 """"""""""
 
 The contents of memory at the location specified by the '``<pointer>``' operand
-is read and compared to '``<cmp>``'; if the read value is the equal, the
-'``<new>``' is written. The original value at the location is returned, together
-with a flag indicating success (true) or failure (false).
+is read and compared to '``<cmp>``'; if the values are equal, '``<new>``' is
+written to the location. The original value at the location is returned,
+together with a flag indicating success (true) or failure (false).
 
 If the cmpxchg operation is marked as ``weak`` then a spurious failure is
 permitted: the operation may not write ``<new>`` even if the comparison
@@ -8039,6 +8090,8 @@ The instructions in this category are the conversion instructions
 (casting) which all take a single operand and a type. They perform
 various bit conversions on the operand.
 
+.. _i_trunc:
+
 '``trunc .. to``' Instruction
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -8081,6 +8134,8 @@ Example:
       %Z = trunc i32 122 to i1                        ; yields i1:false
       %W = trunc <2 x i16> <i16 8, i16 7> to <2 x i8> ; yields <i8 8, i8 7>
 
+.. _i_zext:
+
 '``zext .. to``' Instruction
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -8120,6 +8175,8 @@ Example:
       %X = zext i32 257 to i64              ; yields i64:257
       %Y = zext i1 true to i32              ; yields i32:1
       %Z = zext <2 x i16> <i16 8, i16 7> to <2 x i32> ; yields <i32 8, i32 7>
+
+.. _i_sext:
 
 '``sext .. to``' Instruction
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -10138,7 +10195,7 @@ argument to specify the step of the increment.
 Arguments:
 """"""""""
 The first four arguments are the same as '``llvm.instrprof_increment``'
-instrinsic.
+intrinsic.
 
 The last argument specifies the value of the increment of the counter variable.
 
@@ -12242,7 +12299,7 @@ Debugger Intrinsics
 
 The LLVM debugger intrinsics (which all start with ``llvm.dbg.``
 prefix), are described in the `LLVM Source Level
-Debugging <SourceLevelDebugging.html#format_common_intrinsics>`_
+Debugging <SourceLevelDebugging.html#format-common-intrinsics>`_
 document.
 
 Exception Handling Intrinsics
@@ -12250,7 +12307,7 @@ Exception Handling Intrinsics
 
 The LLVM exception handling intrinsics (which all start with
 ``llvm.eh.`` prefix), are described in the `LLVM Exception
-Handling <ExceptionHandling.html#format_common_intrinsics>`_ document.
+Handling <ExceptionHandling.html#format-common-intrinsics>`_ document.
 
 .. _int_trampoline:
 
@@ -13004,6 +13061,41 @@ The value produced is the floating point remainder from the division of the two
 value operands and has the same type as the operands.  The remainder has the
 same sign as the dividend. 
 
+'``llvm.experimental.constrained.fma``' Intrinsic
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Syntax:
+"""""""
+
+::
+
+      declare <type>
+      @llvm.experimental.constrained.fma(<type> <op1>, <type> <op2>, <type> <op3>,
+                                          metadata <rounding mode>,
+                                          metadata <exception behavior>)
+
+Overview:
+"""""""""
+
+The '``llvm.experimental.constrained.fma``' intrinsic returns the result of a
+fused-multiply-add operation on its operands.
+
+Arguments:
+""""""""""
+
+The first three arguments to the '``llvm.experimental.constrained.fma``'
+intrinsic must be :ref:`floating point <t_floating>` or :ref:`vector
+<t_vector>` of floating point values. All arguments must have identical types.
+
+The fourth and fifth arguments specify the rounding mode and exception behavior
+as described above.
+
+Semantics:
+""""""""""
+
+The result produced is the product of the first two operands added to the third
+operand computed with infinite precision, and then rounded to the target
+precision.
 
 Constrained libm-equivalent Intrinsics
 --------------------------------------
@@ -13573,6 +13665,27 @@ This intrinsic allows annotations to be put on arbitrary expressions
 with arbitrary strings. This can be useful for special purpose
 optimizations that want to look for these annotations. These have no
 other defined use; they are ignored by code generation and optimization.
+
+'``llvm.codeview.annotation``' Intrinsic
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Syntax:
+"""""""
+
+This annotation emits a label at its program point and an associated
+``S_ANNOTATION`` codeview record with some additional string metadata. This is
+used to implement MSVC's ``__annotation`` intrinsic. It is marked
+``noduplicate``, so calls to this intrinsic prevent inlining and should be
+considered expensive.
+
+::
+
+      declare void @llvm.codeview.annotation(metadata)
+
+Arguments:
+""""""""""
+
+The argument should be an MDTuple containing any number of MDStrings.
 
 '``llvm.trap``' Intrinsic
 ^^^^^^^^^^^^^^^^^^^^^^^^^

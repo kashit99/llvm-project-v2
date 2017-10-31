@@ -95,6 +95,11 @@ void AArch64Subtarget::initializeProperties() {
     MinPrefetchStride = 2048;
     MaxPrefetchIterationsAhead = 8;
     break;
+  case Saphira:
+    MaxInterleaveFactor = 4;
+    // FIXME: remove this to enable 64-bit SLP if performance looks good.
+    MinVectorRegisterBitWidth = 128;
+    break;
   case Kryo:
     MaxInterleaveFactor = 4;
     VectorInsertExtractBaseCost = 2;
@@ -127,11 +132,13 @@ void AArch64Subtarget::initializeProperties() {
     MinVectorRegisterBitWidth = 128;
     break;
   case CortexA35: break;
-  case CortexA53: break;
-  case CortexA72:
-    PrefFunctionAlignment = 4;
+  case CortexA53:
+    PrefFunctionAlignment = 3;
     break;
+  case CortexA55: break;
+  case CortexA72:
   case CortexA73:
+  case CortexA75:
     PrefFunctionAlignment = 4;
     break;
   case Others: break;

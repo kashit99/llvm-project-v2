@@ -2,7 +2,6 @@
  * kmp_os.h -- KPTS runtime header file.
  */
 
-
 //===----------------------------------------------------------------------===//
 //
 //                     The LLVM Compiler Infrastructure
@@ -11,7 +10,6 @@
 // Source Licenses. See LICENSE.txt for details.
 //
 //===----------------------------------------------------------------------===//
-
 
 #ifndef KMP_OS_H
 #define KMP_OS_H
@@ -247,9 +245,9 @@ template <> struct traits_t<unsigned long long> {
 #include <windows.h>
 
 static inline int KMP_GET_PAGE_SIZE(void) {
-    SYSTEM_INFO si;
-    GetSystemInfo(&si);
-    return si.dwPageSize;
+  SYSTEM_INFO si;
+  GetSystemInfo(&si);
+  return si.dwPageSize;
 }
 #else
 #define KMP_GET_PAGE_SIZE() getpagesize()
@@ -292,6 +290,15 @@ extern "C" {
 #define KMP_ALIGN_CACHE __declspec(align(CACHE_LINE))
 #define KMP_ALIGN_CACHE_INTERNODE __declspec(align(INTERNODE_CACHE_LINE))
 #define KMP_ALIGN(bytes) __declspec(align(bytes))
+#endif
+
+// Define attribute that indicates a function does not return
+#if __cplusplus >= 201103L
+#define KMP_NORETURN [[noreturn]]
+#elif KMP_OS_WINDOWS
+#define KMP_NORETURN __declspec(noreturn)
+#else
+#define KMP_NORETURN __attribute__((noreturn))
 #endif
 
 /* General purpose fence types for memory operations */
@@ -820,7 +827,6 @@ typedef void (*microtask_t)(int *gtid, int *npr, ...);
 #define KMP_USE_BGET 1
 #endif
 
-
 // Switches for OSS builds
 #ifndef USE_SYSFS_INFO
 #define USE_SYSFS_INFO 0
@@ -834,7 +840,8 @@ typedef void (*microtask_t)(int *gtid, int *npr, ...);
 #define KMP_USE_DYNAMIC_LOCK 1
 #endif
 
-// Enable TSX if dynamic user lock is turned on
+// Enable Intel(R) Transactional Synchronization Extensions (Intel(R) TSX) if
+// dynamic user lock is turned on
 #if KMP_USE_DYNAMIC_LOCK
 // Visual studio can't handle the asm sections in this code
 #define KMP_USE_TSX (KMP_ARCH_X86 || KMP_ARCH_X86_64) && !KMP_COMPILER_MSVC

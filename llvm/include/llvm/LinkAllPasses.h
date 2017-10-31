@@ -75,11 +75,11 @@ namespace {
       (void) llvm::createCallGraphDOTPrinterPass();
       (void) llvm::createCallGraphViewerPass();
       (void) llvm::createCFGSimplificationPass();
-      (void) llvm::createLateCFGSimplificationPass();
       (void) llvm::createCFLAndersAAWrapperPass();
       (void) llvm::createCFLSteensAAWrapperPass();
       (void) llvm::createStructurizeCFGPass();
       (void) llvm::createLibCallsShrinkWrapPass();
+      (void) llvm::createCalledValuePropagationPass();
       (void) llvm::createConstantMergePass();
       (void) llvm::createConstantPropagationPass();
       (void) llvm::createCostModelAnalysisPass();
@@ -179,6 +179,7 @@ namespace {
       (void) llvm::createPostOrderFunctionAttrsLegacyPass();
       (void) llvm::createReversePostOrderFunctionAttrsPass();
       (void) llvm::createMergeFunctionsPass();
+      (void) llvm::createMergeICmpsPass();
       std::string buf;
       llvm::raw_string_ostream os(buf);
       (void) llvm::createPrintModulePass(os);

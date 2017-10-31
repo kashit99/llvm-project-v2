@@ -91,12 +91,15 @@ FUZZER_FLAG_STRING(exact_artifact_path,
                    "and will not use checksum in the file name. Do not "
                    "use the same path for several parallel processes.")
 FUZZER_FLAG_INT(print_pcs, 0, "If 1, print out newly covered PCs.")
+FUZZER_FLAG_INT(print_funcs, 2, "If >=1, print out at most this number of "
+                                "newly covered functions.")
 FUZZER_FLAG_INT(print_final_stats, 0, "If 1, print statistics at exit.")
 FUZZER_FLAG_INT(print_corpus_stats, 0,
   "If 1, print statistics on corpus elements at exit.")
 FUZZER_FLAG_INT(print_coverage, 0, "If 1, print coverage information as text"
                                    " at exit.")
-FUZZER_FLAG_INT(dump_coverage, 0, "If 1, dump coverage information as a"
+FUZZER_FLAG_INT(dump_coverage, 0, "Deprecated."
+                                  " If 1, dump coverage information as a"
                                   " .sancov file at exit.")
 FUZZER_FLAG_INT(handle_segv, 1, "If 1, try to intercept SIGSEGV.")
 FUZZER_FLAG_INT(handle_bus, 1, "If 1, try to intercept SIGBUS.")
@@ -111,6 +114,10 @@ FUZZER_FLAG_INT(close_fd_mask, 0, "If 1, close stdout at startup; "
     "Be careful, this will also close e.g. asan's stderr/stdout.")
 FUZZER_FLAG_INT(detect_leaks, 1, "If 1, and if LeakSanitizer is enabled "
     "try to detect memory leaks during fuzzing (i.e. not only at shut down).")
+FUZZER_FLAG_INT(purge_allocator_interval, 1, "Purge allocator caches and "
+    "quarantines every <N> seconds. When rss_limit_mb is specified (>0), "
+    "purging starts when RSS exceeds 50% of rss_limit_mb. Pass "
+    "purge_allocator_interval=-1 to disable this functionality.")
 FUZZER_FLAG_INT(trace_malloc, 0, "If >= 1 will print all mallocs/frees. "
     "If >= 2 will also print stack traces.")
 FUZZER_FLAG_INT(rss_limit_mb, 2048, "If non-zero, the fuzzer will exit upon"
@@ -128,6 +135,8 @@ FUZZER_FLAG_INT(ignore_remaining_args, 0, "If 1, ignore all arguments passed "
 FUZZER_FLAG_STRING(run_equivalence_server, "Experimental")
 FUZZER_FLAG_STRING(use_equivalence_server, "Experimental")
 FUZZER_FLAG_INT(analyze_dict, 0, "Experimental")
+FUZZER_FLAG_INT(use_clang_coverage, 0, "Experimental")
+FUZZER_FLAG_INT(use_feature_frequency, 0, "Experimental/internal")
 
 FUZZER_DEPRECATED_FLAG(exit_on_first)
 FUZZER_DEPRECATED_FLAG(save_minimized_corpus)

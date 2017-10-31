@@ -2,7 +2,6 @@
  * kmp_global.cpp -- KPTS global variables for runtime support library
  */
 
-
 //===----------------------------------------------------------------------===//
 //
 //                     The LLVM Compiler Infrastructure
@@ -11,7 +10,6 @@
 // Source Licenses. See LICENSE.txt for details.
 //
 //===----------------------------------------------------------------------===//
-
 
 #include "kmp.h"
 #include "kmp_affinity.h"
@@ -127,7 +125,6 @@ char const *__kmp_barrier_pattern_name[bp_last_bar] = {"linear", "tree",
 int __kmp_allThreadsSpecified = 0;
 size_t __kmp_align_alloc = CACHE_LINE;
 
-
 int __kmp_generate_warnings = kmp_warnings_low;
 int __kmp_reserve_warn = 0;
 int __kmp_xproc = 0;
@@ -135,6 +132,8 @@ int __kmp_avail_proc = 0;
 size_t __kmp_sys_min_stksize = KMP_MIN_STKSIZE;
 int __kmp_sys_max_nth = KMP_MAX_NTH;
 int __kmp_max_nth = 0;
+int __kmp_cg_max_nth = 0;
+int __kmp_teams_max_nth = 0;
 int __kmp_threads_capacity = 0;
 int __kmp_dflt_team_nth = 0;
 int __kmp_dflt_team_nth_ub = 0;
@@ -376,12 +375,7 @@ int __kmp_need_register_atfork =
     TRUE; /* At initialization, call pthread_atfork to install fork handler */
 int __kmp_need_register_atfork_specified = TRUE;
 
-int __kmp_env_chunk = FALSE; /* KMP_CHUNK specified?     */
 int __kmp_env_stksize = FALSE; /* KMP_STACKSIZE specified? */
-int __kmp_env_omp_stksize = FALSE; /* OMP_STACKSIZE specified? */
-int __kmp_env_all_threads =
-    FALSE; /* KMP_ALL_THREADS or KMP_MAX_THREADS specified? */
-int __kmp_env_omp_all_threads = FALSE; /* OMP_THREAD_LIMIT specified? */
 int __kmp_env_blocktime = FALSE; /* KMP_BLOCKTIME specified? */
 int __kmp_env_checks = FALSE; /* KMP_CHECKS specified?    */
 int __kmp_env_consistency_check = FALSE; /* KMP_CONSISTENCY_CHECK specified? */
@@ -504,13 +498,6 @@ kmp_lock_t __kmp_debug_lock; /* Control I/O access for KMP_DEBUG */
    by Steve R., and will be available soon. */
 int __kmp_handle_signals = FALSE;
 #endif
-
-/* ----------------------------------------------- */
-#ifdef BUILD_TV
-kmp_key_t __kmp_tv_key = 0;
-#endif
-
-/* ------------------------------------------------------------------------ */
 
 #ifdef DEBUG_SUSPEND
 int get_suspend_count_(void) {

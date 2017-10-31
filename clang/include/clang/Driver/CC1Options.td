@@ -99,7 +99,19 @@ def analyzer_stats : Flag<["-"], "analyzer-stats">,
   HelpText<"Print internal analyzer statistics.">;
 
 def analyzer_checker : Separate<["-"], "analyzer-checker">,
-  HelpText<"Choose analyzer checkers to enable">;
+  HelpText<"Choose analyzer checkers to enable">,
+  ValuesCode<[{
+    const char *Values =
+    #define GET_CHECKERS
+    #define CHECKER(FULLNAME, CLASS, DESCFILE, HT, G, H)  FULLNAME ","
+    #include "clang/StaticAnalyzer/Checkers/Checkers.inc"
+    #undef GET_CHECKERS
+    #define GET_PACKAGES
+    #define PACKAGE(FULLNAME, G, D)  FULLNAME ","
+    #include "clang/StaticAnalyzer/Checkers/Checkers.inc"
+    #undef GET_PACKAGES
+    ;
+  }]>;
 def analyzer_checker_EQ : Joined<["-"], "analyzer-checker=">,
   Alias<analyzer_checker>;
 
@@ -188,6 +200,12 @@ def arange_sections : Flag<["-"], "arange_sections">,
 def dwarf_ext_refs : Flag<["-"], "dwarf-ext-refs">,
   HelpText<"Generate debug info with external references to clang modules"
            " or precompiled headers">;
+def dwarf_explicit_import : Flag<["-"], "dwarf-explicit-import">,
+  HelpText<"Generate explicit import from anonymous namespace to containing"
+           " scope">;
+def debug_forward_template_params : Flag<["-"], "debug-forward-template-params">,
+  HelpText<"Emit complete descriptions of template parameters in forward"
+           " declarations">;
 def fforbid_guard_variables : Flag<["-"], "fforbid-guard-variables">,
   HelpText<"Emit an error if a C++ static local initializer would need a guard variable">;
 def no_implicit_float : Flag<["-"], "no-implicit-float">,
@@ -245,6 +263,8 @@ def menable_unsafe_fp_math : Flag<["-"], "menable-unsafe-fp-math">,
            "precision">;
 def mfloat_abi : Separate<["-"], "mfloat-abi">,
   HelpText<"The float ABI to use">;
+def mtp : Separate<["-"], "mtp">,
+  HelpText<"Mode for reading thread pointer">;
 def mlimit_float_precision : Separate<["-"], "mlimit-float-precision">,
   HelpText<"Limit float precision to the given value">;
 def split_stacks : Flag<["-"], "split-stacks">,
@@ -295,6 +315,9 @@ def fsanitize_coverage_8bit_counters
 def fsanitize_coverage_inline_8bit_counters
     : Flag<["-"], "fsanitize-coverage-inline-8bit-counters">,
       HelpText<"Enable inline 8-bit counters in sanitizer coverage">;
+def fsanitize_coverage_pc_table
+    : Flag<["-"], "fsanitize-coverage-pc-table">,
+      HelpText<"Create a table of coverage-instrumented PCs">;
 def fsanitize_coverage_trace_pc
     : Flag<["-"], "fsanitize-coverage-trace-pc">,
       HelpText<"Enable PC tracing in sanitizer coverage">;
@@ -304,6 +327,9 @@ def fsanitize_coverage_trace_pc_guard
 def fsanitize_coverage_no_prune
     : Flag<["-"], "fsanitize-coverage-no-prune">,
       HelpText<"Disable coverage pruning (i.e. instrument all blocks/edges)">;
+def fsanitize_coverage_stack_depth
+    : Flag<["-"], "fsanitize-coverage-stack-depth">,
+      HelpText<"Enable max stack depth tracing">;
 def fprofile_instrument_EQ : Joined<["-"], "fprofile-instrument=">,
     HelpText<"Enable PGO instrumentation. The accepted value is clang, llvm, "
              "or none">, Values<"none,clang,llvm">;
@@ -685,6 +711,12 @@ def finclude_default_header : Flag<["-"], "finclude-default-header">,
   HelpText<"Include the default header file for OpenCL">;
 def fpreserve_vec3_type : Flag<["-"], "fpreserve-vec3-type">,
   HelpText<"Preserve 3-component vector type">;
+def fwchar_type_EQ : Joined<["-"], "fwchar-type=">,
+  HelpText<"Select underlying type for wchar_t">, Values<"char,short,int">;
+def fsigned_wchar : Flag<["-"], "fsigned-wchar">,
+  HelpText<"Use a signed type for wchar_t">;
+def fno_signed_wchar : Flag<["-"], "fno-signed-wchar">,
+  HelpText<"Use an unsigned type for wchar_t">;
 
 // FIXME: Remove these entirely once functionality/tests have been excised.
 def fobjc_gc_only : Flag<["-"], "fobjc-gc-only">, Group<f_Group>,

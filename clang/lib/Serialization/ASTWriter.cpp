@@ -433,6 +433,15 @@ ASTTypeWriter::VisitDependentSizedExtVectorType(
   Code = TYPE_DEPENDENT_SIZED_EXT_VECTOR;
 }
 
+void 
+ASTTypeWriter::VisitDependentAddressSpaceType(
+    const DependentAddressSpaceType *T) {
+  Record.AddTypeRef(T->getPointeeType());
+  Record.AddStmt(T->getAddrSpaceExpr());
+  Record.AddSourceLocation(T->getAttributeLoc());
+  Code = TYPE_DEPENDENT_ADDRESS_SPACE;
+}
+
 void
 ASTTypeWriter::VisitTemplateTypeParmType(const TemplateTypeParmType *T) {
   Record.push_back(T->getDepth());
@@ -625,6 +634,15 @@ void TypeLocWriter::VisitVariableArrayTypeLoc(VariableArrayTypeLoc TL) {
 void TypeLocWriter::VisitDependentSizedArrayTypeLoc(
                                             DependentSizedArrayTypeLoc TL) {
   VisitArrayTypeLoc(TL);
+}
+
+void TypeLocWriter::VisitDependentAddressSpaceTypeLoc(
+    DependentAddressSpaceTypeLoc TL) {
+  Record.AddSourceLocation(TL.getAttrNameLoc());
+  SourceRange range = TL.getAttrOperandParensRange();
+  Record.AddSourceLocation(range.getBegin());
+  Record.AddSourceLocation(range.getEnd());
+  Record.AddStmt(TL.getAttrExprOperand());       
 }
 
 void TypeLocWriter::VisitDependentSizedExtVectorTypeLoc(
@@ -1506,6 +1524,7 @@ void ASTWriter::WriteControlBlock(Preprocessor &PP, ASTContext &Context,
       for (auto I : M.Signature)
         Record.push_back(I);
 
+      AddString(M.ModuleName, Record);
       AddPath(M.FileName, Record);
     }
     Stream.EmitRecord(IMPORTS, Record);
@@ -2716,6 +2735,7 @@ void ASTWriter::WriteSubmodules(Module *WritingModule) {
   Abbrev->Add(BitCodeAbbrevOp(SUBMODULE_DEFINITION));
   Abbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6)); // ID
   Abbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6)); // Parent
+  Abbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 2)); // Kind
   Abbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 1)); // IsFramework
   Abbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 1)); // IsExplicit
   Abbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 1)); // IsSystem
@@ -2799,8 +2819,7 @@ void ASTWriter::WriteSubmodules(Module *WritingModule) {
   // Write the submodule metadata block.
   RecordData::value_type Record[] = {
       getNumberOfModules(WritingModule),
-      FirstSubmoduleID - NUM_PREDEF_SUBMODULE_IDS,
-      (unsigned)WritingModule->Kind};
+      FirstSubmoduleID - NUM_PREDEF_SUBMODULE_IDS};
   Stream.EmitRecord(SUBMODULE_METADATA, Record);
   
   // Write all of the submodules.
@@ -2822,6 +2841,7 @@ void ASTWriter::WriteSubmodules(Module *WritingModule) {
       RecordData::value_type Record[] = {SUBMODULE_DEFINITION,
                                          ID,
                                          ParentID,
+                                         (RecordData::value_type)Mod->Kind,
                                          Mod->IsFramework,
                                          Mod->IsExplicit,
                                          Mod->IsSystem,
@@ -4309,6 +4329,7 @@ void ASTWriter::WritePackPragmaOptions(Sema &SemaRef) {
   for (const auto &StackEntry : SemaRef.PackStack.Stack) {
     Record.push_back(StackEntry.Value);
     AddSourceLocation(StackEntry.PragmaLocation, Record);
+    AddSourceLocation(StackEntry.PragmaPushLocation, Record);
     AddString(StackEntry.StackSlotLabel, Record);
   }
   Stream.EmitRecord(PACK_PRAGMA_OPTIONS, Record);
@@ -4792,7 +4813,8 @@ ASTFileSignature ASTWriter::WriteASTCore(Sema &SemaRef, StringRef isysroot,
     // each of those modules were mapped into our own offset/ID space, so that
     // the reader can build the appropriate mapping to its own offset/ID space.
     // The map consists solely of a blob with the following format:
-    // *(module-name-len:i16 module-name:len*i8
+    // *(module-kind:i8
+    //   module-name-len:i16 module-name:len*i8
     //   source-location-offset:i32
     //   identifier-id:i32
     //   preprocessed-entity-id:i32
@@ -4803,6 +4825,10 @@ ASTFileSignature ASTWriter::WriteASTCore(Sema &SemaRef, StringRef isysroot,
     //   c++-base-specifiers-id:i32
     //   type-id:i32)
     // 
+    // module-kind is the ModuleKind enum value. If it is MK_PrebuiltModule or
+    // MK_ExplicitModule, then the module-name is the module name. Otherwise,
+    // it is the module file name.
+    //
     auto Abbrev = std::make_shared<BitCodeAbbrev>();
     Abbrev->Add(BitCodeAbbrevOp(MODULE_OFFSET_MAP));
     Abbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Blob));
@@ -4813,9 +4839,13 @@ ASTFileSignature ASTWriter::WriteASTCore(Sema &SemaRef, StringRef isysroot,
       for (ModuleFile &M : Chain->ModuleMgr) {
         using namespace llvm::support;
         endian::Writer<little> LE(Out);
-        StringRef FileName = M.FileName;
-        LE.write<uint16_t>(FileName.size());
-        Out.write(FileName.data(), FileName.size());
+        LE.write<uint8_t>(static_cast<uint8_t>(M.Kind));
+        StringRef Name =
+          M.Kind == MK_PrebuiltModule || M.Kind == MK_ExplicitModule
+          ? M.ModuleName
+          : M.FileName;
+        LE.write<uint16_t>(Name.size());
+        Out.write(Name.data(), Name.size());
 
         // Note: if a base ID was uint max, it would not be possible to load
         // another module after it or have more than one entity inside it.
@@ -5123,6 +5153,7 @@ void ASTWriter::WriteDeclUpdatesBlocks(RecordDataImpl &OffsetsRecord) {
 
       case UPD_CXX_RESOLVED_DTOR_DELETE:
         Record.AddDeclRef(Update.getDecl());
+        Record.AddStmt(cast<CXXDestructorDecl>(D)->getOperatorDeleteThisArg());
         break;
 
       case UPD_CXX_RESOLVED_EXCEPTION_SPEC:
@@ -5888,9 +5919,11 @@ void ASTRecordWriter::AddCXXDefinitionData(const CXXRecordDecl *D) {
   Record->push_back(Data.HasUninitializedFields);
   Record->push_back(Data.HasInheritedConstructor);
   Record->push_back(Data.HasInheritedAssignment);
+  Record->push_back(Data.NeedOverloadResolutionForCopyConstructor);
   Record->push_back(Data.NeedOverloadResolutionForMoveConstructor);
   Record->push_back(Data.NeedOverloadResolutionForMoveAssignment);
   Record->push_back(Data.NeedOverloadResolutionForDestructor);
+  Record->push_back(Data.DefaultedCopyConstructorIsDeleted);
   Record->push_back(Data.DefaultedMoveConstructorIsDeleted);
   Record->push_back(Data.DefaultedMoveAssignmentIsDeleted);
   Record->push_back(Data.DefaultedDestructorIsDeleted);
@@ -5899,6 +5932,7 @@ void ASTRecordWriter::AddCXXDefinitionData(const CXXRecordDecl *D) {
   Record->push_back(Data.HasIrrelevantDestructor);
   Record->push_back(Data.HasConstexprNonCopyMoveConstructor);
   Record->push_back(Data.HasDefaultedDefaultConstructor);
+  Record->push_back(Data.CanPassInRegisters);
   Record->push_back(Data.DefaultedDefaultConstructorIsConstexpr);
   Record->push_back(Data.HasConstexprDefaultConstructor);
   Record->push_back(Data.HasNonLiteralTypeFieldsOrBases);
@@ -6147,7 +6181,8 @@ void ASTWriter::DeducedReturnType(const FunctionDecl *FD, QualType ReturnType) {
 }
 
 void ASTWriter::ResolvedOperatorDelete(const CXXDestructorDecl *DD,
-                                       const FunctionDecl *Delete) {
+                                       const FunctionDecl *Delete,
+                                       Expr *ThisArg) {
   if (Chain && Chain->isProcessingUpdateRecords()) return;
   assert(!WritingAST && "Already writing the AST!");
   assert(Delete && "Not given an operator delete");

@@ -1,4 +1,4 @@
-//===- llvm/InitializePasses.h -------- Initialize All Passes ---*- C++ -*-===//
+//===- llvm/InitializePasses.h - Initialize All Passes ----------*- C++ -*-===//
 //
 //                      The LLVM Compiler Infrastructure
 //
@@ -76,7 +76,6 @@ void initializeBasicAAWrapperPassPass(PassRegistry&);
 void initializeBlockExtractorPassPass(PassRegistry&);
 void initializeBlockFrequencyInfoWrapperPassPass(PassRegistry&);
 void initializeBoundsCheckingPass(PassRegistry&);
-void initializeBranchCoalescingPass(PassRegistry&);
 void initializeBranchFolderPassPass(PassRegistry&);
 void initializeBranchProbabilityInfoWrapperPassPass(PassRegistry&);
 void initializeBranchRelaxationPass(PassRegistry&);
@@ -94,6 +93,7 @@ void initializeCallGraphViewerPass(PassRegistry&);
 void initializeCallGraphWrapperPassPass(PassRegistry&);
 void initializeCodeGenPreparePass(PassRegistry&);
 void initializeConstantHoistingLegacyPassPass(PassRegistry&);
+void initializeCalledValuePropagationLegacyPassPass(PassRegistry &);
 void initializeConstantMergeLegacyPassPass(PassRegistry&);
 void initializeConstantPropagationPass(PassRegistry&);
 void initializeCorrelatedValuePropagationPass(PassRegistry&);
@@ -113,6 +113,7 @@ void initializeDependenceAnalysisPass(PassRegistry&);
 void initializeDependenceAnalysisWrapperPassPass(PassRegistry&);
 void initializeDetectDeadLanesPass(PassRegistry&);
 void initializeDivergenceAnalysisPass(PassRegistry&);
+void initializeDivRemPairsLegacyPassPass(PassRegistry&);
 void initializeDomOnlyPrinterPass(PassRegistry&);
 void initializeDomOnlyViewerPass(PassRegistry&);
 void initializeDomPrinterPass(PassRegistry&);
@@ -173,7 +174,6 @@ void initializeIntervalPartitionPass(PassRegistry&);
 void initializeJumpThreadingPass(PassRegistry&);
 void initializeLCSSAVerificationPassPass(PassRegistry&);
 void initializeLCSSAWrapperPassPass(PassRegistry&);
-void initializeLateCFGSimplifyPassPass(PassRegistry&);
 void initializeLazyBlockFrequencyInfoPassPass(PassRegistry&);
 void initializeLazyBranchProbabilityInfoPassPass(PassRegistry&);
 void initializeLazyMachineBlockFrequencyInfoPassPass(PassRegistry&);
@@ -256,6 +256,7 @@ void initializeMemorySSAPrinterLegacyPassPass(PassRegistry&);
 void initializeMemorySSAWrapperPassPass(PassRegistry&);
 void initializeMemorySanitizerPass(PassRegistry&);
 void initializeMergeFunctionsPass(PassRegistry&);
+void initializeMergeICmpsPass(PassRegistry&);
 void initializeMergedLoadStoreMotionLegacyPassPass(PassRegistry&);
 void initializeMetaRenamerPass(PassRegistry&);
 void initializeModuleDebugInfoPrinterPass(PassRegistry&);
@@ -376,6 +377,7 @@ void initializeWinEHPreparePass(PassRegistry&);
 void initializeWriteBitcodePassPass(PassRegistry&);
 void initializeWriteThinLTOBitcodePass(PassRegistry&);
 void initializeXRayInstrumentationPass(PassRegistry&);
-}
 
-#endif
+} // end namespace llvm
+
+#endif // LLVM_INITIALIZEPASSES_H

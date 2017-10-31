@@ -67,15 +67,21 @@ MCStreamer *createAsmStreamer(MCContext &Ctx,
                               MCAsmBackend *TAB, bool ShowInst);
 
 /// Takes ownership of \p TAB and \p CE.
-MCStreamer *createELFStreamer(MCContext &Ctx, MCAsmBackend &TAB,
-                              raw_pwrite_stream &OS, MCCodeEmitter *CE,
+MCStreamer *createELFStreamer(MCContext &Ctx,
+                              std::unique_ptr<MCAsmBackend> &&TAB,
+                              raw_pwrite_stream &OS,
+                              std::unique_ptr<MCCodeEmitter> &&CE,
                               bool RelaxAll);
-MCStreamer *createMachOStreamer(MCContext &Ctx, MCAsmBackend &TAB,
-                                raw_pwrite_stream &OS, MCCodeEmitter *CE,
+MCStreamer *createMachOStreamer(MCContext &Ctx,
+                                std::unique_ptr<MCAsmBackend> &&TAB,
+                                raw_pwrite_stream &OS,
+                                std::unique_ptr<MCCodeEmitter> &&CE,
                                 bool RelaxAll, bool DWARFMustBeAtTheEnd,
                                 bool LabelSections = false);
-MCStreamer *createWasmStreamer(MCContext &Ctx, MCAsmBackend &TAB,
-                               raw_pwrite_stream &OS, MCCodeEmitter *CE,
+MCStreamer *createWasmStreamer(MCContext &Ctx,
+                               std::unique_ptr<MCAsmBackend> &&TAB,
+                               raw_pwrite_stream &OS,
+                               std::unique_ptr<MCCodeEmitter> &&CE,
                                bool RelaxAll);
 
 MCRelocationInfo *createMCRelocationInfo(const Triple &TT, MCContext &Ctx);
@@ -101,19 +107,16 @@ public:
 
   using MCAsmInfoCtorFnTy = MCAsmInfo *(*)(const MCRegisterInfo &MRI,
                                            const Triple &TT);
-  using MCAdjustCodeGenOptsFnTy = void (*)(const Triple &TT, Reloc::Model RM,
-                                           CodeModel::Model &CM);
-
   using MCInstrInfoCtorFnTy = MCInstrInfo *(*)();
   using MCInstrAnalysisCtorFnTy = MCInstrAnalysis *(*)(const MCInstrInfo *Info);
   using MCRegInfoCtorFnTy = MCRegisterInfo *(*)(const Triple &TT);
   using MCSubtargetInfoCtorFnTy = MCSubtargetInfo *(*)(const Triple &TT,
                                                        StringRef CPU,
                                                        StringRef Features);
-  using TargetMachineCtorTy = TargetMachine *(*)(
-      const Target &T, const Triple &TT, StringRef CPU, StringRef Features,
-      const TargetOptions &Options, Optional<Reloc::Model> RM,
-      CodeModel::Model CM, CodeGenOpt::Level OL);
+  using TargetMachineCtorTy = TargetMachine
+      *(*)(const Target &T, const Triple &TT, StringRef CPU, StringRef Features,
+           const TargetOptions &Options, Optional<Reloc::Model> RM,
+           Optional<CodeModel::Model> CM, CodeGenOpt::Level OL, bool JIT);
   // If it weren't for layering issues (this header is in llvm/Support, but
   // depends on MC?) this should take the Streamer by value rather than rvalue
   // reference.
@@ -137,26 +140,26 @@ public:
   using MCCodeEmitterCtorTy = MCCodeEmitter *(*)(const MCInstrInfo &II,
                                                  const MCRegisterInfo &MRI,
                                                  MCContext &Ctx);
-  using ELFStreamerCtorTy = MCStreamer *(*)(const Triple &T, MCContext &Ctx,
-                                            MCAsmBackend &TAB,
-                                            raw_pwrite_stream &OS,
-                                            MCCodeEmitter *Emitter,
-                                            bool RelaxAll);
-  using MachOStreamerCtorTy = MCStreamer *(*)(MCContext &Ctx, MCAsmBackend &TAB,
-                                              raw_pwrite_stream &OS,
-                                              MCCodeEmitter *Emitter,
-                                              bool RelaxAll,
-                                              bool DWARFMustBeAtTheEnd);
-  using COFFStreamerCtorTy = MCStreamer *(*)(MCContext &Ctx, MCAsmBackend &TAB,
-                                             raw_pwrite_stream &OS,
-                                             MCCodeEmitter *Emitter,
-                                             bool RelaxAll,
-                                             bool IncrementalLinkerCompatible);
-  using WasmStreamerCtorTy = MCStreamer *(*)(const Triple &T, MCContext &Ctx,
-                                             MCAsmBackend &TAB,
-                                             raw_pwrite_stream &OS,
-                                             MCCodeEmitter *Emitter,
-                                             bool RelaxAll);
+  using ELFStreamerCtorTy =
+      MCStreamer *(*)(const Triple &T, MCContext &Ctx,
+                      std::unique_ptr<MCAsmBackend> &&TAB,
+                      raw_pwrite_stream &OS,
+                      std::unique_ptr<MCCodeEmitter> &&Emitter, bool RelaxAll);
+  using MachOStreamerCtorTy =
+      MCStreamer *(*)(MCContext &Ctx, std::unique_ptr<MCAsmBackend> &&TAB,
+                      raw_pwrite_stream &OS,
+                      std::unique_ptr<MCCodeEmitter> &&Emitter, bool RelaxAll,
+                      bool DWARFMustBeAtTheEnd);
+  using COFFStreamerCtorTy =
+      MCStreamer *(*)(MCContext &Ctx, std::unique_ptr<MCAsmBackend> &&TAB,
+                      raw_pwrite_stream &OS,
+                      std::unique_ptr<MCCodeEmitter> &&Emitter, bool RelaxAll,
+                      bool IncrementalLinkerCompatible);
+  using WasmStreamerCtorTy =
+      MCStreamer *(*)(const Triple &T, MCContext &Ctx,
+                      std::unique_ptr<MCAsmBackend> &&TAB,
+                      raw_pwrite_stream &OS,
+                      std::unique_ptr<MCCodeEmitter> &&Emitter, bool RelaxAll);
   using NullTargetStreamerCtorTy = MCTargetStreamer *(*)(MCStreamer &S);
   using AsmTargetStreamerCtorTy = MCTargetStreamer *(*)(
       MCStreamer &S, formatted_raw_ostream &OS, MCInstPrinter *InstPrint,
@@ -190,8 +193,6 @@ private:
   /// MCAsmInfoCtorFn - Constructor function for this target's MCAsmInfo, if
   /// registered.
   MCAsmInfoCtorFnTy MCAsmInfoCtorFn;
-
-  MCAdjustCodeGenOptsFnTy MCAdjustCodeGenOptsFn;
 
   /// MCInstrInfoCtorFn - Constructor function for this target's MCInstrInfo,
   /// if registered.
@@ -312,12 +313,6 @@ public:
     return MCAsmInfoCtorFn(MRI, Triple(TheTriple));
   }
 
-  void adjustCodeGenOpts(const Triple &TT, Reloc::Model RM,
-                         CodeModel::Model &CM) const {
-    if (MCAdjustCodeGenOptsFn)
-      MCAdjustCodeGenOptsFn(TT, RM, CM);
-  }
-
   /// createMCInstrInfo - Create a MCInstrInfo implementation.
   ///
   MCInstrInfo *createMCInstrInfo() const {
@@ -365,15 +360,17 @@ public:
   /// feature set; it should always be provided. Generally this should be
   /// either the target triple from the module, or the target triple of the
   /// host if that does not exist.
-  TargetMachine *
-  createTargetMachine(StringRef TT, StringRef CPU, StringRef Features,
-                      const TargetOptions &Options, Optional<Reloc::Model> RM,
-                      CodeModel::Model CM = CodeModel::Default,
-                      CodeGenOpt::Level OL = CodeGenOpt::Default) const {
+  TargetMachine *createTargetMachine(StringRef TT, StringRef CPU,
+                                     StringRef Features,
+                                     const TargetOptions &Options,
+                                     Optional<Reloc::Model> RM,
+                                     Optional<CodeModel::Model> CM = None,
+                                     CodeGenOpt::Level OL = CodeGenOpt::Default,
+                                     bool JIT = false) const {
     if (!TargetMachineCtorFn)
       return nullptr;
     return TargetMachineCtorFn(*this, Triple(TT), CPU, Features, Options, RM,
-                               CM, OL);
+                               CM, OL, JIT);
   }
 
   /// createMCAsmBackend - Create a target specific assembly parser.
@@ -444,8 +441,9 @@ public:
   /// \param Emitter The target independent assembler object.Takes ownership.
   /// \param RelaxAll Relax all fixups?
   MCStreamer *createMCObjectStreamer(const Triple &T, MCContext &Ctx,
-                                     MCAsmBackend &TAB, raw_pwrite_stream &OS,
-                                     MCCodeEmitter *Emitter,
+                                     std::unique_ptr<MCAsmBackend> &&TAB,
+                                     raw_pwrite_stream &OS,
+                                     std::unique_ptr<MCCodeEmitter> &&Emitter,
                                      const MCSubtargetInfo &STI, bool RelaxAll,
                                      bool IncrementalLinkerCompatible,
                                      bool DWARFMustBeAtTheEnd) const {
@@ -455,28 +453,32 @@ public:
       llvm_unreachable("Unknown object format");
     case Triple::COFF:
       assert(T.isOSWindows() && "only Windows COFF is supported");
-      S = COFFStreamerCtorFn(Ctx, TAB, OS, Emitter, RelaxAll,
-                             IncrementalLinkerCompatible);
+      S = COFFStreamerCtorFn(Ctx, std::move(TAB), OS, std::move(Emitter),
+                             RelaxAll, IncrementalLinkerCompatible);
       break;
     case Triple::MachO:
       if (MachOStreamerCtorFn)
-        S = MachOStreamerCtorFn(Ctx, TAB, OS, Emitter, RelaxAll,
-                                DWARFMustBeAtTheEnd);
+        S = MachOStreamerCtorFn(Ctx, std::move(TAB), OS, std::move(Emitter),
+                                RelaxAll, DWARFMustBeAtTheEnd);
       else
-        S = createMachOStreamer(Ctx, TAB, OS, Emitter, RelaxAll,
-                                DWARFMustBeAtTheEnd);
+        S = createMachOStreamer(Ctx, std::move(TAB), OS, std::move(Emitter),
+                                RelaxAll, DWARFMustBeAtTheEnd);
       break;
     case Triple::ELF:
       if (ELFStreamerCtorFn)
-        S = ELFStreamerCtorFn(T, Ctx, TAB, OS, Emitter, RelaxAll);
+        S = ELFStreamerCtorFn(T, Ctx, std::move(TAB), OS, std::move(Emitter),
+                              RelaxAll);
       else
-        S = createELFStreamer(Ctx, TAB, OS, Emitter, RelaxAll);
+        S = createELFStreamer(Ctx, std::move(TAB), OS, std::move(Emitter),
+                              RelaxAll);
       break;
     case Triple::Wasm:
       if (WasmStreamerCtorFn)
-        S = WasmStreamerCtorFn(T, Ctx, TAB, OS, Emitter, RelaxAll);
+        S = WasmStreamerCtorFn(T, Ctx, std::move(TAB), OS, std::move(Emitter),
+                               RelaxAll);
       else
-        S = createWasmStreamer(Ctx, TAB, OS, Emitter, RelaxAll);
+        S = createWasmStreamer(Ctx, std::move(TAB), OS, std::move(Emitter),
+                               RelaxAll);
       break;
     }
     if (ObjectTargetStreamerCtorFn)
@@ -599,7 +601,7 @@ struct TargetRegistry {
 
   /// printRegisteredTargetsForVersion - Print the registered targets
   /// appropriately for inclusion in a tool's version output.
-  static void printRegisteredTargetsForVersion();
+  static void printRegisteredTargetsForVersion(raw_ostream &OS);
 
   /// @name Registry Access
   /// @{
@@ -661,11 +663,6 @@ struct TargetRegistry {
   /// @param Fn - A function to construct a MCAsmInfo for the target.
   static void RegisterMCAsmInfo(Target &T, Target::MCAsmInfoCtorFnTy Fn) {
     T.MCAsmInfoCtorFn = Fn;
-  }
-
-  static void registerMCAdjustCodeGenOpts(Target &T,
-                                          Target::MCAdjustCodeGenOptsFnTy Fn) {
-    T.MCAdjustCodeGenOptsFn = Fn;
   }
 
   /// RegisterMCInstrInfo - Register a MCInstrInfo implementation for the
@@ -929,12 +926,6 @@ struct RegisterMCAsmInfoFn {
   }
 };
 
-struct RegisterMCAdjustCodeGenOptsFn {
-  RegisterMCAdjustCodeGenOptsFn(Target &T, Target::MCAdjustCodeGenOptsFnTy Fn) {
-    TargetRegistry::registerMCAdjustCodeGenOpts(T, Fn);
-  }
-};
-
 /// RegisterMCInstrInfo - Helper template for registering a target instruction
 /// info implementation.  This invokes the static "Create" method on the class
 /// to actually do the construction.  Usage:
@@ -1080,12 +1071,11 @@ template <class TargetMachineImpl> struct RegisterTargetMachine {
   }
 
 private:
-  static TargetMachine *Allocator(const Target &T, const Triple &TT,
-                                  StringRef CPU, StringRef FS,
-                                  const TargetOptions &Options,
-                                  Optional<Reloc::Model> RM,
-                                  CodeModel::Model CM, CodeGenOpt::Level OL) {
-    return new TargetMachineImpl(T, TT, CPU, FS, Options, RM, CM, OL);
+  static TargetMachine *
+  Allocator(const Target &T, const Triple &TT, StringRef CPU, StringRef FS,
+            const TargetOptions &Options, Optional<Reloc::Model> RM,
+            Optional<CodeModel::Model> CM, CodeGenOpt::Level OL, bool JIT) {
+    return new TargetMachineImpl(T, TT, CPU, FS, Options, RM, CM, OL, JIT);
   }
 };
 

@@ -716,6 +716,7 @@ class CastExpressionIdValidator : public CorrectionCandidateCallback {
 ///                   '__is_sealed'                           [MS]
 ///                   '__is_trivial'
 ///                   '__is_union'
+///                   '__has_unique_object_representations'
 ///
 /// [Clang] unary-type-trait:
 ///                   '__is_aggregate'
@@ -798,7 +799,8 @@ ExprResult Parser::ParseCastExpression(bool isUnaryExpression,
 
   case tok::kw_true:
   case tok::kw_false:
-    return ParseCXXBoolLiteral();
+    Res = ParseCXXBoolLiteral();
+    break;
   
   case tok::kw___objc_yes:
   case tok::kw___objc_no:
@@ -1229,6 +1231,7 @@ ExprResult Parser::ParseCastExpression(bool isUnaryExpression,
   case tok::kw_half:
   case tok::kw_float:
   case tok::kw_double:
+  case tok::kw__Float16:
   case tok::kw___float128:
   case tok::kw_void:
   case tok::kw_typename:
@@ -2762,7 +2765,7 @@ ExprResult Parser::ParseFoldExpression(ExprResult LHS,
 /// \endverbatim
 bool Parser::ParseExpressionList(SmallVectorImpl<Expr *> &Exprs,
                                  SmallVectorImpl<SourceLocation> &CommaLocs,
-                                 std::function<void()> Completer) {
+                                 llvm::function_ref<void()> Completer) {
   bool SawError = false;
   while (1) {
     if (Tok.is(tok::code_completion)) {
@@ -2881,7 +2884,7 @@ ExprResult Parser::ParseBlockLiteralExpression() {
   // allows determining whether a variable reference inside the block is
   // within or outside of the block.
   ParseScope BlockScope(this, Scope::BlockScope | Scope::FnScope |
-                              Scope::DeclScope);
+                                  Scope::CompoundStmtScope | Scope::DeclScope);
 
   // Inform sema that we are starting a block.
   Actions.ActOnBlockStart(CaretLoc, getCurScope());

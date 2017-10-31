@@ -15,13 +15,12 @@
 #include "ARMSubtarget.h"
 #include "ARMTargetMachine.h"
 #include "llvm/CodeGen/GlobalISel/InstructionSelector.h"
+#include "llvm/CodeGen/GlobalISel/InstructionSelectorImpl.h"
 #include "llvm/CodeGen/MachineConstantPool.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/Support/Debug.h"
 
 #define DEBUG_TYPE "arm-isel"
-
-#include "llvm/CodeGen/GlobalISel/InstructionSelectorImpl.h"
 
 using namespace llvm;
 
@@ -37,6 +36,7 @@ public:
                          const ARMRegisterBankInfo &RBI);
 
   bool select(MachineInstr &I) const override;
+  static const char *getName() { return DEBUG_TYPE; }
 
 private:
   bool selectImpl(MachineInstr &I) const;
@@ -59,6 +59,7 @@ private:
 
   bool selectGlobal(MachineInstrBuilder &MIB, MachineRegisterInfo &MRI) const;
   bool selectSelect(MachineInstrBuilder &MIB, MachineRegisterInfo &MRI) const;
+  bool selectShift(unsigned ShiftOpc, MachineInstrBuilder &MIB) const;
 
   // Check if the types match and both operands have the expected size and
   // register bank.
@@ -488,8 +489,8 @@ bool ARMInstructionSelector::insertComparison(CmpConstants Helper, InsertInfo I,
 
 bool ARMInstructionSelector::selectGlobal(MachineInstrBuilder &MIB,
                                           MachineRegisterInfo &MRI) const {
-  if (TII.getSubtarget().isROPI() || TII.getSubtarget().isRWPI()) {
-    DEBUG(dbgs() << "ROPI and RWPI not supported yet\n");
+  if ((STI.isROPI() || STI.isRWPI()) && !STI.isTargetELF()) {
+    DEBUG(dbgs() << "ROPI and RWPI only supported for ELF\n");
     return false;
   }
 
@@ -504,7 +505,29 @@ bool ARMInstructionSelector::selectGlobal(MachineInstrBuilder &MIB,
 
   bool UseMovt = STI.useMovt(MF);
 
+  unsigned Size = TM.getPointerSize();
   unsigned Alignment = 4;
+
+  auto addOpsForConstantPoolLoad = [&MF, Alignment,
+                                    Size](MachineInstrBuilder &MIB,
+                                          const GlobalValue *GV, bool IsSBREL) {
+    assert(MIB->getOpcode() == ARM::LDRi12 && "Unsupported instruction");
+    auto ConstPool = MF.getConstantPool();
+    auto CPIndex =
+        // For SB relative entries we need a target-specific constant pool.
+        // Otherwise, just use a regular constant pool entry.
+        IsSBREL
+            ? ConstPool->getConstantPoolIndex(
+                  ARMConstantPoolConstant::Create(GV, ARMCP::SBREL), Alignment)
+            : ConstPool->getConstantPoolIndex(GV, Alignment);
+    MIB.addConstantPoolIndex(CPIndex, /*Offset*/ 0, /*TargetFlags*/ 0)
+        .addMemOperand(
+            MF.getMachineMemOperand(MachinePointerInfo::getConstantPool(MF),
+                                    MachineMemOperand::MOLoad, Size, Alignment))
+        .addImm(0)
+        .add(predOps(ARMCC::AL));
+  };
+
   if (TM.isPositionIndependent()) {
     bool Indirect = STI.isGVIndirectSymbol(GV);
     // FIXME: Taking advantage of MOVT for ELF is pretty involved, so we don't
@@ -526,6 +549,39 @@ bool ARMInstructionSelector::selectGlobal(MachineInstrBuilder &MIB,
     return constrainSelectedInstRegOperands(*MIB, TII, TRI, RBI);
   }
 
+  bool isReadOnly = STI.getTargetLowering()->isReadOnly(GV);
+  if (STI.isROPI() && isReadOnly) {
+    unsigned Opc = UseMovt ? ARM::MOV_ga_pcrel : ARM::LDRLIT_ga_pcrel;
+    MIB->setDesc(TII.get(Opc));
+    return constrainSelectedInstRegOperands(*MIB, TII, TRI, RBI);
+  }
+  if (STI.isRWPI() && !isReadOnly) {
+    auto Offset = MRI.createVirtualRegister(&ARM::GPRRegClass);
+    MachineInstrBuilder OffsetMIB;
+    if (UseMovt) {
+      OffsetMIB = BuildMI(MBB, *MIB, MIB->getDebugLoc(),
+                          TII.get(ARM::MOVi32imm), Offset);
+      OffsetMIB.addGlobalAddress(GV, /*Offset*/ 0, ARMII::MO_SBREL);
+    } else {
+      // Load the offset from the constant pool.
+      OffsetMIB =
+          BuildMI(MBB, *MIB, MIB->getDebugLoc(), TII.get(ARM::LDRi12), Offset);
+      addOpsForConstantPoolLoad(OffsetMIB, GV, /*IsSBREL*/ true);
+    }
+    if (!constrainSelectedInstRegOperands(*OffsetMIB, TII, TRI, RBI))
+      return false;
+
+    // Add the offset to the SB register.
+    MIB->setDesc(TII.get(ARM::ADDrr));
+    MIB->RemoveOperand(1);
+    MIB.addReg(ARM::R9) // FIXME: don't hardcode R9
+        .addReg(Offset)
+        .add(predOps(ARMCC::AL))
+        .add(condCodeOp());
+
+    return constrainSelectedInstRegOperands(*MIB, TII, TRI, RBI);
+  }
+
   if (STI.isTargetELF()) {
     if (UseMovt) {
       MIB->setDesc(TII.get(ARM::MOVi32imm));
@@ -533,14 +589,7 @@ bool ARMInstructionSelector::selectGlobal(MachineInstrBuilder &MIB,
       // Load the global's address from the constant pool.
       MIB->setDesc(TII.get(ARM::LDRi12));
       MIB->RemoveOperand(1);
-      MIB.addConstantPoolIndex(
-             MF.getConstantPool()->getConstantPoolIndex(GV, Alignment),
-             /* Offset */ 0, /* TargetFlags */ 0)
-          .addMemOperand(MF.getMachineMemOperand(
-              MachinePointerInfo::getConstantPool(MF),
-              MachineMemOperand::MOLoad, TM.getPointerSize(), Alignment))
-          .addImm(0)
-          .add(predOps(ARMCC::AL));
+      addOpsForConstantPoolLoad(MIB, GV, /*IsSBREL*/ false);
     }
   } else if (STI.isTargetMachO()) {
     if (UseMovt)
@@ -590,6 +639,14 @@ bool ARMInstructionSelector::selectSelect(MachineInstrBuilder &MIB,
 
   MIB->eraseFromParent();
   return true;
+}
+
+bool ARMInstructionSelector::selectShift(unsigned ShiftOpc,
+                                         MachineInstrBuilder &MIB) const {
+  MIB->setDesc(TII.get(ARM::MOVsr));
+  MIB.addImm(ShiftOpc);
+  MIB.add(predOps(ARMCC::AL)).add(condCodeOp());
+  return constrainSelectedInstRegOperands(*MIB, TII, TRI, RBI);
 }
 
 bool ARMInstructionSelector::select(MachineInstr &I) const {
@@ -717,6 +774,13 @@ bool ARMInstructionSelector::select(MachineInstr &I) const {
     CmpConstants Helper(Size == 32 ? ARM::VCMPS : ARM::VCMPD, ARM::FMSTAT,
                         ARM::FPRRegBankID, Size);
     return selectCmp(Helper, MIB, MRI);
+  }
+  case G_LSHR:
+    return selectShift(ARM_AM::ShiftOpc::lsr, MIB);
+  case G_ASHR:
+    return selectShift(ARM_AM::ShiftOpc::asr, MIB);
+  case G_SHL: {
+    return selectShift(ARM_AM::ShiftOpc::lsl, MIB);
   }
   case G_GEP:
     I.setDesc(TII.get(ARM::ADDrr));

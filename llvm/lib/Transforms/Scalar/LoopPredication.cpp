@@ -34,6 +34,124 @@
 //   else
 //     deoptimize
 //
+// It's tempting to rely on SCEV here, but it has proven to be problematic.
+// Generally the facts SCEV provides about the increment step of add
+// recurrences are true if the backedge of the loop is taken, which implicitly
+// assumes that the guard doesn't fail. Using these facts to optimize the
+// guard results in a circular logic where the guard is optimized under the
+// assumption that it never fails.
+//
+// For example, in the loop below the induction variable will be marked as nuw
+// basing on the guard. Basing on nuw the guard predicate will be considered
+// monotonic. Given a monotonic condition it's tempting to replace the induction
+// variable in the condition with its value on the last iteration. But this
+// transformation is not correct, e.g. e = 4, b = 5 breaks the loop.
+//
+//   for (int i = b; i != e; i++)
+//     guard(i u< len)
+//
+// One of the ways to reason about this problem is to use an inductive proof
+// approach. Given the loop:
+//
+//   if (B(0)) {
+//     do {
+//       I = PHI(0, I.INC)
+//       I.INC = I + Step
+//       guard(G(I));
+//     } while (B(I));
+//   }
+//
+// where B(x) and G(x) are predicates that map integers to booleans, we want a
+// loop invariant expression M such the following program has the same semantics
+// as the above:
+//
+//   if (B(0)) {
+//     do {
+//       I = PHI(0, I.INC)
+//       I.INC = I + Step
+//       guard(G(0) && M);
+//     } while (B(I));
+//   }
+//
+// One solution for M is M = forall X . (G(X) && B(X)) => G(X + Step)
+// 
+// Informal proof that the transformation above is correct:
+//
+//   By the definition of guards we can rewrite the guard condition to:
+//     G(I) && G(0) && M
+//
+//   Let's prove that for each iteration of the loop:
+//     G(0) && M => G(I)
+//   And the condition above can be simplified to G(Start) && M.
+// 
+//   Induction base.
+//     G(0) && M => G(0)
+//
+//   Induction step. Assuming G(0) && M => G(I) on the subsequent
+//   iteration:
+//
+//     B(I) is true because it's the backedge condition.
+//     G(I) is true because the backedge is guarded by this condition.
+//
+//   So M = forall X . (G(X) && B(X)) => G(X + Step) implies G(I + Step).
+//
+// Note that we can use anything stronger than M, i.e. any condition which
+// implies M.
+//
+// For now the transformation is limited to the following case:
+//   * The loop has a single latch with the condition of the form:
+//     B(X) = latchStart + X <pred> latchLimit,
+//     where <pred> is u<, u<=, s<, or s<=.
+//   * The step of the IV used in the latch condition is 1.
+//   * The guard condition is of the form
+//     G(X) = guardStart + X u< guardLimit
+//
+// For the ult latch comparison case M is:
+//   forall X . guardStart + X u< guardLimit && latchStart + X <u latchLimit =>
+//      guardStart + X + 1 u< guardLimit
+//
+// The only way the antecedent can be true and the consequent can be false is
+// if
+//   X == guardLimit - 1 - guardStart
+// (and guardLimit is non-zero, but we won't use this latter fact).
+// If X == guardLimit - 1 - guardStart then the second half of the antecedent is
+//   latchStart + guardLimit - 1 - guardStart u< latchLimit
+// and its negation is
+//   latchStart + guardLimit - 1 - guardStart u>= latchLimit
+//
+// In other words, if
+//   latchLimit u<= latchStart + guardLimit - 1 - guardStart
+// then:
+// (the ranges below are written in ConstantRange notation, where [A, B) is the
+// set for (I = A; I != B; I++ /*maywrap*/) yield(I);)
+//
+//    forall X . guardStart + X u< guardLimit &&
+//               latchStart + X u< latchLimit =>
+//      guardStart + X + 1 u< guardLimit
+// == forall X . guardStart + X u< guardLimit &&
+//               latchStart + X u< latchStart + guardLimit - 1 - guardStart =>
+//      guardStart + X + 1 u< guardLimit
+// == forall X . (guardStart + X) in [0, guardLimit) &&
+//               (latchStart + X) in [0, latchStart + guardLimit - 1 - guardStart) =>
+//      (guardStart + X + 1) in [0, guardLimit)
+// == forall X . X in [-guardStart, guardLimit - guardStart) &&
+//               X in [-latchStart, guardLimit - 1 - guardStart) =>
+//       X in [-guardStart - 1, guardLimit - guardStart - 1)
+// == true
+//
+// So the widened condition is:
+//   guardStart u< guardLimit &&
+//   latchStart + guardLimit - 1 - guardStart u>= latchLimit
+// Similarly for ule condition the widened condition is:
+//   guardStart u< guardLimit &&
+//   latchStart + guardLimit - 1 - guardStart u> latchLimit
+// For slt condition the widened condition is:
+//   guardStart u< guardLimit &&
+//   latchStart + guardLimit - 1 - guardStart s>= latchLimit
+// For sle condition the widened condition is:
+//   guardStart u< guardLimit &&
+//   latchStart + guardLimit - 1 - guardStart s> latchLimit
+//
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Transforms/Scalar/LoopPredication.h"
@@ -75,8 +193,16 @@ class LoopPredication {
   Loop *L;
   const DataLayout *DL;
   BasicBlock *Preheader;
+  LoopICmp LatchCheck;
 
-  Optional<LoopICmp> parseLoopICmp(ICmpInst *ICI);
+  Optional<LoopICmp> parseLoopICmp(ICmpInst *ICI) {
+    return parseLoopICmp(ICI->getPredicate(), ICI->getOperand(0),
+                         ICI->getOperand(1));
+  }
+  Optional<LoopICmp> parseLoopICmp(ICmpInst::Predicate Pred, Value *LHS,
+                                   Value *RHS);
+
+  Optional<LoopICmp> parseLoopLatchICmp();
 
   Value *expandCheck(SCEVExpander &Expander, IRBuilder<> &Builder,
                      ICmpInst::Predicate Pred, const SCEV *LHS, const SCEV *RHS,
@@ -135,11 +261,8 @@ PreservedAnalyses LoopPredicationPass::run(Loop &L, LoopAnalysisManager &AM,
 }
 
 Optional<LoopPredication::LoopICmp>
-LoopPredication::parseLoopICmp(ICmpInst *ICI) {
-  ICmpInst::Predicate Pred = ICI->getPredicate();
-
-  Value *LHS = ICI->getOperand(0);
-  Value *RHS = ICI->getOperand(1);
+LoopPredication::parseLoopICmp(ICmpInst::Predicate Pred, Value *LHS,
+                               Value *RHS) {
   const SCEV *LHSS = SE->getSCEV(LHS);
   if (isa<SCEVCouldNotCompute>(LHSS))
     return None;
@@ -165,8 +288,14 @@ Value *LoopPredication::expandCheck(SCEVExpander &Expander,
                                     IRBuilder<> &Builder,
                                     ICmpInst::Predicate Pred, const SCEV *LHS,
                                     const SCEV *RHS, Instruction *InsertAt) {
+  // TODO: we can check isLoopEntryGuardedByCond before emitting the check
+ 
   Type *Ty = LHS->getType();
   assert(Ty == RHS->getType() && "expandCheck operands have different types?");
+
+  if (SE->isLoopEntryGuardedByCond(L, Pred, LHS, RHS))
+    return Builder.getTrue();
+
   Value *LHSV = Expander.expandCodeFor(LHS, Ty, InsertAt);
   Value *RHSV = Expander.expandCodeFor(RHS, Ty, InsertAt);
   return Builder.CreateICmp(Pred, LHSV, RHSV);
@@ -181,51 +310,89 @@ Optional<Value *> LoopPredication::widenICmpRangeCheck(ICmpInst *ICI,
   DEBUG(dbgs() << "Analyzing ICmpInst condition:\n");
   DEBUG(ICI->dump());
 
+  // parseLoopStructure guarantees that the latch condition is:
+  //   ++i <pred> latchLimit, where <pred> is u<, u<=, s<, or s<=.
+  // We are looking for the range checks of the form:
+  //   i u< guardLimit
   auto RangeCheck = parseLoopICmp(ICI);
   if (!RangeCheck) {
     DEBUG(dbgs() << "Failed to parse the loop latch condition!\n");
     return None;
   }
+  if (RangeCheck->Pred != ICmpInst::ICMP_ULT) {
+    DEBUG(dbgs() << "Unsupported range check predicate(" << RangeCheck->Pred
+                 << ")!\n");
+    return None;
+  }
+  auto *RangeCheckIV = RangeCheck->IV;
+  auto *Ty = RangeCheckIV->getType();
+  if (Ty != LatchCheck.IV->getType()) {
+    DEBUG(dbgs() << "Type mismatch between range check and latch IVs!\n");
+    return None;
+  }
+  if (!RangeCheckIV->isAffine()) {
+    DEBUG(dbgs() << "Range check IV is not affine!\n");
+    return None;
+  }
+  auto *Step = RangeCheckIV->getStepRecurrence(*SE);
+  if (Step != LatchCheck.IV->getStepRecurrence(*SE)) {
+    DEBUG(dbgs() << "Range check and latch have IVs different steps!\n");
+    return None;
+  }
+  assert(Step->isOne() && "must be one");
 
-  ICmpInst::Predicate Pred = RangeCheck->Pred;
-  const SCEVAddRecExpr *IndexAR = RangeCheck->IV;
-  const SCEV *RHSS = RangeCheck->Limit;
+  // Generate the widened condition:
+  //   guardStart u< guardLimit &&
+  //   latchLimit <pred> guardLimit - 1 - guardStart + latchStart
+  // where <pred> depends on the latch condition predicate. See the file
+  // header comment for the reasoning.
+  const SCEV *GuardStart = RangeCheckIV->getStart();
+  const SCEV *GuardLimit = RangeCheck->Limit;
+  const SCEV *LatchStart = LatchCheck.IV->getStart();
+  const SCEV *LatchLimit = LatchCheck.Limit;
+
+  // guardLimit - guardStart + latchStart - 1
+  const SCEV *RHS =
+      SE->getAddExpr(SE->getMinusSCEV(GuardLimit, GuardStart),
+                     SE->getMinusSCEV(LatchStart, SE->getOne(Ty)));
+
+  ICmpInst::Predicate LimitCheckPred;
+  switch (LatchCheck.Pred) {
+  case ICmpInst::ICMP_ULT:
+    LimitCheckPred = ICmpInst::ICMP_ULE;
+    break;
+  case ICmpInst::ICMP_ULE:
+    LimitCheckPred = ICmpInst::ICMP_ULT;
+    break;
+  case ICmpInst::ICMP_SLT:
+    LimitCheckPred = ICmpInst::ICMP_SLE;
+    break;
+  case ICmpInst::ICMP_SLE:
+    LimitCheckPred = ICmpInst::ICMP_SLT;
+    break;
+  default:
+    llvm_unreachable("Unsupported loop latch!");
+  }
+
+  DEBUG(dbgs() << "LHS: " << *LatchLimit << "\n");
+  DEBUG(dbgs() << "RHS: " << *RHS << "\n");
+  DEBUG(dbgs() << "Pred: " << LimitCheckPred << "\n");
 
   auto CanExpand = [this](const SCEV *S) {
     return SE->isLoopInvariant(S, L) && isSafeToExpand(S, *SE);
   };
-  if (!CanExpand(RHSS))
-    return None;
-
-  DEBUG(dbgs() << "IndexAR: ");
-  DEBUG(IndexAR->dump());
-
-  bool IsIncreasing = false;
-  if (!SE->isMonotonicPredicate(IndexAR, Pred, IsIncreasing))
-    return None;
-
-  // If the predicate is increasing the condition can change from false to true
-  // as the loop progresses, in this case take the value on the first iteration
-  // for the widened check. Otherwise the condition can change from true to
-  // false as the loop progresses, so take the value on the last iteration.
-  const SCEV *NewLHSS = IsIncreasing
-                            ? IndexAR->getStart()
-                            : SE->getSCEVAtScope(IndexAR, L->getParentLoop());
-  if (NewLHSS == IndexAR) {
-    DEBUG(dbgs() << "Can't compute NewLHSS!\n");
+  if (!CanExpand(GuardStart) || !CanExpand(GuardLimit) ||
+      !CanExpand(LatchLimit) || !CanExpand(RHS)) {
+    DEBUG(dbgs() << "Can't expand limit check!\n");
     return None;
   }
 
-  DEBUG(dbgs() << "NewLHSS: ");
-  DEBUG(NewLHSS->dump());
-
-  if (!CanExpand(NewLHSS))
-    return None;
-
-  DEBUG(dbgs() << "NewLHSS is loop invariant and safe to expand. Expand!\n");
-
   Instruction *InsertAt = Preheader->getTerminator();
-  return expandCheck(Expander, Builder, Pred, NewLHSS, RHSS, InsertAt);
+  auto *LimitCheck =
+      expandCheck(Expander, Builder, LimitCheckPred, LatchLimit, RHS, InsertAt);
+  auto *FirstIterationCheck = expandCheck(Expander, Builder, RangeCheck->Pred,
+                                          GuardStart, GuardLimit, InsertAt);
+  return Builder.CreateAnd(FirstIterationCheck, LimitCheck);
 }
 
 bool LoopPredication::widenGuardConditions(IntrinsicInst *Guard,
@@ -288,6 +455,61 @@ bool LoopPredication::widenGuardConditions(IntrinsicInst *Guard,
   return true;
 }
 
+Optional<LoopPredication::LoopICmp> LoopPredication::parseLoopLatchICmp() {
+  using namespace PatternMatch;
+
+  BasicBlock *LoopLatch = L->getLoopLatch();
+  if (!LoopLatch) {
+    DEBUG(dbgs() << "The loop doesn't have a single latch!\n");
+    return None;
+  }
+
+  ICmpInst::Predicate Pred;
+  Value *LHS, *RHS;
+  BasicBlock *TrueDest, *FalseDest;
+
+  if (!match(LoopLatch->getTerminator(),
+             m_Br(m_ICmp(Pred, m_Value(LHS), m_Value(RHS)), TrueDest,
+                  FalseDest))) {
+    DEBUG(dbgs() << "Failed to match the latch terminator!\n");
+    return None;
+  }
+  assert((TrueDest == L->getHeader() || FalseDest == L->getHeader()) &&
+         "One of the latch's destinations must be the header");
+  if (TrueDest != L->getHeader())
+    Pred = ICmpInst::getInversePredicate(Pred);
+
+  auto Result = parseLoopICmp(Pred, LHS, RHS);
+  if (!Result) {
+    DEBUG(dbgs() << "Failed to parse the loop latch condition!\n");
+    return None;
+  }
+
+  if (Result->Pred != ICmpInst::ICMP_ULT &&
+      Result->Pred != ICmpInst::ICMP_SLT &&
+      Result->Pred != ICmpInst::ICMP_ULE &&
+      Result->Pred != ICmpInst::ICMP_SLE) {
+    DEBUG(dbgs() << "Unsupported loop latch predicate(" << Result->Pred
+                 << ")!\n");
+    return None;
+  }
+
+  // Check affine first, so if it's not we don't try to compute the step
+  // recurrence.
+  if (!Result->IV->isAffine()) {
+    DEBUG(dbgs() << "The induction variable is not affine!\n");
+    return None;
+  }
+
+  auto *Step = Result->IV->getStepRecurrence(*SE);
+  if (!Step->isOne()) {
+    DEBUG(dbgs() << "Unsupported loop stride(" << *Step << ")!\n");
+    return None;
+  }
+
+  return Result;
+}
+
 bool LoopPredication::runOnLoop(Loop *Loop) {
   L = Loop;
 
@@ -307,6 +529,11 @@ bool LoopPredication::runOnLoop(Loop *Loop) {
   Preheader = L->getLoopPreheader();
   if (!Preheader)
     return false;
+
+  auto LatchCheckOpt = parseLoopLatchICmp();
+  if (!LatchCheckOpt)
+    return false;
+  LatchCheck = *LatchCheckOpt;
 
   // Collect all the guards into a vector and process later, so as not
   // to invalidate the instruction iterator.

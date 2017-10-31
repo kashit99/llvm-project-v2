@@ -761,9 +761,15 @@ Parser::ParseExternalDeclaration(ParsedAttributesWithRange &attrs,
     SingleDecl = ParseObjCMethodDefinition();
     break;
   case tok::code_completion:
-      Actions.CodeCompleteOrdinaryName(getCurScope(), 
-                             CurParsedObjCImpl? Sema::PCC_ObjCImplementation
-                                              : Sema::PCC_Namespace);
+    if (CurParsedObjCImpl) {
+      // Code-complete Objective-C methods even without leading '-'/'+' prefix.
+      Actions.CodeCompleteObjCMethodDecl(getCurScope(),
+                                         /*IsInstanceMethod=*/None,
+                                         /*ReturnType=*/nullptr);
+    }
+    Actions.CodeCompleteOrdinaryName(
+        getCurScope(),
+        CurParsedObjCImpl ? Sema::PCC_ObjCImplementation : Sema::PCC_Namespace);
     cutOffParsing();
     return nullptr;
   case tok::kw_export:
@@ -1081,8 +1087,9 @@ Decl *Parser::ParseFunctionDefinition(ParsingDeclarator &D,
       TemplateInfo.Kind == ParsedTemplateInfo::Template &&
       Actions.canDelayFunctionBody(D)) {
     MultiTemplateParamsArg TemplateParameterLists(*TemplateInfo.TemplateParams);
-    
-    ParseScope BodyScope(this, Scope::FnScope|Scope::DeclScope);
+
+    ParseScope BodyScope(this, Scope::FnScope | Scope::DeclScope |
+                                   Scope::CompoundStmtScope);
     Scope *ParentScope = getCurScope()->getParent();
 
     D.setFunctionDefinitionKind(FDK_Definition);
@@ -1112,7 +1119,8 @@ Decl *Parser::ParseFunctionDefinition(ParsingDeclarator &D,
            (Tok.is(tok::l_brace) || Tok.is(tok::kw_try) ||
             Tok.is(tok::colon)) && 
       Actions.CurContext->isTranslationUnit()) {
-    ParseScope BodyScope(this, Scope::FnScope|Scope::DeclScope);
+    ParseScope BodyScope(this, Scope::FnScope | Scope::DeclScope |
+                                   Scope::CompoundStmtScope);
     Scope *ParentScope = getCurScope()->getParent();
 
     D.setFunctionDefinitionKind(FDK_Definition);
@@ -1130,7 +1138,8 @@ Decl *Parser::ParseFunctionDefinition(ParsingDeclarator &D,
   }
 
   // Enter a scope for the function body.
-  ParseScope BodyScope(this, Scope::FnScope|Scope::DeclScope);
+  ParseScope BodyScope(this, Scope::FnScope | Scope::DeclScope |
+                                 Scope::CompoundStmtScope);
 
   // Tell the actions module that we have entered a function definition with the
   // specified Declarator for the function.
@@ -2053,7 +2062,7 @@ Parser::DeclGroupPtrTy Parser::ParseModuleDecl() {
   SourceLocation StartLoc = Tok.getLocation();
 
   Sema::ModuleDeclKind MDK = TryConsumeToken(tok::kw_export)
-                                 ? Sema::ModuleDeclKind::Module
+                                 ? Sema::ModuleDeclKind::Interface
                                  : Sema::ModuleDeclKind::Implementation;
 
   assert(Tok.is(tok::kw_module) && "not a module declaration");
@@ -2062,7 +2071,7 @@ Parser::DeclGroupPtrTy Parser::ParseModuleDecl() {
   if (Tok.is(tok::identifier) && NextToken().is(tok::identifier) &&
       Tok.getIdentifierInfo()->isStr("partition")) {
     // If 'partition' is present, this must be a module interface unit.
-    if (MDK != Sema::ModuleDeclKind::Module)
+    if (MDK != Sema::ModuleDeclKind::Interface)
       Diag(Tok.getLocation(), diag::err_module_implementation_partition)
         << FixItHint::CreateInsertion(ModuleLoc, "export ");
     MDK = Sema::ModuleDeclKind::Partition;

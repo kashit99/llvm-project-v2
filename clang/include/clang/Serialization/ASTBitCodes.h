@@ -829,6 +829,8 @@ namespace clang {
       PREDEF_TYPE_OMP_ARRAY_SECTION = 42,
       /// \brief The '__float128' type
       PREDEF_TYPE_FLOAT128_ID = 43,
+      /// \brief The '_Float16' type
+      PREDEF_TYPE_FLOAT16_ID = 44,
       /// \brief OpenCL image types with auto numeration
 #define IMAGE_TYPE(ImgType, Id, SingletonId, Access, Suffix) \
       PREDEF_TYPE_##Id##_ID,
@@ -938,7 +940,9 @@ namespace clang {
       /// \brief A DeducedTemplateSpecializationType record.
       TYPE_DEDUCED_TEMPLATE_SPECIALIZATION = 45,
       /// \brief A DependentSizedExtVectorType record.
-      TYPE_DEPENDENT_SIZED_EXT_VECTOR = 46
+      TYPE_DEPENDENT_SIZED_EXT_VECTOR = 46,
+      /// \brief A DependentAddressSpaceType record.
+      TYPE_DEPENDENT_ADDRESS_SPACE = 47
     };
 
     /// \brief The type IDs for special types constructed by semantic

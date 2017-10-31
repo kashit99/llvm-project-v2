@@ -34,7 +34,7 @@ struct UsingDeclaration {
       : Line(Line), Label(Label) {}
 
   bool operator<(const UsingDeclaration &Other) const {
-    return Label < Other.Label;
+    return StringRef(Label).compare_lower(Other.Label) < 0;
   }
 };
 
@@ -76,9 +76,21 @@ std::string computeUsingDeclarationLabel(const FormatToken *UsingTok) {
 void endUsingDeclarationBlock(
     SmallVectorImpl<UsingDeclaration> *UsingDeclarations,
     const SourceManager &SourceMgr, tooling::Replacements *Fixes) {
+  bool BlockAffected = false;
+  for (const UsingDeclaration& Declaration : *UsingDeclarations) {
+    if (Declaration.Line->Affected) {
+      BlockAffected = true;
+      break;
+    }
+  }
+  if (!BlockAffected) {
+    UsingDeclarations->clear();
+    return;
+  }
   SmallVector<UsingDeclaration, 4> SortedUsingDeclarations(
       UsingDeclarations->begin(), UsingDeclarations->end());
-  std::sort(SortedUsingDeclarations.begin(), SortedUsingDeclarations.end());
+  std::stable_sort(SortedUsingDeclarations.begin(),
+                   SortedUsingDeclarations.end());
   for (size_t I = 0, E = UsingDeclarations->size(); I < E; ++I) {
     if ((*UsingDeclarations)[I].Line == SortedUsingDeclarations[I].Line)
       continue;
@@ -112,7 +124,7 @@ UsingDeclarationsSorter::UsingDeclarationsSorter(const Environment &Env,
                                                  const FormatStyle &Style)
     : TokenAnalyzer(Env, Style) {}
 
-tooling::Replacements UsingDeclarationsSorter::analyze(
+std::pair<tooling::Replacements, unsigned> UsingDeclarationsSorter::analyze(
     TokenAnnotator &Annotator, SmallVectorImpl<AnnotatedLine *> &AnnotatedLines,
     FormatTokenLexer &Tokens) {
   const SourceManager &SourceMgr = Env.getSourceManager();
@@ -121,7 +133,7 @@ tooling::Replacements UsingDeclarationsSorter::analyze(
   tooling::Replacements Fixes;
   SmallVector<UsingDeclaration, 4> UsingDeclarations;
   for (size_t I = 0, E = AnnotatedLines.size(); I != E; ++I) {
-    if (!AnnotatedLines[I]->Affected || AnnotatedLines[I]->InPPDirective ||
+    if (AnnotatedLines[I]->InPPDirective ||
         !AnnotatedLines[I]->startsWith(tok::kw_using) ||
         AnnotatedLines[I]->First->Finalized) {
       endUsingDeclarationBlock(&UsingDeclarations, SourceMgr, &Fixes);
@@ -137,7 +149,7 @@ tooling::Replacements UsingDeclarationsSorter::analyze(
     UsingDeclarations.push_back(UsingDeclaration(AnnotatedLines[I], Label));
   }
   endUsingDeclarationBlock(&UsingDeclarations, SourceMgr, &Fixes);
-  return Fixes;
+  return {Fixes, 0};
 }
 
 } // namespace format

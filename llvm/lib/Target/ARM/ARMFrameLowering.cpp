@@ -1,4 +1,4 @@
-//===-- ARMFrameLowering.cpp - ARM Frame Information ----------------------===//
+//===- ARMFrameLowering.cpp - ARM Frame Information -----------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -19,6 +19,7 @@
 #include "ARMSubtarget.h"
 #include "MCTargetDesc/ARMAddressingModes.h"
 #include "MCTargetDesc/ARMBaseInfo.h"
+#include "Utils/ARMBaseInfo.h"
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallPtrSet.h"
@@ -39,6 +40,7 @@
 #include "llvm/IR/Function.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCDwarf.h"
+#include "llvm/MC/MCInstrDesc.h"
 #include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/CommandLine.h"
@@ -49,6 +51,7 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetInstrInfo.h"
 #include "llvm/Target/TargetMachine.h"
+#include "llvm/Target/TargetOpcodes.h"
 #include "llvm/Target/TargetOptions.h"
 #include "llvm/Target/TargetRegisterInfo.h"
 #include "llvm/Target/TargetSubtargetInfo.h"
@@ -512,7 +515,6 @@ void ARMFrameLowering::emitPrologue(MachineFunction &MF,
     switch (TM.getCodeModel()) {
     case CodeModel::Small:
     case CodeModel::Medium:
-    case CodeModel::Default:
     case CodeModel::Kernel:
       BuildMI(MBB, MBBI, dl, TII.get(ARM::tBL))
           .add(predOps(ARMCC::AL))
@@ -521,7 +523,6 @@ void ARMFrameLowering::emitPrologue(MachineFunction &MF,
           .setMIFlags(MachineInstr::FrameSetup);
       break;
     case CodeModel::Large:
-    case CodeModel::JITDefault:
       BuildMI(MBB, MBBI, dl, TII.get(ARM::t2MOVi32imm), ARM::R12)
         .addExternalSymbol("__chkstk")
         .setMIFlags(MachineInstr::FrameSetup);
@@ -955,7 +956,8 @@ void ARMFrameLowering::emitPushInst(MachineBasicBlock &MBB,
 
   DebugLoc DL;
 
-  typedef std::pair<unsigned, bool> RegAndKill;
+  using RegAndKill = std::pair<unsigned, bool>;
+
   SmallVector<RegAndKill, 4> Regs;
   unsigned i = CSI.size();
   while (i != 0) {
@@ -1021,7 +1023,7 @@ void ARMFrameLowering::emitPushInst(MachineBasicBlock &MBB,
 
 void ARMFrameLowering::emitPopInst(MachineBasicBlock &MBB,
                                    MachineBasicBlock::iterator MI,
-                                   const std::vector<CalleeSavedInfo> &CSI,
+                                   std::vector<CalleeSavedInfo> &CSI,
                                    unsigned LdmOpc, unsigned LdrOpc,
                                    bool isVarArg, bool NoGap,
                                    bool(*Func)(unsigned, bool),
@@ -1051,7 +1053,8 @@ void ARMFrameLowering::emitPopInst(MachineBasicBlock &MBB,
     unsigned LastReg = 0;
     bool DeleteRet = false;
     for (; i != 0; --i) {
-      unsigned Reg = CSI[i-1].getReg();
+      CalleeSavedInfo &Info = CSI[i-1];
+      unsigned Reg = Info.getReg();
       if (!(Func)(Reg, STI.splitFramePushPop(MF))) continue;
 
       // The aligned reloads from area DPRCS2 are not inserted here.
@@ -1064,6 +1067,9 @@ void ARMFrameLowering::emitPopInst(MachineBasicBlock &MBB,
           Reg = ARM::PC;
           DeleteRet = true;
           LdmOpc = AFI->isThumbFunction() ? ARM::t2LDMIA_RET : ARM::LDMIA_RET;
+          // We 'restore' LR into PC so it is not live out of the return block:
+          // Clear Restored bit.
+          Info.setRestored(false);
         } else
           LdmOpc = AFI->isThumbFunction() ? ARM::t2LDMIA_UPD : ARM::LDMIA_UPD;
         // Fold the return instruction into the LDM.
@@ -1092,9 +1098,11 @@ void ARMFrameLowering::emitPopInst(MachineBasicBlock &MBB,
                                     .add(predOps(ARMCC::AL));
       for (unsigned i = 0, e = Regs.size(); i < e; ++i)
         MIB.addReg(Regs[i], getDefRegState(true));
-      if (DeleteRet && MI != MBB.end()) {
-        MIB.copyImplicitOps(*MI);
-        MI->eraseFromParent();
+      if (DeleteRet) {
+        if (MI != MBB.end()) {
+          MIB.copyImplicitOps(*MI);
+          MI->eraseFromParent();
+        }
       }
       MI = MIB;
     } else if (Regs.size() == 1) {
@@ -1283,9 +1291,11 @@ skipAlignedDPRCS2Spills(MachineBasicBlock::iterator MI,
   case 7:
     ++MI;
     assert(MI->mayStore() && "Expecting spill instruction");
+    LLVM_FALLTHROUGH;
   default:
     ++MI;
     assert(MI->mayStore() && "Expecting spill instruction");
+    LLVM_FALLTHROUGH;
   case 1:
   case 2:
   case 4:
@@ -1421,7 +1431,7 @@ bool ARMFrameLowering::spillCalleeSavedRegisters(MachineBasicBlock &MBB,
 
 bool ARMFrameLowering::restoreCalleeSavedRegisters(MachineBasicBlock &MBB,
                                         MachineBasicBlock::iterator MI,
-                                        const std::vector<CalleeSavedInfo> &CSI,
+                                        std::vector<CalleeSavedInfo> &CSI,
                                         const TargetRegisterInfo *TRI) const {
   if (CSI.empty())
     return false;
@@ -1516,7 +1526,6 @@ static unsigned estimateRSStackSizeLimit(MachineFunction &MF,
 // In functions that realign the stack, it can be an advantage to spill the
 // callee-saved vector registers after realigning the stack. The vst1 and vld1
 // instructions take alignment hints that can improve performance.
-//
 static void
 checkNumAlignedDPRCS2Regs(MachineFunction &MF, BitVector &SavedRegs) {
   MF.getInfo<ARMFunctionInfo>()->setNumAlignedDPRCS2Regs(0);
@@ -1601,14 +1610,14 @@ void ARMFrameLowering::determineCalleeSaves(MachineFunction &MF,
     if (AFI->getArgRegsSaveSize() > 0)
       SavedRegs.set(ARM::LR);
 
-    // Spill R4 if Thumb1 epilogue has to restore SP from FP. We don't know
-    // for sure what the stack size will be, but for this, an estimate is good
-    // enough. If there anything changes it, it'll be a spill, which implies
-    // we've used all the registers and so R4 is already used, so not marking
-    // it here will be OK.
+    // Spill R4 if Thumb1 epilogue has to restore SP from FP or the function
+    // requires stack alignment.  We don't know for sure what the stack size
+    // will be, but for this, an estimate is good enough. If there anything
+    // changes it, it'll be a spill, which implies we've used all the registers
+    // and so R4 is already used, so not marking it here will be OK.
     // FIXME: It will be better just to find spare register here.
-    unsigned StackSize = MFI.estimateStackSize(MF);
-    if (MFI.hasVarSizedObjects() || StackSize > 508)
+    if (MFI.hasVarSizedObjects() || RegInfo->needsStackRealignment(MF) ||
+        MFI.estimateStackSize(MF) > 508)
       SavedRegs.set(ARM::R4);
   }
 

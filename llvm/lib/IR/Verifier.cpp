@@ -568,6 +568,10 @@ void Verifier::visitGlobalValue(const GlobalValue &GV) {
   if (GV.isDeclarationForLinker())
     Assert(!GV.hasComdat(), "Declaration may not be in a Comdat!", &GV);
 
+  if (GV.hasDLLImportStorageClass())
+    Assert(!GV.isDSOLocal(),
+           "GlobalValue with DLLImport Storage is dso_local!", &GV);
+
   forEachUser(&GV, GlobalValueVisited, [&](const Value *V) -> bool {
     if (const Instruction *I = dyn_cast<Instruction>(V)) {
       if (!I->getParent() || !I->getParent()->getParent())
@@ -1389,6 +1393,7 @@ static bool isFuncOnlyAttr(Attribute::AttrKind Kind) {
   case Attribute::InaccessibleMemOrArgMemOnly:
   case Attribute::AllocSize:
   case Attribute::Speculatable:
+  case Attribute::StrictFP:
     return true;
   default:
     break;
@@ -3981,6 +3986,7 @@ void Verifier::visitIntrinsicCallSite(Intrinsic::ID ID, CallSite CS) {
   case Intrinsic::experimental_constrained_fmul:
   case Intrinsic::experimental_constrained_fdiv:
   case Intrinsic::experimental_constrained_frem:
+  case Intrinsic::experimental_constrained_fma:
   case Intrinsic::experimental_constrained_sqrt:
   case Intrinsic::experimental_constrained_pow:
   case Intrinsic::experimental_constrained_powi:
@@ -4001,6 +4007,9 @@ void Verifier::visitIntrinsicCallSite(Intrinsic::ID ID, CallSite CS) {
            "invalid llvm.dbg.declare intrinsic call 1", CS);
     visitDbgIntrinsic("declare", cast<DbgInfoIntrinsic>(*CS.getInstruction()));
     break;
+  case Intrinsic::dbg_addr: // llvm.dbg.addr
+    visitDbgIntrinsic("addr", cast<DbgInfoIntrinsic>(*CS.getInstruction()));
+    break;
   case Intrinsic::dbg_value: // llvm.dbg.value
     visitDbgIntrinsic("value", cast<DbgInfoIntrinsic>(*CS.getInstruction()));
     break;
@@ -4020,9 +4029,7 @@ void Verifier::visitIntrinsicCallSite(Intrinsic::ID ID, CallSite CS) {
     break;
   }
   case Intrinsic::memcpy_element_unordered_atomic: {
-    const ElementUnorderedAtomicMemCpyInst *MI =
-        cast<ElementUnorderedAtomicMemCpyInst>(CS.getInstruction());
-    ;
+    const AtomicMemCpyInst *MI = cast<AtomicMemCpyInst>(CS.getInstruction());
 
     ConstantInt *ElementSizeCI =
         dyn_cast<ConstantInt>(MI->getRawElementSizeInBytes());
@@ -4057,7 +4064,7 @@ void Verifier::visitIntrinsicCallSite(Intrinsic::ID ID, CallSite CS) {
     break;
   }
   case Intrinsic::memmove_element_unordered_atomic: {
-    auto *MI = cast<ElementUnorderedAtomicMemMoveInst>(CS.getInstruction());
+    auto *MI = cast<AtomicMemMoveInst>(CS.getInstruction());
 
     ConstantInt *ElementSizeCI =
         dyn_cast<ConstantInt>(MI->getRawElementSizeInBytes());
@@ -4092,7 +4099,7 @@ void Verifier::visitIntrinsicCallSite(Intrinsic::ID ID, CallSite CS) {
     break;
   }
   case Intrinsic::memset_element_unordered_atomic: {
-    auto *MI = cast<ElementUnorderedAtomicMemSetInst>(CS.getInstruction());
+    auto *MI = cast<AtomicMemSetInst>(CS.getInstruction());
 
     ConstantInt *ElementSizeCI =
         dyn_cast<ConstantInt>(MI->getRawElementSizeInBytes());
@@ -4441,8 +4448,9 @@ static DISubprogram *getSubprogram(Metadata *LocalScope) {
 
 void Verifier::visitConstrainedFPIntrinsic(ConstrainedFPIntrinsic &FPI) {
   unsigned NumOperands = FPI.getNumArgOperands();
-  Assert(((NumOperands == 3 && FPI.isUnaryOp()) || (NumOperands == 4)),
-         "invalid arguments for constrained FP intrinsic", &FPI);
+  Assert(((NumOperands == 5 && FPI.isTernaryOp()) ||
+          (NumOperands == 3 && FPI.isUnaryOp()) || (NumOperands == 4)),
+           "invalid arguments for constrained FP intrinsic", &FPI);
   Assert(isa<MetadataAsValue>(FPI.getArgOperand(NumOperands-1)),
          "invalid exception behavior argument", &FPI);
   Assert(isa<MetadataAsValue>(FPI.getArgOperand(NumOperands-2)),

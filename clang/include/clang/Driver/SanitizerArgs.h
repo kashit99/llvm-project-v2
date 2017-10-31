@@ -38,11 +38,14 @@ class SanitizerArgs {
   bool AsanGlobalsDeadStripping = false;
   bool LinkCXXRuntimes = false;
   bool NeedPIE = false;
+  bool SafeStackRuntime = false;
   bool Stats = false;
   bool TsanMemoryAccess = true;
   bool TsanFuncEntryExit = true;
   bool TsanAtomics = true;
   bool MinimalRuntime = false;
+  // True if cross-dso CFI support if provided by the system (i.e. Android).
+  bool ImplicitCfiRuntime = false;
 
  public:
   /// Parses the sanitizer arguments from an argument list.
@@ -61,9 +64,7 @@ class SanitizerArgs {
   bool needsUbsanRt() const;
   bool requiresMinimalRuntime() const { return MinimalRuntime; }
   bool needsDfsanRt() const { return Sanitizers.has(SanitizerKind::DataFlow); }
-  bool needsSafeStackRt() const {
-    return Sanitizers.has(SanitizerKind::SafeStack);
-  }
+  bool needsSafeStackRt() const { return SafeStackRuntime; }
   bool needsCfiRt() const;
   bool needsCfiDiagRt() const;
   bool needsStatsRt() const { return Stats; }

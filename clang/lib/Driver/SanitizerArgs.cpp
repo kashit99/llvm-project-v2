@@ -57,8 +57,10 @@ enum CoverageFeature {
   Coverage8bitCounters = 1 << 8,  // Deprecated.
   CoverageTracePC = 1 << 9,
   CoverageTracePCGuard = 1 << 10,
-  CoverageInline8bitCounters = 1 << 12,
   CoverageNoPrune = 1 << 11,
+  CoverageInline8bitCounters = 1 << 12,
+  CoveragePCTable = 1 << 13,
+  CoverageStackDepth = 1 << 14,
 };
 
 /// Parse a -fsanitize= or -fno-sanitize= argument's values, diagnosing any
@@ -169,19 +171,23 @@ static SanitizerMask parseSanitizeTrapArgs(const Driver &D,
 }
 
 bool SanitizerArgs::needsUbsanRt() const {
-  return ((Sanitizers.Mask & NeedsUbsanRt & ~TrapSanitizers.Mask) ||
-          CoverageFeatures) &&
-         !Sanitizers.has(Address) && !Sanitizers.has(Memory) &&
-         !Sanitizers.has(Thread) && !Sanitizers.has(DataFlow) &&
-         !Sanitizers.has(Leak) && !CfiCrossDso;
+  // All of these include ubsan.
+  if (needsAsanRt() || needsMsanRt() || needsTsanRt() || needsDfsanRt() ||
+      needsLsanRt() || needsCfiDiagRt())
+    return false;
+
+  return (Sanitizers.Mask & NeedsUbsanRt & ~TrapSanitizers.Mask) ||
+         CoverageFeatures;
 }
 
 bool SanitizerArgs::needsCfiRt() const {
-  return !(Sanitizers.Mask & CFI & ~TrapSanitizers.Mask) && CfiCrossDso;
+  return !(Sanitizers.Mask & CFI & ~TrapSanitizers.Mask) && CfiCrossDso &&
+         !ImplicitCfiRuntime;
 }
 
 bool SanitizerArgs::needsCfiDiagRt() const {
-  return (Sanitizers.Mask & CFI & ~TrapSanitizers.Mask) && CfiCrossDso;
+  return (Sanitizers.Mask & CFI & ~TrapSanitizers.Mask) && CfiCrossDso &&
+         !ImplicitCfiRuntime;
 }
 
 bool SanitizerArgs::requiresPIE() const {
@@ -310,9 +316,13 @@ SanitizerArgs::SanitizerArgs(const ToolChain &TC,
         Add |= FuzzerNoLink;
 
       // Enable coverage if the fuzzing flag is set.
-      if (Add & FuzzerNoLink)
-        CoverageFeatures |= CoverageTracePCGuard | CoverageIndirCall |
-                            CoverageTraceCmp;
+      if (Add & FuzzerNoLink) {
+        CoverageFeatures |= CoverageInline8bitCounters | CoverageIndirCall |
+                            CoverageTraceCmp | CoveragePCTable;
+        // Due to TLS differences, stack depth tracking is only enabled on Linux
+        if (TC.getTriple().isOSLinux())
+          CoverageFeatures |= CoverageStackDepth;
+      }
 
       Kinds |= Add;
     } else if (Arg->getOption().matches(options::OPT_fno_sanitize_EQ)) {
@@ -483,9 +493,13 @@ SanitizerArgs::SanitizerArgs(const ToolChain &TC,
       }
     }
     MsanUseAfterDtor =
-        Args.hasArg(options::OPT_fsanitize_memory_use_after_dtor);
+        Args.hasFlag(options::OPT_fsanitize_memory_use_after_dtor,
+                     options::OPT_fno_sanitize_memory_use_after_dtor,
+                     MsanUseAfterDtor);
     NeedPIE |= !(TC.getTriple().isOSLinux() &&
                  TC.getTriple().getArch() == llvm::Triple::x86_64);
+  } else {
+    MsanUseAfterDtor = false;
   }
 
   if (AllAddedKinds & Thread) {
@@ -546,7 +560,7 @@ SanitizerArgs::SanitizerArgs(const ToolChain &TC,
 
       // Disable coverage and not claim the flags if there is at least one
       // non-supporting sanitizer.
-      if (!(AllAddedKinds & ~setGroupBits(SupportsCoverage))) {
+      if (!(AllAddedKinds & ~AllRemove & ~setGroupBits(SupportsCoverage))) {
         Arg->claim();
       } else {
         CoverageFeatures = 0;
@@ -581,26 +595,34 @@ SanitizerArgs::SanitizerArgs(const ToolChain &TC,
         << "-fsanitize-coverage=trace-pc-guard";
 
   int InsertionPointTypes = CoverageFunc | CoverageBB | CoverageEdge;
+  int InstrumentationTypes =
+      CoverageTracePC | CoverageTracePCGuard | CoverageInline8bitCounters;
   if ((CoverageFeatures & InsertionPointTypes) &&
-      !(CoverageFeatures &(CoverageTracePC | CoverageTracePCGuard))) {
+      !(CoverageFeatures & InstrumentationTypes)) {
     D.Diag(clang::diag::warn_drv_deprecated_arg)
         << "-fsanitize-coverage=[func|bb|edge]"
         << "-fsanitize-coverage=[func|bb|edge],[trace-pc-guard|trace-pc]";
   }
 
   // trace-pc w/o func/bb/edge implies edge.
-  if ((CoverageFeatures &
-       (CoverageTracePC | CoverageTracePCGuard | CoverageInline8bitCounters)) &&
-      !(CoverageFeatures & InsertionPointTypes))
-    CoverageFeatures |= CoverageEdge;
+  if (!(CoverageFeatures & InsertionPointTypes)) {
+    if (CoverageFeatures &
+        (CoverageTracePC | CoverageTracePCGuard | CoverageInline8bitCounters))
+      CoverageFeatures |= CoverageEdge;
+
+    if (CoverageFeatures & CoverageStackDepth)
+      CoverageFeatures |= CoverageFunc;
+  }
 
   SharedRuntime =
       Args.hasFlag(options::OPT_shared_libsan, options::OPT_static_libsan,
                    TC.getTriple().isAndroid() || TC.getTriple().isOSFuchsia() ||
                        TC.getTriple().isOSDarwin());
 
+  ImplicitCfiRuntime = TC.getTriple().isAndroid();
+
   if (AllAddedKinds & Address) {
-    NeedPIE |= TC.getTriple().isAndroid() || TC.getTriple().isOSFuchsia();
+    NeedPIE |= TC.getTriple().isOSFuchsia();
     if (Arg *A =
             Args.getLastArg(options::OPT_fsanitize_address_field_padding)) {
         StringRef S = A->getValue();
@@ -638,6 +660,11 @@ SanitizerArgs::SanitizerArgs(const ToolChain &TC,
         Args.hasArg(options::OPT_fsanitize_address_globals_dead_stripping);
   } else {
     AsanUseAfterScope = false;
+  }
+
+  if (AllAddedKinds & SafeStack) {
+    // SafeStack runtime is built into the system on Fuchsia.
+    SafeStackRuntime = !TC.getTriple().isOSFuchsia();
   }
 
   // Parse -link-cxx-sanitizer flag.
@@ -701,7 +728,9 @@ void SanitizerArgs::addArgs(const ToolChain &TC, const llvm::opt::ArgList &Args,
     std::make_pair(CoverageTracePC, "-fsanitize-coverage-trace-pc"),
     std::make_pair(CoverageTracePCGuard, "-fsanitize-coverage-trace-pc-guard"),
     std::make_pair(CoverageInline8bitCounters, "-fsanitize-coverage-inline-8bit-counters"),
-    std::make_pair(CoverageNoPrune, "-fsanitize-coverage-no-prune")};
+    std::make_pair(CoveragePCTable, "-fsanitize-coverage-pc-table"),
+    std::make_pair(CoverageNoPrune, "-fsanitize-coverage-no-prune"),
+    std::make_pair(CoverageStackDepth, "-fsanitize-coverage-stack-depth")};
   for (auto F : CoverageFlags) {
     if (CoverageFeatures & F.first)
       CmdArgs.push_back(F.second);
@@ -866,6 +895,8 @@ int parseCoverageFeatures(const Driver &D, const llvm::opt::Arg *A) {
         .Case("trace-pc-guard", CoverageTracePCGuard)
         .Case("no-prune", CoverageNoPrune)
         .Case("inline-8bit-counters", CoverageInline8bitCounters)
+        .Case("pc-table", CoveragePCTable)
+        .Case("stack-depth", CoverageStackDepth)
         .Default(0);
     if (F == 0)
       D.Diag(clang::diag::err_drv_unsupported_option_argument)

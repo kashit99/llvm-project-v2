@@ -155,8 +155,8 @@ static unsigned estimateRSStackSizeLimit(MachineFunction &MF) {
           MI.getOpcode() == AArch64::ADDSXri)
         continue;
 
-      for (unsigned i = 0, e = MI.getNumOperands(); i != e; ++i) {
-        if (!MI.getOperand(i).isFI())
+      for (const MachineOperand &MO : MI.operands()) {
+        if (!MO.isFI())
           continue;
 
         int Offset = 0;
@@ -1092,7 +1092,7 @@ bool AArch64FrameLowering::spillCalleeSavedRegisters(
 
 bool AArch64FrameLowering::restoreCalleeSavedRegisters(
     MachineBasicBlock &MBB, MachineBasicBlock::iterator MI,
-    const std::vector<CalleeSavedInfo> &CSI,
+    std::vector<CalleeSavedInfo> &CSI,
     const TargetRegisterInfo *TRI) const {
   MachineFunction &MF = *MBB.getParent();
   const TargetInstrInfo &TII = *MF.getSubtarget().getInstrInfo();

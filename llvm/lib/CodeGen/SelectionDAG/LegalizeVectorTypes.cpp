@@ -1955,7 +1955,7 @@ SDValue DAGTypeLegalizer::SplitVecOp_MSCATTER(MaskedScatterSDNode *N,
   else
     std::tie(IndexLo, IndexHi) = DAG.SplitVector(Index, DL);
 
-  SDValue Lo, Hi;
+  SDValue Lo;
   MachineMemOperand *MMO = DAG.getMachineFunction().
     getMachineMemOperand(N->getPointerInfo(),
                          MachineMemOperand::MOStore, LoMemVT.getStoreSize(),
@@ -1970,13 +1970,12 @@ SDValue DAGTypeLegalizer::SplitVecOp_MSCATTER(MaskedScatterSDNode *N,
                          MachineMemOperand::MOStore,  HiMemVT.getStoreSize(),
                          Alignment, N->getAAInfo(), N->getRanges());
 
-  SDValue OpsHi[] = {Ch, DataHi, MaskHi, Ptr, IndexHi};
-  Hi = DAG.getMaskedScatter(DAG.getVTList(MVT::Other), DataHi.getValueType(),
-                            DL, OpsHi, MMO);
-
-  // Build a factor node to remember that this store is independent of the
-  // other one.
-  return DAG.getNode(ISD::TokenFactor, DL, MVT::Other, Lo, Hi);
+  // The order of the Scatter operation after split is well defined. The "Hi"
+  // part comes after the "Lo". So these two operations should be chained one
+  // after another.
+  SDValue OpsHi[] = {Lo, DataHi, MaskHi, Ptr, IndexHi};
+  return DAG.getMaskedScatter(DAG.getVTList(MVT::Other), DataHi.getValueType(),
+                              DL, OpsHi, MMO);
 }
 
 SDValue DAGTypeLegalizer::SplitVecOp_STORE(StoreSDNode *N, unsigned OpNo) {
@@ -2942,7 +2941,7 @@ SDValue DAGTypeLegalizer::WidenVecRes_MLOAD(MaskedLoadSDNode *N) {
   SDValue Res = DAG.getMaskedLoad(WidenVT, dl, N->getChain(), N->getBasePtr(),
                                   Mask, Src0, N->getMemoryVT(),
                                   N->getMemOperand(), ExtType,
-	                                N->isExpandingLoad());
+                                        N->isExpandingLoad());
   // Legalize the chain result - switch anything that used the old chain to
   // use the new one.
   ReplaceValueWith(SDValue(N, 1), Res.getValue(1));
@@ -3032,7 +3031,7 @@ SDValue DAGTypeLegalizer::convertMask(SDValue InMask, EVT MaskVT,
 
   // Make a new Mask node, with a legal result VT.
   SmallVector<SDValue, 4> Ops;
-  for (unsigned i = 0; i < InMask->getNumOperands(); ++i)
+  for (unsigned i = 0, e = InMask->getNumOperands(); i < e; ++i)
     Ops.push_back(InMask->getOperand(i));
   SDValue Mask = DAG.getNode(InMask->getOpcode(), SDLoc(InMask), MaskVT, Ops);
 
@@ -3065,12 +3064,9 @@ SDValue DAGTypeLegalizer::convertMask(SDValue InMask, EVT MaskVT,
   } else if (CurrMaskNumEls < ToMaskVT.getVectorNumElements()) {
     unsigned NumSubVecs = (ToMaskVT.getVectorNumElements() / CurrMaskNumEls);
     EVT SubVT = Mask->getValueType(0);
-    SmallVector<SDValue, 16> SubConcatOps(NumSubVecs);
-    SubConcatOps[0] = Mask;
-    for (unsigned i = 1; i < NumSubVecs; ++i)
-      SubConcatOps[i] = DAG.getUNDEF(SubVT);
-    Mask =
-        DAG.getNode(ISD::CONCAT_VECTORS, SDLoc(Mask), ToMaskVT, SubConcatOps);
+    SmallVector<SDValue, 16> SubOps(NumSubVecs, DAG.getUNDEF(SubVT));
+    SubOps[0] = Mask;
+    Mask = DAG.getNode(ISD::CONCAT_VECTORS, SDLoc(Mask), ToMaskVT, SubOps);
   }
 
   assert((Mask->getValueType(0) == ToMaskVT) &&
@@ -3105,7 +3101,8 @@ SDValue DAGTypeLegalizer::WidenVSELECTAndMask(SDNode *N) {
 
   // If this is a splitted VSELECT that was previously already handled, do
   // nothing.
-  if (Cond->getValueType(0).getScalarSizeInBits() != 1)
+  EVT CondVT = Cond->getValueType(0);
+  if (CondVT.getScalarSizeInBits() != 1)
     return SDValue();
 
   EVT VSelVT = N->getValueType(0);
@@ -3128,6 +3125,14 @@ SDValue DAGTypeLegalizer::WidenVSELECTAndMask(SDNode *N) {
       SetCCOpVT = TLI.getTypeToTransformTo(Ctx, SetCCOpVT);
     EVT SetCCResVT = getSetCCResultType(SetCCOpVT);
     if (SetCCResVT.getScalarSizeInBits() == 1)
+      return SDValue();
+  } else if (CondVT.getScalarType() == MVT::i1) {
+    // If there is support for an i1 vector mask (or only scalar i1 conditions),
+    // don't touch.
+    while (TLI.getTypeAction(Ctx, CondVT) != TargetLowering::TypeLegal)
+      CondVT = TLI.getTypeToTransformTo(Ctx, CondVT);
+
+    if (CondVT.getScalarType() == MVT::i1)
       return SDValue();
   }
 

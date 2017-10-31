@@ -50,7 +50,7 @@ AMDGPUSubtarget::initializeSubtargetDependencies(const Triple &TT,
 
   SmallString<256> FullFS("+promote-alloca,+fp64-fp16-denormals,+dx10-clamp,+load-store-opt,");
   if (isAmdHsaOS()) // Turn on FlatForGlobal for HSA.
-    FullFS += "+flat-for-global,+unaligned-buffer-access,+trap-handler,";
+    FullFS += "+flat-address-space,+flat-for-global,+unaligned-buffer-access,+trap-handler,";
 
   FullFS += FS;
 
@@ -75,6 +75,18 @@ AMDGPUSubtarget::initializeSubtargetDependencies(const Triple &TT,
   if (MaxPrivateElementSize == 0)
     MaxPrivateElementSize = 4;
 
+  if (LDSBankCount == 0)
+    LDSBankCount = 32;
+
+  if (TT.getArch() == Triple::amdgcn) {
+    if (LocalMemorySize == 0)
+      LocalMemorySize = 32768;
+
+    // Do something sensible for unspecified target.
+    if (!HasMovrel && !HasVGPRIndexMode)
+      HasMovrel = true;
+  }
+
   return *this;
 }
 
@@ -84,7 +96,7 @@ AMDGPUSubtarget::AMDGPUSubtarget(const Triple &TT, StringRef GPU, StringRef FS,
     TargetTriple(TT),
     Gen(TT.getArch() == Triple::amdgcn ? SOUTHERN_ISLANDS : R600),
     IsaVersion(ISAVersion0_0_0),
-    WavefrontSize(64),
+    WavefrontSize(0),
     LocalMemorySize(0),
     LDSBankCount(0),
     MaxPrivateElementSize(0),
@@ -98,6 +110,7 @@ AMDGPUSubtarget::AMDGPUSubtarget(const Triple &TT, StringRef GPU, StringRef FS,
     DX10Clamp(false),
     FlatForGlobal(false),
     AutoWaitcntBeforeBarrier(false),
+    CodeObjectV3(false),
     UnalignedScratchAccess(false),
     UnalignedBufferAccess(false),
 
@@ -117,14 +130,15 @@ AMDGPUSubtarget::AMDGPUSubtarget(const Triple &TT, StringRef GPU, StringRef FS,
 
     FP64(false),
     IsGCN(false),
-    GCN1Encoding(false),
     GCN3Encoding(false),
     CIInsts(false),
     GFX9Insts(false),
     SGPRInitBug(false),
     HasSMemRealTime(false),
     Has16BitInsts(false),
+    HasIntClamp(false),
     HasVOP3PInsts(false),
+    HasMadMixInsts(false),
     HasMovrel(false),
     HasVGPRIndexMode(false),
     HasScalarStores(false),
@@ -140,6 +154,7 @@ AMDGPUSubtarget::AMDGPUSubtarget(const Triple &TT, StringRef GPU, StringRef FS,
     FlatInstOffsets(false),
     FlatGlobalInsts(false),
     FlatScratchInsts(false),
+    AddNoCarryInsts(false),
 
     R600ALUInst(false),
     CaymanISA(false),
@@ -176,14 +191,31 @@ unsigned AMDGPUSubtarget::getOccupancyWithLocalMemSize(uint32_t Bytes,
   return NumWaves;
 }
 
+std::pair<unsigned, unsigned>
+AMDGPUSubtarget::getDefaultFlatWorkGroupSize(CallingConv::ID CC) const {
+  switch (CC) {
+  case CallingConv::AMDGPU_CS:
+  case CallingConv::AMDGPU_KERNEL:
+  case CallingConv::SPIR_KERNEL:
+    return std::make_pair(getWavefrontSize() * 2, getWavefrontSize() * 4);
+  case CallingConv::AMDGPU_VS:
+  case CallingConv::AMDGPU_LS:
+  case CallingConv::AMDGPU_HS:
+  case CallingConv::AMDGPU_ES:
+  case CallingConv::AMDGPU_GS:
+  case CallingConv::AMDGPU_PS:
+    return std::make_pair(1, getWavefrontSize());
+  default:
+    return std::make_pair(1, 16 * getWavefrontSize());
+  }
+}
+
 std::pair<unsigned, unsigned> AMDGPUSubtarget::getFlatWorkGroupSizes(
   const Function &F) const {
+  // FIXME: 1024 if function.
   // Default minimum/maximum flat work group sizes.
   std::pair<unsigned, unsigned> Default =
-    AMDGPU::isCompute(F.getCallingConv()) ?
-      std::pair<unsigned, unsigned>(getWavefrontSize() * 2,
-                                    getWavefrontSize() * 4) :
-      std::pair<unsigned, unsigned>(1, getWavefrontSize());
+    getDefaultFlatWorkGroupSize(F.getCallingConv());
 
   // TODO: Do not process "amdgpu-max-work-group-size" attribute once mesa
   // starts using "amdgpu-flat-work-group-size" attribute.
@@ -510,4 +542,58 @@ unsigned SISubtarget::getMaxNumVGPRs(const MachineFunction &MF) const {
   }
 
   return MaxNumVGPRs - getReservedNumVGPRs(MF);
+}
+
+struct MemOpClusterMutation : ScheduleDAGMutation {
+  const SIInstrInfo *TII;
+
+  MemOpClusterMutation(const SIInstrInfo *tii) : TII(tii) {}
+
+  void apply(ScheduleDAGInstrs *DAGInstrs) override {
+    ScheduleDAGMI *DAG = static_cast<ScheduleDAGMI*>(DAGInstrs);
+
+    SUnit *SUa = nullptr;
+    // Search for two consequent memory operations and link them
+    // to prevent scheduler from moving them apart.
+    // In DAG pre-process SUnits are in the original order of
+    // the instructions before scheduling.
+    for (SUnit &SU : DAG->SUnits) {
+      MachineInstr &MI2 = *SU.getInstr();
+      if (!MI2.mayLoad() && !MI2.mayStore()) {
+        SUa = nullptr;
+        continue;
+      }
+      if (!SUa) {
+        SUa = &SU;
+        continue;
+      }
+
+      MachineInstr &MI1 = *SUa->getInstr();
+      if ((TII->isVMEM(MI1) && TII->isVMEM(MI2)) ||
+          (TII->isFLAT(MI1) && TII->isFLAT(MI2)) ||
+          (TII->isSMRD(MI1) && TII->isSMRD(MI2)) ||
+          (TII->isDS(MI1)   && TII->isDS(MI2))) {
+        SU.addPredBarrier(SUa);
+
+        for (const SDep &SI : SU.Preds) {
+          if (SI.getSUnit() != SUa)
+            SUa->addPred(SDep(SI.getSUnit(), SDep::Artificial));
+        }
+
+        if (&SU != &DAG->ExitSU) {
+          for (const SDep &SI : SUa->Succs) {
+            if (SI.getSUnit() != &SU)
+              SI.getSUnit()->addPred(SDep(&SU, SDep::Artificial));
+          }
+        }
+      }
+
+      SUa = &SU;
+    }
+  }
+};
+
+void SISubtarget::getPostRAMutations(
+    std::vector<std::unique_ptr<ScheduleDAGMutation>> &Mutations) const {
+  Mutations.push_back(llvm::make_unique<MemOpClusterMutation>(&InstrInfo));
 }

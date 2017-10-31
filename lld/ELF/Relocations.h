@@ -10,7 +10,7 @@
 #ifndef LLD_ELF_RELOCATIONS_H
 #define LLD_ELF_RELOCATIONS_H
 
-#include "lld/Core/LLVM.h"
+#include "lld/Common/LLVM.h"
 #include "llvm/ADT/DenseMap.h"
 #include <map>
 #include <vector>
@@ -21,12 +21,16 @@ class SymbolBody;
 class InputSection;
 class InputSectionBase;
 class OutputSection;
-struct OutputSectionCommand;
+class OutputSection;
+
+// Represents a relocation type, such as R_X86_64_PC32 or R_ARM_THM_CALL.
+typedef uint32_t RelType;
 
 // List of target-independent relocation types. Relocations read
 // from files are converted to these types so that the main code
 // doesn't have to know about architecture-specific details.
 enum RelExpr {
+  R_INVALID,
   R_ABS,
   R_ARM_SBREL,
   R_GOT,
@@ -111,7 +115,7 @@ template <RelExpr... Exprs> bool isRelExprOneOf(RelExpr Expr) {
 // Architecture-neutral representation of relocation.
 struct Relocation {
   RelExpr Expr;
-  uint32_t Type;
+  RelType Type;
   uint64_t Offset;
   int64_t Addend;
   SymbolBody *Sym;
@@ -121,11 +125,12 @@ template <class ELFT> void scanRelocations(InputSectionBase &);
 
 class ThunkSection;
 class Thunk;
+struct InputSectionDescription;
 
 class ThunkCreator {
 public:
   // Return true if Thunks have been added to OutputSections
-  bool createThunks(ArrayRef<OutputSectionCommand *> OutputSections);
+  bool createThunks(ArrayRef<OutputSection *> OutputSections);
 
   // The number of completed passes of createThunks this permits us
   // to do one time initialization on Pass 0 and put a limit on the
@@ -133,18 +138,28 @@ public:
   uint32_t Pass = 0;
 
 private:
-  void mergeThunks();
-  ThunkSection *getOSThunkSec(OutputSectionCommand *Cmd,
-                              std::vector<InputSection *> *ISR);
-  ThunkSection *getISThunkSec(InputSection *IS, OutputSection *OS);
-  void forEachExecInputSection(
-      ArrayRef<OutputSectionCommand *> OutputSections,
-      std::function<void(OutputSectionCommand *, std::vector<InputSection *> *,
-                         InputSection *)>
-          Fn);
-  std::pair<Thunk *, bool> getThunk(SymbolBody &Body, uint32_t Type);
-  ThunkSection *addThunkSection(OutputSection *OS,
-                                std::vector<InputSection *> *, uint64_t Off);
+  void mergeThunks(ArrayRef<OutputSection *> OutputSections);
+
+  ThunkSection *getISDThunkSec(OutputSection *OS, InputSection *IS,
+                               InputSectionDescription *ISD, uint32_t Type,
+                               uint64_t Src);
+
+  ThunkSection *getISThunkSec(InputSection *IS);
+
+  void createInitialThunkSections(ArrayRef<OutputSection *> OutputSections);
+
+  void forEachInputSectionDescription(
+      ArrayRef<OutputSection *> OutputSections,
+      std::function<void(OutputSection *, InputSectionDescription *)> Fn);
+
+  std::pair<Thunk *, bool> getThunk(SymbolBody &Body, RelType Type,
+                                    uint64_t Src);
+
+  ThunkSection *addThunkSection(OutputSection *OS, InputSectionDescription *,
+                                uint64_t Off);
+
+  bool normalizeExistingThunk(Relocation &Rel, uint64_t Src);
+
   // Record all the available Thunks for a Symbol
   llvm::DenseMap<SymbolBody *, std::vector<Thunk *>> ThunkedSymbols;
 
@@ -157,16 +172,6 @@ private:
   // so we need to make sure that there is only one of them.
   // The Mips LA25 Thunk is an example of an inline ThunkSection.
   llvm::DenseMap<InputSection *, ThunkSection *> ThunkedSections;
-
-  // All the ThunkSections that we have created, organised by OutputSection
-  // will contain a mix of ThunkSections that have been created this pass, and
-  // ThunkSections that have been merged into the OutputSection on previous
-  // passes
-  std::map<std::vector<InputSection *> *, std::vector<ThunkSection *>>
-      ThunkSections;
-
-  // The ThunkSection for this vector of InputSections
-  ThunkSection *CurTS;
 };
 
 // Return a int64_t to make sure we get the sign extension out of the way as

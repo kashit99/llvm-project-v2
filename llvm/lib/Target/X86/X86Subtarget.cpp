@@ -147,7 +147,12 @@ X86Subtarget::classifyGlobalFunctionReference(const GlobalValue *GV,
   if (TM.shouldAssumeDSOLocal(M, GV))
     return X86II::MO_NO_FLAG;
 
-  assert(!isTargetCOFF());
+  if (isTargetCOFF()) {
+    assert(GV->hasDLLImportStorageClass() &&
+           "shouldAssumeDSOLocal gave inconsistent answer");
+    return X86II::MO_DLLIMPORT;
+  }
+
   const Function *F = dyn_cast_or_null<Function>(GV);
 
   if (isTargetELF()) {
@@ -185,9 +190,12 @@ const char *X86Subtarget::getBZeroEntry() const {
 }
 
 bool X86Subtarget::hasSinCos() const {
-  return getTargetTriple().isMacOSX() &&
-    !getTargetTriple().isMacOSXVersionLT(10, 9) &&
-    is64Bit();
+  if (getTargetTriple().isMacOSX()) {
+    return !getTargetTriple().isMacOSXVersionLT(10, 9) && is64Bit();
+  } else if (getTargetTriple().isOSFuchsia()) {
+    return true;
+  }
+  return false;
 }
 
 /// Return true if the subtarget allows calls to immediate address.
@@ -259,6 +267,17 @@ void X86Subtarget::initSubtargetFeatures(StringRef CPU, StringRef FS) {
   else if (isTargetDarwin() || isTargetLinux() || isTargetSolaris() ||
            isTargetKFreeBSD() || In64BitMode)
     stackAlignment = 16;
+ 
+  // Gather is available since Haswell (AVX2 set). So technically, we can generate Gathers 
+  // on all AVX2 processors. But the overhead on HSW is high. Skylake Client processor has
+  // faster Gathers than HSW and performance is similar to Skylake Server (AVX-512). 
+  // The specified overhead is relative to the Load operation."2" is the number provided 
+  // by Intel architects, This parameter is used for cost estimation of Gather Op and 
+  // comparison with other alternatives.
+  if (X86ProcFamily == IntelSkylake || hasAVX512())
+    GatherOverhead = 2;
+  if (hasAVX512())
+    ScatterOverhead = 2;
 }
 
 void X86Subtarget::initializeEnvironment() {
@@ -310,7 +329,6 @@ void X86Subtarget::initializeEnvironment() {
   HasSGX = false;
   HasCLFLUSHOPT = false;
   HasCLWB = false;
-  IsBTMemSlow = false;
   IsPMULLDSlow = false;
   IsSHLDSlow = false;
   IsUAMem16Slow = false;
@@ -323,11 +341,12 @@ void X86Subtarget::initializeEnvironment() {
   HasFastVectorFSQRT = false;
   HasFastLZCNT = false;
   HasFastSHLDRotate = false;
+  HasMacroFusion = false;
   HasERMSB = false;
   HasSlowDivide32 = false;
   HasSlowDivide64 = false;
   PadShortFunctions = false;
-  CallRegIndirect = false;
+  SlowTwoMemOps = false;
   LEAUsesAG = false;
   SlowLEA = false;
   Slow3OpsLEA = false;
@@ -336,6 +355,9 @@ void X86Subtarget::initializeEnvironment() {
   // FIXME: this is a known good value for Yonah. How about others?
   MaxInlineSizeThreshold = 128;
   UseSoftFloat = false;
+  X86ProcFamily = Others;
+  GatherOverhead = 1024;
+  ScatterOverhead = 1024;
 }
 
 X86Subtarget &X86Subtarget::initializeSubtargetDependencies(StringRef CPU,

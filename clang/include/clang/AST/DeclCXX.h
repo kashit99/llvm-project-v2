@@ -73,7 +73,8 @@ public:
 namespace llvm {
   // Provide PointerLikeTypeTraits for non-cvr pointers.
   template<>
-  struct PointerLikeTypeTraits< ::clang::AnyFunctionDecl> {
+  class PointerLikeTypeTraits< ::clang::AnyFunctionDecl> {
+  public:
     static inline void *getAsVoidPointer(::clang::AnyFunctionDecl F) {
       return F.get();
     }
@@ -374,7 +375,6 @@ class CXXRecordDecl : public RecordDecl {
     /// \brief These flags are \c true if a defaulted corresponding special
     /// member can't be fully analyzed without performing overload resolution.
     /// @{
-    unsigned NeedOverloadResolutionForCopyConstructor : 1;
     unsigned NeedOverloadResolutionForMoveConstructor : 1;
     unsigned NeedOverloadResolutionForMoveAssignment : 1;
     unsigned NeedOverloadResolutionForDestructor : 1;
@@ -383,7 +383,6 @@ class CXXRecordDecl : public RecordDecl {
     /// \brief These flags are \c true if an implicit defaulted corresponding
     /// special member would be defined as deleted.
     /// @{
-    unsigned DefaultedCopyConstructorIsDeleted : 1;
     unsigned DefaultedMoveConstructorIsDeleted : 1;
     unsigned DefaultedMoveAssignmentIsDeleted : 1;
     unsigned DefaultedDestructorIsDeleted : 1;
@@ -415,12 +414,6 @@ class CXXRecordDecl : public RecordDecl {
     /// \brief True if this class has a (possibly implicit) defaulted default
     /// constructor.
     unsigned HasDefaultedDefaultConstructor : 1;
-
-    /// \brief True if this class can be passed in a non-address-preserving
-    /// fashion (such as in registers) according to the C++ language rules.
-    /// This does not imply anything about how the ABI in use will actually
-    /// pass an object of this class.
-    unsigned CanPassInRegisters : 1;
 
     /// \brief True if a defaulted default constructor for this class would
     /// be constexpr.
@@ -818,53 +811,18 @@ public:
     return data().FirstFriend.isValid();
   }
 
-  /// \brief \c true if a defaulted copy constructor for this class would be
-  /// deleted.
-  bool defaultedCopyConstructorIsDeleted() const {
-    assert((!needsOverloadResolutionForCopyConstructor() ||
-            (data().DeclaredSpecialMembers & SMF_CopyConstructor)) &&
-           "this property has not yet been computed by Sema");
-    return data().DefaultedCopyConstructorIsDeleted;
-  }
-
-  /// \brief \c true if a defaulted move constructor for this class would be
-  /// deleted.
-  bool defaultedMoveConstructorIsDeleted() const {
-    assert((!needsOverloadResolutionForMoveConstructor() ||
-            (data().DeclaredSpecialMembers & SMF_MoveConstructor)) &&
-           "this property has not yet been computed by Sema");
-    return data().DefaultedMoveConstructorIsDeleted;
-  }
-
-  /// \brief \c true if a defaulted destructor for this class would be deleted.
-  bool defaultedDestructorIsDeleted() const {
-    assert((!needsOverloadResolutionForDestructor() ||
-            (data().DeclaredSpecialMembers & SMF_Destructor)) &&
-           "this property has not yet been computed by Sema");
-    return data().DefaultedDestructorIsDeleted;
-  }
-
-  /// \brief \c true if we know for sure that this class has a single,
-  /// accessible, unambiguous copy constructor that is not deleted.
-  bool hasSimpleCopyConstructor() const {
-    return !hasUserDeclaredCopyConstructor() &&
-           !data().DefaultedCopyConstructorIsDeleted;
-  }
-
   /// \brief \c true if we know for sure that this class has a single,
   /// accessible, unambiguous move constructor that is not deleted.
   bool hasSimpleMoveConstructor() const {
     return !hasUserDeclaredMoveConstructor() && hasMoveConstructor() &&
            !data().DefaultedMoveConstructorIsDeleted;
   }
-
   /// \brief \c true if we know for sure that this class has a single,
   /// accessible, unambiguous move assignment operator that is not deleted.
   bool hasSimpleMoveAssignment() const {
     return !hasUserDeclaredMoveAssignment() && hasMoveAssignment() &&
            !data().DefaultedMoveAssignmentIsDeleted;
   }
-
   /// \brief \c true if we know for sure that this class has an accessible
   /// destructor that is not deleted.
   bool hasSimpleDestructor() const {
@@ -920,16 +878,7 @@ public:
   /// \brief Determine whether we need to eagerly declare a defaulted copy
   /// constructor for this class.
   bool needsOverloadResolutionForCopyConstructor() const {
-    // C++17 [class.copy.ctor]p6:
-    //   If the class definition declares a move constructor or move assignment
-    //   operator, the implicitly declared copy constructor is defined as
-    //   deleted.
-    // In MSVC mode, sometimes a declared move assignment does not delete an
-    // implicit copy constructor, so defer this choice to Sema.
-    if (data().UserDeclaredSpecialMembers &
-        (SMF_MoveConstructor | SMF_MoveAssignment))
-      return true;
-    return data().NeedOverloadResolutionForCopyConstructor;
+    return data().HasMutableFields;
   }
 
   /// \brief Determine whether an implicit copy constructor for this type
@@ -970,31 +919,13 @@ public:
            needsImplicitMoveConstructor();
   }
 
-  /// \brief Set that we attempted to declare an implicit copy
-  /// constructor, but overload resolution failed so we deleted it.
-  void setImplicitCopyConstructorIsDeleted() {
-    assert((data().DefaultedCopyConstructorIsDeleted ||
-            needsOverloadResolutionForCopyConstructor()) &&
-           "Copy constructor should not be deleted");
-    data().DefaultedCopyConstructorIsDeleted = true;
-  }
-
-  /// \brief Set that we attempted to declare an implicit move
+  /// \brief Set that we attempted to declare an implicitly move
   /// constructor, but overload resolution failed so we deleted it.
   void setImplicitMoveConstructorIsDeleted() {
     assert((data().DefaultedMoveConstructorIsDeleted ||
             needsOverloadResolutionForMoveConstructor()) &&
            "move constructor should not be deleted");
     data().DefaultedMoveConstructorIsDeleted = true;
-  }
-
-  /// \brief Set that we attempted to declare an implicit destructor,
-  /// but overload resolution failed so we deleted it.
-  void setImplicitDestructorIsDeleted() {
-    assert((data().DefaultedDestructorIsDeleted ||
-            needsOverloadResolutionForDestructor()) &&
-           "destructor should not be deleted");
-    data().DefaultedDestructorIsDeleted = true;
   }
 
   /// \brief Determine whether this class should get an implicit move
@@ -1383,18 +1314,6 @@ public:
   /// and will call only irrelevant destructors.
   bool hasIrrelevantDestructor() const {
     return data().HasIrrelevantDestructor;
-  }
-
-  /// \brief Determine whether this class has at least one trivial, non-deleted
-  /// copy or move constructor.
-  bool canPassInRegisters() const {
-    return data().CanPassInRegisters;
-  }
-
-  /// \brief Set that we can pass this RecordDecl in registers.
-  // FIXME: This should be set as part of completeDefinition.
-  void setCanPassInRegisters(bool CanPass) {
-    data().CanPassInRegisters = CanPass;
   }
 
   /// \brief Determine whether this class has a non-literal or/ volatile type
@@ -1843,10 +1762,6 @@ public:
     return getLambdaData().MethodTyInfo;
   }
 
-  // \brief Determine whether this type is an Interface Like type for
-  // __interface inheritence purposes.
-  bool isInterfaceLike() const;
-
   static bool classof(const Decl *D) { return classofKind(D->getKind()); }
   static bool classofKind(Kind K) {
     return K >= firstCXXRecord && K <= lastCXXRecord;
@@ -1881,10 +1796,6 @@ private:
     if (EndLocation.isValid())
       setRangeEnd(EndLocation);
     IsExplicitSpecified = IsExplicit;
-
-    // IsCopyDeductionCandidate is a union variant member, so ensure it is the
-    // active member by storing to it.
-    IsCopyDeductionCandidate = false; 
   }
 
 public:
@@ -1906,12 +1817,6 @@ public:
   TemplateDecl *getDeducedTemplate() const {
     return getDeclName().getCXXDeductionGuideTemplate();
   }
-
-  void setIsCopyDeductionCandidate() {
-    IsCopyDeductionCandidate = true;
-  }
-
-  bool isCopyDeductionCandidate() const { return IsCopyDeductionCandidate; }
 
   // Implement isa/cast/dyncast/etc.
   static bool classof(const Decl *D) { return classofKind(D->getKind()); }
@@ -2576,10 +2481,7 @@ public:
 class CXXDestructorDecl : public CXXMethodDecl {
   void anchor() override;
 
-  // FIXME: Don't allocate storage for these except in the first declaration
-  // of a virtual destructor.
   FunctionDecl *OperatorDelete;
-  Expr *OperatorDeleteThisArg;
 
   CXXDestructorDecl(ASTContext &C, CXXRecordDecl *RD, SourceLocation StartLoc,
                     const DeclarationNameInfo &NameInfo,
@@ -2587,7 +2489,7 @@ class CXXDestructorDecl : public CXXMethodDecl {
                     bool isInline, bool isImplicitlyDeclared)
     : CXXMethodDecl(CXXDestructor, C, RD, StartLoc, NameInfo, T, TInfo,
                     SC_None, isInline, /*isConstexpr=*/false, SourceLocation()),
-      OperatorDelete(nullptr), OperatorDeleteThisArg(nullptr) {
+      OperatorDelete(nullptr) {
     setImplicit(isImplicitlyDeclared);
   }
 
@@ -2600,12 +2502,9 @@ public:
                                    bool isImplicitlyDeclared);
   static CXXDestructorDecl *CreateDeserialized(ASTContext & C, unsigned ID);
 
-  void setOperatorDelete(FunctionDecl *OD, Expr *ThisArg);
+  void setOperatorDelete(FunctionDecl *OD);
   const FunctionDecl *getOperatorDelete() const {
     return getCanonicalDecl()->OperatorDelete;
-  }
-  Expr *getOperatorDeleteThisArg() const {
-    return getCanonicalDecl()->OperatorDeleteThisArg;
   }
 
   CXXDestructorDecl *getCanonicalDecl() override {

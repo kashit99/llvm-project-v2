@@ -74,9 +74,8 @@ void *Decl::operator new(std::size_t Size, const ASTContext &Ctx,
                          DeclContext *Parent, std::size_t Extra) {
   assert(!Parent || &Parent->getParentASTContext() == &Ctx);
   // With local visibility enabled, we track the owning module even for local
-  // declarations. We create the TU decl early and may not yet know what the
-  // LangOpts are, so conservatively allocate the storage.
-  if (Ctx.getLangOpts().trackLocalOwningModule() || !Parent) {
+  // declarations.
+  if (Ctx.getLangOpts().trackLocalOwningModule()) {
     // Ensure required alignment of the resulting object by adding extra
     // padding at the start if required.
     size_t ExtraAlign =
@@ -315,11 +314,12 @@ bool Decl::isLexicallyWithinFunctionOrMethod() const {
 }
 
 bool Decl::isInAnonymousNamespace() const {
-  for (const DeclContext *DC = getDeclContext(); DC; DC = DC->getParent()) {
+  const DeclContext *DC = getDeclContext();
+  do {
     if (const NamespaceDecl *ND = dyn_cast<NamespaceDecl>(DC))
       if (ND->isAnonymousNamespace())
         return true;
-  }
+  } while ((DC = DC->getParent()));
 
   return false;
 }
@@ -680,6 +680,7 @@ unsigned Decl::getIdentifierNamespaceForKind(Kind DeclKind) {
     case CXXConversion:
     case EnumConstant:
     case Var:
+    case Binding:
     case ImplicitParam:
     case ParmVar:
     case ObjCMethod:
@@ -691,11 +692,10 @@ unsigned Decl::getIdentifierNamespaceForKind(Kind DeclKind) {
     case IndirectField:
       return IDNS_Ordinary | IDNS_Member;
 
-    case Binding:
     case NonTypeTemplateParm:
-    case VarTemplate:
-      // These (C++-only) declarations are found by redeclaration lookup for
-      // tag types, so we include them in the tag namespace.
+      // Non-type template parameters are not found by lookups that ignore
+      // non-types, but they are found by redeclaration lookups for tag types,
+      // so we include them in the tag namespace.
       return IDNS_Ordinary | IDNS_Tag;
 
     case ObjCCompatibleAlias:
@@ -704,6 +704,7 @@ unsigned Decl::getIdentifierNamespaceForKind(Kind DeclKind) {
 
     case Typedef:
     case TypeAlias:
+    case TypeAliasTemplate:
     case TemplateTypeParm:
     case ObjCTypeParam:
       return IDNS_Ordinary | IDNS_Type;
@@ -739,11 +740,11 @@ unsigned Decl::getIdentifierNamespaceForKind(Kind DeclKind) {
       return IDNS_Namespace;
 
     case FunctionTemplate:
+    case VarTemplate:
       return IDNS_Ordinary;
 
     case ClassTemplate:
     case TemplateTemplateParm:
-    case TypeAliasTemplate:
       return IDNS_Ordinary | IDNS_Tag | IDNS_Type;
 
     case OMPDeclareReduction:

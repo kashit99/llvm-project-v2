@@ -2,6 +2,7 @@
  * kmp_sched.cpp -- static scheduling -- iteration initialization
  */
 
+
 //===----------------------------------------------------------------------===//
 //
 //                     The LLVM Compiler Infrastructure
@@ -10,6 +11,7 @@
 // Source Licenses. See LICENSE.txt for details.
 //
 //===----------------------------------------------------------------------===//
+
 
 /* Static scheduling initialization.
 

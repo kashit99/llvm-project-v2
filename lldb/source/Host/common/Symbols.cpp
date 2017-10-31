@@ -285,12 +285,7 @@ FileSpec Symbols::LocateExecutableSymbolFile(const ModuleSpec &module_spec) {
           if (num_specs == 1) {
             ModuleSpec mspec;
             if (specs.GetModuleSpecAtIndex(0, mspec)) {
-              // Skip the uuids check if module_uuid is invalid.
-              // For example, this happens for *.dwp files since
-              // at the moment llvm-dwp doesn't output build ids,
-              // nor does binutils dwp.
-              if (!module_uuid.IsValid() ||
-                  module_uuid == mspec.GetUUID())
+              if (mspec.GetUUID() == module_uuid)
                 return file_spec;
             }
           }

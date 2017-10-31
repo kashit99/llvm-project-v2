@@ -2,6 +2,7 @@
  * kmp_ftn_os.h -- KPTS Fortran defines header file.
  */
 
+
 //===----------------------------------------------------------------------===//
 //
 //                     The LLVM Compiler Infrastructure
@@ -10,6 +11,7 @@
 // Source Licenses. See LICENSE.txt for details.
 //
 //===----------------------------------------------------------------------===//
+
 
 #ifndef KMP_FTN_OS_H
 #define KMP_FTN_OS_H
@@ -226,6 +228,7 @@
 #define FTN_IS_INITIAL_DEVICE omp_is_initial_device_
 #endif
 
+
 #if OMP_40_ENABLED
 #define FTN_GET_CANCELLATION omp_get_cancellation_
 #define FTN_GET_CANCELLATION_STATUS kmp_get_cancellation_status_
@@ -344,6 +347,7 @@
 #define FTN_IS_INITIAL_DEVICE OMP_IS_INITIAL_DEVICE
 #endif
 
+
 #if OMP_40_ENABLED
 #define FTN_GET_CANCELLATION OMP_GET_CANCELLATION
 #define FTN_GET_CANCELLATION_STATUS KMP_GET_CANCELLATION_STATUS
@@ -461,6 +465,7 @@
 #define FTN_SET_DEFAULT_DEVICE OMP_SET_DEFAULT_DEVICE_
 #define FTN_IS_INITIAL_DEVICE OMP_IS_INITIAL_DEVICE_
 #endif
+
 
 #if OMP_40_ENABLED
 #define FTN_GET_CANCELLATION OMP_GET_CANCELLATION_

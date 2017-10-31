@@ -115,12 +115,8 @@ WebAssemblyTargetLowering::WebAssemblyTargetLowering(
 
   // As a special case, these operators use the type to mean the type to
   // sign-extend from.
-  setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::i1, Expand);
-  if (!Subtarget->hasAtomics()) {
-    // The Atomics feature includes signext intructions.
-    for (auto T : {MVT::i8, MVT::i16, MVT::i32})
-      setOperationAction(ISD::SIGN_EXTEND_INREG, T, Expand);
-  }
+  for (auto T : {MVT::i1, MVT::i8, MVT::i16, MVT::i32})
+    setOperationAction(ISD::SIGN_EXTEND_INREG, T, Expand);
 
   // Dynamic stack allocation: use the default expansion.
   setOperationAction(ISD::STACKSAVE, MVT::Other, Expand);
@@ -150,8 +146,6 @@ WebAssemblyTargetLowering::WebAssemblyTargetLowering(
 
   // Trap lowers to wasm unreachable
   setOperationAction(ISD::TRAP, MVT::Other, Legal);
-
-  setMaxAtomicSizeInBitsSupported(64);
 }
 
 FastISel *WebAssemblyTargetLowering::createFastISel(
@@ -239,8 +233,7 @@ bool WebAssemblyTargetLowering::isCheapToSpeculateCtlz() const {
 bool WebAssemblyTargetLowering::isLegalAddressingMode(const DataLayout &DL,
                                                       const AddrMode &AM,
                                                       Type *Ty,
-                                                      unsigned AS,
-                                                      Instruction *I) const {
+                                                      unsigned AS) const {
   // WebAssembly offsets are added as unsigned without wrapping. The
   // isLegalAddressingMode gives us no way to determine if wrapping could be
   // happening, so we approximate this by accepting only non-negative offsets.
@@ -320,7 +313,7 @@ SDValue WebAssemblyTargetLowering::LowerCall(
   // required, fail. Otherwise, just disable them.
   if ((CallConv == CallingConv::Fast && CLI.IsTailCall &&
        MF.getTarget().Options.GuaranteedTailCallOpt) ||
-      (CLI.CS && CLI.CS.isMustTailCall()))
+      (CLI.CS && CLI.CS->isMustTailCall()))
     fail(DL, DAG, "WebAssembly doesn't support tail call yet");
   CLI.IsTailCall = false;
 

@@ -36,7 +36,7 @@ Expected<NativeObjectCache> lto::localCache(StringRef CacheDirectoryPath,
     ErrorOr<std::unique_ptr<MemoryBuffer>> MBOrErr =
         MemoryBuffer::getFile(EntryPath);
     if (MBOrErr) {
-      AddBuffer(Task, std::move(*MBOrErr), EntryPath);
+      AddBuffer(Task, std::move(*MBOrErr));
       return AddStreamFn();
     }
 
@@ -60,24 +60,22 @@ Expected<NativeObjectCache> lto::localCache(StringRef CacheDirectoryPath,
             EntryPath(std::move(EntryPath)), Task(Task) {}
 
       ~CacheStream() {
+        // FIXME: This code could race with the cache pruner, but it is unlikely
+        // that the cache pruner will choose to remove a newly created file.
+
         // Make sure the file is closed before committing it.
         OS.reset();
-
-        // Open the file first to avoid racing with a cache pruner.
-        ErrorOr<std::unique_ptr<MemoryBuffer>> MBOrErr =
-            MemoryBuffer::getFile(TempFilename);
-        if (!MBOrErr)
-          report_fatal_error(Twine("Failed to open new cache file ") +
-                             TempFilename + ": " +
-                             MBOrErr.getError().message() + "\n");
-
         // This is atomic on POSIX systems.
         if (auto EC = sys::fs::rename(TempFilename, EntryPath))
           report_fatal_error(Twine("Failed to rename temporary file ") +
-                             TempFilename + " to " + EntryPath + ": " +
-                             EC.message() + "\n");
+                             TempFilename + ": " + EC.message() + "\n");
 
-        AddBuffer(Task, std::move(*MBOrErr), EntryPath);
+        ErrorOr<std::unique_ptr<MemoryBuffer>> MBOrErr =
+            MemoryBuffer::getFile(EntryPath);
+        if (!MBOrErr)
+          report_fatal_error(Twine("Failed to open cache file ") + EntryPath +
+                             ": " + MBOrErr.getError().message() + "\n");
+        AddBuffer(Task, std::move(*MBOrErr));
       }
     };
 

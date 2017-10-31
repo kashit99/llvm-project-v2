@@ -157,7 +157,7 @@ static list<std::string> Name(
          "the -regex option <pattern> is interpreted as a regular expression."),
     value_desc("pattern"), cat(DwarfDumpCategory));
 static alias NameAlias("n", desc("Alias for -name"), aliasopt(Name));
-static opt<unsigned>
+static opt<uint64_t>
     Lookup("lookup",
            desc("Lookup <address> in the debug information and print out any"
                 "available file, function, block and line table details."),
@@ -525,11 +525,11 @@ int main(int argc, char **argv) {
     return 0;
   }
 
-  std::unique_ptr<ToolOutputFile> OutputFile;
+  std::unique_ptr<tool_output_file> OutputFile;
   if (!OutputFilename.empty()) {
     std::error_code EC;
-    OutputFile = llvm::make_unique<ToolOutputFile>(OutputFilename, EC,
-                                                     sys::fs::F_None);
+    OutputFile =
+        make_unique<tool_output_file>(OutputFilename, EC, sys::fs::F_None);
     error("Unable to open output file" + OutputFilename, EC);
     // Don't remove output file if we exit with an error.
     OutputFile->keep();

@@ -32,7 +32,6 @@
 #include <process.h> // for getpid
 #else
 #include <unistd.h>
-#include <pthread.h>
 #endif
 
 using namespace lldb_private;
@@ -182,13 +181,6 @@ void Log::Warning(const char *format, ...) {
   Printf("warning: %s", Content.c_str());
 }
 
-void Log::Initialize() {
-#ifdef LLVM_ON_UNIX
-  pthread_atfork(nullptr, nullptr, &Log::DisableLoggingChild);
-#endif
-  InitializeLldbChannel();
-}
-
 void Log::Register(llvm::StringRef name, Channel &channel) {
   auto iter = g_channel_map->try_emplace(name, channel);
   assert(iter.second == true);
@@ -328,12 +320,4 @@ void Log::Format(llvm::StringRef file, llvm::StringRef function,
   WriteHeader(message, file, function);
   message << payload << "\n";
   WriteMessage(message.str());
-}
-
-void Log::DisableLoggingChild() {
-  // Disable logging by clearing out the atomic variable after forking -- if we
-  // forked while another thread held the channel mutex, we would deadlock when
-  // trying to write to the log.
-  for (auto &c: *g_channel_map)
-    c.second.m_channel.log_ptr.store(nullptr, std::memory_order_relaxed);
 }

@@ -12,13 +12,14 @@
 # The symbol is not referenced. Don't provide it.
 # RUN: echo "SECTIONS { PROVIDE(newsym = 1);}" > %t.script
 # RUN: ld.lld -o %t1 --script %t.script %t
-# RUN: llvm-objdump -t %t1 | FileCheck --check-prefix=DONTPROVIDE %s
-# DONTPROVIDE-NOT: newsym
+# RUN: llvm-objdump -t %t1 | FileCheck --check-prefix=PROVIDE1 %s
+# PROVIDE1-NOT: 0000000000000001         *ABS*    00000000 newsym
 
 # The symbol is not referenced. Don't provide it.
 # RUN: echo "SECTIONS { PROVIDE_HIDDEN(newsym = 1);}" > %t.script
 # RUN: ld.lld -o %t1 --script %t.script %t
-# RUN: llvm-objdump -t %t1 | FileCheck --check-prefix=DONTPROVIDE %s
+# RUN: llvm-objdump -t %t1 | FileCheck --check-prefix=HIDDEN1 %s
+# HIDDEN1-NOT: 0000000000000001         *ABS*    00000000 .hidden newsym
 
 # Provide existing symbol. The value should be 0, even though we
 # have value of 1 in PROVIDE()
@@ -43,12 +44,14 @@
 # The symbol is not referenced. Don't provide it.
 # RUN: echo "PROVIDE(newsym = 1);" > %t.script
 # RUN: ld.lld -o %t1 --script %t.script %t
-# RUN: llvm-objdump -t %t1 | FileCheck --check-prefix=DONTPROVIDE %s
+# RUN: llvm-objdump -t %t1 | FileCheck --check-prefix=PROVIDE4 %s
+# PROVIDE4-NOT: 0000000000000001         *ABS*    00000000 newsym
 
 # The symbol is not referenced. Don't provide it.
 # RUN: echo "PROVIDE_HIDDEN(newsym = 1);" > %t.script
 # RUN: ld.lld -o %t1 --script %t.script %t
-# RUN: llvm-objdump -t %t1 | FileCheck --check-prefix=DONTPROVIDE %s
+# RUN: llvm-objdump -t %t1 | FileCheck --check-prefix=HIDDEN4 %s
+# HIDDEN4-NOT: 0000000000000001         *ABS*    00000000 .hidden newsym
 
 # Provide existing symbol. The value should be 0, even though we
 # have value of 1 in PROVIDE()

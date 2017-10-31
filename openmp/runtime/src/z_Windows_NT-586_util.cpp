@@ -2,6 +2,7 @@
  * z_Windows_NT-586_util.cpp -- platform specific routines.
  */
 
+
 //===----------------------------------------------------------------------===//
 //
 //                     The LLVM Compiler Infrastructure
@@ -10,6 +11,7 @@
 // Source Licenses. See LICENSE.txt for details.
 //
 //===----------------------------------------------------------------------===//
+
 
 #include "kmp.h"
 

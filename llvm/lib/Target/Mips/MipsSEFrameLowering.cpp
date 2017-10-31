@@ -1,4 +1,4 @@
-//===- MipsSEFrameLowering.cpp - Mips32/64 Frame Information --------------===//
+//===-- MipsSEFrameLowering.cpp - Mips32/64 Frame Information -------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -71,7 +71,7 @@ public:
   bool expand();
 
 private:
-  using Iter = MachineBasicBlock::iterator;
+  typedef MachineBasicBlock::iterator Iter;
 
   bool expandInstr(MachineBasicBlock &MBB, Iter I);
   void expandLoadCCond(MachineBasicBlock &MBB, Iter I);
@@ -390,7 +390,7 @@ bool ExpandPseudo::expandExtractElementF64(MachineBasicBlock &MBB,
 }
 
 MipsSEFrameLowering::MipsSEFrameLowering(const MipsSubtarget &STI)
-    : MipsFrameLowering(STI, STI.getStackAlignment()) {}
+    : MipsFrameLowering(STI, STI.stackAlignment()) {}
 
 void MipsSEFrameLowering::emitPrologue(MachineFunction &MF,
                                        MachineBasicBlock &MBB) const {
@@ -424,6 +424,7 @@ void MipsSEFrameLowering::emitPrologue(MachineFunction &MF,
 
   MachineModuleInfo &MMI = MF.getMMI();
   const MCRegisterInfo *MRI = MMI.getContext().getRegisterInfo();
+  MachineLocation DstML, SrcML;
 
   // Adjust stack.
   TII.adjustStackPtr(SP, -StackSize, MBB, MBBI);

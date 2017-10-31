@@ -360,8 +360,8 @@ static int apply(ArrayRef<CXRefactoringReplacement> Replacements,
 /// this occurrence.
 static std::string
 occurrenceToString(const CXSymbolOccurrence &Occurrence, bool IsLocal,
-                   const tooling::OldSymbolName &NewName,
-                   const tooling::OldSymbolName &ExpectedReplacementStrings,
+                   const tooling::SymbolName &NewName,
+                   const tooling::SymbolName &ExpectedReplacementStrings,
                    StringRef Filename) {
   std::string Str;
   llvm::raw_string_ostream OS(Str);
@@ -434,7 +434,7 @@ parseIndexedOccurrence(StringRef IndexedOccurrence,
 static bool compareOccurrences(ArrayRef<std::string> ExpectedReplacements,
                                CXSymbolOccurrencesResult Occurrences,
                                bool IsLocal,
-                               const tooling::OldSymbolName &NewSymbolName,
+                               const tooling::SymbolName &NewSymbolName,
                                bool PrintFilenames) {
   unsigned NumFiles = clang_SymbolOccurrences_getNumFiles(Occurrences);
   size_t ExpectedReplacementIndex = 0;
@@ -591,7 +591,7 @@ int rename(CXTranslationUnit TU, CXIndex CIdx, ArrayRef<const char *> Args) {
     // FIXME: This is a hack
     LangOptions LangOpts;
     LangOpts.ObjC1 = true;
-    tooling::OldSymbolName NewSymbolName(opts::rename::NewName, LangOpts);
+    tooling::SymbolName NewSymbolName(opts::rename::NewName, LangOpts);
 
     if (ExpectedReplacements.empty()) {
       if (opts::Apply) {
@@ -726,7 +726,7 @@ int renameIndexedFile(CXIndex CIdx, ArrayRef<const char *> Args) {
 
   LangOptions LangOpts;
   LangOpts.ObjC1 = true;
-  tooling::OldSymbolName ExpectedReplacementStrings(
+  tooling::SymbolName ExpectedReplacementStrings(
       opts::rename::IndexedNewNames[0], LangOpts);
 
   // Print the occurrences.
@@ -747,7 +747,7 @@ int renameIndexedFile(CXIndex CIdx, ArrayRef<const char *> Args) {
               .c_str();
       LangOptions LangOpts;
       LangOpts.ObjC1 = true;
-      tooling::OldSymbolName NewSymbolName(NewName, LangOpts);
+      tooling::SymbolName NewSymbolName(NewName, LangOpts);
 
       outs() << occurrenceToString(FileResult.Occurrences[I], /*IsLocal*/ false,
                                    NewSymbolName, ExpectedReplacementStrings,
@@ -801,14 +801,14 @@ struct ParsedSourceLineRange : ParsedSourceLocation {
   }
 };
 
-struct OldParsedSourceRange {
+struct ParsedSourceRange {
   ParsedSourceLocation Begin, End;
 
-  OldParsedSourceRange(const ParsedSourceLocation &Begin,
+  ParsedSourceRange(const ParsedSourceLocation &Begin,
                     const ParsedSourceLocation &End)
       : Begin(Begin), End(End) {}
 
-  static Optional<OldParsedSourceRange> FromString(StringRef Str) {
+  static Optional<ParsedSourceRange> FromString(StringRef Str) {
     std::pair<StringRef, StringRef> RangeSplit = Str.rsplit('-');
     auto Begin = ParsedSourceLocation::FromString(RangeSplit.first);
     if (Begin.FileName.empty())
@@ -817,7 +817,7 @@ struct OldParsedSourceRange {
     auto End = ParsedSourceLocation::FromString(EndString);
     if (End.FileName.empty())
       return None;
-    return OldParsedSourceRange(Begin, End);
+    return ParsedSourceRange(Begin, End);
   }
 };
 
@@ -831,7 +831,7 @@ int listRefactoringActions(CXTranslationUnit TU) {
   CXSourceRange Range;
   if (!opts::listActions::SelectedRange.empty()) {
     auto SelectionRange =
-        OldParsedSourceRange::FromString(opts::listActions::SelectedRange);
+        ParsedSourceRange::FromString(opts::listActions::SelectedRange);
     if (!SelectionRange) {
       errs() << "error: The -selected option must use the "
                 "<file:line:column-line:column> format\n";
@@ -1047,7 +1047,7 @@ static Optional<ParsedSourceLocation> selectionLocForFile(StringRef Filename,
   return ParsedSourceLocation::FromString(OS.str());
 }
 
-static Optional<OldParsedSourceRange> selectionRangeForFile(StringRef Filename,
+static Optional<ParsedSourceRange> selectionRangeForFile(StringRef Filename,
                                                          StringRef Name) {
   auto Buf = llvm::MemoryBuffer::getFile(Filename);
   if (!Buf)
@@ -1066,7 +1066,7 @@ static Optional<OldParsedSourceRange> selectionRangeForFile(StringRef Filename,
   llvm::raw_string_ostream OS(Str);
   OS << Filename << ":" << Start->first << ":" << Start->second << "-"
      << End->first << ":" << End->second;
-  return OldParsedSourceRange::FromString(OS.str());
+  return ParsedSourceRange::FromString(OS.str());
 }
 
 bool performOperation(CXRefactoringAction Action, ArrayRef<const char *> Args,
@@ -1160,7 +1160,7 @@ bool performOperation(CXRefactoringAction Action, ArrayRef<const char *> Args,
 int initiateAndPerformAction(CXTranslationUnit TU, ArrayRef<const char *> Args,
                              CXIndex CIdx) {
   std::vector<ParsedSourceLineRange> Ranges;
-  std::vector<OldParsedSourceRange> SelectionRanges;
+  std::vector<ParsedSourceRange> SelectionRanges;
   for (const auto &Range : opts::initiateAndPerform::InLocationRanges) {
     auto ParsedLineRange = ParsedSourceLineRange::FromString(Range);
     if (!ParsedLineRange) {
@@ -1194,7 +1194,7 @@ int initiateAndPerformAction(CXTranslationUnit TU, ArrayRef<const char *> Args,
   }
   for (const auto &Range : opts::initiateAndPerform::SelectedRanges) {
     auto ParsedRange = StringRef(Range).contains(':')
-                           ? OldParsedSourceRange::FromString(Range)
+                           ? ParsedSourceRange::FromString(Range)
                            : selectionRangeForFile(opts::FileName, Range);
     if (!ParsedRange) {
       errs() << "error: The -selected option must use the "
@@ -1233,7 +1233,7 @@ int initiateAndPerformAction(CXTranslationUnit TU, ArrayRef<const char *> Args,
   Optional<std::string> LocationCandidateInformation;
   auto InitiateAndPerform =
       [&](const ParsedSourceLocation &Location, unsigned Column,
-          Optional<OldParsedSourceRange> SelectionRange = None) -> bool {
+          Optional<ParsedSourceRange> SelectionRange = None) -> bool {
     CXSourceLocation Loc =
         clang_getLocation(TU, clang_getFile(TU, Location.FileName.c_str()),
                           Location.Line, Column);
@@ -1326,7 +1326,7 @@ int initiateAndPerformAction(CXTranslationUnit TU, ArrayRef<const char *> Args,
     }
   }
 
-  for (const OldParsedSourceRange &SelectionRange : SelectionRanges) {
+  for (const ParsedSourceRange &SelectionRange : SelectionRanges) {
     if (InitiateAndPerform(SelectionRange.Begin, SelectionRange.Begin.Column,
                            SelectionRange))
       return 1;

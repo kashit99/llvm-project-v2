@@ -3,6 +3,7 @@
  * kmp_debugger.cpp -- debugger support.
  */
 
+
 //===----------------------------------------------------------------------===//
 //
 //                     The LLVM Compiler Infrastructure
@@ -11,6 +12,7 @@
 // Source Licenses. See LICENSE.txt for details.
 //
 //===----------------------------------------------------------------------===//
+
 
 #include "kmp.h"
 #include "kmp_lock.h"
@@ -277,10 +279,10 @@ int __kmp_omp_num_threads(ident_t const *ident) {
     for (i = 0; i < info->num; ++i) {
       if (kmp_location_match(&loc, &items[i])) {
         num_threads = items[i].num_threads;
-      }
-    }
+      }; // if
+    }; // for
     __kmp_str_loc_free(&loc);
-  }
+  }; // if
 
   return num_threads;
   ;

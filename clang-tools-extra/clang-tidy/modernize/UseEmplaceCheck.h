@@ -33,11 +33,10 @@ public:
   void storeOptions(ClangTidyOptions::OptionMap &Opts) override;
 
 private:
-  const bool IgnoreImplicitConstructors;
-  const std::vector<std::string> ContainersWithPushBack;
-  const std::vector<std::string> SmartPointers;
-  const std::vector<std::string> TupleTypes;
-  const std::vector<std::string> TupleMakeFunctions;
+  std::vector<std::string> ContainersWithPushBack;
+  std::vector<std::string> SmartPointers;
+  std::vector<std::string> TupleTypes;
+  std::vector<std::string> TupleMakeFunctions;
 };
 
 } // namespace modernize

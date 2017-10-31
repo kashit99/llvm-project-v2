@@ -49,7 +49,6 @@ int main()
 {
     {
         std::tuple<> t;
-        (void)t;
     }
     {
         std::tuple<int> t;
@@ -89,7 +88,6 @@ int main()
     }
     {
         constexpr std::tuple<> t;
-        (void)t;
     }
     {
         constexpr std::tuple<int> t;

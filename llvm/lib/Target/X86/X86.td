@@ -95,6 +95,8 @@ def Feature64Bit   : SubtargetFeature<"64bit", "HasX86_64", "true",
 def FeatureCMPXCHG16B : SubtargetFeature<"cx16", "HasCmpxchg16b", "true",
                                       "64-bit with cmpxchg16b",
                                       [Feature64Bit]>;
+def FeatureSlowBTMem : SubtargetFeature<"slow-bt-mem", "IsBTMemSlow", "true",
+                                       "Bit testing of memory is slow">;
 def FeatureSlowSHLD : SubtargetFeature<"slow-shld", "IsSHLDSlow", "true",
                                        "SHLD instruction is slow">;
 def FeatureSlowPMULLD : SubtargetFeature<"slow-pmulld", "IsPMULLDSlow", "true",
@@ -224,12 +226,14 @@ def FeatureCLFLUSHOPT : SubtargetFeature<"clflushopt", "HasCLFLUSHOPT", "true",
                                       "Flush A Cache Line Optimized">;
 def FeatureCLWB    : SubtargetFeature<"clwb", "HasCLWB", "true",
                                       "Cache Line Write Back">;
-// On some processors, instructions that implicitly take two memory operands are
-// slow. In practice, this means that CALL, PUSH, and POP with memory operands
-// should be avoided in favor of a MOV + register CALL/PUSH/POP.
-def FeatureSlowTwoMemOps : SubtargetFeature<"slow-two-mem-ops",
-                                     "SlowTwoMemOps", "true",
-                                     "Two memory operand instructions are slow">;
+// TODO: This feature ought to be renamed.
+// What it really refers to are CPUs for which certain instructions
+// (which ones besides the example below?) are microcoded.
+// The best examples of this are the memory forms of CALL and PUSH
+// instructions, which should be avoided in favor of a MOV + register CALL/PUSH.
+def FeatureCallRegIndirect : SubtargetFeature<"call-reg-indirect",
+                                     "CallRegIndirect", "true",
+                                     "Call register indirect">;
 def FeatureLEAUsesAG : SubtargetFeature<"lea-uses-ag", "LEAUsesAG", "true",
                                    "LEA instruction needs inputs at AG stage">;
 def FeatureSlowLEA : SubtargetFeature<"slow-lea", "SlowLEA", "true",
@@ -286,13 +290,6 @@ def FeatureERMSB
           "ermsb", "HasERMSB", "true",
           "REP MOVS/STOS are fast">;
 
-// Sandy Bridge and newer processors have many instructions that can be
-// fused with conditional branches and pass through the CPU as a single
-// operation.
-def FeatureMacroFusion
-    : SubtargetFeature<"macrofusion", "HasMacroFusion", "true",
-                 "Various instructions can be fused with conditional branches">;
-
 //===----------------------------------------------------------------------===//
 // X86 processors supported.
 //===----------------------------------------------------------------------===//
@@ -305,18 +302,6 @@ def ProcIntelSLM  : SubtargetFeature<"slm", "X86ProcFamily", "IntelSLM",
                     "Intel Silvermont processors">;
 def ProcIntelGLM  : SubtargetFeature<"glm", "X86ProcFamily", "IntelGLM",
                     "Intel Goldmont processors">;
-def ProcIntelHSW  : SubtargetFeature<"haswell", "X86ProcFamily",
-                    "IntelHaswell", "Intel Haswell processors">;
-def ProcIntelBDW  : SubtargetFeature<"broadwell", "X86ProcFamily",
-                    "IntelBroadwell", "Intel Broadwell processors">;
-def ProcIntelSKL  : SubtargetFeature<"skylake", "X86ProcFamily",
-                    "IntelSkylake", "Intel Skylake processors">;
-def ProcIntelKNL  : SubtargetFeature<"knl", "X86ProcFamily",
-                    "IntelKNL", "Intel Knights Landing processors">;
-def ProcIntelSKX  : SubtargetFeature<"skx", "X86ProcFamily",
-                    "IntelSKX", "Intel Skylake Server processors">;
-def ProcIntelCNL  : SubtargetFeature<"cannonlake", "X86ProcFamily",
-                    "IntelCannonlake", "Intel Cannonlake processors">;
 
 class Proc<string Name, list<SubtargetFeature> Features>
  : ProcessorModel<Name, GenericModel, Features>;
@@ -334,7 +319,7 @@ def : Proc<"pentium2",        [FeatureX87, FeatureSlowUAMem16, FeatureMMX,
 def : Proc<"pentium3",        [FeatureX87, FeatureSlowUAMem16, FeatureMMX,
                                FeatureSSE1, FeatureFXSR]>;
 def : Proc<"pentium3m",       [FeatureX87, FeatureSlowUAMem16, FeatureMMX,
-                               FeatureSSE1, FeatureFXSR]>;
+                               FeatureSSE1, FeatureFXSR, FeatureSlowBTMem]>;
 
 // Enable the PostRAScheduler for SSE2 and SSE3 class cpus.
 // The intent is to enable it for pentium4 which is the current default
@@ -348,7 +333,7 @@ def : Proc<"pentium3m",       [FeatureX87, FeatureSlowUAMem16, FeatureMMX,
 
 def : ProcessorModel<"pentium-m", GenericPostRAModel,
                      [FeatureX87, FeatureSlowUAMem16, FeatureMMX,
-                      FeatureSSE2, FeatureFXSR]>;
+                      FeatureSSE2, FeatureFXSR, FeatureSlowBTMem]>;
 
 def : ProcessorModel<"pentium4", GenericPostRAModel,
                      [FeatureX87, FeatureSlowUAMem16, FeatureMMX,
@@ -356,7 +341,7 @@ def : ProcessorModel<"pentium4", GenericPostRAModel,
 
 def : ProcessorModel<"pentium4m", GenericPostRAModel,
                      [FeatureX87, FeatureSlowUAMem16, FeatureMMX,
-                      FeatureSSE2, FeatureFXSR]>;
+                      FeatureSSE2, FeatureFXSR, FeatureSlowBTMem]>;
 
 // Intel Quark.
 def : Proc<"lakemont",        []>;
@@ -364,19 +349,20 @@ def : Proc<"lakemont",        []>;
 // Intel Core Duo.
 def : ProcessorModel<"yonah", SandyBridgeModel,
                      [FeatureX87, FeatureSlowUAMem16, FeatureMMX, FeatureSSE3,
-                      FeatureFXSR]>;
+                      FeatureFXSR, FeatureSlowBTMem]>;
 
 // NetBurst.
 def : ProcessorModel<"prescott", GenericPostRAModel,
                      [FeatureX87, FeatureSlowUAMem16, FeatureMMX, FeatureSSE3,
-                      FeatureFXSR]>;
+                      FeatureFXSR, FeatureSlowBTMem]>;
 def : ProcessorModel<"nocona", GenericPostRAModel, [
   FeatureX87,
   FeatureSlowUAMem16,
   FeatureMMX,
   FeatureSSE3,
   FeatureFXSR,
-  FeatureCMPXCHG16B
+  FeatureCMPXCHG16B,
+  FeatureSlowBTMem
 ]>;
 
 // Intel Core 2 Solo/Duo.
@@ -387,8 +373,8 @@ def : ProcessorModel<"core2", SandyBridgeModel, [
   FeatureSSSE3,
   FeatureFXSR,
   FeatureCMPXCHG16B,
-  FeatureLAHFSAHF,
-  FeatureMacroFusion
+  FeatureSlowBTMem,
+  FeatureLAHFSAHF
 ]>;
 def : ProcessorModel<"penryn", SandyBridgeModel, [
   FeatureX87,
@@ -397,8 +383,8 @@ def : ProcessorModel<"penryn", SandyBridgeModel, [
   FeatureSSE41,
   FeatureFXSR,
   FeatureCMPXCHG16B,
-  FeatureLAHFSAHF,
-  FeatureMacroFusion
+  FeatureSlowBTMem,
+  FeatureLAHFSAHF
 ]>;
 
 // Atom CPUs.
@@ -411,10 +397,11 @@ class BonnellProc<string Name> : ProcessorModel<Name, AtomModel, [
   FeatureFXSR,
   FeatureCMPXCHG16B,
   FeatureMOVBE,
+  FeatureSlowBTMem,
   FeatureLEAForSP,
   FeatureSlowDivide32,
   FeatureSlowDivide64,
-  FeatureSlowTwoMemOps,
+  FeatureCallRegIndirect,
   FeatureLEAUsesAG,
   FeaturePadShortFunctions,
   FeatureLAHFSAHF
@@ -434,10 +421,11 @@ class SilvermontProc<string Name> : ProcessorModel<Name, SLMModel, [
   FeaturePCLMUL,
   FeatureAES,
   FeatureSlowDivide64,
-  FeatureSlowTwoMemOps,
+  FeatureCallRegIndirect,
   FeaturePRFCHW,
   FeatureSlowLEA,
   FeatureSlowIncDec,
+  FeatureSlowBTMem,
   FeatureSlowPMULLD,
   FeatureLAHFSAHF
 ]>;
@@ -456,9 +444,10 @@ class GoldmontProc<string Name> : ProcessorModel<Name, SLMModel, [
   FeaturePCLMUL,
   FeatureAES,
   FeaturePRFCHW,
-  FeatureSlowTwoMemOps,
+  FeatureCallRegIndirect,
   FeatureSlowLEA,
   FeatureSlowIncDec,
+  FeatureSlowBTMem,
   FeatureLAHFSAHF,
   FeatureMPX,
   FeatureSHA,
@@ -468,8 +457,7 @@ class GoldmontProc<string Name> : ProcessorModel<Name, SLMModel, [
   FeatureXSAVEOPT,
   FeatureXSAVEC,
   FeatureXSAVES,
-  FeatureCLFLUSHOPT,
-  FeatureFSGSBase
+  FeatureCLFLUSHOPT
 ]>;
 def : GoldmontProc<"goldmont">;
 
@@ -480,9 +468,9 @@ class NehalemProc<string Name> : ProcessorModel<Name, SandyBridgeModel, [
   FeatureSSE42,
   FeatureFXSR,
   FeatureCMPXCHG16B,
+  FeatureSlowBTMem,
   FeaturePOPCNT,
-  FeatureLAHFSAHF,
-  FeatureMacroFusion
+  FeatureLAHFSAHF
 ]>;
 def : NehalemProc<"nehalem">;
 def : NehalemProc<"corei7">;
@@ -495,11 +483,11 @@ class WestmereProc<string Name> : ProcessorModel<Name, SandyBridgeModel, [
   FeatureSSE42,
   FeatureFXSR,
   FeatureCMPXCHG16B,
+  FeatureSlowBTMem,
   FeaturePOPCNT,
   FeatureAES,
   FeaturePCLMUL,
-  FeatureLAHFSAHF,
-  FeatureMacroFusion
+  FeatureLAHFSAHF
 ]>;
 def : WestmereProc<"westmere">;
 
@@ -530,13 +518,12 @@ def SNBFeatures : ProcessorFeatures<[], [
   FeatureLAHFSAHF,
   FeatureSlow3OpsLEA,
   FeatureFastScalarFSQRT,
-  FeatureFastSHLDRotate,
-  FeatureSlowIncDec,
-  FeatureMacroFusion
+  FeatureFastSHLDRotate
 ]>;
 
 class SandyBridgeProc<string Name> : ProcModel<Name, SandyBridgeModel,
                                                SNBFeatures.Value, [
+  FeatureSlowBTMem,
   FeatureSlowUAMem32
 ]>;
 def : SandyBridgeProc<"sandybridge">;
@@ -550,6 +537,7 @@ def IVBFeatures : ProcessorFeatures<SNBFeatures.Value, [
 
 class IvyBridgeProc<string Name> : ProcModel<Name, SandyBridgeModel,
                                              IVBFeatures.Value, [
+  FeatureSlowBTMem,
   FeatureSlowUAMem32
 ]>;
 def : IvyBridgeProc<"ivybridge">;
@@ -562,13 +550,12 @@ def HSWFeatures : ProcessorFeatures<IVBFeatures.Value, [
   FeatureERMSB,
   FeatureFMA,
   FeatureLZCNT,
-  FeatureMOVBE
+  FeatureMOVBE,
+  FeatureSlowIncDec
 ]>;
 
 class HaswellProc<string Name> : ProcModel<Name, HaswellModel,
-                                           HSWFeatures.Value, [
-  ProcIntelHSW
-]>;
+                                           HSWFeatures.Value, []>;
 def : HaswellProc<"haswell">;
 def : HaswellProc<"core-avx2">; // Legacy alias.
 
@@ -576,10 +563,8 @@ def BDWFeatures : ProcessorFeatures<HSWFeatures.Value, [
   FeatureADX,
   FeatureRDSEED
 ]>;
-class BroadwellProc<string Name> : ProcModel<Name, BroadwellModel,
-                                             BDWFeatures.Value, [
-  ProcIntelBDW
-]>;
+class BroadwellProc<string Name> : ProcModel<Name, HaswellModel,
+                                             BDWFeatures.Value, []>;
 def : BroadwellProc<"broadwell">;
 
 def SKLFeatures : ProcessorFeatures<BDWFeatures.Value, [
@@ -592,13 +577,14 @@ def SKLFeatures : ProcessorFeatures<BDWFeatures.Value, [
   FeatureFastVectorFSQRT
 ]>;
 
-class SkylakeClientProc<string Name> : ProcModel<Name, SkylakeClientModel,
-                                                 SKLFeatures.Value, [
-  ProcIntelSKL
-]>;
+// FIXME: define SKL model
+class SkylakeClientProc<string Name> : ProcModel<Name, HaswellModel,
+                                                 SKLFeatures.Value, []>;
 def : SkylakeClientProc<"skylake">;
 
-def KNLFeatures : ProcessorFeatures<IVBFeatures.Value, [
+// FIXME: define KNL model
+class KnightsLandingProc<string Name> : ProcModel<Name, HaswellModel,
+                                                  IVBFeatures.Value, [
   FeatureAVX512,
   FeatureERI,
   FeatureCDI,
@@ -610,26 +596,10 @@ def KNLFeatures : ProcessorFeatures<IVBFeatures.Value, [
   FeatureLZCNT,
   FeatureBMI,
   FeatureBMI2,
-  FeatureFMA
-]>;
-
-// FIXME: define KNL model
-class KnightsLandingProc<string Name> : ProcModel<Name, HaswellModel,
-                                                  KNLFeatures.Value, [
-  ProcIntelKNL,
-  FeatureSlowTwoMemOps,
+  FeatureFMA,
   FeatureFastPartialYMMorZMMWrite
 ]>;
 def : KnightsLandingProc<"knl">;
-
-class KnightsMillProc<string Name> : ProcModel<Name, HaswellModel,
-                                               KNLFeatures.Value, [
-  ProcIntelKNL,
-  FeatureSlowTwoMemOps,
-  FeatureFastPartialYMMorZMMWrite,
-  FeatureVPOPCNTDQ
-]>;
-def : KnightsMillProc<"knm">; // TODO Add AVX5124FMAPS/AVX5124VNNIW features
 
 def SKXFeatures : ProcessorFeatures<SKLFeatures.Value, [
   FeatureAVX512,
@@ -641,10 +611,9 @@ def SKXFeatures : ProcessorFeatures<SKLFeatures.Value, [
   FeatureCLWB
 ]>;
 
-class SkylakeServerProc<string Name> : ProcModel<Name, SkylakeServerModel,
-                                                 SKXFeatures.Value, [
-  ProcIntelSKX
-]>;
+// FIXME: define SKX model
+class SkylakeServerProc<string Name> : ProcModel<Name, HaswellModel,
+                                                 SKXFeatures.Value, []>;
 def : SkylakeServerProc<"skylake-avx512">;
 def : SkylakeServerProc<"skx">; // Legacy alias.
 
@@ -655,9 +624,7 @@ def CNLFeatures : ProcessorFeatures<SKXFeatures.Value, [
 ]>;
 
 class CannonlakeProc<string Name> : ProcModel<Name, HaswellModel,
-                                              CNLFeatures.Value, [
-  ProcIntelCNL
-]>;
+                                              CNLFeatures.Value, []>;
 def : CannonlakeProc<"cannonlake">;
 
 // AMD CPUs.
@@ -666,43 +633,46 @@ def : Proc<"k6",              [FeatureX87, FeatureSlowUAMem16, FeatureMMX]>;
 def : Proc<"k6-2",            [FeatureX87, FeatureSlowUAMem16, Feature3DNow]>;
 def : Proc<"k6-3",            [FeatureX87, FeatureSlowUAMem16, Feature3DNow]>;
 def : Proc<"athlon",          [FeatureX87, FeatureSlowUAMem16, Feature3DNowA,
-                               FeatureSlowSHLD]>;
+                               FeatureSlowBTMem, FeatureSlowSHLD]>;
 def : Proc<"athlon-tbird",    [FeatureX87, FeatureSlowUAMem16, Feature3DNowA,
-                               FeatureSlowSHLD]>;
+                               FeatureSlowBTMem, FeatureSlowSHLD]>;
 def : Proc<"athlon-4",        [FeatureX87, FeatureSlowUAMem16, FeatureSSE1,
-                               Feature3DNowA, FeatureFXSR, FeatureSlowSHLD]>;
+                               Feature3DNowA, FeatureFXSR, FeatureSlowBTMem,
+                               FeatureSlowSHLD]>;
 def : Proc<"athlon-xp",       [FeatureX87, FeatureSlowUAMem16, FeatureSSE1,
-                               Feature3DNowA, FeatureFXSR, FeatureSlowSHLD]>;
+                               Feature3DNowA, FeatureFXSR, FeatureSlowBTMem,
+                               FeatureSlowSHLD]>;
 def : Proc<"athlon-mp",       [FeatureX87, FeatureSlowUAMem16, FeatureSSE1,
-                               Feature3DNowA, FeatureFXSR, FeatureSlowSHLD]>;
+                               Feature3DNowA, FeatureFXSR, FeatureSlowBTMem,
+                               FeatureSlowSHLD]>;
 def : Proc<"k8",              [FeatureX87, FeatureSlowUAMem16, FeatureSSE2,
                                Feature3DNowA, FeatureFXSR, Feature64Bit,
-                               FeatureSlowSHLD]>;
+                               FeatureSlowBTMem, FeatureSlowSHLD]>;
 def : Proc<"opteron",         [FeatureX87, FeatureSlowUAMem16, FeatureSSE2,
                                Feature3DNowA, FeatureFXSR, Feature64Bit,
-                               FeatureSlowSHLD]>;
+                               FeatureSlowBTMem, FeatureSlowSHLD]>;
 def : Proc<"athlon64",        [FeatureX87, FeatureSlowUAMem16, FeatureSSE2,
                                Feature3DNowA, FeatureFXSR, Feature64Bit,
-                               FeatureSlowSHLD]>;
+                               FeatureSlowBTMem, FeatureSlowSHLD]>;
 def : Proc<"athlon-fx",       [FeatureX87, FeatureSlowUAMem16, FeatureSSE2,
                                Feature3DNowA, FeatureFXSR, Feature64Bit,
-                               FeatureSlowSHLD]>;
+                               FeatureSlowBTMem, FeatureSlowSHLD]>;
 def : Proc<"k8-sse3",         [FeatureX87, FeatureSlowUAMem16, FeatureSSE3,
                                Feature3DNowA, FeatureFXSR, FeatureCMPXCHG16B,
-                               FeatureSlowSHLD]>;
+                               FeatureSlowBTMem, FeatureSlowSHLD]>;
 def : Proc<"opteron-sse3",    [FeatureX87, FeatureSlowUAMem16, FeatureSSE3,
                                Feature3DNowA, FeatureFXSR, FeatureCMPXCHG16B,
-                               FeatureSlowSHLD]>;
+                               FeatureSlowBTMem, FeatureSlowSHLD]>;
 def : Proc<"athlon64-sse3",   [FeatureX87, FeatureSlowUAMem16, FeatureSSE3,
                                Feature3DNowA, FeatureFXSR, FeatureCMPXCHG16B,
-                               FeatureSlowSHLD]>;
+                               FeatureSlowBTMem, FeatureSlowSHLD]>;
 def : Proc<"amdfam10",        [FeatureX87, FeatureSSE4A, Feature3DNowA,
                                FeatureFXSR, FeatureCMPXCHG16B, FeatureLZCNT,
-                               FeaturePOPCNT, FeatureSlowSHLD,
+                               FeaturePOPCNT, FeatureSlowBTMem, FeatureSlowSHLD,
                                FeatureLAHFSAHF]>;
 def : Proc<"barcelona",       [FeatureX87, FeatureSSE4A, Feature3DNowA,
                                FeatureFXSR, FeatureCMPXCHG16B, FeatureLZCNT,
-                               FeaturePOPCNT, FeatureSlowSHLD,
+                               FeaturePOPCNT, FeatureSlowBTMem, FeatureSlowSHLD,
                                FeatureLAHFSAHF]>;
 
 // Bobcat
@@ -762,8 +732,7 @@ def : Proc<"bdver1", [
   FeatureXSAVE,
   FeatureLWP,
   FeatureSlowSHLD,
-  FeatureLAHFSAHF,
-  FeatureMacroFusion
+  FeatureLAHFSAHF
 ]>;
 // Piledriver
 def : Proc<"bdver2", [
@@ -787,8 +756,7 @@ def : Proc<"bdver2", [
   FeatureLWP,
   FeatureFMA,
   FeatureSlowSHLD,
-  FeatureLAHFSAHF,
-  FeatureMacroFusion
+  FeatureLAHFSAHF
 ]>;
 
 // Steamroller
@@ -815,8 +783,7 @@ def : Proc<"bdver3", [
   FeatureXSAVEOPT,
   FeatureSlowSHLD,
   FeatureFSGSBase,
-  FeatureLAHFSAHF,
-  FeatureMacroFusion
+  FeatureLAHFSAHF
 ]>;
 
 // Excavator
@@ -844,8 +811,7 @@ def : Proc<"bdver4", [
   FeatureSlowSHLD,
   FeatureFSGSBase,
   FeatureLAHFSAHF,
-  FeatureMWAITX,
-  FeatureMacroFusion
+  FeatureMWAITX
 ]>;
 
 // Znver1
@@ -865,7 +831,6 @@ def: ProcessorModel<"znver1", Znver1Model, [
   FeatureFastLZCNT,
   FeatureLAHFSAHF,
   FeatureLZCNT,
-  FeatureMacroFusion,
   FeatureMMX,
   FeatureMOVBE,
   FeatureMWAITX,
@@ -901,16 +866,9 @@ def : Proc<"c3-2",            [FeatureX87, FeatureSlowUAMem16, FeatureMMX,
 // covers a huge swath of x86 processors. If there are specific scheduling
 // knobs which need to be tuned differently for AMD chips, we might consider
 // forming a common base for them.
-def : ProcessorModel<"x86-64", SandyBridgeModel, [
-  FeatureX87,
-  FeatureMMX,
-  FeatureSSE2,
-  FeatureFXSR,
-  Feature64Bit,
-  FeatureSlow3OpsLEA,
-  FeatureSlowIncDec,
-  FeatureMacroFusion
-]>;
+def : ProcessorModel<"x86-64", SandyBridgeModel,
+                     [FeatureX87, FeatureMMX, FeatureSSE2, FeatureFXSR,
+                      Feature64Bit, FeatureSlowBTMem ]>;
 
 //===----------------------------------------------------------------------===//
 // Register File Description

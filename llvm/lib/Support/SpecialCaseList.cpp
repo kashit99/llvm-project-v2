@@ -28,11 +28,6 @@ namespace llvm {
 
 bool SpecialCaseList::Matcher::insert(std::string Regexp,
                                       std::string &REError) {
-  if (Regexp.empty()) {
-    REError = "Supplied regexp was blank";
-    return false;
-  }
-
   if (Regex::isLiteralERE(Regexp)) {
     Strings.insert(Regexp);
     return true;

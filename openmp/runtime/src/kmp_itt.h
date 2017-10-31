@@ -3,6 +3,7 @@
  * kmp_itt.h -- ITT Notify interface.
  */
 
+
 //===----------------------------------------------------------------------===//
 //
 //                     The LLVM Compiler Infrastructure
@@ -11,6 +12,7 @@
 // Source Licenses. See LICENSE.txt for details.
 //
 //===----------------------------------------------------------------------===//
+
 
 #ifndef KMP_ITT_H
 #define KMP_ITT_H

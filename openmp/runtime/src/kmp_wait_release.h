@@ -2,6 +2,7 @@
  * kmp_wait_release.h -- Wait/Release implementation
  */
 
+
 //===----------------------------------------------------------------------===//
 //
 //                     The LLVM Compiler Infrastructure
@@ -10,6 +11,7 @@
 // Source Licenses. See LICENSE.txt for details.
 //
 //===----------------------------------------------------------------------===//
+
 
 #ifndef KMP_WAIT_RELEASE_H
 #define KMP_WAIT_RELEASE_H

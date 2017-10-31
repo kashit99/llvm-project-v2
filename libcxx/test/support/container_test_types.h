@@ -234,19 +234,6 @@ inline ConstructController* getConstructController() {
   return &c;
 }
 
-template <class ...Args>
-struct ExpectConstructGuard {
-  ExpectConstructGuard(int N)  {
-    auto CC = getConstructController();
-    assert(!CC->unchecked());
-    CC->expect<Args...>(N);
-  }
-
-  ~ExpectConstructGuard() {
-    assert(!getConstructController()->unchecked());
-  }
-};
-
 //===----------------------------------------------------------------------===//
 //                       ContainerTestAllocator
 //===----------------------------------------------------------------------===//
@@ -430,12 +417,7 @@ namespace std {
       return arg.data;
     }
   };
-  template <class T, class Alloc>
-  class vector;
-  template <class T, class Alloc>
-  class deque;
-  template <class T, class Alloc>
-  class list;
+
   template <class _Key, class _Value, class _Less, class _Alloc>
   class map;
   template <class _Key, class _Value, class _Less, class _Alloc>
@@ -461,13 +443,6 @@ _LIBCPP_END_NAMESPACE_STD
 
 // TCT - Test container type
 namespace TCT {
-
-template <class T = CopyInsertable<1>>
-using vector = std::vector<T, ContainerTestAllocator<T, T> >;
-template <class T = CopyInsertable<1>>
-using deque = std::deque<T, ContainerTestAllocator<T, T> >;
-template <class T = CopyInsertable<1>>
-using list = std::list<T, ContainerTestAllocator<T, T> >;
 
 template <class Key = CopyInsertable<1>, class Value = CopyInsertable<2>,
           class ValueTp = std::pair<const Key, Value> >
@@ -512,5 +487,6 @@ using multiset =
     std::multiset<Value, std::less<Value>, ContainerTestAllocator<Value, Value> >;
 
 } // end namespace TCT
+
 
 #endif // SUPPORT_CONTAINER_TEST_TYPES_H

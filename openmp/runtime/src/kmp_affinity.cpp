@@ -2,6 +2,7 @@
  * kmp_affinity.cpp -- affinity management
  */
 
+
 //===----------------------------------------------------------------------===//
 //
 //                     The LLVM Compiler Infrastructure
@@ -10,6 +11,7 @@
 // Source Licenses. See LICENSE.txt for details.
 //
 //===----------------------------------------------------------------------===//
+
 
 #include "kmp.h"
 #include "kmp_affinity.h"
@@ -22,6 +24,7 @@
 static hierarchy_info machine_hierarchy;
 
 void __kmp_cleanup_hierarchy() { machine_hierarchy.fini(); }
+
 
 void __kmp_get_hierarchy(kmp_uint32 nproc, kmp_bstate_t *thr_bar) {
   kmp_uint32 depth;
@@ -1683,7 +1686,7 @@ static int __kmp_affinity_cmp_ProcCpuInfo_os_id(const void *a, const void *b) {
   if (aa[osIdIndex] > bb[osIdIndex])
     return 1;
   return 0;
-}
+};
 
 static int __kmp_affinity_cmp_ProcCpuInfo_phys_id(const void *a,
                                                   const void *b) {
@@ -1889,7 +1892,7 @@ static int __kmp_affinity_create_cpuinfo_map(AddrUnsPair **address2os,
         continue;
       }
       unsigned level;
-      if (KMP_SSCANF(buf, "node_%u id", &level) == 1) {
+      if (KMP_SSCANF(buf, "node_%d id", &level) == 1) {
         CHECK_LINE;
         char *p = strchr(buf + sizeof(s4) - 1, ':');
         unsigned val;
@@ -4035,11 +4038,12 @@ static void __kmp_aux_affinity_initialize(void) {
     if (f == NULL) {
       int code = errno;
       if (__kmp_cpuinfo_file != NULL) {
-        __kmp_fatal(KMP_MSG(CantOpenFileForReading, filename), KMP_ERR(code),
-                    KMP_HNT(NameComesFrom_CPUINFO_FILE), __kmp_msg_null);
+        __kmp_msg(kmp_ms_fatal, KMP_MSG(CantOpenFileForReading, filename),
+                  KMP_ERR(code), KMP_HNT(NameComesFrom_CPUINFO_FILE),
+                  __kmp_msg_null);
       } else {
-        __kmp_fatal(KMP_MSG(CantOpenFileForReading, filename), KMP_ERR(code),
-                    __kmp_msg_null);
+        __kmp_msg(kmp_ms_fatal, KMP_MSG(CantOpenFileForReading, filename),
+                  KMP_ERR(code), __kmp_msg_null);
       }
     }
     int line = 0;

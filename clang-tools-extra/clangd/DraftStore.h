@@ -13,7 +13,6 @@
 #include "Path.h"
 #include "clang/Basic/LLVM.h"
 #include "llvm/ADT/StringMap.h"
-#include <cstdint>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -21,8 +20,8 @@
 namespace clang {
 namespace clangd {
 
-/// Using unsigned int type here to avoid undefined behaviour on overflow.
-typedef uint64_t DocVersion;
+/// Using 'unsigned' here to avoid undefined behaviour on overflow.
+typedef unsigned DocVersion;
 
 /// Document draft with a version of this draft.
 struct VersionedDraft {

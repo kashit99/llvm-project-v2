@@ -78,7 +78,7 @@ static void dumpRanges(const DWARFObject &Obj, raw_ostream &OS,
 
     // Print section index if name is not unique.
     if (!SectionNames[R.SectionIndex].IsNameUnique)
-      OS << format(" [%" PRIu64 "]", R.SectionIndex);
+      OS << format(" [%u]", R.SectionIndex);
   }
 }
 
@@ -190,7 +190,7 @@ static void dumpAttribute(raw_ostream &OS, const DWARFDie &Die,
     return;
   const char BaseIndent[] = "            ";
   OS << BaseIndent;
-  OS.indent(Indent + 2);
+  OS.indent(Indent+2);
   auto attrString = AttributeString(Attr);
   if (!attrString.empty())
     WithColor(OS, syntax::Attribute) << attrString;
@@ -219,10 +219,7 @@ static void dumpAttribute(raw_ostream &OS, const DWARFDie &Die,
   if (Attr == DW_AT_decl_file || Attr == DW_AT_call_file) {
     Color = syntax::String;
     if (const auto *LT = U->getContext().getLineTableForUnit(U))
-      if (LT->getFileNameByIndex(
-              formValue.getAsUnsignedConstant().getValue(),
-              U->getCompilationDir(),
-              DILineInfoSpecifier::FileLineInfoKind::AbsoluteFilePath, File)) {
+      if (LT->getFileNameByIndex(formValue.getAsUnsignedConstant().getValue(), U->getCompilationDir(), DILineInfoSpecifier::FileLineInfoKind::AbsoluteFilePath, File)) {
         File = '"' + File + '"';
         Name = File;
       }
@@ -234,8 +231,7 @@ static void dumpAttribute(raw_ostream &OS, const DWARFDie &Die,
   else if (Attr == DW_AT_decl_line || Attr == DW_AT_call_line)
     OS << *formValue.getAsUnsignedConstant();
   else if (Attr == DW_AT_location || Attr == DW_AT_frame_base ||
-           Attr == DW_AT_data_member_location ||
-           Attr == DW_AT_GNU_call_site_value)
+           Attr == DW_AT_data_member_location)
     dumpLocation(OS, formValue, U, sizeof(BaseIndent) + Indent + 4, DumpOpts);
   else
     formValue.dump(OS, DumpOpts);
@@ -263,14 +259,17 @@ static void dumpAttribute(raw_ostream &OS, const DWARFDie &Die,
   OS << ")\n";
 }
 
-bool DWARFDie::isSubprogramDIE() const { return getTag() == DW_TAG_subprogram; }
+bool DWARFDie::isSubprogramDIE() const {
+  return getTag() == DW_TAG_subprogram;
+}
 
 bool DWARFDie::isSubroutineDIE() const {
   auto Tag = getTag();
   return Tag == DW_TAG_subprogram || Tag == DW_TAG_inlined_subroutine;
 }
 
-Optional<DWARFFormValue> DWARFDie::find(dwarf::Attribute Attr) const {
+Optional<DWARFFormValue>
+DWARFDie::find(dwarf::Attribute Attr) const {
   if (!isValid())
     return None;
   auto AbbrevDecl = getAbbreviationDeclarationPtr();
@@ -320,7 +319,8 @@ DWARFDie::getAttributeValueAsReferencedDie(dwarf::Attribute Attr) const {
   return DWARFDie();
 }
 
-Optional<uint64_t> DWARFDie::getRangesBaseAttribute() const {
+Optional<uint64_t>
+DWARFDie::getRangesBaseAttribute() const {
   return toSectionOffset(find({DW_AT_rnglists_base, DW_AT_GNU_ranges_base}));
 }
 
@@ -353,7 +353,8 @@ bool DWARFDie::getLowAndHighPC(uint64_t &LowPC, uint64_t &HighPC,
   return false;
 }
 
-DWARFAddressRangesVector DWARFDie::getAddressRanges() const {
+DWARFAddressRangesVector
+DWARFDie::getAddressRanges() const {
   if (isNULL())
     return DWARFAddressRangesVector();
   // Single range specified by low/high PC.
@@ -371,8 +372,8 @@ DWARFAddressRangesVector DWARFDie::getAddressRanges() const {
   return DWARFAddressRangesVector();
 }
 
-void DWARFDie::collectChildrenAddressRanges(
-    DWARFAddressRangesVector &Ranges) const {
+void
+DWARFDie::collectChildrenAddressRanges(DWARFAddressRangesVector& Ranges) const {
   if (isNULL())
     return;
   if (isSubprogramDIE()) {
@@ -380,32 +381,33 @@ void DWARFDie::collectChildrenAddressRanges(
     Ranges.insert(Ranges.end(), DIERanges.begin(), DIERanges.end());
   }
 
-  for (auto Child : children())
+  for (auto Child: children())
     Child.collectChildrenAddressRanges(Ranges);
 }
 
 bool DWARFDie::addressRangeContainsAddress(const uint64_t Address) const {
-  for (const auto &R : getAddressRanges()) {
+  for (const auto& R : getAddressRanges()) {
     if (R.LowPC <= Address && Address < R.HighPC)
       return true;
   }
   return false;
 }
 
-const char *DWARFDie::getSubroutineName(DINameKind Kind) const {
+const char *
+DWARFDie::getSubroutineName(DINameKind Kind) const {
   if (!isSubroutineDIE())
     return nullptr;
   return getName(Kind);
 }
 
-const char *DWARFDie::getName(DINameKind Kind) const {
+const char *
+DWARFDie::getName(DINameKind Kind) const {
   if (!isValid() || Kind == DINameKind::None)
     return nullptr;
   // Try to get mangled name only if it was asked for.
   if (Kind == DINameKind::LinkageName) {
-    if (auto Name = dwarf::toString(
-            findRecursively({DW_AT_MIPS_linkage_name, DW_AT_linkage_name}),
-            nullptr))
+    if (auto Name = dwarf::toString(findRecursively({DW_AT_MIPS_linkage_name,
+                                    DW_AT_linkage_name}), nullptr))
       return Name;
   }
   if (auto Name = dwarf::toString(findRecursively(DW_AT_name), nullptr))
@@ -443,6 +445,8 @@ void DWARFDie::dump(raw_ostream &OS, unsigned Indent,
   DWARFDataExtractor debug_info_data = U->getDebugInfoExtractor();
   const uint32_t Offset = getOffset();
   uint32_t offset = Offset;
+  //  if (DumpOpts.ShowChildren && DumpOpts.RecurseDepth)
+  //  DumpOpts.RecurseDepth++;
   if (DumpOpts.ShowParents) {
     DumpOpts.ShowParents = false;
     Indent = dumpParentChain(getParent(), OS, Indent, DumpOpts);
@@ -460,7 +464,7 @@ void DWARFDie::dump(raw_ostream &OS, unsigned Indent,
           WithColor(OS, syntax::Tag).get().indent(Indent) << tagString;
         else
           WithColor(OS, syntax::Tag).get().indent(Indent)
-              << format("DW_TAG_Unknown_%x", getTag());
+          << format("DW_TAG_Unknown_%x", getTag());
 
         if (DumpOpts.Verbose)
           OS << format(" [%u] %c", abbrCode,
@@ -483,21 +487,19 @@ void DWARFDie::dump(raw_ostream &OS, unsigned Indent,
         if (DumpOpts.RecurseDepth > 0 && child) {
           DumpOpts.RecurseDepth--;
           while (child) {
-            child.dump(OS, Indent + 2, DumpOpts);
+            child.dump(OS, Indent+2, DumpOpts);
             child = child.getSibling();
           }
         }
       } else {
         OS << "Abbreviation code not found in 'debug_abbrev' class for code: "
-           << abbrCode << '\n';
+        << abbrCode << '\n';
       }
     } else {
       OS.indent(Indent) << "NULL\n";
     }
   }
 }
-
-LLVM_DUMP_METHOD void DWARFDie::dump() const { dump(llvm::errs(), 0); }
 
 DWARFDie DWARFDie::getParent() const {
   if (isValid())
@@ -511,19 +513,14 @@ DWARFDie DWARFDie::getSibling() const {
   return DWARFDie();
 }
 
-DWARFDie DWARFDie::getFirstChild() const {
-  if (isValid())
-    return U->getFirstChild(Die);
-  return DWARFDie();
-}
-
-iterator_range<DWARFDie::attribute_iterator> DWARFDie::attributes() const {
+iterator_range<DWARFDie::attribute_iterator>
+DWARFDie::attributes() const {
   return make_range(attribute_iterator(*this, false),
                     attribute_iterator(*this, true));
 }
 
-DWARFDie::attribute_iterator::attribute_iterator(DWARFDie D, bool End)
-    : Die(D), AttrValue(0), Index(0) {
+DWARFDie::attribute_iterator::attribute_iterator(DWARFDie D, bool End) :
+    Die(D), AttrValue(0), Index(0) {
   auto AbbrDecl = Die.getAbbreviationDeclarationPtr();
   assert(AbbrDecl && "Must have abbreviation declaration");
   if (End) {

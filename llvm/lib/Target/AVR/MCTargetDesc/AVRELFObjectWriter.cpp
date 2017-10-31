@@ -13,7 +13,6 @@
 #include "llvm/MC/MCAssembler.h"
 #include "llvm/MC/MCELFObjectWriter.h"
 #include "llvm/MC/MCExpr.h"
-#include "llvm/MC/MCObjectWriter.h"
 #include "llvm/MC/MCSection.h"
 #include "llvm/MC/MCValue.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -34,7 +33,7 @@ public:
 };
 
 AVRELFObjectWriter::AVRELFObjectWriter(uint8_t OSABI)
-    : MCELFObjectTargetWriter(false, OSABI, ELF::EM_AVR, true) {}
+    : MCELFObjectTargetWriter(false, OSABI, ELF::EM_AVR, true, false) {}
 
 unsigned AVRELFObjectWriter::getRelocType(MCContext &Ctx,
                                           const MCValue &Target,
@@ -119,10 +118,9 @@ unsigned AVRELFObjectWriter::getRelocType(MCContext &Ctx,
   }
 }
 
-std::unique_ptr<MCObjectWriter>
-createAVRELFObjectWriter(raw_pwrite_stream &OS, uint8_t OSABI) {
-  std::unique_ptr<MCELFObjectTargetWriter> MOTW(new AVRELFObjectWriter(OSABI));
-  return createELFObjectWriter(std::move(MOTW), OS, true);
+MCObjectWriter *createAVRELFObjectWriter(raw_pwrite_stream &OS, uint8_t OSABI) {
+  MCELFObjectTargetWriter *MOTW = new AVRELFObjectWriter(OSABI);
+  return createELFObjectWriter(MOTW, OS, true);
 }
 
 } // end of namespace llvm

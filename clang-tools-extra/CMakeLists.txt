@@ -15,7 +15,8 @@ add_subdirectory(pp-trace)
 add_subdirectory(tool-template)
 
 # Add the common testsuite after all the tools.
-if(CLANG_INCLUDE_TESTS)
+# TODO: Support tests with more granularity when features are off?
+if(CLANG_ENABLE_STATIC_ANALYZER AND CLANG_INCLUDE_TESTS)
 add_subdirectory(test)
 add_subdirectory(unittests)
 endif()

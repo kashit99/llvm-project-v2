@@ -45,7 +45,7 @@ void CodeGenFunction::EmitStopPoint(const Stmt *S) {
   }
 }
 
-void CodeGenFunction::EmitStmt(const Stmt *S, ArrayRef<const Attr *> Attrs) {
+void CodeGenFunction::EmitStmt(const Stmt *S) {
   assert(S && "Null statement?");
   PGO.setCurrentStmt(S);
 
@@ -131,16 +131,16 @@ void CodeGenFunction::EmitStmt(const Stmt *S, ArrayRef<const Attr *> Attrs) {
   case Stmt::IndirectGotoStmtClass:
     EmitIndirectGotoStmt(cast<IndirectGotoStmt>(*S)); break;
 
-  case Stmt::IfStmtClass:      EmitIfStmt(cast<IfStmt>(*S));              break;
-  case Stmt::WhileStmtClass:   EmitWhileStmt(cast<WhileStmt>(*S), Attrs); break;
-  case Stmt::DoStmtClass:      EmitDoStmt(cast<DoStmt>(*S), Attrs);       break;
-  case Stmt::ForStmtClass:     EmitForStmt(cast<ForStmt>(*S), Attrs);     break;
+  case Stmt::IfStmtClass:       EmitIfStmt(cast<IfStmt>(*S));             break;
+  case Stmt::WhileStmtClass:    EmitWhileStmt(cast<WhileStmt>(*S));       break;
+  case Stmt::DoStmtClass:       EmitDoStmt(cast<DoStmt>(*S));             break;
+  case Stmt::ForStmtClass:      EmitForStmt(cast<ForStmt>(*S));           break;
 
-  case Stmt::ReturnStmtClass:  EmitReturnStmt(cast<ReturnStmt>(*S));      break;
+  case Stmt::ReturnStmtClass:   EmitReturnStmt(cast<ReturnStmt>(*S));     break;
 
-  case Stmt::SwitchStmtClass:  EmitSwitchStmt(cast<SwitchStmt>(*S));      break;
-  case Stmt::GCCAsmStmtClass:  // Intentional fall-through.
-  case Stmt::MSAsmStmtClass:   EmitAsmStmt(cast<AsmStmt>(*S));            break;
+  case Stmt::SwitchStmtClass:   EmitSwitchStmt(cast<SwitchStmt>(*S));     break;
+  case Stmt::GCCAsmStmtClass:   // Intentional fall-through.
+  case Stmt::MSAsmStmtClass:    EmitAsmStmt(cast<AsmStmt>(*S));           break;
   case Stmt::CoroutineBodyStmtClass:
     EmitCoroutineBody(cast<CoroutineBodyStmt>(*S));
     break;
@@ -178,7 +178,7 @@ void CodeGenFunction::EmitStmt(const Stmt *S, ArrayRef<const Attr *> Attrs) {
     EmitCXXTryStmt(cast<CXXTryStmt>(*S));
     break;
   case Stmt::CXXForRangeStmtClass:
-    EmitCXXForRangeStmt(cast<CXXForRangeStmt>(*S), Attrs);
+    EmitCXXForRangeStmt(cast<CXXForRangeStmt>(*S));
     break;
   case Stmt::SEHTryStmtClass:
     EmitSEHTryStmt(cast<SEHTryStmt>(*S));
@@ -555,7 +555,23 @@ void CodeGenFunction::EmitLabelStmt(const LabelStmt &S) {
 }
 
 void CodeGenFunction::EmitAttributedStmt(const AttributedStmt &S) {
-  EmitStmt(S.getSubStmt(), S.getAttrs());
+  const Stmt *SubStmt = S.getSubStmt();
+  switch (SubStmt->getStmtClass()) {
+  case Stmt::DoStmtClass:
+    EmitDoStmt(cast<DoStmt>(*SubStmt), S.getAttrs());
+    break;
+  case Stmt::ForStmtClass:
+    EmitForStmt(cast<ForStmt>(*SubStmt), S.getAttrs());
+    break;
+  case Stmt::WhileStmtClass:
+    EmitWhileStmt(cast<WhileStmt>(*SubStmt), S.getAttrs());
+    break;
+  case Stmt::CXXForRangeStmtClass:
+    EmitCXXForRangeStmt(cast<CXXForRangeStmt>(*SubStmt), S.getAttrs());
+    break;
+  default:
+    EmitStmt(SubStmt);
+  }
 }
 
 void CodeGenFunction::EmitGotoStmt(const GotoStmt &S) {
@@ -2194,7 +2210,7 @@ void CodeGenFunction::EmitAsmStmt(const AsmStmt &S) {
                    llvm::IntegerType::get(getLLVMContext(), (unsigned)TmpSize));
         Tmp = Builder.CreateTrunc(Tmp, TruncTy);
       } else if (TruncTy->isIntegerTy()) {
-        Tmp = Builder.CreateZExtOrTrunc(Tmp, TruncTy);
+        Tmp = Builder.CreateTrunc(Tmp, TruncTy);
       } else if (TruncTy->isVectorTy()) {
         Tmp = Builder.CreateBitCast(Tmp, TruncTy);
       }

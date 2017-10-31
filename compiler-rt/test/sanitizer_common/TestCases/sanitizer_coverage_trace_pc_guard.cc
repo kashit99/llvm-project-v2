@@ -1,10 +1,9 @@
 // Tests trace pc guard coverage collection.
-
+//
 // REQUIRES: has_sancovcc,stable-runtime
-// UNSUPPORTED: ubsan,i386-darwin
+// UNSUPPORTED: i386-darwin
 // XFAIL: tsan,powerpc64,s390x,mips
-// XFAIL: android && asan
-
+//
 // RUN: DIR=%t_workdir
 // RUN: rm -rf $DIR
 // RUN: mkdir -p $DIR
@@ -16,7 +15,9 @@
 // RUN: %env_tool_opts=coverage=0 %t 2>&1 | FileCheck --check-prefix=CHECK-NOCOV %s
 // RUN: rm -rf $DIR
 // Make some room to stabilize line numbers
-
+//
+//
+//
 #include <stdio.h>
 
 int foo() {
@@ -35,7 +36,7 @@ int main() {
 // CHECK-NEXT: foo
 // CHECK-NEXT: SanitizerCoverage: ./sanitizer_coverage_trace_pc_guard.{{.*}}.sancov: 2 PCs written
 //
-// CHECK-SANCOV: sanitizer_coverage_trace_pc_guard.cc:[[@LINE-16]] foo
-// CHECK-SANCOV-NEXT: sanitizer_coverage_trace_pc_guard.cc:[[@LINE-12]] main
+// CHECK-SANCOV: sanitizer_coverage_trace_pc_guard.cc:23 foo
+// CHECK-SANCOV-NEXT: sanitizer_coverage_trace_pc_guard.cc:28 main
 //
 // CHECK-NOCOV-NOT: SanitizerCoverage

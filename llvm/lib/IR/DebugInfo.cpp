@@ -311,9 +311,6 @@ bool llvm::stripDebugInfo(Function &F) {
     }
 
     auto *TermInst = BB.getTerminator();
-    if (!TermInst)
-      // This is invalid IR, but we may not have run the verifier yet
-      continue;
     if (auto *LoopID = TermInst->getMetadata(LLVMContext::MD_loop)) {
       auto *NewLoopID = LoopIDsMap.lookup(LoopID);
       if (!NewLoopID)
@@ -668,27 +665,4 @@ unsigned llvm::getDebugMetadataVersionFromModule(const Module &M) {
           M.getModuleFlag("Debug Info Version")))
     return Val->getZExtValue();
   return 0;
-}
-
-void Instruction::applyMergedLocation(const DILocation *LocA,
-                                      const DILocation *LocB) {
-  if (LocA && LocB && (LocA == LocB || !LocA->canDiscriminate(*LocB))) {
-    setDebugLoc(LocA);
-    return;
-  }
-  if (!LocA || !LocB || !isa<CallInst>(this)) {
-    setDebugLoc(nullptr);
-    return;
-  }
-  SmallPtrSet<DILocation *, 5> InlinedLocationsA;
-  for (DILocation *L = LocA->getInlinedAt(); L; L = L->getInlinedAt())
-    InlinedLocationsA.insert(L);
-  const DILocation *Result = LocB;
-  for (DILocation *L = LocB->getInlinedAt(); L; L = L->getInlinedAt()) {
-    Result = L;
-    if (InlinedLocationsA.count(L))
-      break;
-  }
-  setDebugLoc(DILocation::get(
-      Result->getContext(), 0, 0, Result->getScope(), Result->getInlinedAt()));
 }

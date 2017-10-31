@@ -61,16 +61,7 @@ protected:
   };
 
   enum X86ProcFamilyEnum {
-    Others, 
-    IntelAtom,
-    IntelSLM,
-    IntelGLM,
-    IntelHaswell,
-    IntelBroadwell,
-    IntelSkylake,
-    IntelKNL,
-    IntelSKX,
-    IntelCannonlake
+    Others, IntelAtom, IntelSLM, IntelGLM
   };
 
   /// X86 processor family: Intel Atom, and others
@@ -193,6 +184,9 @@ protected:
   /// Processor has Prefetch with intent to Write instruction
   bool HasPFPREFETCHWT1;
 
+  /// True if BT (bit test) of memory instructions are slow.
+  bool IsBTMemSlow;
+
   /// True if SHLD instructions are slow.
   bool IsSHLDSlow;
 
@@ -244,9 +238,6 @@ protected:
   /// True if SHLD based rotate is fast.
   bool HasFastSHLDRotate;
 
-  /// True if the processor supports macrofusion.
-  bool HasMacroFusion;
-
   /// True if the processor has enhanced REP MOVSB/STOSB.
   bool HasERMSB;
 
@@ -254,9 +245,9 @@ protected:
   /// a stall when returning too early.
   bool PadShortFunctions;
 
-  /// True if two memory operand instructions should use a temporary register
-  /// instead.
-  bool SlowTwoMemOps;
+  /// True if the Calls with memory reference should be converted
+  /// to a register-based indirect call.
+  bool CallRegIndirect;
 
   /// True if the LEA instruction inputs have to be ready at address generation
   /// (AG) time.
@@ -344,10 +335,6 @@ private:
 
   /// True if compiling for 16-bit, false for 32-bit or 64-bit.
   bool In16BitMode;
-
-  /// Contains the Overhead of gather\scatter instructions
-  int GatherOverhead;
-  int ScatterOverhead;
 
   X86SelectionDAGInfo TSInfo;
   // Ordering here is important. X86InstrInfo initializes X86RegisterInfo which
@@ -486,12 +473,11 @@ public:
   bool hasLAHFSAHF() const { return HasLAHFSAHF; }
   bool hasMWAITX() const { return HasMWAITX; }
   bool hasCLZERO() const { return HasCLZERO; }
+  bool isBTMemSlow() const { return IsBTMemSlow; }
   bool isSHLDSlow() const { return IsSHLDSlow; }
   bool isPMULLDSlow() const { return IsPMULLDSlow; }
   bool isUnalignedMem16Slow() const { return IsUAMem16Slow; }
   bool isUnalignedMem32Slow() const { return IsUAMem32Slow; }
-  int getGatherOverhead() const { return GatherOverhead; }
-  int getScatterOverhead() const { return ScatterOverhead; }
   bool hasSSEUnalignedMem() const { return HasSSEUnalignedMem; }
   bool hasCmpxchg16b() const { return HasCmpxchg16b; }
   bool useLeaForSP() const { return UseLeaForSP; }
@@ -502,12 +488,11 @@ public:
   bool hasFastVectorFSQRT() const { return HasFastVectorFSQRT; }
   bool hasFastLZCNT() const { return HasFastLZCNT; }
   bool hasFastSHLDRotate() const { return HasFastSHLDRotate; }
-  bool hasMacroFusion() const { return HasMacroFusion; }
   bool hasERMSB() const { return HasERMSB; }
   bool hasSlowDivide32() const { return HasSlowDivide32; }
   bool hasSlowDivide64() const { return HasSlowDivide64; }
   bool padShortFunctions() const { return PadShortFunctions; }
-  bool slowTwoMemOps() const { return SlowTwoMemOps; }
+  bool callRegIndirect() const { return CallRegIndirect; }
   bool LEAusesAG() const { return LEAUsesAG; }
   bool slowLEA() const { return SlowLEA; }
   bool slow3OpsLEA() const { return Slow3OpsLEA; }
@@ -522,13 +507,9 @@ public:
   bool hasPKU() const { return HasPKU; }
   bool hasMPX() const { return HasMPX; }
   bool hasCLFLUSHOPT() const { return HasCLFLUSHOPT; }
-  bool hasCLWB() const { return HasCLWB; }
 
   bool isXRaySupported() const override { return is64Bit(); }
 
-  X86ProcFamilyEnum getProcFamily() const { return X86ProcFamily; }
-
-  /// TODO: to be removed later and replaced with suitable properties
   bool isAtom() const { return X86ProcFamily == IntelAtom; }
   bool isSLM() const { return X86ProcFamily == IntelSLM; }
   bool useSoftFloat() const { return UseSoftFloat; }
@@ -588,9 +569,13 @@ public:
 
   bool isOSWindows() const { return TargetTriple.isOSWindows(); }
 
-  bool isTargetWin64() const { return In64BitMode && isOSWindows(); }
+  bool isTargetWin64() const {
+    return In64BitMode && TargetTriple.isOSWindows();
+  }
 
-  bool isTargetWin32() const { return !In64BitMode && isOSWindows(); }
+  bool isTargetWin32() const {
+    return !In64BitMode && (isTargetCygMing() || isTargetKnownWindowsMSVC());
+  }
 
   bool isPICStyleGOT() const { return PICStyle == PICStyles::GOT; }
   bool isPICStyleRIPRel() const { return PICStyle == PICStyles::RIPRel; }
@@ -672,8 +657,6 @@ public:
   AntiDepBreakMode getAntiDepBreakMode() const override {
     return TargetSubtargetInfo::ANTIDEP_CRITICAL;
   }
-
-  bool enableAdvancedRASplitCost() const override { return true; }
 };
 
 } // end namespace llvm

@@ -288,9 +288,7 @@ Sema::getCurrentMangleNumberContext(const DeclContext *DC,
     Normal,
     DefaultArgument,
     DataMember,
-    StaticDataMember,
-    InlineVariable,
-    VariableTemplate
+    StaticDataMember
   } Kind = Normal;
 
   // Default arguments of member function parameters that appear in a class
@@ -305,14 +303,6 @@ Sema::getCurrentMangleNumberContext(const DeclContext *DC,
     } else if (VarDecl *Var = dyn_cast<VarDecl>(ManglingContextDecl)) {
       if (Var->getDeclContext()->isRecord())
         Kind = StaticDataMember;
-      else if (Var->getMostRecentDecl()->isInline())
-        Kind = InlineVariable;
-      else if (Var->getDescribedVarTemplate())
-        Kind = VariableTemplate;
-      else if (auto *VTS = dyn_cast<VarTemplateSpecializationDecl>(Var)) {
-        if (!VTS->isExplicitSpecialization())
-          Kind = VariableTemplate;
-      }
     } else if (isa<FieldDecl>(ManglingContextDecl)) {
       Kind = DataMember;
     }
@@ -353,10 +343,6 @@ Sema::getCurrentMangleNumberContext(const DeclContext *DC,
     //  -- the in-class initializers of class members
   case DefaultArgument:
     //  -- default arguments appearing in class definitions
-  case InlineVariable:
-    //  -- the initializers of inline variables
-  case VariableTemplate:
-    //  -- the initializers of templated variables
     return &ExprEvalContexts.back().getMangleNumberingContext(Context);
   }
 
@@ -948,7 +934,7 @@ void Sema::ActOnStartOfLambdaDefinition(LambdaIntroducer &Intro,
     if (C->Kind == LCK_This || C->Kind == LCK_StarThis) {
       if (C->Kind == LCK_StarThis) 
         Diag(C->Loc, !getLangOpts().CPlusPlus1z
-                             ? diag::ext_star_this_lambda_capture_cxx17
+                             ? diag::ext_star_this_lambda_capture_cxx1z
                              : diag::warn_cxx14_compat_star_this_lambda_capture);
 
       // C++11 [expr.prim.lambda]p8:
@@ -962,15 +948,17 @@ void Sema::ActOnStartOfLambdaDefinition(LambdaIntroducer &Intro,
         continue;
       }
 
-      // C++2a [expr.prim.lambda]p8:
-      //  If a lambda-capture includes a capture-default that is =,
-      //  each simple-capture of that lambda-capture shall be of the form
-      //  "&identifier", "this", or "* this". [ Note: The form [&,this] is
-      //  redundant but accepted for compatibility with ISO C++14. --end note ]
-      if (Intro.Default == LCD_ByCopy && C->Kind != LCK_StarThis)
-        Diag(C->Loc, !getLangOpts().CPlusPlus2a
-                         ? diag::ext_equals_this_lambda_capture_cxx2a
-                         : diag::warn_cxx17_compat_equals_this_lambda_capture);
+      // C++1z [expr.prim.lambda]p8:
+      //  If a lambda-capture includes a capture-default that is =, each
+      //  simple-capture of that lambda-capture shall be of the form "&
+      //  identifier" or "* this". [ Note: The form [&,this] is redundant but
+      //  accepted for compatibility with ISO C++14. --end note ]
+      if (Intro.Default == LCD_ByCopy && C->Kind != LCK_StarThis) {
+        Diag(C->Loc, diag::err_this_capture_with_copy_default)
+            << FixItHint::CreateRemoval(
+                SourceRange(getLocForEndOfToken(PrevCaptureLoc), C->Loc));
+        continue;
+      }
 
       // C++11 [expr.prim.lambda]p12:
       //   If this is captured by a local lambda expression, its nearest

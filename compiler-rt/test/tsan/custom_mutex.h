@@ -6,16 +6,15 @@
 // A very primitive mutex annotated with tsan annotations.
 class Mutex {
  public:
-  Mutex(bool prof, unsigned create_flags, unsigned destroy_flags=0)
+  Mutex(bool prof, unsigned flags)
       : prof_(prof)
       , locked_(false)
-      , seq_(0)
-      , destroy_flags_(destroy_flags) {
-    __tsan_mutex_create(this, create_flags);
+      , seq_(0) {
+    __tsan_mutex_create(this, flags);
   }
 
   ~Mutex() {
-    __tsan_mutex_destroy(this, destroy_flags_);
+    __tsan_mutex_destroy(this, 0);
   }
 
   void Lock() {
@@ -58,7 +57,6 @@ class Mutex {
   const bool prof_;
   std::atomic<bool> locked_;
   int seq_;
-  unsigned destroy_flags_;
 
   // This models mutex profiling subsystem.
   static Mutex prof_mu_;

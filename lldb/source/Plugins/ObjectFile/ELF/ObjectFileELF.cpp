@@ -22,6 +22,7 @@
 #include "lldb/Symbol/DWARFCallFrameInfo.h"
 #include "lldb/Symbol/SymbolContext.h"
 #include "lldb/Target/SectionLoadList.h"
+#include "lldb/Target/SwiftLanguageRuntime.h"
 #include "lldb/Target/Target.h"
 #include "lldb/Utility/DataBufferLLVM.h"
 #include "lldb/Utility/Log.h"
@@ -405,7 +406,7 @@ ObjectFile *ObjectFileELF::CreateInstance(const lldb::ModuleSP &module_sp,
                                           lldb::offset_t length) {
   if (!data_sp) {
     data_sp =
-        DataBufferLLVM::CreateSliceFromPath(file->GetPath(), length, file_offset, true);
+        DataBufferLLVM::CreateSliceFromPath(file->GetPath(), length, file_offset);
     if (!data_sp)
       return nullptr;
     data_offset = 0;
@@ -423,7 +424,7 @@ ObjectFile *ObjectFileELF::CreateInstance(const lldb::ModuleSP &module_sp,
   // Update the data to contain the entire file if it doesn't already
   if (data_sp->GetByteSize() < length) {
     data_sp =
-        DataBufferLLVM::CreateSliceFromPath(file->GetPath(), length, file_offset, true);
+        DataBufferLLVM::CreateSliceFromPath(file->GetPath(), length, file_offset);
     if (!data_sp)
       return nullptr;
     data_offset = 0;
@@ -451,7 +452,7 @@ ObjectFile *ObjectFileELF::CreateMemoryInstance(
     if (ELFHeader::MagicBytesMatch(magic)) {
       unsigned address_size = ELFHeader::AddressSizeInBytes(magic);
       if (address_size == 4 || address_size == 8) {
-        std::unique_ptr<ObjectFileELF> objfile_ap(
+        std::auto_ptr<ObjectFileELF> objfile_ap(
             new ObjectFileELF(module_sp, data_sp, process_sp, header_addr));
         ArchSpec spec;
         if (objfile_ap->GetArchitecture(spec) &&
@@ -1818,12 +1819,6 @@ void ObjectFileELF::CreateSections(SectionList &unified_section_list) {
   if (!m_sections_ap.get() && ParseSectionHeaders()) {
     m_sections_ap.reset(new SectionList());
 
-    // Object files frequently have 0 for every section address, meaning we
-    // need to compute synthetic addresses in order for "file addresses" from
-    // different sections to not overlap
-    bool synthaddrs = (CalculateType() == ObjectFile::Type::eTypeObjectFile);
-    uint64_t nextaddr = 0;
-
     for (SectionHeaderCollIter I = m_section_headers.begin();
          I != m_section_headers.end(); ++I) {
       const ELFSectionHeaderInfo &header = *I;
@@ -1841,7 +1836,6 @@ void ObjectFileELF::CreateSections(SectionList &unified_section_list) {
       static ConstString g_sect_name_dwarf_debug_abbrev(".debug_abbrev");
       static ConstString g_sect_name_dwarf_debug_addr(".debug_addr");
       static ConstString g_sect_name_dwarf_debug_aranges(".debug_aranges");
-      static ConstString g_sect_name_dwarf_debug_cu_index(".debug_cu_index");
       static ConstString g_sect_name_dwarf_debug_frame(".debug_frame");
       static ConstString g_sect_name_dwarf_debug_info(".debug_info");
       static ConstString g_sect_name_dwarf_debug_line(".debug_line");
@@ -1864,6 +1858,7 @@ void ObjectFileELF::CreateSections(SectionList &unified_section_list) {
       static ConstString g_sect_name_dwarf_debug_str_offsets_dwo(
           ".debug_str_offsets.dwo");
       static ConstString g_sect_name_eh_frame(".eh_frame");
+      static ConstString g_sect_name_swift_ast(".swift_ast");
       static ConstString g_sect_name_arm_exidx(".ARM.exidx");
       static ConstString g_sect_name_arm_extab(".ARM.extab");
       static ConstString g_sect_name_go_symtab(".gosymtab");
@@ -1911,8 +1906,6 @@ void ObjectFileELF::CreateSections(SectionList &unified_section_list) {
         sect_type = eSectionTypeDWARFDebugAddr;
       else if (name == g_sect_name_dwarf_debug_aranges)
         sect_type = eSectionTypeDWARFDebugAranges;
-      else if (name == g_sect_name_dwarf_debug_cu_index)
-        sect_type = eSectionTypeDWARFDebugCuIndex;
       else if (name == g_sect_name_dwarf_debug_frame)
         sect_type = eSectionTypeDWARFDebugFrame;
       else if (name == g_sect_name_dwarf_debug_info)
@@ -1951,6 +1944,8 @@ void ObjectFileELF::CreateSections(SectionList &unified_section_list) {
         sect_type = eSectionTypeDWARFDebugStrOffsets;
       else if (name == g_sect_name_eh_frame)
         sect_type = eSectionTypeEHFrame;
+      else if (name == g_sect_name_swift_ast)
+        sect_type = eSectionTypeSwiftModules;
       else if (name == g_sect_name_arm_exidx)
         sect_type = eSectionTypeARMexidx;
       else if (name == g_sect_name_arm_extab)
@@ -1996,18 +1991,9 @@ void ObjectFileELF::CreateSections(SectionList &unified_section_list) {
               ? m_arch_spec.GetDataByteSize()
               : eSectionTypeCode == sect_type ? m_arch_spec.GetCodeByteSize()
                                               : 1;
+
       elf::elf_xword log2align =
           (header.sh_addralign == 0) ? 0 : llvm::Log2_64(header.sh_addralign);
-
-      uint64_t addr = header.sh_addr;
-
-      if ((header.sh_flags & SHF_ALLOC) && synthaddrs) {
-          nextaddr =
-              (nextaddr + header.sh_addralign - 1) & ~(header.sh_addralign - 1);
-          addr = nextaddr;
-          nextaddr += vm_size;
-      }
-
       SectionSP section_sp(new Section(
           GetModule(), // Module to which this section belongs.
           this, // ObjectFile to which this section belongs and should read
@@ -2015,7 +2001,7 @@ void ObjectFileELF::CreateSections(SectionList &unified_section_list) {
           SectionIndex(I),     // Section ID.
           name,                // Section name.
           sect_type,           // Section type.
-          addr,                // VM address.
+          header.sh_addr,      // VM address.
           vm_size,             // VM size in bytes of this section.
           header.sh_offset,    // Offset of this section in the file.
           file_size,           // Size of the section as found in the file.
@@ -2033,14 +2019,13 @@ void ObjectFileELF::CreateSections(SectionList &unified_section_list) {
   if (m_sections_ap.get()) {
     if (GetType() == eTypeDebugInfo) {
       static const SectionType g_sections[] = {
-          eSectionTypeDWARFDebugAbbrev,   eSectionTypeDWARFDebugAddr,
-          eSectionTypeDWARFDebugAranges,  eSectionTypeDWARFDebugCuIndex,
-          eSectionTypeDWARFDebugFrame,    eSectionTypeDWARFDebugInfo,
-          eSectionTypeDWARFDebugLine,     eSectionTypeDWARFDebugLoc,
-          eSectionTypeDWARFDebugMacInfo,  eSectionTypeDWARFDebugPubNames,
-          eSectionTypeDWARFDebugPubTypes, eSectionTypeDWARFDebugRanges,
-          eSectionTypeDWARFDebugStr,      eSectionTypeDWARFDebugStrOffsets,
-          eSectionTypeELFSymbolTable,
+          eSectionTypeDWARFDebugAbbrev,     eSectionTypeDWARFDebugAddr,
+          eSectionTypeDWARFDebugAranges,    eSectionTypeDWARFDebugFrame,
+          eSectionTypeDWARFDebugInfo,       eSectionTypeDWARFDebugLine,
+          eSectionTypeDWARFDebugLoc,        eSectionTypeDWARFDebugMacInfo,
+          eSectionTypeDWARFDebugPubNames,   eSectionTypeDWARFDebugPubTypes,
+          eSectionTypeDWARFDebugRanges,     eSectionTypeDWARFDebugStr,
+          eSectionTypeDWARFDebugStrOffsets, eSectionTypeELFSymbolTable,
       };
       SectionList *elf_section_list = m_sections_ap.get();
       for (size_t idx = 0; idx < sizeof(g_sections) / sizeof(g_sections[0]);
@@ -2383,7 +2368,8 @@ unsigned ObjectFileELF::ParseSymbols(Symtab *symtab, user_id_t start_id,
 
     bool is_global = symbol.getBinding() == STB_GLOBAL;
     uint32_t flags = symbol.st_other << 8 | symbol.st_info | additional_flags;
-    bool is_mangled = (symbol_name[0] == '_' && symbol_name[1] == 'Z');
+    bool is_mangled =
+        (symbol_name && symbol_name[0] == '_' && symbol_name[1] == 'Z');
 
     llvm::StringRef symbol_ref(symbol_name);
 
@@ -2392,6 +2378,12 @@ unsigned ObjectFileELF::ParseSymbols(Symtab *symtab, user_id_t start_id,
     size_t version_pos = symbol_ref.find('@');
     bool has_suffix = version_pos != llvm::StringRef::npos;
     llvm::StringRef symbol_bare = symbol_ref.substr(0, version_pos);
+
+    Mangled guess_the_language(ConstString(symbol_bare), true);
+    if (guess_the_language.GuessLanguage() != lldb::eLanguageTypeUnknown) {
+      is_mangled = true;
+    }
+
     Mangled mangled(ConstString(symbol_bare), is_mangled);
 
     // Now append the suffix back to mangled and unmangled names. Only do it if
@@ -2410,6 +2402,9 @@ unsigned ObjectFileELF::ParseSymbols(Symtab *symtab, user_id_t start_id,
       if (!demangled_name.empty())
         mangled.SetDemangledName(ConstString((demangled_name + suffix).str()));
     }
+
+    if (SwiftLanguageRuntime::IsMetadataSymbol(symbol_name))
+      symbol_type = eSymbolTypeMetadata;
 
     // In ELF all symbol should have a valid size but it is not true for some
     // function symbols
@@ -2733,7 +2728,7 @@ ObjectFileELF::ParseTrampolineSymbols(Symtab *symbol_table, user_id_t start_id,
                              rel_data, symtab_data, strtab_data);
 }
 
-unsigned ObjectFileELF::ApplyRelocations(
+unsigned ObjectFileELF::RelocateSection(
     Symtab *symtab, const ELFHeader *hdr, const ELFSectionHeader *rel_hdr,
     const ELFSectionHeader *symtab_hdr, const ELFSectionHeader *debug_hdr,
     DataExtractor &rel_data, DataExtractor &symtab_data,
@@ -2810,8 +2805,7 @@ unsigned ObjectFileELF::ApplyRelocations(
 }
 
 unsigned ObjectFileELF::RelocateDebugSections(const ELFSectionHeader *rel_hdr,
-                                              user_id_t rel_id,
-                                              lldb_private::Symtab *thetab) {
+                                              user_id_t rel_id) {
   assert(rel_hdr->sh_type == SHT_RELA || rel_hdr->sh_type == SHT_REL);
 
   // Parse in the section list if needed.
@@ -2847,11 +2841,10 @@ unsigned ObjectFileELF::RelocateDebugSections(const ELFSectionHeader *rel_hdr,
   DataExtractor symtab_data;
   DataExtractor debug_data;
 
-  if (GetData(rel->GetFileOffset(), rel->GetFileSize(), rel_data) &&
-      GetData(symtab->GetFileOffset(), symtab->GetFileSize(), symtab_data) &&
-      GetData(debug->GetFileOffset(), debug->GetFileSize(), debug_data)) {
-    ApplyRelocations(thetab, &m_header, rel_hdr, symtab_hdr, debug_hdr,
-                     rel_data, symtab_data, debug_data, debug);
+  if (ReadSectionData(rel, rel_data) && ReadSectionData(symtab, symtab_data) &&
+      ReadSectionData(debug, debug_data)) {
+    RelocateSection(m_symtab_ap.get(), &m_header, rel_hdr, symtab_hdr,
+                    debug_hdr, rel_data, symtab_data, debug_data, debug);
   }
 
   return 0;
@@ -2945,48 +2938,21 @@ Symtab *ObjectFileELF::GetSymtab() {
     m_symtab_ap->CalculateSymbolSizes();
   }
 
-  return m_symtab_ap.get();
-}
-
-void ObjectFileELF::RelocateSection(lldb_private::Section *section)
-{
-  static const char *debug_prefix = ".debug";
-
-  // Set relocated bit so we stop getting called, regardless of
-  // whether we actually relocate.
-  section->SetIsRelocated(true);
-
-  // We only relocate in ELF relocatable files
-  if (CalculateType() != eTypeObjectFile)
-    return;
-
-  const char *section_name = section->GetName().GetCString();
-  // Can't relocate that which can't be named
-  if (section_name == nullptr)
-    return;
-
-  // We don't relocate non-debug sections at the moment
-  if (strncmp(section_name, debug_prefix, strlen(debug_prefix)))
-    return;
-
-  // Relocation section names to look for
-  std::string needle = std::string(".rel") + section_name;
-  std::string needlea = std::string(".rela") + section_name;
-
   for (SectionHeaderCollIter I = m_section_headers.begin();
        I != m_section_headers.end(); ++I) {
     if (I->sh_type == SHT_RELA || I->sh_type == SHT_REL) {
-      const char *hay_name = I->section_name.GetCString();
-      if (hay_name == nullptr)
-        continue;
-      if (needle == hay_name || needlea == hay_name) {
-        const ELFSectionHeader &reloc_header = *I;
-        user_id_t reloc_id = SectionIndex(I);
-        RelocateDebugSections(&reloc_header, reloc_id, GetSymtab());
-        break;
+      if (CalculateType() == eTypeObjectFile) {
+        const char *section_name = I->section_name.AsCString("");
+        if (strstr(section_name, ".rela.debug") ||
+            strstr(section_name, ".rel.debug")) {
+          const ELFSectionHeader &reloc_header = *I;
+          user_id_t reloc_id = SectionIndex(I);
+          RelocateDebugSections(&reloc_header, reloc_id);
+        }
       }
     }
   }
+  return m_symtab_ap.get();
 }
 
 void ObjectFileELF::ParseUnwindSymbols(Symtab *symbol_table,

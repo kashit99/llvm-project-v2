@@ -185,8 +185,8 @@ GenerateModuleFromModuleMapAction::CreateOutputFile(CompilerInstance &CI,
 
     HeaderSearch &HS = CI.getPreprocessor().getHeaderSearchInfo();
     CI.getFrontendOpts().OutputFile =
-        HS.getCachedModuleFileName(CI.getLangOpts().CurrentModule,
-                                   ModuleMapFile);
+        HS.getModuleFileName(CI.getLangOpts().CurrentModule, ModuleMapFile,
+                             /*UsePrebuiltPath=*/false);
   }
 
   // We use createOutputFile here because this is exposed via libclang, and we
@@ -591,7 +591,7 @@ void PrintPreambleAction::ExecuteAction() {
   auto Buffer = CI.getFileManager().getBufferForFile(getCurrentFile());
   if (Buffer) {
     unsigned Preamble =
-        Lexer::ComputePreamble((*Buffer)->getBuffer(), CI.getLangOpts()).Size;
+        Lexer::ComputePreamble((*Buffer)->getBuffer(), CI.getLangOpts()).first;
     llvm::outs().write((*Buffer)->getBufferStart(), Preamble);
   }
 }

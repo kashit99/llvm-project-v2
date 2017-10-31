@@ -5,9 +5,6 @@
 
 // Also check that use_sigaltstack+verbosity doesn't crash.
 // RUN: %env_asan_opts=verbosity=1:use_sigaltstack=1:detect_stack_use_after_return=1 %run %t  | FileCheck %s
-
-// UNSUPPORTED: ios
-
 #include <stdio.h>
 
 __attribute__((noinline))

@@ -6,14 +6,8 @@
 // License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
-#ifndef TARGET_HEXAGON_HEXAGON_DEP_TIMING_CLASSES_H
-#define TARGET_HEXAGON_HEXAGON_DEP_TIMING_CLASSES_H
 
-#include "HexagonInstrInfo.h"
-
-namespace llvm {
-
-inline bool is_TC3x(unsigned SchedClass) {
+static bool is_TC3x(unsigned SchedClass) {
   switch (SchedClass) {
   case Hexagon::Sched::tc_1000eb10:
   case Hexagon::Sched::tc_2aaab1e0:
@@ -36,7 +30,7 @@ inline bool is_TC3x(unsigned SchedClass) {
   }
 }
 
-inline bool is_TC2early(unsigned SchedClass) {
+static bool is_TC2early(unsigned SchedClass) {
   switch (SchedClass) {
   case Hexagon::Sched::tc_35fb9d13:
   case Hexagon::Sched::tc_cbe45117:
@@ -46,7 +40,7 @@ inline bool is_TC2early(unsigned SchedClass) {
   }
 }
 
-inline bool is_TC4x(unsigned SchedClass) {
+static bool is_TC4x(unsigned SchedClass) {
   switch (SchedClass) {
   case Hexagon::Sched::tc_09c86199:
   case Hexagon::Sched::tc_2d1e6f5c:
@@ -60,7 +54,7 @@ inline bool is_TC4x(unsigned SchedClass) {
   }
 }
 
-inline bool is_TC2(unsigned SchedClass) {
+static bool is_TC2(unsigned SchedClass) {
   switch (SchedClass) {
   case Hexagon::Sched::tc_090485bb:
   case Hexagon::Sched::tc_1fe8323c:
@@ -92,7 +86,7 @@ inline bool is_TC2(unsigned SchedClass) {
   }
 }
 
-inline bool is_TC1(unsigned SchedClass) {
+static bool is_TC1(unsigned SchedClass) {
   switch (SchedClass) {
   case Hexagon::Sched::tc_07ac815d:
   case Hexagon::Sched::tc_1b6011fb:
@@ -136,6 +130,3 @@ inline bool is_TC1(unsigned SchedClass) {
     return false;
   }
 }
-} // namespace llvm
-
-#endif

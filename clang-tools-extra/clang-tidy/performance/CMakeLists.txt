@@ -3,7 +3,7 @@ set(LLVM_LINK_COMPONENTS support)
 add_clang_library(clangTidyPerformanceModule
   FasterStringFindCheck.cpp
   ForRangeCopyCheck.cpp
-  ImplicitConversionInLoopCheck.cpp
+  ImplicitCastInLoopCheck.cpp
   InefficientStringConcatenationCheck.cpp
   InefficientVectorOperationCheck.cpp
   PerformanceTidyModule.cpp

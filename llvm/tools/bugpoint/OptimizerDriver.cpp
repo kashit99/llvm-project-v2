@@ -58,7 +58,7 @@ static cl::opt<std::string>
 /// writeProgramToFile - This writes the current "Program" to the named bitcode
 /// file.  If an error occurs, true is returned.
 ///
-static bool writeProgramToFileAux(ToolOutputFile &Out, const Module *M) {
+static bool writeProgramToFileAux(tool_output_file &Out, const Module *M) {
   WriteBitcodeToFile(M, Out.os(), PreserveBitcodeUseListOrder);
   Out.os().close();
   if (!Out.os().has_error()) {
@@ -70,14 +70,14 @@ static bool writeProgramToFileAux(ToolOutputFile &Out, const Module *M) {
 
 bool BugDriver::writeProgramToFile(const std::string &Filename, int FD,
                                    const Module *M) const {
-  ToolOutputFile Out(Filename, FD);
+  tool_output_file Out(Filename, FD);
   return writeProgramToFileAux(Out, M);
 }
 
 bool BugDriver::writeProgramToFile(const std::string &Filename,
                                    const Module *M) const {
   std::error_code EC;
-  ToolOutputFile Out(Filename, EC, sys::fs::F_None);
+  tool_output_file Out(Filename, EC, sys::fs::F_None);
   if (!EC)
     return writeProgramToFileAux(Out, M);
   return true;
@@ -154,7 +154,7 @@ bool BugDriver::runPasses(Module *Program,
     return 1;
   }
 
-  ToolOutputFile InFile(InputFilename, InputFD);
+  tool_output_file InFile(InputFilename, InputFD);
 
   WriteBitcodeToFile(Program, InFile.os(), PreserveBitcodeUseListOrder);
   InFile.os().close();
@@ -230,15 +230,13 @@ bool BugDriver::runPasses(Module *Program,
         << " " << Args[i];
         errs() << "\n";);
 
-  Optional<StringRef> Redirects[3] = {None, None, None};
-  // Redirect stdout and stderr to nowhere if SilencePasses is given.
-  if (SilencePasses) {
-    Redirects[1] = "";
-    Redirects[2] = "";
-  }
+  // Redirect stdout and stderr to nowhere if SilencePasses is given
+  StringRef Nowhere;
+  const StringRef *Redirects[3] = {nullptr, &Nowhere, &Nowhere};
 
   std::string ErrMsg;
-  int result = sys::ExecuteAndWait(Prog, Args.data(), nullptr, Redirects,
+  int result = sys::ExecuteAndWait(Prog, Args.data(), nullptr,
+                                   (SilencePasses ? Redirects : nullptr),
                                    Timeout, MemoryLimit, &ErrMsg);
 
   // If we are supposed to delete the bitcode file or if the passes crashed,

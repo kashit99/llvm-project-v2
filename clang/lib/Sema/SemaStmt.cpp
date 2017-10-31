@@ -603,14 +603,14 @@ static bool EqEnumVals(const std::pair<llvm::APSInt, EnumConstantDecl*>& lhs,
 
 /// GetTypeBeforeIntegralPromotion - Returns the pre-promotion type of
 /// potentially integral-promoted expression @p expr.
-static QualType GetTypeBeforeIntegralPromotion(const Expr *&E) {
-  if (const auto *CleanUps = dyn_cast<ExprWithCleanups>(E))
-    E = CleanUps->getSubExpr();
-  while (const auto *ImpCast = dyn_cast<ImplicitCastExpr>(E)) {
-    if (ImpCast->getCastKind() != CK_IntegralCast) break;
-    E = ImpCast->getSubExpr();
+static QualType GetTypeBeforeIntegralPromotion(Expr *&expr) {
+  if (ExprWithCleanups *cleanups = dyn_cast<ExprWithCleanups>(expr))
+    expr = cleanups->getSubExpr();
+  while (ImplicitCastExpr *impcast = dyn_cast<ImplicitCastExpr>(expr)) {
+    if (impcast->getCastKind() != CK_IntegralCast) break;
+    expr = impcast->getSubExpr();
   }
-  return E->getType();
+  return expr->getType();
 }
 
 ExprResult Sema::CheckSwitchCondition(SourceLocation SwitchLoc, Expr *Cond) {
@@ -744,32 +744,6 @@ static bool ShouldDiagnoseSwitchCaseNotInEnum(const Sema &S,
   return true;
 }
 
-static void checkEnumTypesInSwitchStmt(Sema &S, const Expr *Cond,
-                                       const Expr *Case) {
-  QualType CondType = GetTypeBeforeIntegralPromotion(Cond);
-  QualType CaseType = Case->getType();
-
-  const EnumType *CondEnumType = CondType->getAs<EnumType>();
-  const EnumType *CaseEnumType = CaseType->getAs<EnumType>();
-  if (!CondEnumType || !CaseEnumType)
-    return;
-
-  // Ignore anonymous enums.
-  if (!CondEnumType->getDecl()->getIdentifier() &&
-      !CondEnumType->getDecl()->getTypedefNameForAnonDecl())
-    return;
-  if (!CaseEnumType->getDecl()->getIdentifier() &&
-      !CaseEnumType->getDecl()->getTypedefNameForAnonDecl())
-    return;
-
-  if (S.Context.hasSameUnqualifiedType(CondType, CaseType))
-    return;
-
-  S.Diag(Case->getExprLoc(), diag::warn_comparison_of_mixed_enum_types_switch)
-      << CondType << CaseType << Cond->getSourceRange()
-      << Case->getSourceRange();
-}
-
 StmtResult
 Sema::ActOnFinishSwitchStmt(SourceLocation SwitchLoc, Stmt *Switch,
                             Stmt *BodyStmt) {
@@ -787,7 +761,7 @@ Sema::ActOnFinishSwitchStmt(SourceLocation SwitchLoc, Stmt *Switch,
 
   QualType CondType = CondExpr->getType();
 
-  const Expr *CondExprBeforePromotion = CondExpr;
+  Expr *CondExprBeforePromotion = CondExpr;
   QualType CondTypeBeforePromotion =
       GetTypeBeforeIntegralPromotion(CondExprBeforePromotion);
 
@@ -869,8 +843,6 @@ Sema::ActOnFinishSwitchStmt(SourceLocation SwitchLoc, Stmt *Switch,
         HasDependentValue = true;
         break;
       }
-
-      checkEnumTypesInSwitchStmt(*this, CondExpr, Lo);
 
       llvm::APSInt LoVal;
 

@@ -513,9 +513,6 @@ public:
   /// Finalize LLVM code generation.
   void Release();
 
-  /// Return true if we should emit location information for expressions.
-  bool getExpressionLocationsEnabled() const;
-
   /// Return a reference to the configured Objective-C runtime.
   CGObjCRuntime &getObjCRuntime() {
     if (!ObjCRuntime) createObjCRuntime();
@@ -652,44 +649,25 @@ public:
   CtorList &getGlobalCtors() { return GlobalCtors; }
   CtorList &getGlobalDtors() { return GlobalDtors; }
 
-  /// getTBAATypeInfo - Get metadata used to describe accesses to objects of
-  /// the given type.
-  llvm::MDNode *getTBAATypeInfo(QualType QTy);
-
-  /// getTBAAAccessInfo - Get TBAA information that describes an access to
-  /// an object of the given type.
-  TBAAAccessInfo getTBAAAccessInfo(QualType AccessType);
-
-  /// getTBAAVTablePtrAccessInfo - Get the TBAA information that describes an
-  /// access to a virtual table pointer.
-  TBAAAccessInfo getTBAAVTablePtrAccessInfo();
-
+  llvm::MDNode *getTBAAInfo(QualType QTy);
+  llvm::MDNode *getTBAAInfoForVTablePtr();
   llvm::MDNode *getTBAAStructInfo(QualType QTy);
-
-  /// getTBAABaseTypeInfo - Get metadata that describes the given base access
-  /// type. Return null if the type is not suitable for use in TBAA access tags.
-  llvm::MDNode *getTBAABaseTypeInfo(QualType QTy);
-
-  /// getTBAAAccessTagInfo - Get TBAA tag for a given memory access.
-  llvm::MDNode *getTBAAAccessTagInfo(TBAAAccessInfo Info);
-
-  /// getTBAAMayAliasAccessInfo - Get TBAA information that represents
-  /// may-alias accesses.
-  TBAAAccessInfo getTBAAMayAliasAccessInfo();
-
-  /// mergeTBAAInfoForCast - Get merged TBAA information for the purposes of
-  /// type casts.
-  TBAAAccessInfo mergeTBAAInfoForCast(TBAAAccessInfo SourceInfo,
-                                      TBAAAccessInfo TargetInfo);
+  /// Return the path-aware tag for given base type, access node and offset.
+  llvm::MDNode *getTBAAStructTagInfo(QualType BaseTy, llvm::MDNode *AccessN,
+                                     uint64_t O);
 
   bool isTypeConstant(QualType QTy, bool ExcludeCtorDtor);
 
   bool isPaddedAtomicType(QualType type);
   bool isPaddedAtomicType(const AtomicType *type);
 
-  /// DecorateInstructionWithTBAA - Decorate the instruction with a TBAA tag.
+  /// Decorate the instruction with a TBAA tag. For scalar TBAA, the tag
+  /// is the same as the type. For struct-path aware TBAA, the tag
+  /// is different from the type: base type, access type and offset.
+  /// When ConvertTypeToTag is true, we create a tag based on the scalar type.
   void DecorateInstructionWithTBAA(llvm::Instruction *Inst,
-                                   TBAAAccessInfo TBAAInfo);
+                                   llvm::MDNode *TBAAInfo,
+                                   bool ConvertTypeToTag = true);
 
   /// Adds !invariant.barrier !tag to instruction
   void DecorateInstructionWithInvariantGroup(llvm::Instruction *I,
@@ -740,7 +718,7 @@ public:
   ///
   /// For languages without explicit address spaces, if D has default address
   /// space, target-specific global or constant address space may be returned.
-  LangAS GetGlobalVarAddressSpace(const VarDecl *D);
+  unsigned GetGlobalVarAddressSpace(const VarDecl *D);
 
   /// Return the llvm::Constant for the address of the given global variable.
   /// If Ty is non-null and if the global doesn't exist, then it will be created
@@ -1150,7 +1128,8 @@ public:
   /// are emitted lazily.
   void EmitGlobal(GlobalDecl D);
 
-  bool TryEmitDefinitionAsAlias(GlobalDecl Alias, GlobalDecl Target);
+  bool TryEmitDefinitionAsAlias(GlobalDecl Alias, GlobalDecl Target,
+                                bool InEveryTU);
   bool TryEmitBaseDestructorAsAlias(const CXXDestructorDecl *D);
 
   /// Set attributes for a global definition.
@@ -1240,8 +1219,7 @@ private:
 
   /// Set function attributes for a function declaration.
   void SetFunctionAttributes(GlobalDecl GD, llvm::Function *F,
-                             bool IsIncompleteFunction, bool IsThunk,
-                             ForDefinition_t IsForDefinition);
+                             bool IsIncompleteFunction, bool IsThunk);
 
   void EmitGlobalDefinition(GlobalDecl D, llvm::GlobalValue *GV = nullptr);
 

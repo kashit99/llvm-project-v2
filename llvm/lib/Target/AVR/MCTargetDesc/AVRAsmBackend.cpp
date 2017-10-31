@@ -340,8 +340,7 @@ void AVRAsmBackend::adjustFixupValue(const MCFixup &Fixup,
   }
 }
 
-std::unique_ptr<MCObjectWriter>
-AVRAsmBackend::createObjectWriter(raw_pwrite_stream &OS) const {
+MCObjectWriter *AVRAsmBackend::createObjectWriter(raw_pwrite_stream &OS) const {
   return createAVRELFObjectWriter(OS,
                                   MCELFObjectTargetWriter::getOSABI(OSType));
 }

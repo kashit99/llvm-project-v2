@@ -40,10 +40,8 @@ void DAGTypeLegalizer::PromoteIntegerResult(SDNode *N, unsigned ResNo) {
   SDValue Res = SDValue();
 
   // See if the target wants to custom expand this node.
-  if (CustomLowerNode(N, N->getValueType(ResNo), true)) {
-    DEBUG(dbgs() << "Node has been custom expanded, done\n");
+  if (CustomLowerNode(N, N->getValueType(ResNo), true))
     return;
-  }
 
   switch (N->getOpcode()) {
   default:
@@ -887,10 +885,8 @@ bool DAGTypeLegalizer::PromoteIntegerOperand(SDNode *N, unsigned OpNo) {
   DEBUG(dbgs() << "Promote integer operand: "; N->dump(&DAG); dbgs() << "\n");
   SDValue Res = SDValue();
 
-  if (CustomLowerNode(N, N->getOperand(OpNo).getValueType(), false)) {
-    DEBUG(dbgs() << "Node has been custom lowered, done\n");
+  if (CustomLowerNode(N, N->getOperand(OpNo).getValueType(), false))
     return false;
-  }
 
   switch (N->getOpcode()) {
     default:

@@ -112,7 +112,7 @@ Parser::ParseTemplateDeclarationOrSpecialization(unsigned Context,
 
     // Parse the '<' template-parameter-list '>'
     SourceLocation LAngleLoc, RAngleLoc;
-    SmallVector<NamedDecl*, 4> TemplateParams;
+    SmallVector<Decl*, 4> TemplateParams;
     if (ParseTemplateParameters(CurTemplateDepthTracker.getDepth(),
                                 TemplateParams, LAngleLoc, RAngleLoc)) {
       // Skip until the semi-colon or a '}'.
@@ -330,9 +330,10 @@ Parser::ParseSingleDeclarationAfterTemplate(
 /// that enclose this template parameter list.
 ///
 /// \returns true if an error occurred, false otherwise.
-bool Parser::ParseTemplateParameters(
-    unsigned Depth, SmallVectorImpl<NamedDecl *> &TemplateParams,
-    SourceLocation &LAngleLoc, SourceLocation &RAngleLoc) {
+bool Parser::ParseTemplateParameters(unsigned Depth,
+                               SmallVectorImpl<Decl*> &TemplateParams,
+                                     SourceLocation &LAngleLoc,
+                                     SourceLocation &RAngleLoc) {
   // Get the template parameter list.
   if (!TryConsumeToken(tok::less, LAngleLoc)) {
     Diag(Tok.getLocation(), diag::err_expected_less_after) << "template";
@@ -370,12 +371,11 @@ bool Parser::ParseTemplateParameters(
 ///         template-parameter-list ',' template-parameter
 bool
 Parser::ParseTemplateParameterList(unsigned Depth,
-                             SmallVectorImpl<NamedDecl*> &TemplateParams) {
+                             SmallVectorImpl<Decl*> &TemplateParams) {
   while (1) {
-    // FIXME: ParseTemplateParameter should probably just return a NamedDecl.
     if (Decl *TmpParam
           = ParseTemplateParameter(Depth, TemplateParams.size())) {
-      TemplateParams.push_back(dyn_cast<NamedDecl>(TmpParam));
+      TemplateParams.push_back(TmpParam);
     } else {
       // If we failed to parse a template parameter, skip until we find
       // a comma or closing brace.
@@ -570,7 +570,7 @@ Parser::ParseTemplateTemplateParameter(unsigned Depth, unsigned Position) {
 
   // Handle the template <...> part.
   SourceLocation TemplateLoc = ConsumeToken();
-  SmallVector<NamedDecl*,8> TemplateParams;
+  SmallVector<Decl*,8> TemplateParams;
   SourceLocation LAngleLoc, RAngleLoc;
   {
     ParseScope TemplateParmScope(this, Scope::TemplateParamScope);
@@ -1381,8 +1381,7 @@ void Parser::ParseLateTemplatedFuncDef(LateParsedTemplate &LPT) {
 
   // Parse the method body. Function body parsing code is similar enough
   // to be re-used for method bodies as well.
-  ParseScope FnScope(this, Scope::FnScope | Scope::DeclScope |
-                               Scope::CompoundStmtScope);
+  ParseScope FnScope(this, Scope::FnScope|Scope::DeclScope);
 
   // Recreate the containing function DeclContext.
   Sema::ContextRAII FunctionSavedContext(Actions,

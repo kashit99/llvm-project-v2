@@ -28,7 +28,7 @@
 #include "lldb/Symbol/LineTable.h"
 #include "lldb/Symbol/SymbolVendor.h"
 #include "lldb/Utility/FileSpec.h"
-#include "TestingSupport/TestUtilities.h"
+#include "unittests/Utility/Helpers/TestUtilities.h"
 
 using namespace lldb_private;
 

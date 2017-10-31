@@ -20,16 +20,16 @@ if(POLICY CMP0057)
 endif()
 
 if(NOT DEFINED LLVM_VERSION_MAJOR)
-  set(LLVM_VERSION_MAJOR 6)
+  set(LLVM_VERSION_MAJOR 5)
 endif()
 if(NOT DEFINED LLVM_VERSION_MINOR)
   set(LLVM_VERSION_MINOR 0)
 endif()
 if(NOT DEFINED LLVM_VERSION_PATCH)
-  set(LLVM_VERSION_PATCH 0)
+  set(LLVM_VERSION_PATCH 1)
 endif()
 if(NOT DEFINED LLVM_VERSION_SUFFIX)
-  set(LLVM_VERSION_SUFFIX svn)
+  set(LLVM_VERSION_SUFFIX "")
 endif()
 
 if (POLICY CMP0048)
@@ -203,6 +203,10 @@ include(VersionFromVCS)
 option(LLVM_APPEND_VC_REV
   "Embed the version control system revision id in LLVM" ON)
 
+if( LLVM_APPEND_VC_REV )
+  add_version_info_from_vcs(PACKAGE_VERSION)
+endif()
+
 set(PACKAGE_NAME LLVM)
 set(PACKAGE_STRING "${PACKAGE_NAME} ${PACKAGE_VERSION}")
 set(PACKAGE_BUGREPORT "http://llvm.org/bugs/")
@@ -237,11 +241,11 @@ endif()
 include(CPack)
 
 # Sanity check our source directory to make sure that we are not trying to
-# generate an in-source build (unless on MSVC_IDE, where it is ok), and to make
+# generate an in-tree build (unless on MSVC_IDE, where it is ok), and to make
 # sure that we don't have any stray generated files lying around in the tree
 # (which would end up getting picked up by header search, instead of the correct
 # versions).
-if( CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_CURRENT_BINARY_DIR AND NOT MSVC_IDE )
+if( CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR AND NOT MSVC_IDE )
   message(FATAL_ERROR "In-source builds are not allowed.
 CMake would overwrite the makefiles distributed with LLVM.
 Please create a directory and run cmake from there, passing the path
@@ -354,8 +358,6 @@ set(LLVM_TARGET_ARCH "host"
 
 option(LLVM_ENABLE_TERMINFO "Use terminfo database if available." ON)
 
-option(LLVM_ENABLE_LIBXML2 "Use libxml2 if available." ON)
-
 option(LLVM_ENABLE_LIBEDIT "Use libedit if available." ON)
 
 option(LLVM_ENABLE_THREADS "Use threads if available." ON)
@@ -388,16 +390,10 @@ option(LLVM_ENABLE_LLD "Use lld as C and C++ linker." OFF)
 option(LLVM_ENABLE_PEDANTIC "Compile with pedantic enabled." ON)
 option(LLVM_ENABLE_WERROR "Fail and stop if a warning is triggered." OFF)
 
-option(LLVM_ENABLE_DUMP "Enable dump functions in release builds" OFF)
-
 if( NOT uppercase_CMAKE_BUILD_TYPE STREQUAL "DEBUG" )
   option(LLVM_ENABLE_ASSERTIONS "Enable assertions" OFF)
 else()
   option(LLVM_ENABLE_ASSERTIONS "Enable assertions" ON)
-endif()
-
-if( LLVM_ENABLE_ASSERTIONS )
-  set(LLVM_ENABLE_DUMP ON)
 endif()
 
 option(LLVM_ENABLE_EXPENSIVE_CHECKS "Enable expensive checks" OFF)
@@ -435,8 +431,6 @@ endif( LLVM_USE_OPROFILE )
 
 set(LLVM_USE_SANITIZER "" CACHE STRING
   "Define the sanitizer used to build binaries and tests.")
-set(LLVM_LIB_FUZZING_ENGINE "" CACHE PATH
-  "Path to fuzzing library for linking with fuzz targets")
 
 option(LLVM_USE_SPLIT_DWARF
   "Use -gsplit-dwarf when compiling llvm." OFF)
@@ -797,14 +791,14 @@ if(LLVM_USE_HOST_TOOLS)
   include(CrossCompile)
 endif(LLVM_USE_HOST_TOOLS)
 if(LLVM_TARGET_IS_CROSSCOMPILE_HOST)
-# Dummy use to avoid CMake Warning: Manually-specified variables were not used
+# Dummy use to avoid CMake Wraning: Manually-specified variables were not used
 # (this is a variable that CrossCompile sets on recursive invocations)
 endif()
 
 if(${CMAKE_SYSTEM_NAME} MATCHES "(FreeBSD|DragonFly)")
   # On FreeBSD, /usr/local/* is not used by default. In order to build LLVM
   # with libxml2, iconv.h, etc., we must add /usr/local paths.
-  include_directories(SYSTEM "/usr/local/include")
+  include_directories("/usr/local/include")
   link_directories("/usr/local/lib")
 endif(${CMAKE_SYSTEM_NAME} MATCHES "(FreeBSD|DragonFly)")
 
@@ -844,6 +838,15 @@ add_subdirectory(lib/TableGen)
 
 add_subdirectory(utils/TableGen)
 
+# Force target to be built as soon as possible. Clang modules builds depend
+# header-wise on it as they ship all headers from the umbrella folders. Building
+# an entire module might include header, which depends on intrinsics_gen. This
+# should be right after LLVMSupport and LLVMTableGen otherwise we introduce a
+# circular dependence.
+if (LLVM_ENABLE_MODULES)
+  list(APPEND LLVM_COMMON_DEPENDS intrinsics_gen)
+endif(LLVM_ENABLE_MODULES)
+
 add_subdirectory(include/llvm)
 
 add_subdirectory(lib)
@@ -853,6 +856,7 @@ if( LLVM_INCLUDE_UTILS )
   add_subdirectory(utils/PerfectShuffle)
   add_subdirectory(utils/count)
   add_subdirectory(utils/not)
+  add_subdirectory(utils/llvm-lit)
   add_subdirectory(utils/yaml-bench)
 else()
   if ( LLVM_INCLUDE_TESTS )
@@ -895,7 +899,6 @@ if( LLVM_INCLUDE_TESTS )
       NO_INSTALL
       ALWAYS_CLEAN)
   endif()
-  add_subdirectory(utils/lit)
   add_subdirectory(test)
   add_subdirectory(unittests)
   if( LLVM_INCLUDE_UTILS )
@@ -938,11 +941,6 @@ if (LLVM_INCLUDE_DOCS)
 endif()
 
 add_subdirectory(cmake/modules)
-
-# Do this last so that all lit targets have already been created.
-if (LLVM_INCLUDE_UTILS)
-  add_subdirectory(utils/llvm-lit)
-endif()
 
 if (NOT LLVM_INSTALL_TOOLCHAIN_ONLY)
   install(DIRECTORY include/llvm include/llvm-c
@@ -1012,4 +1010,3 @@ endif()
 if (MSVC)
   include(InstallRequiredSystemLibraries)
 endif()
-

@@ -14,32 +14,16 @@ void a(int i) {}
 
 void b(int i = 1) {}
 // CHECK-MESSAGES: :[[@LINE-1]]:12: warning: parameter 'i' is unused [misc-unused-parameters]
-// CHECK-FIXES: {{^}}void b(int  /*i*/ = 1) {}{{$}}
+// CHECK-FIXES: {{^}}void b(int  /*i*/) {}{{$}}
 
 void c(int *i) {}
 // CHECK-MESSAGES: :[[@LINE-1]]:13: warning: parameter 'i' is unused [misc-unused-parameters]
 // CHECK-FIXES: {{^}}void c(int * /*i*/) {}{{$}}
 
-void d(int i[]) {}
-// CHECK-MESSAGES: :[[@LINE-1]]:12: warning: parameter 'i' is unused [misc-unused-parameters]
-// CHECK-FIXES: {{^}}void d(int  /*i*/[]) {}{{$}}
-
-void e(int i[1]) {}
-// CHECK-MESSAGES: :[[@LINE-1]]:12: warning: parameter 'i' is unused [misc-unused-parameters]
-// CHECK-FIXES: {{^}}void e(int  /*i*/[1]) {}{{$}}
-
-void f(void (*fn)()) {}
-// CHECK-MESSAGES: :[[@LINE-1]]:15: warning: parameter 'fn' is unused [misc-unused-parameters]
-// CHECK-FIXES: {{^}}void f(void (* /*fn*/)()) {}{{$}}
-
 // Unchanged cases
 // ===============
-void f(int i); // Don't remove stuff in declarations
-void g(int i = 1);
-void h(int i[]);
-void s(int i[1]);
-void u(void (*fn)());
-void w(int i) { (void)i; } // Don't remove used parameters
+void g(int i);             // Don't remove stuff in declarations
+void h(int i) { (void)i; } // Don't remove used parameters
 
 bool useLambda(int (*fn)(int));
 static bool static_var = useLambda([] (int a) { return a; });
@@ -68,23 +52,6 @@ static void staticFunctionE(int i = 4) {}
 // CHECK-MESSAGES: :[[@LINE-1]]:33: warning
 // CHECK-FIXES: {{^}}static void staticFunctionE()
 
-static void staticFunctionF(int i = 4);
-// CHECK-FIXES: {{^}}static void staticFunctionF();
-static void staticFunctionF(int i) {}
-// CHECK-MESSAGES: :[[@LINE-1]]:33: warning
-// CHECK-FIXES: {{^}}static void staticFunctionF()
-
-static void staticFunctionG(int i[]);
-// CHECK-FIXES: {{^}}static void staticFunctionG();
-static void staticFunctionG(int i[]) {}
-// CHECK-MESSAGES: :[[@LINE-1]]:33: warning
-// CHECK-FIXES: {{^}}static void staticFunctionG()
-
-static void staticFunctionH(void (*fn)());
-// CHECK-FIXES: {{^}}static void staticFunctionH();
-static void staticFunctionH(void (*fn)()) {}
-// CHECK-MESSAGES: :[[@LINE-1]]:36: warning
-// CHECK-FIXES: {{^}}static void staticFunctionH()
 
 static void someCallSites() {
   staticFunctionA(1);
@@ -95,18 +62,7 @@ static void someCallSites() {
 // CHECK-FIXES: staticFunctionC(2);
   staticFunctionD(1, 2, 3);
 // CHECK-FIXES: staticFunctionD(1, 3);
-  staticFunctionE(1);
-// CHECK-FIXES: staticFunctionE();
-  staticFunctionF(1);
-// CHECK-FIXES: staticFunctionF();
-  staticFunctionF();
-// CHECK-FIXES: staticFunctionF();
-  int t[] = {1};
-  staticFunctionG(t);
-// CHECK-FIXES: staticFunctionG();
-  void func();
-  staticFunctionH(&func);
-// CHECK-FIXES: staticFunctionH();
+  staticFunctionE();
 }
 
 /*
@@ -139,15 +95,6 @@ class SomeClass {
   static void f(int i) {}
 // CHECK-MESSAGES: :[[@LINE-1]]:21: warning
 // CHECK-FIXES: static void f(int  /*i*/) {}
-  static void g(int i = 1) {}
-// CHECK-MESSAGES: :[[@LINE-1]]:21: warning
-// CHECK-FIXES: static void g(int  /*i*/ = 1) {}
-  static void h(int i[]) {}
-// CHECK-MESSAGES: :[[@LINE-1]]:21: warning
-// CHECK-FIXES: static void h(int  /*i*/[]) {}
-  static void s(void (*fn)()) {}
-// CHECK-MESSAGES: :[[@LINE-1]]:24: warning
-// CHECK-FIXES: static void s(void (* /*fn*/)()) {}
 };
 
 namespace {
@@ -161,15 +108,6 @@ public:
   void h(int i) {}
 // CHECK-MESSAGES: :[[@LINE-1]]:14: warning
 // CHECK-FIXES: void h(int  /*i*/) {}
-  void s(int i = 1) {}
-// CHECK-MESSAGES: :[[@LINE-1]]:14: warning
-// CHECK-FIXES: void s(int  /*i*/ = 1) {}
-  void u(int i[]) {}
-// CHECK-MESSAGES: :[[@LINE-1]]:14: warning
-// CHECK-FIXES: void u(int  /*i*/[]) {}
-  void w(void (*fn)()) {}
-// CHECK-MESSAGES: :[[@LINE-1]]:17: warning
-// CHECK-FIXES: void w(void (* /*fn*/)()) {}
 };
 
 void C::f(int i) {}
@@ -187,9 +125,6 @@ void someMoreCallSites() {
 // CHECK-FIXES: c.g();
 
   useFunction(&C::h);
-  useFunction(&C::s);
-  useFunction(&C::u);
-  useFunction(&C::w);
 }
 
 class Base {

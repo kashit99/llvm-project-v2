@@ -25,6 +25,7 @@
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/ErrorOr.h"
 #include <cstdint>
 #include <system_error>
 
@@ -114,10 +115,9 @@ private:
   }
 
   int64_t getELFAddend(RelocationRef R) {
-    Expected<int64_t> AddendOrErr = ELFRelocationRef(R).getAddend();
-    handleAllErrors(AddendOrErr.takeError(), [](const ErrorInfoBase &EI) {
-      report_fatal_error(EI.message());
-    });
+    ErrorOr<int64_t> AddendOrErr = ELFRelocationRef(R).getAddend();
+    if (std::error_code EC = AddendOrErr.getError())
+      report_fatal_error(EC.message());
     return *AddendOrErr;
   }
 

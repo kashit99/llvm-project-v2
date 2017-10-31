@@ -342,10 +342,9 @@ void PPCallbacksTracker::Defined(const clang::Token &MacroNameTok,
 }
 
 // Hook called when a source range is skipped.
-void PPCallbacksTracker::SourceRangeSkipped(clang::SourceRange Range,
-                                            clang::SourceLocation EndifLoc) {
+void PPCallbacksTracker::SourceRangeSkipped(clang::SourceRange Range) {
   beginCallback("SourceRangeSkipped");
-  appendArgument("Range", clang::SourceRange(Range.getBegin(), EndifLoc));
+  appendArgument("Range", Range);
 }
 
 // Hook called whenever an #if is seen.

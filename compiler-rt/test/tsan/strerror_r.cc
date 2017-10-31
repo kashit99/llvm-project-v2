@@ -11,8 +11,7 @@
 char buffer[1000];
 
 void *Thread(void *p) {
-  strerror_r(TEST_ERROR, buffer, sizeof(buffer));
-  return buffer;
+  return strerror_r(TEST_ERROR, buffer, sizeof(buffer));
 }
 
 int main() {

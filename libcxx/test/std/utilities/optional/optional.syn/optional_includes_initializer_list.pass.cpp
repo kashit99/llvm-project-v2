@@ -19,5 +19,4 @@ int main()
     using std::optional;
 
     std::initializer_list<int> list;
-    (void)list;
 }

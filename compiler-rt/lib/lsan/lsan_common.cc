@@ -107,10 +107,6 @@ void InitializeRootRegions() {
   root_regions = new(placeholder) InternalMmapVector<RootRegion>(1);
 }
 
-const char *MaybeCallLsanDefaultOptions() {
-  return (&__lsan_default_options) ? __lsan_default_options() : "";
-}
-
 void InitCommonLsan() {
   InitializeRootRegions();
   if (common_flags()->detect_leaks) {
@@ -126,6 +122,7 @@ class Decorator: public __sanitizer::SanitizerCommonDecorator {
   Decorator() : SanitizerCommonDecorator() { }
   const char *Error() { return Red(); }
   const char *Leak() { return Blue(); }
+  const char *End() { return Default(); }
 };
 
 static inline bool CanBeAHeapPointer(uptr p) {
@@ -567,7 +564,7 @@ static bool CheckForLeaks() {
            "\n");
     Printf("%s", d.Error());
     Report("ERROR: LeakSanitizer: detected memory leaks\n");
-    Printf("%s", d.Default());
+    Printf("%s", d.End());
     param.leak_report.ReportTopLeaks(flags()->max_leaks);
   }
   if (common_flags()->print_suppressions)
@@ -596,8 +593,6 @@ static int DoRecoverableLeakCheck() {
   bool have_leaks = CheckForLeaks();
   return have_leaks ? 1 : 0;
 }
-
-void DoRecoverableLeakCheckVoid() { DoRecoverableLeakCheck(); }
 
 static Suppression *GetSuppressionForAddr(uptr addr) {
   Suppression *s = nullptr;
@@ -703,7 +698,7 @@ void LeakReport::PrintReportForLeak(uptr index) {
   Printf("%s leak of %zu byte(s) in %zu object(s) allocated from:\n",
          leaks_[index].is_directly_leaked ? "Direct" : "Indirect",
          leaks_[index].total_size, leaks_[index].hit_count);
-  Printf("%s", d.Default());
+  Printf("%s", d.End());
 
   PrintStackTraceById(leaks_[index].stack_trace_id);
 
@@ -761,7 +756,6 @@ uptr LeakReport::UnsuppressedLeakCount() {
 namespace __lsan {
 void InitCommonLsan() { }
 void DoLeakCheck() { }
-void DoRecoverableLeakCheckVoid() { }
 void DisableInThisThread() { }
 void EnableInThisThread() { }
 }
@@ -859,11 +853,6 @@ int __lsan_do_recoverable_leak_check() {
 }
 
 #if !SANITIZER_SUPPORTS_WEAK_HOOKS
-SANITIZER_INTERFACE_ATTRIBUTE SANITIZER_WEAK_ATTRIBUTE
-const char * __lsan_default_options() {
-  return "";
-}
-
 SANITIZER_INTERFACE_ATTRIBUTE SANITIZER_WEAK_ATTRIBUTE
 int __lsan_is_turned_off() {
   return 0;

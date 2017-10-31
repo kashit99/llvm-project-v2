@@ -40,7 +40,7 @@ private:
 
   /// The AST address space where this (non-abstract) initializer is going.
   /// Used for generating appropriate placeholders.
-  LangAS DestAddressSpace;
+  unsigned DestAddressSpace;
 
   llvm::SmallVector<std::pair<llvm::Constant *, llvm::GlobalVariable*>, 4>
     PlaceholderAddresses;
@@ -68,9 +68,11 @@ public:
   /// Try to emit the initiaizer of the given declaration as an abstract
   /// constant.  If this succeeds, the emission must be finalized.
   llvm::Constant *tryEmitForInitializer(const VarDecl &D);
-  llvm::Constant *tryEmitForInitializer(const Expr *E, LangAS destAddrSpace,
+  llvm::Constant *tryEmitForInitializer(const Expr *E,
+                                        unsigned destAddrSpace,
                                         QualType destType);
-  llvm::Constant *emitForInitializer(const APValue &value, LangAS destAddrSpace,
+  llvm::Constant *emitForInitializer(const APValue &value,
+                                     unsigned destAddrSpace,
                                      QualType destType);
 
   void finalize(llvm::GlobalVariable *global);
@@ -149,7 +151,7 @@ public:
                                   llvm::GlobalValue *placeholder);
 
 private:
-  void initializeNonAbstract(LangAS destAS) {
+  void initializeNonAbstract(unsigned destAS) {
     assert(!InitializedNonAbstract);
     InitializedNonAbstract = true;
     DestAddressSpace = destAS;

@@ -39,7 +39,7 @@ class SymbolOccurrenceFinderASTVisitor
 public:
   explicit SymbolOccurrenceFinderASTVisitor(
       const SymbolOperation &Operation, const ASTContext &Context,
-      std::vector<OldSymbolOccurrence> &Occurrences)
+      std::vector<SymbolOccurrence> &Occurrences)
       : Operation(Operation), Context(Context), Occurrences(Occurrences) {}
 
   /// Returns a \c Symbol if the given declaration corresponds to the symbol
@@ -52,8 +52,8 @@ public:
   }
 
   void checkDecl(const Decl *D, SourceLocation Loc,
-                 OldSymbolOccurrence::OccurrenceKind Kind =
-                     OldSymbolOccurrence::MatchingSymbol) {
+                 SymbolOccurrence::OccurrenceKind Kind =
+                     SymbolOccurrence::MatchingSymbol) {
     if (!D)
       return;
     std::string USR = getUSRForDecl(D);
@@ -252,12 +252,12 @@ public:
       }
 
       checkDecl(Expr->getImplicitPropertyGetter(), Expr->getLocation(),
-                OldSymbolOccurrence::MatchingImplicitProperty);
+                SymbolOccurrence::MatchingImplicitProperty);
       // Add a manual location for a setter since a token like 'property' won't
       // match the the name of the renamed symbol like 'setProperty'.
       if (const auto *S = symbolForDecl(Expr->getImplicitPropertySetter()))
         addLocation(S->SymbolIndex, Expr->getLocation(),
-                    OldSymbolOccurrence::MatchingImplicitProperty);
+                    SymbolOccurrence::MatchingImplicitProperty);
       return true;
     }
     checkDecl(Expr->getExplicitProperty(), Expr->getLocation());
@@ -336,8 +336,8 @@ private:
 
   void checkAndAddLocations(unsigned SymbolIndex,
                             ArrayRef<SourceLocation> Locations,
-                            OldSymbolOccurrence::OccurrenceKind Kind =
-                                OldSymbolOccurrence::MatchingSymbol) {
+                            SymbolOccurrence::OccurrenceKind Kind =
+                                SymbolOccurrence::MatchingSymbol) {
     if (Locations.size() != Operation.symbols()[SymbolIndex].Name.size())
       return;
 
@@ -354,8 +354,8 @@ private:
           Loc = SM.getExpansionLoc(Loc);
       }
       if (IsMacroExpansion) {
-        Occurrences.push_back(OldSymbolOccurrence(
-            Kind, /*IsMacroExpansion=*/true, SymbolIndex, Loc));
+        Occurrences.push_back(SymbolOccurrence(Kind, /*IsMacroExpansion=*/true,
+                                               SymbolIndex, Loc));
         return;
       }
       size_t Offset =
@@ -365,13 +365,13 @@ private:
       StringLocations.push_back(Loc.getLocWithOffset(Offset));
     }
 
-    Occurrences.push_back(OldSymbolOccurrence(Kind, /*IsMacroExpansion=*/false,
-                                              SymbolIndex, StringLocations));
+    Occurrences.push_back(SymbolOccurrence(Kind, /*IsMacroExpansion=*/false,
+                                           SymbolIndex, StringLocations));
   }
 
   /// Adds a location without checking if the name is actually there.
   void addLocation(unsigned SymbolIndex, SourceLocation Location,
-                   OldSymbolOccurrence::OccurrenceKind Kind) {
+                   SymbolOccurrence::OccurrenceKind Kind) {
     if (1 != Operation.symbols()[SymbolIndex].Name.size())
       return;
     bool IsMacroExpansion = Location.isMacroID();
@@ -384,18 +384,18 @@ private:
         Location = SM.getExpansionLoc(Location);
     }
     Occurrences.push_back(
-        OldSymbolOccurrence(Kind, IsMacroExpansion, SymbolIndex, Location));
+        SymbolOccurrence(Kind, IsMacroExpansion, SymbolIndex, Location));
   }
 
   const SymbolOperation &Operation;
   const ASTContext &Context;
-  std::vector<OldSymbolOccurrence> &Occurrences;
+  std::vector<SymbolOccurrence> &Occurrences;
 };
 } // namespace
 
-std::vector<OldSymbolOccurrence>
+std::vector<SymbolOccurrence>
 findSymbolOccurrences(const SymbolOperation &Operation, Decl *Decl) {
-  std::vector<OldSymbolOccurrence> Occurrences;
+  std::vector<SymbolOccurrence> Occurrences;
   SymbolOccurrenceFinderASTVisitor Visitor(Operation, Decl->getASTContext(),
                                            Occurrences);
   Visitor.TraverseDecl(Decl);

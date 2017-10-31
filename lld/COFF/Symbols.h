@@ -13,7 +13,7 @@
 #include "Chunks.h"
 #include "Config.h"
 #include "Memory.h"
-#include "lld/Common/LLVM.h"
+#include "lld/Core/LLVM.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/Object/Archive.h"
 #include "llvm/Object/COFF.h"
@@ -31,7 +31,7 @@ using llvm::object::coff_symbol_generic;
 
 class ArchiveFile;
 class InputFile;
-class ObjFile;
+class ObjectFile;
 struct Symbol;
 class SymbolTable;
 
@@ -69,10 +69,6 @@ public:
 
   // Returns the file from which this symbol was created.
   InputFile *getFile();
-
-  // Indicates that this symbol will be included in the final image. Only valid
-  // after calling markLive.
-  bool isLive() const;
 
   Symbol *symbol();
   const Symbol *symbol() const {
@@ -159,10 +155,10 @@ public:
     return S->kind() == DefinedRegularKind;
   }
 
-  uint64_t getRVA() const { return (*Data)->getRVA() + Sym->Value; }
-  bool isCOMDAT() const { return IsCOMDAT; }
-  SectionChunk *getChunk() const { return *Data; }
-  uint32_t getValue() const { return Sym->Value; }
+  uint64_t getRVA() { return (*Data)->getRVA() + Sym->Value; }
+  bool isCOMDAT() { return IsCOMDAT; }
+  SectionChunk *getChunk() { return *Data; }
+  uint32_t getValue() { return Sym->Value; }
 
 private:
   SectionChunk **Data;
@@ -182,7 +178,7 @@ public:
   }
 
   uint64_t getRVA() { return Data->getRVA(); }
-  CommonChunk *getChunk() { return Data; }
+  Chunk *getChunk() { return Data; }
 
 private:
   friend SymbolTable;

@@ -1046,6 +1046,7 @@ namespace {
 struct DWARFSectionMap final : public DWARFSection {
   RelocAddrMap Relocs;
 };
+} // namespace
 
 class DWARFObjInMemory final : public DWARFObject {
   bool IsLittleEndian;
@@ -1401,7 +1402,6 @@ public:
       F(P.second);
   }
 };
-} // namespace
 
 std::unique_ptr<DWARFContext>
 DWARFContext::create(const object::ObjectFile &Obj, const LoadedObjectInfo *L,

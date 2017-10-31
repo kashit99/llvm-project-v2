@@ -72,7 +72,7 @@ using namespace llvm;
 
 static bool ProcessVmReadvSupported() {
   static bool is_supported;
-  static llvm::once_flag flag;
+  static std::once_flag flag;
 
   llvm::call_once(flag, [] {
     Log *log(ProcessPOSIXLog::GetLogIfAllCategoriesSet(POSIX_LOG_PROCESS));
@@ -305,9 +305,10 @@ NativeProcessLinux::NativeProcessLinux(::pid_t pid, int terminal_fd,
   assert(m_sigchld_handle && status.Success());
 
   for (const auto &tid : tids) {
-    NativeThreadLinux &thread = AddThread(tid);
-    thread.SetStoppedBySignal(SIGSTOP);
-    ThreadWasCreated(thread);
+    NativeThreadLinuxSP thread_sp = AddThread(tid);
+    assert(thread_sp && "AddThread() returned a nullptr thread");
+    thread_sp->SetStoppedBySignal(SIGSTOP);
+    ThreadWasCreated(*thread_sp);
   }
 
   // Let our process instance know the thread has stopped.
@@ -477,11 +478,11 @@ void NativeProcessLinux::MonitorCallback(lldb::pid_t pid, bool exited,
     LLDB_LOG(log, "tid {0}, si_code: {1}, si_pid: {2}", pid, info.si_code,
              info.si_pid);
 
-    NativeThreadLinux &thread = AddThread(pid);
+    auto thread_sp = AddThread(pid);
 
     // Resume the newly created thread.
-    ResumeThread(thread, eStateRunning, LLDB_INVALID_SIGNAL_NUMBER);
-    ThreadWasCreated(thread);
+    ResumeThread(*thread_sp, eStateRunning, LLDB_INVALID_SIGNAL_NUMBER);
+    ThreadWasCreated(*thread_sp);
     return;
   }
 
@@ -548,9 +549,12 @@ void NativeProcessLinux::MonitorCallback(lldb::pid_t pid, bool exited,
 void NativeProcessLinux::WaitForNewThread(::pid_t tid) {
   Log *log(ProcessPOSIXLog::GetLogIfAllCategoriesSet(POSIX_LOG_PROCESS));
 
-  if (GetThreadByID(tid)) {
+  NativeThreadLinuxSP new_thread_sp = GetThreadByID(tid);
+
+  if (new_thread_sp) {
     // We are already tracking the thread - we got the event on the new thread
-    // (see MonitorSignal) before this one. We are done.
+    // (see
+    // MonitorSignal) before this one. We are done.
     return;
   }
 
@@ -583,10 +587,10 @@ void NativeProcessLinux::WaitForNewThread(::pid_t tid) {
   }
 
   LLDB_LOG(log, "pid = {0}: tracking new thread tid {1}", GetID(), tid);
-  NativeThreadLinux &new_thread = AddThread(tid);
+  new_thread_sp = AddThread(tid);
 
-  ResumeThread(new_thread, eStateRunning, LLDB_INVALID_SIGNAL_NUMBER);
-  ThreadWasCreated(new_thread);
+  ResumeThread(*new_thread_sp, eStateRunning, LLDB_INVALID_SIGNAL_NUMBER);
+  ThreadWasCreated(*new_thread_sp);
 }
 
 void NativeProcessLinux::MonitorSIGTRAP(const siginfo_t &info,
@@ -626,6 +630,7 @@ void NativeProcessLinux::MonitorSIGTRAP(const siginfo_t &info,
   }
 
   case (SIGTRAP | (PTRACE_EVENT_EXEC << 8)): {
+    NativeThreadLinuxSP main_thread_sp;
     LLDB_LOG(log, "received exec event, code = {0}", info.si_code ^ SIGTRAP);
 
     // Exec clears any pending notifications.
@@ -635,26 +640,44 @@ void NativeProcessLinux::MonitorSIGTRAP(const siginfo_t &info,
     // which only copies the main thread.
     LLDB_LOG(log, "exec received, stop tracking all but main thread");
 
-    for (auto i = m_threads.begin(); i != m_threads.end();) {
-      if ((*i)->GetID() == GetID())
-        i = m_threads.erase(i);
-      else
-        ++i;
+    for (auto thread_sp : m_threads) {
+      const bool is_main_thread = thread_sp && thread_sp->GetID() == GetID();
+      if (is_main_thread) {
+        main_thread_sp = std::static_pointer_cast<NativeThreadLinux>(thread_sp);
+        LLDB_LOG(log, "found main thread with tid {0}, keeping",
+                 main_thread_sp->GetID());
+      } else {
+        LLDB_LOG(log, "discarding non-main-thread tid {0} due to exec",
+                 thread_sp->GetID());
+      }
     }
-    assert(m_threads.size() == 1);
-    auto *main_thread = static_cast<NativeThreadLinux *>(m_threads[0].get());
 
-    SetCurrentThreadID(main_thread->GetID());
-    main_thread->SetStoppedByExec();
+    m_threads.clear();
+
+    if (main_thread_sp) {
+      m_threads.push_back(main_thread_sp);
+      SetCurrentThreadID(main_thread_sp->GetID());
+      main_thread_sp->SetStoppedByExec();
+    } else {
+      SetCurrentThreadID(LLDB_INVALID_THREAD_ID);
+      LLDB_LOG(log,
+               "pid {0} no main thread found, discarded all threads, "
+               "we're in a no-thread state!",
+               GetID());
+    }
 
     // Tell coordinator about about the "new" (since exec) stopped main thread.
-    ThreadWasCreated(*main_thread);
+    ThreadWasCreated(*main_thread_sp);
 
     // Let our delegate know we have just exec'd.
     NotifyDidExec();
 
+    // If we have a main thread, indicate we are stopped.
+    assert(main_thread_sp && "exec called during ptraced process but no main "
+                             "thread metadata tracked");
+
     // Let the process know we're stopped.
-    StopRunningThreads(main_thread->GetID());
+    StopRunningThreads(main_thread_sp->GetID());
 
     break;
   }
@@ -1055,8 +1078,7 @@ NativeProcessLinux::SetupSoftwareSingleStepping(NativeThreadLinux &thread) {
   } else if (m_arch.GetMachine() == llvm::Triple::mips64 ||
              m_arch.GetMachine() == llvm::Triple::mips64el ||
              m_arch.GetMachine() == llvm::Triple::mips ||
-             m_arch.GetMachine() == llvm::Triple::mipsel ||
-             m_arch.GetMachine() == llvm::Triple::ppc64le)
+             m_arch.GetMachine() == llvm::Triple::mipsel)
     error = SetSoftwareBreakpoint(next_pc, 4);
   else {
     // No size hint is given for the next breakpoint
@@ -1092,44 +1114,44 @@ Status NativeProcessLinux::Resume(const ResumeActionList &resume_actions) {
   bool software_single_step = !SupportHardwareSingleStepping();
 
   if (software_single_step) {
-    for (const auto &thread : m_threads) {
-      assert(thread && "thread list should not contain NULL threads");
+    for (auto thread_sp : m_threads) {
+      assert(thread_sp && "thread list should not contain NULL threads");
 
       const ResumeAction *const action =
-          resume_actions.GetActionForThread(thread->GetID(), true);
+          resume_actions.GetActionForThread(thread_sp->GetID(), true);
       if (action == nullptr)
         continue;
 
       if (action->state == eStateStepping) {
         Status error = SetupSoftwareSingleStepping(
-            static_cast<NativeThreadLinux &>(*thread));
+            static_cast<NativeThreadLinux &>(*thread_sp));
         if (error.Fail())
           return error;
       }
     }
   }
 
-  for (const auto &thread : m_threads) {
-    assert(thread && "thread list should not contain NULL threads");
+  for (auto thread_sp : m_threads) {
+    assert(thread_sp && "thread list should not contain NULL threads");
 
     const ResumeAction *const action =
-        resume_actions.GetActionForThread(thread->GetID(), true);
+        resume_actions.GetActionForThread(thread_sp->GetID(), true);
 
     if (action == nullptr) {
       LLDB_LOG(log, "no action specified for pid {0} tid {1}", GetID(),
-               thread->GetID());
+               thread_sp->GetID());
       continue;
     }
 
     LLDB_LOG(log, "processing resume action state {0} for pid {1} tid {2}",
-             action->state, GetID(), thread->GetID());
+             action->state, GetID(), thread_sp->GetID());
 
     switch (action->state) {
     case eStateRunning:
     case eStateStepping: {
       // Run the thread, possibly feeding it the signal.
       const int signo = action->signal;
-      ResumeThread(static_cast<NativeThreadLinux &>(*thread), action->state,
+      ResumeThread(static_cast<NativeThreadLinux &>(*thread_sp), action->state,
                    signo);
       break;
     }
@@ -1142,7 +1164,7 @@ Status NativeProcessLinux::Resume(const ResumeActionList &resume_actions) {
       return Status("NativeProcessLinux::%s (): unexpected state %s specified "
                     "for pid %" PRIu64 ", tid %" PRIu64,
                     __FUNCTION__, StateAsCString(action->state), GetID(),
-                    thread->GetID());
+                    thread_sp->GetID());
     }
   }
 
@@ -1168,8 +1190,8 @@ Status NativeProcessLinux::Detach() {
   if (GetID() == LLDB_INVALID_PROCESS_ID)
     return error;
 
-  for (const auto &thread : m_threads) {
-    Status e = Detach(thread->GetID());
+  for (auto thread_sp : m_threads) {
+    Status e = Detach(thread_sp->GetID());
     if (e.Fail())
       error =
           e; // Save the error, but still attempt to detach from other threads.
@@ -1199,25 +1221,29 @@ Status NativeProcessLinux::Interrupt() {
   // the chosen thread that will be the stop-reason thread.
   Log *log(ProcessPOSIXLog::GetLogIfAllCategoriesSet(POSIX_LOG_PROCESS));
 
-  NativeThreadProtocol *running_thread = nullptr;
-  NativeThreadProtocol *stopped_thread = nullptr;
+  NativeThreadProtocolSP running_thread_sp;
+  NativeThreadProtocolSP stopped_thread_sp;
 
   LLDB_LOG(log, "selecting running thread for interrupt target");
-  for (const auto &thread : m_threads) {
+  for (auto thread_sp : m_threads) {
+    // The thread shouldn't be null but lets just cover that here.
+    if (!thread_sp)
+      continue;
+
     // If we have a running or stepping thread, we'll call that the
     // target of the interrupt.
-    const auto thread_state = thread->GetState();
+    const auto thread_state = thread_sp->GetState();
     if (thread_state == eStateRunning || thread_state == eStateStepping) {
-      running_thread = thread.get();
+      running_thread_sp = thread_sp;
       break;
-    } else if (!stopped_thread && StateIsStoppedState(thread_state, true)) {
+    } else if (!stopped_thread_sp && StateIsStoppedState(thread_state, true)) {
       // Remember the first non-dead stopped thread.  We'll use that as a backup
       // if there are no running threads.
-      stopped_thread = thread.get();
+      stopped_thread_sp = thread_sp;
     }
   }
 
-  if (!running_thread && !stopped_thread) {
+  if (!running_thread_sp && !stopped_thread_sp) {
     Status error("found no running/stepping or live stopped threads as target "
                  "for interrupt");
     LLDB_LOG(log, "skipping due to error: {0}", error);
@@ -1225,14 +1251,14 @@ Status NativeProcessLinux::Interrupt() {
     return error;
   }
 
-  NativeThreadProtocol *deferred_signal_thread =
-      running_thread ? running_thread : stopped_thread;
+  NativeThreadProtocolSP deferred_signal_thread_sp =
+      running_thread_sp ? running_thread_sp : stopped_thread_sp;
 
   LLDB_LOG(log, "pid {0} {1} tid {2} chosen for interrupt target", GetID(),
-           running_thread ? "running" : "stopped",
-           deferred_signal_thread->GetID());
+           running_thread_sp ? "running" : "stopped",
+           deferred_signal_thread_sp->GetID());
 
-  StopRunningThreads(deferred_signal_thread->GetID());
+  StopRunningThreads(deferred_signal_thread_sp->GetID());
 
   return Status();
 }
@@ -1553,7 +1579,6 @@ Status NativeProcessLinux::GetSoftwareBreakpointPCOffset(
   // set per architecture.  Need ARM, MIPS support here.
   static const uint8_t g_i386_opcode[] = {0xCC};
   static const uint8_t g_s390x_opcode[] = {0x00, 0x01};
-  static const uint8_t g_ppc64le_opcode[] = {0x08, 0x00, 0xe0, 0x7f}; // trap
 
   switch (m_arch.GetMachine()) {
   case llvm::Triple::x86:
@@ -1563,10 +1588,6 @@ Status NativeProcessLinux::GetSoftwareBreakpointPCOffset(
 
   case llvm::Triple::systemz:
     actual_opcode_size = static_cast<uint32_t>(sizeof(g_s390x_opcode));
-    return Status();
-
-  case llvm::Triple::ppc64le:
-    actual_opcode_size = static_cast<uint32_t>(sizeof(g_ppc64le_opcode));
     return Status();
 
   case llvm::Triple::arm:
@@ -1614,7 +1635,6 @@ Status NativeProcessLinux::GetSoftwareBreakpointTrapOpcode(
   static const uint8_t g_mips64el_opcode[] = {0x0d, 0x00, 0x00, 0x00};
   static const uint8_t g_s390x_opcode[] = {0x00, 0x01};
   static const uint8_t g_thumb_breakpoint_opcode[] = {0x01, 0xde};
-  static const uint8_t g_ppc64le_opcode[] = {0x08, 0x00, 0xe0, 0x7f}; // trap
 
   switch (m_arch.GetMachine()) {
   case llvm::Triple::aarch64:
@@ -1658,11 +1678,6 @@ Status NativeProcessLinux::GetSoftwareBreakpointTrapOpcode(
   case llvm::Triple::systemz:
     trap_opcode_bytes = g_s390x_opcode;
     actual_opcode_size = sizeof(g_s390x_opcode);
-    return Status();
-
-  case llvm::Triple::ppc64le:
-    trap_opcode_bytes = g_ppc64le_opcode;
-    actual_opcode_size = sizeof(g_ppc64le_opcode);
     return Status();
 
   default:
@@ -1948,9 +1963,9 @@ Status NativeProcessLinux::Detach(lldb::tid_t tid) {
 }
 
 bool NativeProcessLinux::HasThreadNoLock(lldb::tid_t thread_id) {
-  for (const auto &thread : m_threads) {
-    assert(thread && "thread list should not contain NULL threads");
-    if (thread->GetID() == thread_id) {
+  for (auto thread_sp : m_threads) {
+    assert(thread_sp && "thread list should not contain NULL threads");
+    if (thread_sp->GetID() == thread_id) {
       // We have this thread.
       return true;
     }
@@ -1979,7 +1994,7 @@ bool NativeProcessLinux::StopTrackingThread(lldb::tid_t thread_id) {
   return found;
 }
 
-NativeThreadLinux &NativeProcessLinux::AddThread(lldb::tid_t thread_id) {
+NativeThreadLinuxSP NativeProcessLinux::AddThread(lldb::tid_t thread_id) {
   Log *log(ProcessPOSIXLog::GetLogIfAllCategoriesSet(POSIX_LOG_THREAD));
   LLDB_LOG(log, "pid {0} adding thread with tid {1}", GetID(), thread_id);
 
@@ -1990,7 +2005,8 @@ NativeThreadLinux &NativeProcessLinux::AddThread(lldb::tid_t thread_id) {
   if (m_threads.empty())
     SetCurrentThreadID(thread_id);
 
-  m_threads.push_back(llvm::make_unique<NativeThreadLinux>(*this, thread_id));
+  auto thread_sp = std::make_shared<NativeThreadLinux>(*this, thread_id);
+  m_threads.push_back(thread_sp);
 
   if (m_pt_proces_trace_id != LLDB_INVALID_UID) {
     auto traceMonitor = ProcessorTraceMonitor::Create(
@@ -2006,7 +2022,7 @@ NativeThreadLinux &NativeProcessLinux::AddThread(lldb::tid_t thread_id) {
     }
   }
 
-  return static_cast<NativeThreadLinux &>(*m_threads.back());
+  return thread_sp;
 }
 
 Status
@@ -2128,8 +2144,8 @@ Status NativeProcessLinux::GetFileLoadAddress(const llvm::StringRef &file_name,
   return Status("No load address found for specified file.");
 }
 
-NativeThreadLinux *NativeProcessLinux::GetThreadByID(lldb::tid_t tid) {
-  return static_cast<NativeThreadLinux *>(
+NativeThreadLinuxSP NativeProcessLinux::GetThreadByID(lldb::tid_t tid) {
+  return std::static_pointer_cast<NativeThreadLinux>(
       NativeProcessProtocol::GetThreadByID(tid));
 }
 
@@ -2184,9 +2200,9 @@ void NativeProcessLinux::StopRunningThreads(const lldb::tid_t triggering_tid) {
 
   // Request a stop for all the thread stops that need to be stopped
   // and are not already known to be stopped.
-  for (const auto &thread : m_threads) {
-    if (StateIsRunningState(thread->GetState()))
-      static_cast<NativeThreadLinux *>(thread.get())->RequestStop();
+  for (const auto &thread_sp : m_threads) {
+    if (StateIsRunningState(thread_sp->GetState()))
+      static_pointer_cast<NativeThreadLinux>(thread_sp)->RequestStop();
   }
 
   SignalIfAllThreadsStopped();

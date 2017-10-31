@@ -25,31 +25,10 @@ include "llvm/Target/Target.td"
 include "HexagonDepArch.td"
 
 // Hexagon ISA Extensions
-def ExtensionHVXV60: SubtargetFeature<"hvxv60", "HexagonHVXVersion",
-      "Hexagon::ArchEnum::V60", "Hexagon HVX instructions">;
-def ExtensionHVXV62: SubtargetFeature<"hvxv62", "HexagonHVXVersion",
-      "Hexagon::ArchEnum::V62", "Hexagon HVX instructions",
-      [ExtensionHVXV60]>;
-def ExtensionHVX: SubtargetFeature<"hvx", "HexagonHVXVersion",
-      "Hexagon::ArchEnum::V62", "Hexagon HVX instructions",
-      [ExtensionHVXV60,
-       ExtensionHVXV62]>;
-def ExtensionHVX64B
-    : SubtargetFeature<"hvx-length64b", "UseHVX64BOps", "true",
-                       "Hexagon HVX 64B instructions",
-                        [ExtensionHVXV60, ExtensionHVXV62]>;
-def ExtensionHVX128B
-    : SubtargetFeature<"hvx-length128b", "UseHVX128BOps", "true",
-                       "Hexagon HVX 128B instructions",
-                        [ExtensionHVXV60, ExtensionHVXV62]>;
-
-// This is an alias to ExtensionHVX128B to accept the hvx-double as
-// an acceptable subtarget feature.
-def ExtensionHVXDbl
-    : SubtargetFeature<"hvx-double", "UseHVX128BOps", "true",
-                       "Hexagon HVX 128B instructions",
-                        [ExtensionHVXV60, ExtensionHVXV62]>;
-
+def ExtensionHVX: SubtargetFeature<"hvx", "UseHVXOps", "true",
+      "Hexagon HVX instructions">;
+def ExtensionHVXDbl: SubtargetFeature<"hvx-double", "UseHVXDblOps", "true",
+      "Hexagon HVX Double instructions">;
 def FeatureLongCalls: SubtargetFeature<"long-calls", "UseLongCalls", "true",
       "Use constant-extended calls">;
 
@@ -59,21 +38,11 @@ def FeatureLongCalls: SubtargetFeature<"long-calls", "UseLongCalls", "true",
 
 def UseMEMOP           : Predicate<"HST->useMemOps()">;
 def IEEERndNearV5T     : Predicate<"HST->modeIEEERndNear()">;
-def UseHVX64B          : Predicate<"HST->useHVX64BOps()">,
-                         AssemblerPredicate<"ExtensionHVX64B">;
-def UseHVX128B         : Predicate<"HST->useHVX128BOps()">,
-                         AssemblerPredicate<"ExtensionHVX128B">;
-def UseHVX             : Predicate<"HST->useHVXOps()">,
-                         AssemblerPredicate<"ExtensionHVXV60">;
-def UseHVXV60          : Predicate<"HST->useHVXOps()">,
-                         AssemblerPredicate<"ExtensionHVXV60">;
-def UseHVXV62          : Predicate<"HST->useHVXOps()">,
-                         AssemblerPredicate<"ExtensionHVXV62">;
-
-def Hvx64     : HwMode<"+hvx-length64b">;
-def Hvx64old  : HwMode<"-hvx-double">;
-def Hvx128    : HwMode<"+hvx-length128b">;
-def Hvx128old : HwMode<"+hvx-double">;
+def UseHVXDbl          : Predicate<"HST->useHVXDblOps()">,
+                         AssemblerPredicate<"ExtensionHVXDbl">;
+def UseHVXSgl          : Predicate<"HST->useHVXSglOps()">;
+def UseHVX             : Predicate<"HST->useHVXSglOps() ||HST->useHVXDblOps()">,
+                         AssemblerPredicate<"ExtensionHVX">;
 
 //===----------------------------------------------------------------------===//
 // Classes used for relation maps.
@@ -186,7 +155,7 @@ def getNonNVStore : InstrMapping {
   let ValueCols = [["false"]];
 }
 
-def changeAddrMode_abs_io: InstrMapping {
+def getBaseWithImmOffset : InstrMapping {
   let FilterClass = "AddrModeRel";
   let RowFields = ["CextOpcode", "PredSense", "PNewValue", "isNVStore",
                    "isFloat"];
@@ -195,7 +164,7 @@ def changeAddrMode_abs_io: InstrMapping {
   let ValueCols = [["BaseImmOffset"]];
 }
 
-def changeAddrMode_io_abs: InstrMapping {
+def getAbsoluteForm : InstrMapping {
   let FilterClass = "AddrModeRel";
   let RowFields = ["CextOpcode", "PredSense", "PNewValue", "isNVStore",
                    "isFloat"];
@@ -204,7 +173,7 @@ def changeAddrMode_io_abs: InstrMapping {
   let ValueCols = [["Absolute"]];
 }
 
-def changeAddrMode_io_rr: InstrMapping {
+def getBaseWithRegOffset : InstrMapping {
   let FilterClass = "AddrModeRel";
   let RowFields = ["CextOpcode", "PredSense", "PNewValue", "isNVStore"];
   let ColFields = ["addrMode"];
@@ -212,7 +181,7 @@ def changeAddrMode_io_rr: InstrMapping {
   let ValueCols = [["BaseRegOffset"]];
 }
 
-def changeAddrMode_rr_io: InstrMapping {
+def xformRegToImmOffset : InstrMapping {
   let FilterClass = "AddrModeRel";
   let RowFields = ["CextOpcode", "PredSense", "PNewValue", "isNVStore"];
   let ColFields = ["addrMode"];
@@ -220,7 +189,7 @@ def changeAddrMode_rr_io: InstrMapping {
   let ValueCols = [["BaseImmOffset"]];
 }
 
-def changeAddrMode_rr_ur: InstrMapping {
+def getBaseWithLongOffset : InstrMapping {
   let FilterClass = "ImmRegShl";
   let RowFields = ["CextOpcode", "PredSense", "PNewValue", "isNVStore"];
   let ColFields = ["addrMode"];
@@ -228,17 +197,17 @@ def changeAddrMode_rr_ur: InstrMapping {
   let ValueCols = [["BaseLongOffset"]];
 }
 
-def changeAddrMode_ur_rr : InstrMapping {
-  let FilterClass = "ImmRegShl";
-  let RowFields = ["CextOpcode", "PredSense", "PNewValue", "isNVStore"];
-  let ColFields = ["addrMode"];
-  let KeyCol = ["BaseLongOffset"];
-  let ValueCols = [["BaseRegOffset"]];
-}
-
 def getRegForm : InstrMapping {
   let FilterClass = "ImmRegRel";
   let RowFields = ["CextOpcode", "PredSense", "PNewValue"];
+  let ColFields = ["InputType"];
+  let KeyCol = ["imm"];
+  let ValueCols = [["reg"]];
+}
+
+def getRegShlForm : InstrMapping {
+  let FilterClass = "ImmRegShl";
+  let RowFields = ["CextOpcode", "PredSense", "PNewValue", "isNVStore"];
   let ColFields = ["InputType"];
   let KeyCol = ["imm"];
   let ValueCols = [["reg"]];
@@ -282,6 +251,7 @@ include "HexagonPseudo.td"
 include "HexagonPatterns.td"
 include "HexagonDepMappings.td"
 include "HexagonIntrinsics.td"
+include "HexagonIntrinsicsDerived.td"
 include "HexagonMapAsm2IntrinV62.gen.td"
 
 def HexagonInstrInfo : InstrInfo;
@@ -301,9 +271,9 @@ def : Proc<"hexagonv5",  HexagonModelV4,
 def : Proc<"hexagonv55", HexagonModelV55,
            [ArchV4, ArchV5, ArchV55]>;
 def : Proc<"hexagonv60", HexagonModelV60,
-           [ArchV4, ArchV5, ArchV55, ArchV60]>;
+           [ArchV4, ArchV5, ArchV55, ArchV60, ExtensionHVX]>;
 def : Proc<"hexagonv62", HexagonModelV62,
-           [ArchV4, ArchV5, ArchV55, ArchV60, ArchV62]>;
+           [ArchV4, ArchV5, ArchV55, ArchV60, ArchV62, ExtensionHVX]>;
 
 //===----------------------------------------------------------------------===//
 // Declare the target which we are implementing

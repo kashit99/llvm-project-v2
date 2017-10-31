@@ -38,11 +38,6 @@ void *registers_thread_func(void *arg) {
       :
       : "r" (p)
       );
-#elif defined(__powerpc__)
-  asm ( "mr 30, %0"
-      :
-      : "r" (p)
-      );
 #else
 #error "Test is not supported on this architecture."
 #endif

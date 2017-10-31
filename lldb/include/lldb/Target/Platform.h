@@ -53,7 +53,6 @@ public:
 };
 
 typedef std::shared_ptr<PlatformProperties> PlatformPropertiesSP;
-typedef llvm::SmallVector<lldb::addr_t, 6> MmapArgList;
 
 //----------------------------------------------------------------------
 /// @class Platform Platform.h "lldb/Target/Platform.h"
@@ -629,11 +628,8 @@ public:
 
   virtual Status Unlink(const FileSpec &file_spec);
 
-  virtual MmapArgList GetMmapArgumentList(const ArchSpec &arch,
-                                          lldb::addr_t addr,
-                                          lldb::addr_t length,
-                                          unsigned prot, unsigned flags,
-                                          lldb::addr_t fd, lldb::addr_t offset);
+  virtual uint64_t ConvertMmapFlagsToPlatform(const ArchSpec &arch,
+                                              unsigned flags);
 
   virtual bool GetSupportsRSync() { return m_supports_rsync; }
 

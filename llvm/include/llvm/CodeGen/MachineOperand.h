@@ -817,10 +817,8 @@ template <> struct DenseMapInfo<MachineOperand> {
     return hash_value(MO);
   }
   static bool isEqual(const MachineOperand &LHS, const MachineOperand &RHS) {
-    if (LHS.getType() == static_cast<MachineOperand::MachineOperandType>(
-                             MachineOperand::MO_Empty) ||
-        LHS.getType() == static_cast<MachineOperand::MachineOperandType>(
-                             MachineOperand::MO_Tombstone))
+    if (LHS.getType() == MachineOperand::MO_Empty ||
+        LHS.getType() == MachineOperand::MO_Tombstone)
       return LHS.getType() == RHS.getType();
     return LHS.isIdenticalTo(RHS);
   }

@@ -2,6 +2,7 @@ add_lldb_library(lldbUtility
   Baton.cpp
   Connection.cpp
   ConstString.cpp
+  CxaDemangle.cpp
   DataBufferHeap.cpp
   DataBufferLLVM.cpp
   DataEncoder.cpp
@@ -29,6 +30,7 @@ add_lldb_library(lldbUtility
   StringLexer.cpp
   StringList.cpp
   StructuredData.cpp
+  TaskPool.cpp
   TildeExpressionResolver.cpp
   Timer.cpp
   UserID.cpp

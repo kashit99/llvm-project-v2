@@ -30,7 +30,6 @@ struct alignas(16) MetadataRecord {
     TSCWrap,
     WalltimeMarker,
     CustomEventMarker,
-    CallArgument,
   };
   // Use 7 bits to identify this record type.
   /* RecordKinds */ uint8_t RecordKind : 7;

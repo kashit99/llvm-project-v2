@@ -13,7 +13,6 @@
 #include "tsan_report.h"
 #include "tsan_platform.h"
 #include "tsan_rtl.h"
-#include "sanitizer_common/sanitizer_file.h"
 #include "sanitizer_common/sanitizer_placement_new.h"
 #include "sanitizer_common/sanitizer_report_decorator.h"
 #include "sanitizer_common/sanitizer_stacktrace_printer.h"
@@ -39,11 +38,18 @@ ReportLocation *ReportLocation::New(ReportLocationType type) {
 class Decorator: public __sanitizer::SanitizerCommonDecorator {
  public:
   Decorator() : SanitizerCommonDecorator() { }
+  const char *Warning()    { return Red(); }
+  const char *EndWarning() { return Default(); }
   const char *Access()     { return Blue(); }
+  const char *EndAccess()  { return Default(); }
   const char *ThreadDescription()    { return Cyan(); }
+  const char *EndThreadDescription() { return Default(); }
   const char *Location()   { return Green(); }
+  const char *EndLocation() { return Default(); }
   const char *Sleep()   { return Yellow(); }
+  const char *EndSleep() { return Default(); }
   const char *Mutex()   { return Magenta(); }
+  const char *EndMutex() { return Default(); }
 };
 
 ReportDesc::ReportDesc()
@@ -174,7 +180,7 @@ static void PrintMop(const ReportMop *mop, bool first) {
   }
   PrintMutexSet(mop->mset);
   Printf(":\n");
-  Printf("%s", d.Default());
+  Printf("%s", d.EndAccess());
   PrintStack(mop->stack);
 }
 
@@ -215,20 +221,20 @@ static void PrintLocation(const ReportLocation *loc) {
         loc->fd, thread_name(thrbuf, loc->tid));
     print_stack = true;
   }
-  Printf("%s", d.Default());
+  Printf("%s", d.EndLocation());
   if (print_stack)
     PrintStack(loc->stack);
 }
 
 static void PrintMutexShort(const ReportMutex *rm, const char *after) {
   Decorator d;
-  Printf("%sM%zd%s%s", d.Mutex(), rm->id, d.Default(), after);
+  Printf("%sM%zd%s%s", d.Mutex(), rm->id, d.EndMutex(), after);
 }
 
 static void PrintMutexShortWithAddress(const ReportMutex *rm,
                                        const char *after) {
   Decorator d;
-  Printf("%sM%zd (%p)%s%s", d.Mutex(), rm->id, rm->addr, d.Default(), after);
+  Printf("%sM%zd (%p)%s%s", d.Mutex(), rm->id, rm->addr, d.EndMutex(), after);
 }
 
 static void PrintMutex(const ReportMutex *rm) {
@@ -236,11 +242,11 @@ static void PrintMutex(const ReportMutex *rm) {
   if (rm->destroyed) {
     Printf("%s", d.Mutex());
     Printf("  Mutex M%llu is already destroyed.\n\n", rm->id);
-    Printf("%s", d.Default());
+    Printf("%s", d.EndMutex());
   } else {
     Printf("%s", d.Mutex());
     Printf("  Mutex M%llu (%p) created at:\n", rm->id, rm->addr);
-    Printf("%s", d.Default());
+    Printf("%s", d.EndMutex());
     PrintStack(rm->stack);
   }
 }
@@ -258,7 +264,7 @@ static void PrintThread(const ReportThread *rt) {
   if (rt->workerthread) {
     Printf(" (tid=%zu, %s) is a GCD worker thread\n", rt->os_id, thread_status);
     Printf("\n");
-    Printf("%s", d.Default());
+    Printf("%s", d.EndThreadDescription());
     return;
   }
   Printf(" (tid=%zu, %s) created by %s", rt->os_id, thread_status,
@@ -266,7 +272,7 @@ static void PrintThread(const ReportThread *rt) {
   if (rt->stack)
     Printf(" at:");
   Printf("\n");
-  Printf("%s", d.Default());
+  Printf("%s", d.EndThreadDescription());
   PrintStack(rt->stack);
 }
 
@@ -274,7 +280,7 @@ static void PrintSleep(const ReportStack *s) {
   Decorator d;
   Printf("%s", d.Sleep());
   Printf("  As if synchronized via sleep:\n");
-  Printf("%s", d.Default());
+  Printf("%s", d.EndSleep());
   PrintStack(s);
 }
 
@@ -318,7 +324,7 @@ void PrintReport(const ReportDesc *rep) {
   Printf("%s", d.Warning());
   Printf("WARNING: ThreadSanitizer: %s (pid=%d)\n", rep_typ_str,
          (int)internal_getpid());
-  Printf("%s", d.Default());
+  Printf("%s", d.EndWarning());
 
   if (rep->typ == ReportTypeDeadlock) {
     char thrbuf[kThreadBufSize];
@@ -336,7 +342,7 @@ void PrintReport(const ReportDesc *rep) {
       PrintMutexShort(rep->mutexes[i], " in ");
       Printf("%s", d.ThreadDescription());
       Printf("%s:\n", thread_name(thrbuf, rep->unique_tids[i]));
-      Printf("%s", d.Default());
+      Printf("%s", d.EndThreadDescription());
       if (flags()->second_deadlock_stack) {
         PrintStack(rep->stacks[2*i]);
         Printf("  Mutex ");

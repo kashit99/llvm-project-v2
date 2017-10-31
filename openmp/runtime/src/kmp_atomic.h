@@ -2,6 +2,7 @@
  * kmp_atomic.h - ATOMIC header file
  */
 
+
 //===----------------------------------------------------------------------===//
 //
 //                     The LLVM Compiler Infrastructure
@@ -10,6 +11,7 @@
 // Source Licenses. See LICENSE.txt for details.
 //
 //===----------------------------------------------------------------------===//
+
 
 #ifndef KMP_ATOMIC_H
 #define KMP_ATOMIC_H

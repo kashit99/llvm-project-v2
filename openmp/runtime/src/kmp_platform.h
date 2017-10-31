@@ -2,6 +2,7 @@
  * kmp_platform.h -- header for determining operating system and architecture
  */
 
+
 //===----------------------------------------------------------------------===//
 //
 //                     The LLVM Compiler Infrastructure
@@ -10,6 +11,7 @@
 // Source Licenses. See LICENSE.txt for details.
 //
 //===----------------------------------------------------------------------===//
+
 
 #ifndef KMP_PLATFORM_H
 #define KMP_PLATFORM_H

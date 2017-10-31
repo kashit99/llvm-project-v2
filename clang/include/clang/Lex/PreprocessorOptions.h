@@ -160,7 +160,7 @@ public:
                           DisablePCHValidation(false),
                           AllowPCHWithCompilerErrors(false),
                           DumpDeserializedPCHDecls(false),
-                          PrecompiledPreambleBytes(0, false),
+                          PrecompiledPreambleBytes(0, true),
                           GeneratePreamble(false),
                           RemappedFilesKeepOriginalName(true),
                           RetainRemappedFileBuffers(false),
@@ -195,7 +195,7 @@ public:
     LexEditorPlaceholders = true;
     RetainRemappedFileBuffers = true;
     PrecompiledPreambleBytes.first = 0;
-    PrecompiledPreambleBytes.second = false;
+    PrecompiledPreambleBytes.second = 0;
   }
 };
 

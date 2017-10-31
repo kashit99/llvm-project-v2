@@ -2253,7 +2253,7 @@ CGOpenMPRuntimeNVPTX::translateParameter(const FieldDecl *FD,
   ArgType = CGM.getContext().getPointerType(PointeeTy);
   QC.addRestrict();
   enum { NVPTX_local_addr = 5 };
-  QC.addAddressSpace(getLangASFromTargetAS(NVPTX_local_addr));
+  QC.addAddressSpace(NVPTX_local_addr);
   ArgType = QC.apply(CGM.getContext(), ArgType);
   return ImplicitParamDecl::Create(
       CGM.getContext(), /*DC=*/nullptr, NativeParam->getLocation(),
@@ -2273,10 +2273,10 @@ CGOpenMPRuntimeNVPTX::getParameterAddress(CodeGenFunction &CGF,
   const Type *NonQualTy = QC.strip(NativeParamType);
   QualType NativePointeeTy = cast<ReferenceType>(NonQualTy)->getPointeeType();
   unsigned NativePointeeAddrSpace =
-      CGF.getContext().getTargetAddressSpace(NativePointeeTy);
-  QualType TargetTy = TargetParam->getType();
+      NativePointeeTy.getQualifiers().getAddressSpace();
+  QualType TargetPointeeTy = TargetParam->getType()->getPointeeType();
   llvm::Value *TargetAddr = CGF.EmitLoadOfScalar(
-      LocalAddr, /*Volatile=*/false, TargetTy, SourceLocation());
+      LocalAddr, /*Volatile=*/false, TargetPointeeTy, SourceLocation());
   // First cast to generic.
   TargetAddr = CGF.Builder.CreatePointerBitCastOrAddrSpaceCast(
       TargetAddr, TargetAddr->getType()->getPointerElementType()->getPointerTo(
@@ -2287,7 +2287,7 @@ CGOpenMPRuntimeNVPTX::getParameterAddress(CodeGenFunction &CGF,
                       NativePointeeAddrSpace));
   Address NativeParamAddr = CGF.CreateMemTemp(NativeParamType);
   CGF.EmitStoreOfScalar(TargetAddr, NativeParamAddr, /*Volatile=*/false,
-                        NativeParamType);
+                        NativeParam->getType());
   return NativeParamAddr;
 }
 
@@ -2295,14 +2295,9 @@ void CGOpenMPRuntimeNVPTX::emitOutlinedFunctionCall(
     CodeGenFunction &CGF, SourceLocation Loc, llvm::Value *OutlinedFn,
     ArrayRef<llvm::Value *> Args) const {
   SmallVector<llvm::Value *, 4> TargetArgs;
-  TargetArgs.reserve(Args.size());
   auto *FnType =
       cast<llvm::FunctionType>(OutlinedFn->getType()->getPointerElementType());
   for (unsigned I = 0, E = Args.size(); I < E; ++I) {
-    if (FnType->isVarArg() && FnType->getNumParams() <= I) {
-      TargetArgs.append(std::next(Args.begin(), I), Args.end());
-      break;
-    }
     llvm::Type *TargetType = FnType->getParamType(I);
     llvm::Value *NativeArg = Args[I];
     if (!TargetType->isPointerTy()) {

@@ -956,16 +956,12 @@ bool ASTNodeImporter::ImportDefinition(RecordDecl *From, RecordDecl *To,
     ToData.HasUninitializedFields = FromData.HasUninitializedFields;
     ToData.HasInheritedConstructor = FromData.HasInheritedConstructor;
     ToData.HasInheritedAssignment = FromData.HasInheritedAssignment;
-    ToData.NeedOverloadResolutionForCopyConstructor
-      = FromData.NeedOverloadResolutionForCopyConstructor;
     ToData.NeedOverloadResolutionForMoveConstructor
       = FromData.NeedOverloadResolutionForMoveConstructor;
     ToData.NeedOverloadResolutionForMoveAssignment
       = FromData.NeedOverloadResolutionForMoveAssignment;
     ToData.NeedOverloadResolutionForDestructor
       = FromData.NeedOverloadResolutionForDestructor;
-    ToData.DefaultedCopyConstructorIsDeleted
-      = FromData.DefaultedCopyConstructorIsDeleted;
     ToData.DefaultedMoveConstructorIsDeleted
       = FromData.DefaultedMoveConstructorIsDeleted;
     ToData.DefaultedMoveAssignmentIsDeleted
@@ -977,7 +973,6 @@ bool ASTNodeImporter::ImportDefinition(RecordDecl *From, RecordDecl *To,
       = FromData.HasConstexprNonCopyMoveConstructor;
     ToData.HasDefaultedDefaultConstructor
       = FromData.HasDefaultedDefaultConstructor;
-    ToData.CanPassInRegisters = FromData.CanPassInRegisters;
     ToData.DefaultedDefaultConstructorIsConstexpr
       = FromData.DefaultedDefaultConstructorIsConstexpr;
     ToData.HasConstexprDefaultConstructor
@@ -1846,8 +1841,6 @@ Decl *ASTNodeImporter::VisitFunctionDecl(FunctionDecl *D) {
   if (ToD)
     return ToD;
 
-  const FunctionDecl *FoundWithoutBody = nullptr;
-
   // Try to find a function in our own ("to") context with the same name, same
   // type, and in the same context as the function we're importing.
   if (!LexicalDC->isFunctionOrMethod()) {
@@ -1865,13 +1858,6 @@ Decl *ASTNodeImporter::VisitFunctionDecl(FunctionDecl *D) {
           if (Importer.IsStructurallyEquivalent(D->getType(), 
                                                 FoundFunction->getType())) {
             // FIXME: Actually try to merge the body and other attributes.
-            const FunctionDecl *FromBodyDecl = nullptr;
-            D->hasBody(FromBodyDecl);
-            if (D == FromBodyDecl && !FoundFunction->hasBody()) {
-              // This function is needed to merge completely.
-              FoundWithoutBody = FoundFunction;
-              break;
-            }
             return Importer.Imported(D, FoundFunction);
           }
 
@@ -2021,12 +2007,6 @@ Decl *ASTNodeImporter::VisitFunctionDecl(FunctionDecl *D) {
     ToFunction->addDeclInternal(Parameters[I]);
   }
   ToFunction->setParams(Parameters);
-
-  if (FoundWithoutBody) {
-    auto *Recent = const_cast<FunctionDecl *>(
-          FoundWithoutBody->getMostRecentDecl());
-    ToFunction->setPreviousDecl(Recent);
-  }
 
   if (usedDifferentExceptionSpec) {
     // Update FunctionProtoType::ExtProtoInfo.
@@ -3983,16 +3963,12 @@ Stmt *ASTNodeImporter::VisitCaseStmt(CaseStmt *S) {
   Expr *ToRHS = Importer.Import(S->getRHS());
   if (!ToRHS && S->getRHS())
     return nullptr;
-  Stmt *ToSubStmt = Importer.Import(S->getSubStmt());
-  if (!ToSubStmt && S->getSubStmt())
-    return nullptr;
   SourceLocation ToCaseLoc = Importer.Import(S->getCaseLoc());
   SourceLocation ToEllipsisLoc = Importer.Import(S->getEllipsisLoc());
   SourceLocation ToColonLoc = Importer.Import(S->getColonLoc());
-  CaseStmt *ToStmt = new (Importer.getToContext())
-      CaseStmt(ToLHS, ToRHS, ToCaseLoc, ToEllipsisLoc, ToColonLoc);
-  ToStmt->setSubStmt(ToSubStmt);
-  return ToStmt;
+  return new (Importer.getToContext()) CaseStmt(ToLHS, ToRHS,
+                                                ToCaseLoc, ToEllipsisLoc,
+                                                ToColonLoc);
 }
 
 Stmt *ASTNodeImporter::VisitDefaultStmt(DefaultStmt *S) {

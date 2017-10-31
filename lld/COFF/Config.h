@@ -12,7 +12,6 @@
 
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Object/COFF.h"
-#include "llvm/Support/CachePruning.h"
 #include <cstdint>
 #include <map>
 #include <set>
@@ -84,8 +83,10 @@ struct Configuration {
   bool NoEntry = false;
   std::string OutputFile;
   std::string ImportName;
+  bool ColorDiagnostics;
   bool DoGC = true;
   bool DoICF = true;
+  uint64_t ErrorLimit = 20;
   bool Relocatable = true;
   bool Force = false;
   bool Debug = false;
@@ -122,11 +123,6 @@ struct Configuration {
   // Used for /opt:lldltopartitions=N
   unsigned LTOPartitions = 1;
 
-  // Used for /opt:lldltocache=path
-  StringRef LTOCache;
-  // Used for /opt:lldltocachepolicy=policy
-  llvm::CachePruningPolicy LTOCachePolicy;
-
   // Used for /merge:from=to (e.g. /merge:.rdata=.text)
   std::map<StringRef, StringRef> Merge;
 
@@ -142,9 +138,6 @@ struct Configuration {
   StringRef ManifestLevel = "'asInvoker'";
   StringRef ManifestUIAccess = "'false'";
   StringRef ManifestFile;
-
-  // Used for /aligncomm.
-  std::map<std::string, int> AlignComm;
 
   // Used for /failifmismatch.
   std::map<StringRef, StringRef> MustMatch;
@@ -164,16 +157,13 @@ struct Configuration {
   uint32_t MinorImageVersion = 0;
   uint32_t MajorOSVersion = 6;
   uint32_t MinorOSVersion = 0;
-  bool CanExitEarly = false;
   bool DynamicBase = true;
-  bool AllowBind = true;
   bool NxCompat = true;
   bool AllowIsolation = true;
   bool TerminalServerAware = true;
   bool LargeAddressAware = false;
   bool HighEntropyVA = false;
   bool AppContainer = false;
-  bool MinGW = false;
 };
 
 extern Configuration *Config;

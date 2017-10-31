@@ -494,9 +494,6 @@ lltok::Kind LLLexer::LexIdentifier() {
   KEYWORD(declare); KEYWORD(define);
   KEYWORD(global);  KEYWORD(constant);
 
-  KEYWORD(dso_local);
-  KEYWORD(dso_preemptable);
-
   KEYWORD(private);
   KEYWORD(internal);
   KEYWORD(available_externally);
@@ -604,9 +601,7 @@ lltok::Kind LLLexer::LexIdentifier() {
   KEYWORD(hhvm_ccc);
   KEYWORD(cxx_fast_tlscc);
   KEYWORD(amdgpu_vs);
-  KEYWORD(amdgpu_ls);
   KEYWORD(amdgpu_hs);
-  KEYWORD(amdgpu_es);
   KEYWORD(amdgpu_gs);
   KEYWORD(amdgpu_ps);
   KEYWORD(amdgpu_cs);
@@ -659,7 +654,6 @@ lltok::Kind LLLexer::LexIdentifier() {
   KEYWORD(ssp);
   KEYWORD(sspreq);
   KEYWORD(sspstrong);
-  KEYWORD(strictfp);
   KEYWORD(safestack);
   KEYWORD(sanitize_address);
   KEYWORD(sanitize_thread);

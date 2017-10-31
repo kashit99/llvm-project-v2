@@ -25,7 +25,6 @@
 #include "llvm/CodeGen/MachineInstr.h"
 #include "llvm/CodeGen/MachineLoopInfo.h"
 #include "llvm/CodeGen/MachineOperand.h"
-#include "llvm/CodeGen/PseudoSourceValue.h"
 #include "llvm/MC/MCInstrInfo.h"
 #include "llvm/Support/BranchProbability.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -56,7 +55,7 @@ class TargetRegisterInfo;
 class TargetSchedModel;
 class TargetSubtargetInfo;
 
-template <class T> class SmallVectorImpl;
+template<class T> class SmallVectorImpl;
 
 //---------------------------------------------------------------------------
 ///
@@ -67,7 +66,8 @@ public:
   TargetInstrInfo(unsigned CFSetupOpcode = ~0u, unsigned CFDestroyOpcode = ~0u,
                   unsigned CatchRetOpcode = ~0u, unsigned ReturnOpcode = ~0u)
       : CallFrameSetupOpcode(CFSetupOpcode),
-        CallFrameDestroyOpcode(CFDestroyOpcode), CatchRetOpcode(CatchRetOpcode),
+        CallFrameDestroyOpcode(CFDestroyOpcode),
+        CatchRetOpcode(CatchRetOpcode),
         ReturnOpcode(ReturnOpcode) {}
   TargetInstrInfo(const TargetInstrInfo &) = delete;
   TargetInstrInfo &operator=(const TargetInstrInfo &) = delete;
@@ -79,7 +79,8 @@ public:
 
   /// Given a machine instruction descriptor, returns the register
   /// class constraint for OpNum, or NULL.
-  const TargetRegisterClass *getRegClass(const MCInstrDesc &TID, unsigned OpNum,
+  const TargetRegisterClass *getRegClass(const MCInstrDesc &TID,
+                                         unsigned OpNum,
                                          const TargetRegisterInfo *TRI,
                                          const MachineFunction &MF) const;
 
@@ -138,7 +139,8 @@ protected:
   /// the fixed result pair is equal to or equivalent to the source pair of
   /// indices: (CommutableOpIdx1, CommutableOpIdx2). It is assumed here that
   /// the pairs (x,y) and (y,x) are equivalent.
-  static bool fixCommutedOpIndices(unsigned &ResultIdx1, unsigned &ResultIdx2,
+  static bool fixCommutedOpIndices(unsigned &ResultIdx1,
+                                   unsigned &ResultIdx2,
                                    unsigned CommutableOpIdx1,
                                    unsigned CommutableOpIdx2);
 
@@ -162,7 +164,7 @@ public:
   /// Returns true if the argument is a frame pseudo instruction.
   bool isFrameInstr(const MachineInstr &I) const {
     return I.getOpcode() == getCallFrameSetupOpcode() ||
-           I.getOpcode() == getCallFrameDestroyOpcode();
+      I.getOpcode() == getCallFrameDestroyOpcode();
   }
 
   /// Returns true if the argument is a frame setup pseudo instruction.
@@ -189,8 +191,7 @@ public:
   /// prior to the pair.
   int64_t getFrameTotalSize(const MachineInstr &I) const {
     if (isFrameSetup(I)) {
-      assert(I.getOperand(1).getImm() >= 0 &&
-             "Frame size must not be negative");
+      assert(I.getOperand(1).getImm() >= 0 && "Frame size must not be negative");
       return getFrameSize(I) + I.getOperand(1).getImm();
     }
     return getFrameSize(I);
@@ -210,8 +211,9 @@ public:
   /// destination. e.g. X86::MOVSX64rr32. If this returns true, then it's
   /// expected the pre-extension value is available as a subreg of the result
   /// register. This also returns the sub-register index in SubIdx.
-  virtual bool isCoalescableExtInstr(const MachineInstr &MI, unsigned &SrcReg,
-                                     unsigned &DstReg, unsigned &SubIdx) const {
+  virtual bool isCoalescableExtInstr(const MachineInstr &MI,
+                                     unsigned &SrcReg, unsigned &DstReg,
+                                     unsigned &SubIdx) const {
     return false;
   }
 
@@ -313,7 +315,9 @@ public:
   /// MachineSink determines on its own whether the instruction is safe to sink;
   /// this gives the target a hook to override the default behavior with regards
   /// to which instructions should be sunk.
-  virtual bool shouldSink(const MachineInstr &MI) const { return true; }
+  virtual bool shouldSink(const MachineInstr &MI) const {
+    return true;
+  }
 
   /// Re-issue the specified 'original' instruction at the
   /// specific location targeting a new destination register.
@@ -325,14 +329,13 @@ public:
                              unsigned SubIdx, const MachineInstr &Orig,
                              const TargetRegisterInfo &TRI) const;
 
-  /// \brief Clones instruction or the whole instruction bundle \p Orig and
-  /// insert into \p MBB before \p InsertBefore. The target may update operands
+  /// Create a duplicate of the Orig instruction in MF. This is like
+  /// MachineFunction::CloneMachineInstr(), but the target may update operands
   /// that are required to be unique.
   ///
-  /// \p Orig must not return true for MachineInstr::isNotDuplicable().
-  virtual MachineInstr &duplicate(MachineBasicBlock &MBB,
-                                  MachineBasicBlock::iterator InsertBefore,
-                                  const MachineInstr &Orig) const;
+  /// The instruction must be duplicable as indicated by isNotDuplicable().
+  virtual MachineInstr *duplicate(MachineInstr &Orig,
+                                  MachineFunction &MF) const;
 
   /// This method must be implemented by targets that
   /// set the M_CONVERTIBLE_TO_3_ADDR flag.  When this flag is set, the target
@@ -453,8 +456,9 @@ public:
   /// \note The generic implementation does not provide any support for
   /// MI.isExtractSubregLike(). In other words, one has to override
   /// getExtractSubregLikeInputs for target specific instructions.
-  bool getExtractSubregInputs(const MachineInstr &MI, unsigned DefIdx,
-                              RegSubRegPairAndIdx &InputReg) const;
+  bool
+  getExtractSubregInputs(const MachineInstr &MI, unsigned DefIdx,
+                         RegSubRegPairAndIdx &InputReg) const;
 
   /// Build the equivalent inputs of a INSERT_SUBREG for the given \p MI
   /// and \p DefIdx.
@@ -472,9 +476,10 @@ public:
   /// \note The generic implementation does not provide any support for
   /// MI.isInsertSubregLike(). In other words, one has to override
   /// getInsertSubregLikeInputs for target specific instructions.
-  bool getInsertSubregInputs(const MachineInstr &MI, unsigned DefIdx,
-                             RegSubRegPair &BaseReg,
-                             RegSubRegPairAndIdx &InsertedReg) const;
+  bool
+  getInsertSubregInputs(const MachineInstr &MI, unsigned DefIdx,
+                        RegSubRegPair &BaseReg,
+                        RegSubRegPairAndIdx &InsertedReg) const;
 
   /// Return true if two machine instructions would produce identical values.
   /// By default, this is only true when the two instructions
@@ -620,8 +625,8 @@ public:
                                      MachineBasicBlock *DestBB,
                                      const DebugLoc &DL,
                                      int *BytesAdded = nullptr) const {
-    return insertBranch(MBB, DestBB, nullptr, ArrayRef<MachineOperand>(), DL,
-                        BytesAdded);
+    return insertBranch(MBB, DestBB, nullptr,
+                        ArrayRef<MachineOperand>(), DL, BytesAdded);
   }
 
   /// Analyze the loop code, return true if it cannot be understoo. Upon
@@ -636,8 +641,8 @@ public:
   /// finished.  Return the value/register of the the new loop count.  We need
   /// this function when peeling off one or more iterations of a loop. This
   /// function assumes the nth iteration is peeled first.
-  virtual unsigned reduceLoopCount(MachineBasicBlock &MBB, MachineInstr *IndVar,
-                                   MachineInstr &Cmp,
+  virtual unsigned reduceLoopCount(MachineBasicBlock &MBB,
+                                   MachineInstr *IndVar, MachineInstr &Cmp,
                                    SmallVectorImpl<MachineOperand> &Cond,
                                    SmallVectorImpl<MachineInstr *> &PrevInsts,
                                    unsigned Iter, unsigned MaxIter) const {
@@ -662,9 +667,10 @@ public:
   /// of the specified basic block, where the probability of the instructions
   /// being executed is given by Probability, and Confidence is a measure
   /// of our confidence that it will be properly predicted.
-  virtual bool isProfitableToIfCvt(MachineBasicBlock &MBB, unsigned NumCycles,
-                                   unsigned ExtraPredCycles,
-                                   BranchProbability Probability) const {
+  virtual
+  bool isProfitableToIfCvt(MachineBasicBlock &MBB, unsigned NumCycles,
+                           unsigned ExtraPredCycles,
+                           BranchProbability Probability) const {
     return false;
   }
 
@@ -674,11 +680,12 @@ public:
   /// predicates, where the probability of the true path being taken is given
   /// by Probability, and Confidence is a measure of our confidence that it
   /// will be properly predicted.
-  virtual bool isProfitableToIfCvt(MachineBasicBlock &TMBB, unsigned NumTCycles,
-                                   unsigned ExtraTCycles,
-                                   MachineBasicBlock &FMBB, unsigned NumFCycles,
-                                   unsigned ExtraFCycles,
-                                   BranchProbability Probability) const {
+  virtual bool
+  isProfitableToIfCvt(MachineBasicBlock &TMBB,
+                      unsigned NumTCycles, unsigned ExtraTCycles,
+                      MachineBasicBlock &FMBB,
+                      unsigned NumFCycles, unsigned ExtraFCycles,
+                      BranchProbability Probability) const {
     return false;
   }
 
@@ -688,9 +695,9 @@ public:
   /// The probability of the instructions being executed is given by
   /// Probability, and Confidence is a measure of our confidence that it
   /// will be properly predicted.
-  virtual bool isProfitableToDupForIfCvt(MachineBasicBlock &MBB,
-                                         unsigned NumCycles,
-                                         BranchProbability Probability) const {
+  virtual bool
+  isProfitableToDupForIfCvt(MachineBasicBlock &MBB, unsigned NumCycles,
+                            BranchProbability Probability) const {
     return false;
   }
 
@@ -728,8 +735,9 @@ public:
   /// @param TrueCycles  Latency from TrueReg to select output.
   /// @param FalseCycles Latency from FalseReg to select output.
   virtual bool canInsertSelect(const MachineBasicBlock &MBB,
-                               ArrayRef<MachineOperand> Cond, unsigned TrueReg,
-                               unsigned FalseReg, int &CondCycles,
+                               ArrayRef<MachineOperand> Cond,
+                               unsigned TrueReg, unsigned FalseReg,
+                               int &CondCycles,
                                int &TrueCycles, int &FalseCycles) const {
     return false;
   }
@@ -945,7 +953,8 @@ public:
   /// Set special operand attributes for new instructions after reassociation.
   virtual void setSpecialOperandAttr(MachineInstr &OldMI1, MachineInstr &OldMI2,
                                      MachineInstr &NewMI1,
-                                     MachineInstr &NewMI2) const {}
+                                     MachineInstr &NewMI2) const {
+  }
 
   /// Return true when a target supports MachineCombiner.
   virtual bool useMachineCombiner() const { return false; }
@@ -998,9 +1007,9 @@ protected:
   /// \pre MI.isExtractSubregLike().
   ///
   /// \see TargetInstrInfo::getExtractSubregInputs.
-  virtual bool getExtractSubregLikeInputs(const MachineInstr &MI,
-                                          unsigned DefIdx,
-                                          RegSubRegPairAndIdx &InputReg) const {
+  virtual bool getExtractSubregLikeInputs(
+      const MachineInstr &MI, unsigned DefIdx,
+      RegSubRegPairAndIdx &InputReg) const {
     return false;
   }
 
@@ -1020,13 +1029,6 @@ protected:
   }
 
 public:
-  /// getAddressSpaceForPseudoSourceKind - Given the kind of memory
-  /// (e.g. stack) the target returns the corresponding address space.
-  virtual unsigned
-  getAddressSpaceForPseudoSourceKind(PseudoSourceValue::PSVKind Kind) const {
-    return 0;
-  }
-
   /// unfoldMemoryOperand - Separate a single instruction which folded a load or
   /// a store or a load and a store into two or more instruction. If this is
   /// possible, returns true as well as the new instructions by reference.
@@ -1038,7 +1040,7 @@ public:
   }
 
   virtual bool unfoldMemoryOperand(SelectionDAG &DAG, SDNode *N,
-                                   SmallVectorImpl<SDNode *> &NewNodes) const {
+                                   SmallVectorImpl<SDNode*> &NewNodes) const {
     return false;
   }
 
@@ -1048,9 +1050,9 @@ public:
   /// possible. If LoadRegIndex is non-null, it is filled in with the operand
   /// index of the operand which will hold the register holding the loaded
   /// value.
-  virtual unsigned
-  getOpcodeAfterMemoryUnfold(unsigned Opc, bool UnfoldLoad, bool UnfoldStore,
-                             unsigned *LoadRegIndex = nullptr) const {
+  virtual unsigned getOpcodeAfterMemoryUnfold(unsigned Opc,
+                                      bool UnfoldLoad, bool UnfoldStore,
+                                      unsigned *LoadRegIndex = nullptr) const {
     return 0;
   }
 
@@ -1059,8 +1061,7 @@ public:
   /// pointers are the same and the only differences between the two addresses
   /// are the offset. It also returns the offsets by reference.
   virtual bool areLoadsFromSameBasePtr(SDNode *Load1, SDNode *Load2,
-                                       int64_t &Offset1,
-                                       int64_t &Offset2) const {
+                                    int64_t &Offset1, int64_t &Offset2) const {
     return false;
   }
 
@@ -1106,16 +1107,16 @@ public:
   /// or
   ///   DAG->addMutation(createStoreClusterDAGMutation(DAG->TII, DAG->TRI));
   /// to TargetPassConfig::createMachineScheduler() to have an effect.
-  virtual bool shouldClusterMemOps(MachineInstr &FirstLdSt, unsigned BaseReg1,
-                                   MachineInstr &SecondLdSt, unsigned BaseReg2,
+  virtual bool shouldClusterMemOps(MachineInstr &FirstLdSt,
+                                   MachineInstr &SecondLdSt,
                                    unsigned NumLoads) const {
     llvm_unreachable("target did not implement shouldClusterMemOps()");
   }
 
   /// Reverses the branch condition of the specified condition list,
   /// returning false on success and true if it cannot be reversed.
-  virtual bool
-  reverseBranchCondition(SmallVectorImpl<MachineOperand> &Cond) const {
+  virtual
+  bool reverseBranchCondition(SmallVectorImpl<MachineOperand> &Cond) const {
     return true;
   }
 
@@ -1127,10 +1128,14 @@ public:
   virtual void getNoop(MCInst &NopInst) const;
 
   /// Return true for post-incremented instructions.
-  virtual bool isPostIncrement(const MachineInstr &MI) const { return false; }
+  virtual bool isPostIncrement(const MachineInstr &MI) const {
+    return false;
+  }
 
   /// Returns true if the instruction is already predicated.
-  virtual bool isPredicated(const MachineInstr &MI) const { return false; }
+  virtual bool isPredicated(const MachineInstr &MI) const {
+    return false;
+  }
 
   /// Returns true if the instruction is a
   /// terminator instruction that has not been predicated.
@@ -1142,8 +1147,9 @@ public:
   }
 
   /// Returns true if the tail call can be made conditional on BranchCond.
-  virtual bool canMakeTailCallConditional(SmallVectorImpl<MachineOperand> &Cond,
-                                          const MachineInstr &TailCall) const {
+  virtual bool
+  canMakeTailCallConditional(SmallVectorImpl<MachineOperand> &Cond,
+                             const MachineInstr &TailCall) const {
     return false;
   }
 
@@ -1161,8 +1167,9 @@ public:
 
   /// Returns true if the first specified predicate
   /// subsumes the second, e.g. GE subsumes GT.
-  virtual bool SubsumesPredicate(ArrayRef<MachineOperand> Pred1,
-                                 ArrayRef<MachineOperand> Pred2) const {
+  virtual
+  bool SubsumesPredicate(ArrayRef<MachineOperand> Pred1,
+                         ArrayRef<MachineOperand> Pred2) const {
     return false;
   }
 
@@ -1200,25 +1207,25 @@ public:
 
   /// Allocate and return a hazard recognizer to use for this target when
   /// scheduling the machine instructions before register allocation.
-  virtual ScheduleHazardRecognizer *
+  virtual ScheduleHazardRecognizer*
   CreateTargetHazardRecognizer(const TargetSubtargetInfo *STI,
                                const ScheduleDAG *DAG) const;
 
   /// Allocate and return a hazard recognizer to use for this target when
   /// scheduling the machine instructions before register allocation.
-  virtual ScheduleHazardRecognizer *
-  CreateTargetMIHazardRecognizer(const InstrItineraryData *,
+  virtual ScheduleHazardRecognizer*
+  CreateTargetMIHazardRecognizer(const InstrItineraryData*,
                                  const ScheduleDAG *DAG) const;
 
   /// Allocate and return a hazard recognizer to use for this target when
   /// scheduling the machine instructions after register allocation.
-  virtual ScheduleHazardRecognizer *
-  CreateTargetPostRAHazardRecognizer(const InstrItineraryData *,
+  virtual ScheduleHazardRecognizer*
+  CreateTargetPostRAHazardRecognizer(const InstrItineraryData*,
                                      const ScheduleDAG *DAG) const;
 
   /// Allocate and return a hazard recognizer to use for by non-scheduling
   /// passes.
-  virtual ScheduleHazardRecognizer *
+  virtual ScheduleHazardRecognizer*
   CreateTargetPostRAHazardRecognizer(const MachineFunction &MF) const {
     return nullptr;
   }
@@ -1495,7 +1502,7 @@ public:
 
   /// \brief Return the value to use for the MachineCSE's LookAheadLimit,
   /// which is a heuristic used for CSE'ing phys reg defs.
-  virtual unsigned getMachineCSELookAheadLimit() const {
+  virtual unsigned getMachineCSELookAheadLimit () const {
     // The default lookahead is small to prevent unprofitable quadratic
     // behavior.
     return 5;
@@ -1562,41 +1569,13 @@ public:
     return false;
   }
 
-  /// \brief Describes the number of instructions that it will take to call and
-  /// construct a frame for a given outlining candidate.
-  struct MachineOutlinerInfo {
-    /// Number of instructions to call an outlined function for this candidate.
-    unsigned CallOverhead;
-
-    /// \brief Number of instructions to construct an outlined function frame
-    /// for this candidate.
-    unsigned FrameOverhead;
-
-    /// \brief Represents the specific instructions that must be emitted to
-    /// construct a call to this candidate.
-    unsigned CallConstructionID;
-
-    /// \brief Represents the specific instructions that must be emitted to
-    /// construct a frame for this candidate's outlined function.
-    unsigned FrameConstructionID;
-
-    MachineOutlinerInfo() {}
-    MachineOutlinerInfo(unsigned CallOverhead, unsigned FrameOverhead,
-                        unsigned CallConstructionID,
-                        unsigned FrameConstructionID)
-        : CallOverhead(CallOverhead), FrameOverhead(FrameOverhead),
-          CallConstructionID(CallConstructionID),
-          FrameConstructionID(FrameConstructionID) {}
-  };
-
-  /// \brief Returns a \p MachineOutlinerInfo struct containing target-specific
-  /// information for a set of outlining candidates.
-  virtual MachineOutlinerInfo getOutlininingCandidateInfo(
-      std::vector<
-          std::pair<MachineBasicBlock::iterator, MachineBasicBlock::iterator>>
-          &RepeatedSequenceLocs) const {
+  /// \brief Return how many instructions would be saved by outlining a
+  /// sequence containing \p SequenceSize instructions that appears
+  /// \p Occurrences times in a module.
+  virtual unsigned getOutliningBenefit(size_t SequenceSize, size_t Occurrences,
+                                       bool CanBeTailCall) const {
     llvm_unreachable(
-        "Target didn't implement TargetInstrInfo::getOutliningOverhead!");
+        "Target didn't implement TargetInstrInfo::getOutliningBenefit!");
   }
 
   /// Represents how an instruction should be mapped by the outliner.
@@ -1604,7 +1583,7 @@ public:
   /// \p Illegal instructions are those which cannot be outlined.
   /// \p Invisible instructions are instructions which can be outlined, but
   /// shouldn't actually impact the outlining result.
-  enum MachineOutlinerInstrType { Legal, Illegal, Invisible };
+  enum MachineOutlinerInstrType {Legal, Illegal, Invisible};
 
   /// Returns how or if \p MI should be outlined.
   virtual MachineOutlinerInstrType getOutliningType(MachineInstr &MI) const {
@@ -1617,7 +1596,7 @@ public:
   /// emitted.
   virtual void insertOutlinerEpilogue(MachineBasicBlock &MBB,
                                       MachineFunction &MF,
-                                      const MachineOutlinerInfo &MInfo) const {
+                                      bool IsTailCall) const {
     llvm_unreachable(
         "Target didn't implement TargetInstrInfo::insertOutlinerEpilogue!");
   }
@@ -1628,7 +1607,7 @@ public:
   virtual MachineBasicBlock::iterator
   insertOutlinedCall(Module &M, MachineBasicBlock &MBB,
                      MachineBasicBlock::iterator &It, MachineFunction &MF,
-                     const MachineOutlinerInfo &MInfo) const {
+                     bool IsTailCall) const {
     llvm_unreachable(
         "Target didn't implement TargetInstrInfo::insertOutlinedCall!");
   }
@@ -1637,17 +1616,14 @@ public:
   /// This may be empty, in which case no prologue will be emitted.
   virtual void insertOutlinerPrologue(MachineBasicBlock &MBB,
                                       MachineFunction &MF,
-                                      const MachineOutlinerInfo &MInfo) const {
+                                      bool IsTailCall) const {
     llvm_unreachable(
         "Target didn't implement TargetInstrInfo::insertOutlinerPrologue!");
   }
 
   /// Return true if the function can safely be outlined from.
-  /// A function \p MF is considered safe for outlining if an outlined function
-  /// produced from instructions in F will produce a program which produces the
-  /// same output for any set of given inputs.
-  virtual bool isFunctionSafeToOutlineFrom(MachineFunction &MF,
-                                           bool OutlineFromLinkOnceODRs) const {
+  /// By default, this means that the function has no red zone.
+  virtual bool isFunctionSafeToOutlineFrom(MachineFunction &MF) const {
     llvm_unreachable("Target didn't implement "
                      "TargetInstrInfo::isFunctionSafeToOutlineFrom!");
   }
@@ -1659,23 +1635,25 @@ private:
 };
 
 /// \brief Provide DenseMapInfo for TargetInstrInfo::RegSubRegPair.
-template <> struct DenseMapInfo<TargetInstrInfo::RegSubRegPair> {
+template<>
+struct DenseMapInfo<TargetInstrInfo::RegSubRegPair> {
   using RegInfo = DenseMapInfo<unsigned>;
 
   static inline TargetInstrInfo::RegSubRegPair getEmptyKey() {
     return TargetInstrInfo::RegSubRegPair(RegInfo::getEmptyKey(),
-                                          RegInfo::getEmptyKey());
+                         RegInfo::getEmptyKey());
   }
 
   static inline TargetInstrInfo::RegSubRegPair getTombstoneKey() {
     return TargetInstrInfo::RegSubRegPair(RegInfo::getTombstoneKey(),
-                                          RegInfo::getTombstoneKey());
+                         RegInfo::getTombstoneKey());
   }
 
   /// \brief Reuse getHashValue implementation from
   /// std::pair<unsigned, unsigned>.
   static unsigned getHashValue(const TargetInstrInfo::RegSubRegPair &Val) {
-    std::pair<unsigned, unsigned> PairVal = std::make_pair(Val.Reg, Val.SubReg);
+    std::pair<unsigned, unsigned> PairVal =
+        std::make_pair(Val.Reg, Val.SubReg);
     return DenseMapInfo<std::pair<unsigned, unsigned>>::getHashValue(PairVal);
   }
 

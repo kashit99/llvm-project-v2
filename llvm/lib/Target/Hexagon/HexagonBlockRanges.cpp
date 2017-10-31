@@ -1,4 +1,4 @@
-//===- HexagonBlockRanges.cpp ---------------------------------------------===//
+//===--- HexagonBlockRanges.cpp -------------------------------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -6,6 +6,8 @@
 // License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
+
+#define DEBUG_TYPE "hbr"
 
 #include "HexagonBlockRanges.h"
 #include "HexagonInstrInfo.h"
@@ -15,7 +17,6 @@
 #include "llvm/CodeGen/MachineBasicBlock.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineInstr.h"
-#include "llvm/CodeGen/MachineOperand.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/Support/Debug.h"
@@ -23,14 +24,10 @@
 #include "llvm/Target/TargetRegisterInfo.h"
 #include <algorithm>
 #include <cassert>
-#include <cstdint>
 #include <iterator>
 #include <map>
-#include <utility>
 
 using namespace llvm;
-
-#define DEBUG_TYPE "hbr"
 
 bool HexagonBlockRanges::IndexRange::overlaps(const IndexRange &A) const {
   // If A contains start(), or "this" contains A.start(), then overlap.

@@ -12,39 +12,22 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Transforms/Scalar/CorrelatedValuePropagation.h"
-#include "llvm/ADT/DepthFirstIterator.h"
-#include "llvm/ADT/Optional.h"
-#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Statistic.h"
+#include "llvm/Analysis/AssumptionCache.h"
 #include "llvm/Analysis/GlobalsModRef.h"
 #include "llvm/Analysis/InstructionSimplify.h"
 #include "llvm/Analysis/LazyValueInfo.h"
-#include "llvm/IR/Attributes.h"
-#include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/CFG.h"
-#include "llvm/IR/CallSite.h"
-#include "llvm/IR/Constant.h"
 #include "llvm/IR/ConstantRange.h"
 #include "llvm/IR/Constants.h"
-#include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
-#include "llvm/IR/InstrTypes.h"
-#include "llvm/IR/Instruction.h"
 #include "llvm/IR/Instructions.h"
-#include "llvm/IR/Operator.h"
-#include "llvm/IR/PassManager.h"
-#include "llvm/IR/Type.h"
-#include "llvm/IR/Value.h"
+#include "llvm/IR/Module.h"
 #include "llvm/Pass.h"
-#include "llvm/Support/Casting.h"
-#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Utils/Local.h"
-#include <cassert>
-#include <utility>
-
 using namespace llvm;
 
 #define DEBUG_TYPE "correlated-value-propagation"
@@ -62,11 +45,9 @@ STATISTIC(NumSRems,     "Number of srem converted to urem");
 static cl::opt<bool> DontProcessAdds("cvp-dont-process-adds", cl::init(true));
 
 namespace {
-
   class CorrelatedValuePropagation : public FunctionPass {
   public:
     static char ID;
-
     CorrelatedValuePropagation(): FunctionPass(ID) {
      initializeCorrelatedValuePropagationPass(*PassRegistry::getPassRegistry());
     }
@@ -78,11 +59,9 @@ namespace {
       AU.addPreserved<GlobalsAAWrapperPass>();
     }
   };
-
-} // end anonymous namespace
+}
 
 char CorrelatedValuePropagation::ID = 0;
-
 INITIALIZE_PASS_BEGIN(CorrelatedValuePropagation, "correlated-propagation",
                 "Value Propagation", false, false)
 INITIALIZE_PASS_DEPENDENCY(LazyValueInfoWrapperPass)
@@ -356,6 +335,18 @@ static bool processCallSite(CallSite CS, LazyValueInfo *LVI) {
   return true;
 }
 
+// Helper function to rewrite srem and sdiv. As a policy choice, we choose not
+// to waste compile time on anything where the operands are local defs.  While
+// LVI can sometimes reason about such cases, it's not its primary purpose.
+static bool hasLocalDefs(BinaryOperator *SDI) {
+  for (Value *O : SDI->operands()) {
+    auto *I = dyn_cast<Instruction>(O);
+    if (I && I->getParent() == SDI->getParent())
+      return true;
+  }
+  return false;
+}
+
 static bool hasPositiveOperands(BinaryOperator *SDI, LazyValueInfo *LVI) {
   Constant *Zero = ConstantInt::get(SDI->getType(), 0);
   for (Value *O : SDI->operands()) {
@@ -367,7 +358,7 @@ static bool hasPositiveOperands(BinaryOperator *SDI, LazyValueInfo *LVI) {
 }
 
 static bool processSRem(BinaryOperator *SDI, LazyValueInfo *LVI) {
-  if (SDI->getType()->isVectorTy() ||
+  if (SDI->getType()->isVectorTy() || hasLocalDefs(SDI) ||
       !hasPositiveOperands(SDI, LVI))
     return false;
 
@@ -385,7 +376,7 @@ static bool processSRem(BinaryOperator *SDI, LazyValueInfo *LVI) {
 /// conditions, this can sometimes prove conditions instcombine can't by
 /// exploiting range information.
 static bool processSDiv(BinaryOperator *SDI, LazyValueInfo *LVI) {
-  if (SDI->getType()->isVectorTy() ||
+  if (SDI->getType()->isVectorTy() || hasLocalDefs(SDI) ||
       !hasPositiveOperands(SDI, LVI))
     return false;
 
@@ -400,7 +391,7 @@ static bool processSDiv(BinaryOperator *SDI, LazyValueInfo *LVI) {
 }
 
 static bool processAShr(BinaryOperator *SDI, LazyValueInfo *LVI) {
-  if (SDI->getType()->isVectorTy())
+  if (SDI->getType()->isVectorTy() || hasLocalDefs(SDI))
     return false;
 
   Constant *Zero = ConstantInt::get(SDI->getType(), 0);
@@ -419,12 +410,12 @@ static bool processAShr(BinaryOperator *SDI, LazyValueInfo *LVI) {
 }
 
 static bool processAdd(BinaryOperator *AddOp, LazyValueInfo *LVI) {
-  using OBO = OverflowingBinaryOperator;
+  typedef OverflowingBinaryOperator OBO;
 
   if (DontProcessAdds)
     return false;
 
-  if (AddOp->getType()->isVectorTy())
+  if (AddOp->getType()->isVectorTy() || hasLocalDefs(AddOp))
     return false;
 
   bool NSW = AddOp->hasNoSignedWrap();

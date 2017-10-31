@@ -110,6 +110,8 @@ ARMSubtarget::ARMSubtarget(const Triple &TT, const std::string &CPU,
                           ? (ARMBaseInstrInfo *)new ARMInstrInfo(*this)
                           : (ARMBaseInstrInfo *)new Thumb2InstrInfo(*this)),
       TLInfo(TM, *this) {
+  assert((isThumb() || hasARMOps()) &&
+         "Target must either be thumb or support ARM operations!");
 
   CallLoweringInfo.reset(new ARMCallLowering(*getTargetLowering()));
   Legalizer.reset(new ARMLegalizerInfo(*this));
@@ -150,9 +152,7 @@ void ARMSubtarget::initializeEnvironment() {
   // MCAsmInfo isn't always present (e.g. in opt) so we can't initialize this
   // directly from it, but we can try to make sure they're consistent when both
   // available.
-  UseSjLjEH = (isTargetDarwin() && !isTargetWatchABI() &&
-               Options.ExceptionModel == ExceptionHandling::None) ||
-              Options.ExceptionModel == ExceptionHandling::SjLj;
+  UseSjLjEH = isTargetDarwin() && !isTargetWatchABI();
   assert((!TM.getMCAsmInfo() ||
           (TM.getMCAsmInfo()->getExceptionHandlingType() ==
            ExceptionHandling::SjLj) == UseSjLjEH) &&
@@ -165,11 +165,11 @@ void ARMSubtarget::initSubtargetFeatures(StringRef CPU, StringRef FS) {
 
     if (isTargetDarwin()) {
       StringRef ArchName = TargetTriple.getArchName();
-      ARM::ArchKind AK = ARM::parseArch(ArchName);
-      if (AK == ARM::ArchKind::ARMV7S)
+      unsigned ArchKind = ARM::parseArch(ArchName);
+      if (ArchKind == ARM::AK_ARMV7S)
         // Default to the Swift CPU when targeting armv7s/thumbv7s.
         CPUString = "swift";
-      else if (AK == ARM::ArchKind::ARMV7K)
+      else if (ArchKind == ARM::AK_ARMV7K)
         // Default to the Cortex-a7 CPU when targeting armv7k/thumbv7k.
         // ARMv7k does not use SjLj exception handling.
         CPUString = "cortex-a7";
@@ -281,18 +281,16 @@ void ARMSubtarget::initSubtargetFeatures(StringRef CPU, StringRef FS) {
   case CortexA32:
   case CortexA35:
   case CortexA53:
-  case CortexA55:
   case CortexA57:
   case CortexA72:
   case CortexA73:
-  case CortexA75:
   case CortexR4:
   case CortexR4F:
   case CortexR5:
   case CortexR7:
   case CortexM3:
-  case CortexR52:
   case ExynosM1:
+  case CortexR52:
   case Kryo:
     break;
   case Krait:
@@ -361,17 +359,19 @@ bool ARMSubtarget::hasSinCos() const {
 }
 
 bool ARMSubtarget::enableMachineScheduler() const {
-  // Enable the MachineScheduler before register allocation for subtargets
-  // with the use-misched feature.
-  return useMachineScheduler();
+  // Enable the MachineScheduler before register allocation for out-of-order
+  // architectures where we do not use the PostRA scheduler anymore (for now
+  // restricted to swift).
+  return getSchedModel().isOutOfOrder() && isSwift();
 }
 
 // This overrides the PostRAScheduler bit in the SchedModel for any CPU.
 bool ARMSubtarget::enablePostRAScheduler() const {
-  if (disablePostRAScheduler())
+  // No need for PostRA scheduling on out of order CPUs (for now restricted to
+  // swift).
+  if (getSchedModel().isOutOfOrder() && isSwift())
     return false;
-  // Don't reschedule potential IT blocks.
-  return !isThumb1Only();
+  return (!isThumb() || hasThumb2());
 }
 
 bool ARMSubtarget::enableAtomicExpand() const { return hasAnyDataBarrier(); }

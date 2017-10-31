@@ -15,11 +15,10 @@
 // against libstdc++.
 // XFAIL: gcc
 
-// <tuple>
+// <string>
 
-// Test that the constructors offered by std::tuple are formulated
-// so they're compatible with implicit deduction guides, or if that's not
-// possible that they provide explicit guides to make it work.
+// Test that the constructors offered by std::basic_string are formulated
+// so they're compatible with implicit deduction guides.
 
 #include <tuple>
 #include <memory>

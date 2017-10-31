@@ -486,10 +486,6 @@ static void darwinPrintSymbol(SymbolicFile &Obj, SymbolListT::iterator I,
         break;
       }
       Sec = *SecOrErr;
-      if (Sec == MachO->section_end()) {
-        outs() << "(?,?) ";
-        break;
-      }
     } else {
       Sec = I->Section;
     }
@@ -713,13 +709,9 @@ static void sortAndPrintSymbolList(SymbolicFile &Obj, bool printName,
     } else if (OutputFormat == bsd && MultipleFiles && printName) {
       outs() << "\n" << CurrentFilename << ":\n";
     } else if (OutputFormat == sysv) {
-      outs() << "\n\nSymbols from " << CurrentFilename << ":\n\n";
-      if (isSymbolList64Bit(Obj))
-        outs() << "Name                  Value           Class        Type"
-               << "         Size             Line  Section\n";
-      else
-        outs() << "Name                  Value   Class        Type"
-               << "         Size     Line  Section\n";
+      outs() << "\n\nSymbols from " << CurrentFilename << ":\n\n"
+             << "Name                  Value   Class        Type"
+             << "         Size   Line  Section\n";
     }
   }
 
@@ -1001,8 +993,6 @@ static char getSymbolNMTypeChar(MachOObjectFile &Obj, basic_symbol_iterator I) {
       return 's';
     }
     section_iterator Sec = *SecOrErr;
-    if (Sec == Obj.section_end())
-      return 's';
     DataRefImpl Ref = Sec->getRawDataRefImpl();
     StringRef SectionName;
     Obj.getSectionName(Ref, SectionName);
@@ -1236,8 +1226,7 @@ dumpSymbolNamesFromObject(SymbolicFile &Obj, bool printName,
     if (DyldInfoOnly || AddDyldInfo ||
         HFlags & MachO::MH_NLIST_OUTOFSYNC_WITH_DYLDINFO) {
       unsigned ExportsAdded = 0;
-      Error Err = Error::success();
-      for (const llvm::object::ExportEntry &Entry : MachO->exports(Err)) {
+      for (const llvm::object::ExportEntry &Entry : MachO->exports()) {
         bool found = false;
         bool ReExport = false;
         if (!DyldInfoOnly) {
@@ -1373,8 +1362,6 @@ dumpSymbolNamesFromObject(SymbolicFile &Obj, bool printName,
           }
         }
       }
-      if (Err)
-        error(std::move(Err), MachO->getFileName());
       // Set the symbol names and indirect names for the added symbols.
       if (ExportsAdded) {
         EOS.flush();

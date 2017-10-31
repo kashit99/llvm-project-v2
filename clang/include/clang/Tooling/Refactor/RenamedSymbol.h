@@ -28,7 +28,7 @@ namespace rename {
 /// \brief A symbol that has to be renamed.
 class Symbol {
 public:
-  OldSymbolName Name;
+  SymbolName Name;
   /// The index of this symbol in a \c SymbolOperation.
   unsigned SymbolIndex;
   /// The declaration that was used to initiate a refactoring operation for this
@@ -53,7 +53,7 @@ public:
 /// A single occurrence of a symbol can span more than one source range to
 /// account for things like Objective-C selectors.
 // TODO: Rename
-class OldSymbolOccurrence {
+class SymbolOccurrence {
   /// The source locations that correspond to the occurence of the symbol.
   SmallVector<SourceLocation, 4> Locations;
 
@@ -91,18 +91,18 @@ public:
   /// occurrence.
   unsigned SymbolIndex;
 
-  OldSymbolOccurrence()
+  SymbolOccurrence()
       : Kind(MatchingSymbol), IsMacroExpansion(false), SymbolIndex(0) {}
 
-  OldSymbolOccurrence(OccurrenceKind Kind, bool IsMacroExpansion,
-                      unsigned SymbolIndex, ArrayRef<SourceLocation> Locations)
+  SymbolOccurrence(OccurrenceKind Kind, bool IsMacroExpansion,
+                   unsigned SymbolIndex, ArrayRef<SourceLocation> Locations)
       : Locations(Locations.begin(), Locations.end()), Kind(Kind),
         IsMacroExpansion(IsMacroExpansion), SymbolIndex(SymbolIndex) {
     assert(!Locations.empty() && "Renamed occurence without locations!");
   }
 
-  OldSymbolOccurrence(OldSymbolOccurrence &&) = default;
-  OldSymbolOccurrence &operator=(OldSymbolOccurrence &&) = default;
+  SymbolOccurrence(SymbolOccurrence &&) = default;
+  SymbolOccurrence &operator=(SymbolOccurrence &&) = default;
 
   ArrayRef<SourceLocation> locations() const {
     if (Kind == MatchingImplicitProperty && Locations.size() == 2)
@@ -124,17 +124,17 @@ public:
     return SourceRange(Loc, EndLoc);
   }
 
-  friend bool operator<(const OldSymbolOccurrence &LHS,
-                        const OldSymbolOccurrence &RHS);
-  friend bool operator==(const OldSymbolOccurrence &LHS,
-                         const OldSymbolOccurrence &RHS);
+  friend bool operator<(const SymbolOccurrence &LHS,
+                        const SymbolOccurrence &RHS);
+  friend bool operator==(const SymbolOccurrence &LHS,
+                         const SymbolOccurrence &RHS);
 };
 
 /// \brief Less-than operator between the two renamed symbol occurrences.
-bool operator<(const OldSymbolOccurrence &LHS, const OldSymbolOccurrence &RHS);
+bool operator<(const SymbolOccurrence &LHS, const SymbolOccurrence &RHS);
 
 /// \brief Equal-to operator between the two renamed symbol occurrences.
-bool operator==(const OldSymbolOccurrence &LHS, const OldSymbolOccurrence &RHS);
+bool operator==(const SymbolOccurrence &LHS, const SymbolOccurrence &RHS);
 
 } // end namespace rename
 } // end namespace tooling

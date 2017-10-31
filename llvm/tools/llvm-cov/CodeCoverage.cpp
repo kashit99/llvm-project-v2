@@ -448,7 +448,7 @@ void CodeCoverageTool::demangleSymbols(const CoverageMapping &Coverage) {
     error(InputPath, EC.message());
     return;
   }
-  ToolOutputFile InputTOF{InputPath, InputFD};
+  tool_output_file InputTOF{InputPath, InputFD};
 
   unsigned NumSymbols = 0;
   for (const auto &Function : Coverage.getCoveredFunctions()) {
@@ -466,7 +466,7 @@ void CodeCoverageTool::demangleSymbols(const CoverageMapping &Coverage) {
     error(OutputPath, EC.message());
     return;
   }
-  ToolOutputFile OutputTOF{OutputPath, OutputFD};
+  tool_output_file OutputTOF{OutputPath, OutputFD};
   OutputTOF.os().close();
 
   // Invoke the demangler.
@@ -474,7 +474,10 @@ void CodeCoverageTool::demangleSymbols(const CoverageMapping &Coverage) {
   for (const std::string &Arg : ViewOpts.DemanglerOpts)
     ArgsV.push_back(Arg.c_str());
   ArgsV.push_back(nullptr);
-  Optional<StringRef> Redirects[] = {InputPath.str(), OutputPath.str(), {""}};
+  StringRef InputPathRef = InputPath.str();
+  StringRef OutputPathRef = OutputPath.str();
+  StringRef StderrRef;
+  const StringRef *Redirects[] = {&InputPathRef, &OutputPathRef, &StderrRef};
   std::string ErrMsg;
   int RC = sys::ExecuteAndWait(ViewOpts.DemanglerOpts[0], ArgsV.data(),
                                /*env=*/nullptr, Redirects, /*secondsToWait=*/0,

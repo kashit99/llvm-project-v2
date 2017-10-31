@@ -87,7 +87,7 @@ public:
     uint32_t          codeOffsetAtStackDecrement;
     bool              registersInOtherRegisters;
     bool              sameValueUsed;
-    RegisterLocation  savedRegisters[kMaxRegisterNumber + 1];
+    RegisterLocation  savedRegisters[kMaxRegisterNumber];
   };
 
   struct PrologInfoStackEntry {
@@ -605,13 +605,6 @@ bool CFI_Parser<A>::parseInstructions(A &addressSpace, pint_t instructions,
       break;
     case DW_CFA_val_offset:
       reg = addressSpace.getULEB128(p, instructionsEnd);
-      if (reg > kMaxRegisterNumber) {
-        fprintf(stderr,
-                "malformed DW_CFA_val_offset DWARF unwind, reg (%" PRIu64
-                ") out of range\n",
-                reg);
-        return false;
-      }
       offset = (int64_t)addressSpace.getULEB128(p, instructionsEnd)
                                                     * cieInfo.dataAlignFactor;
       results->savedRegisters[reg].location = kRegisterOffsetFromCFA;
@@ -675,12 +668,6 @@ bool CFI_Parser<A>::parseInstructions(A &addressSpace, pint_t instructions,
       switch (opcode & 0xC0) {
       case DW_CFA_offset:
         reg = operand;
-        if (reg > kMaxRegisterNumber) {
-          fprintf(stderr, "malformed DW_CFA_offset DWARF unwind, reg (%" PRIu64
-                          ") out of range\n",
-                  reg);
-          return false;
-        }
         offset = (int64_t)addressSpace.getULEB128(p, instructionsEnd)
                                                     * cieInfo.dataAlignFactor;
         results->savedRegisters[reg].location = kRegisterInCFA;
@@ -695,12 +682,6 @@ bool CFI_Parser<A>::parseInstructions(A &addressSpace, pint_t instructions,
         break;
       case DW_CFA_restore:
         reg = operand;
-        if (reg > kMaxRegisterNumber) {
-          fprintf(stderr, "malformed DW_CFA_restore DWARF unwind, reg (%" PRIu64
-                          ") out of range\n",
-                  reg);
-          return false;
-        }
         results->savedRegisters[reg] = initialState.savedRegisters[reg];
         _LIBUNWIND_TRACE_DWARF("DW_CFA_restore(reg=%" PRIu64 ")\n",
                                static_cast<uint64_t>(operand));

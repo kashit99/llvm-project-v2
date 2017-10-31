@@ -935,14 +935,10 @@ EmitSpecialNode(SDNode *Node, bool IsClone, bool IsCloned,
     EmitCopyFromReg(Node, 0, IsClone, IsCloned, SrcReg, VRBaseMap);
     break;
   }
-  case ISD::EH_LABEL:
-  case ISD::ANNOTATION_LABEL: {
-    unsigned Opc = (Node->getOpcode() == ISD::EH_LABEL)
-                       ? TargetOpcode::EH_LABEL
-                       : TargetOpcode::ANNOTATION_LABEL;
-    MCSymbol *S = cast<LabelSDNode>(Node)->getLabel();
+  case ISD::EH_LABEL: {
+    MCSymbol *S = cast<EHLabelSDNode>(Node)->getLabel();
     BuildMI(*MBB, InsertPos, Node->getDebugLoc(),
-            TII->get(Opc)).addSym(S);
+            TII->get(TargetOpcode::EH_LABEL)).addSym(S);
     break;
   }
 

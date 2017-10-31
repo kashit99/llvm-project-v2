@@ -2083,11 +2083,8 @@ bool MIParser::getHexUint(APInt &Result) {
     return true;
   StringRef V = S.substr(2);
   APInt A(V.size()*4, V, 16);
-
-  // If A is 0, then A.getActiveBits() is 0. This isn't a valid bitwidth. Make
-  // sure it isn't the case before constructing result.
-  unsigned NumBits = (A == 0) ? 32 : A.getActiveBits();
-  Result = APInt(NumBits, ArrayRef<uint64_t>(A.getRawData(), A.getNumWords()));
+  Result = APInt(A.getActiveBits(),
+                 ArrayRef<uint64_t>(A.getRawData(), A.getNumWords()));
   return false;
 }
 

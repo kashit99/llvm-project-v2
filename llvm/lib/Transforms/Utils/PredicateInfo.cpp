@@ -49,10 +49,9 @@ INITIALIZE_PASS_END(PredicateInfoPrinterLegacyPass, "print-predicateinfo",
 static cl::opt<bool> VerifyPredicateInfo(
     "verify-predicateinfo", cl::init(false), cl::Hidden,
     cl::desc("Verify PredicateInfo in legacy printer pass."));
-DEBUG_COUNTER(RenameCounter, "predicateinfo-rename",
-              "Controls which variables are renamed with predicateinfo");
-
 namespace {
+DEBUG_COUNTER(RenameCounter, "predicateinfo-rename",
+              "Controls which variables are renamed with predicateinfo")
 // Given a predicate info that is a type of branching terminator, get the
 // branching block.
 const BasicBlock *getBranchBlock(const PredicateBase *PB) {

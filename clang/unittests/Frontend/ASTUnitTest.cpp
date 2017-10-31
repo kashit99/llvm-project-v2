@@ -41,7 +41,7 @@ TEST(ASTUnit, SaveLoadPreservesLangOptionsInPrintingPolicy) {
   int FD;
   llvm::SmallString<256> InputFileName;
   ASSERT_FALSE(llvm::sys::fs::createTemporaryFile("ast-unit", "cpp", FD, InputFileName));
-  ToolOutputFile input_file(InputFileName, FD);
+  tool_output_file input_file(InputFileName, FD);
   input_file.os() << "";
 
   const char* Args[] = {"clang", "-xc++", InputFileName.c_str()};
@@ -69,7 +69,7 @@ TEST(ASTUnit, SaveLoadPreservesLangOptionsInPrintingPolicy) {
 
   llvm::SmallString<256> ASTFileName;
   ASSERT_FALSE(llvm::sys::fs::createTemporaryFile("ast-unit", "ast", FD, ASTFileName));
-  ToolOutputFile ast_file(ASTFileName, FD);
+  tool_output_file ast_file(ASTFileName, FD);
   AST->Save(ASTFileName.str());
 
   EXPECT_TRUE(llvm::sys::fs::exists(ASTFileName));

@@ -20,7 +20,8 @@ namespace lldb_private {
 //------------------------------------------------------------------
 // NativeThreadProtocol
 //------------------------------------------------------------------
-class NativeThreadProtocol {
+class NativeThreadProtocol
+    : public std::enable_shared_from_this<NativeThreadProtocol> {
 public:
   NativeThreadProtocol(NativeProcessProtocol &process, lldb::tid_t tid);
 

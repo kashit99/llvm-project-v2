@@ -17,8 +17,6 @@
 #include "llvm/Config/config.h"
 #include "llvm/Support/DataTypes.h"
 
-#include <memory>
-
 namespace llvm {
 class MCAsmBackend;
 class MCCodeEmitter;
@@ -52,9 +50,8 @@ MCAsmBackend *createBPFbeAsmBackend(const Target &T, const MCRegisterInfo &MRI,
                                     const Triple &TT, StringRef CPU,
                                     const MCTargetOptions &Options);
 
-std::unique_ptr<MCObjectWriter> createBPFELFObjectWriter(raw_pwrite_stream &OS,
-                                                         uint8_t OSABI,
-                                                         bool IsLittleEndian);
+MCObjectWriter *createBPFELFObjectWriter(raw_pwrite_stream &OS,
+                                         uint8_t OSABI, bool IsLittleEndian);
 }
 
 // Defines symbolic names for BPF registers.  This defines a mapping from

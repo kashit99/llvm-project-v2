@@ -41,16 +41,13 @@ public:
     Others,
     CortexA35,
     CortexA53,
-    CortexA55,
     CortexA57,
     CortexA72,
     CortexA73,
-    CortexA75,
     Cyclone,
     ExynosM1,
     Falkor,
     Kryo,
-    Saphira,
     ThunderX2T99,
     ThunderX,
     ThunderXT81,
@@ -64,12 +61,10 @@ protected:
 
   bool HasV8_1aOps = false;
   bool HasV8_2aOps = false;
-  bool HasV8_3aOps = false;
 
   bool HasFPARMv8 = false;
   bool HasNEON = false;
   bool HasCrypto = false;
-  bool HasDotProd = false;
   bool HasCRC = false;
   bool HasLSE = false;
   bool HasRAS = false;
@@ -79,7 +74,6 @@ protected:
   bool HasSPE = false;
   bool HasLSLFast = false;
   bool HasSVE = false;
-  bool HasRCPC = false;
 
   // HasZeroCycleRegMove - Has zero-cycle register mov instructions.
   bool HasZeroCycleRegMove = false;
@@ -103,7 +97,6 @@ protected:
   bool UsePostRAScheduler = false;
   bool Misaligned128StoreIsSlow = false;
   bool Paired128IsSlow = false;
-  bool STRQroIsSlow = false;
   bool UseAlternateSExtLoadCVTF32Pattern = false;
   bool HasArithmeticBccFusion = false;
   bool HasArithmeticCbzFusion = false;
@@ -191,7 +184,6 @@ public:
 
   bool hasV8_1aOps() const { return HasV8_1aOps; }
   bool hasV8_2aOps() const { return HasV8_2aOps; }
-  bool hasV8_3aOps() const { return HasV8_3aOps; }
 
   bool hasZeroCycleRegMove() const { return HasZeroCycleRegMove; }
 
@@ -209,7 +201,6 @@ public:
   bool hasFPARMv8() const { return HasFPARMv8; }
   bool hasNEON() const { return HasNEON; }
   bool hasCrypto() const { return HasCrypto; }
-  bool hasDotProd() const { return HasDotProd; }
   bool hasCRC() const { return HasCRC; }
   bool hasLSE() const { return HasLSE; }
   bool hasRAS() const { return HasRAS; }
@@ -221,7 +212,6 @@ public:
   bool hasCustomCheapAsMoveHandling() const { return CustomAsCheapAsMove; }
   bool isMisaligned128StoreSlow() const { return Misaligned128StoreIsSlow; }
   bool isPaired128Slow() const { return Paired128IsSlow; }
-  bool isSTRQroSlow() const { return STRQroIsSlow; }
   bool useAlternateSExtLoadCVTF32Pattern() const {
     return UseAlternateSExtLoadCVTF32Pattern;
   }
@@ -263,7 +253,6 @@ public:
   bool hasSPE() const { return HasSPE; }
   bool hasLSLFast() const { return HasLSLFast; }
   bool hasSVE() const { return HasSVE; }
-  bool hasRCPC() const { return HasRCPC; }
 
   bool isLittleEndian() const { return IsLittle; }
 

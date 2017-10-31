@@ -27,28 +27,61 @@ struct ErrorBase {
   u32 tid;
 };
 
+struct ErrorStackOverflow : ErrorBase {
+  uptr addr, pc, bp, sp;
+  // ErrorStackOverflow never owns the context.
+  void *context;
+  // VS2013 doesn't implement unrestricted unions, so we need a trivial default
+  // constructor
+  ErrorStackOverflow() = default;
+  ErrorStackOverflow(u32 tid, const SignalContext &sig)
+      : ErrorBase(tid),
+        addr(sig.addr),
+        pc(sig.pc),
+        bp(sig.bp),
+        sp(sig.sp),
+        context(sig.context) {
+    scariness.Clear();
+    scariness.Scare(10, "stack-overflow");
+  }
+  void Print();
+};
+
 struct ErrorDeadlySignal : ErrorBase {
-  SignalContext signal;
+  uptr addr, pc, bp, sp;
+  // ErrorDeadlySignal never owns the context.
+  void *context;
+  int signo;
+  SignalContext::WriteFlag write_flag;
+  bool is_memory_access;
   // VS2013 doesn't implement unrestricted unions, so we need a trivial default
   // constructor
   ErrorDeadlySignal() = default;
-  ErrorDeadlySignal(u32 tid, const SignalContext &sig)
-      : ErrorBase(tid), signal(sig) {
+  ErrorDeadlySignal(u32 tid, const SignalContext &sig, int signo_)
+      : ErrorBase(tid),
+        addr(sig.addr),
+        pc(sig.pc),
+        bp(sig.bp),
+        sp(sig.sp),
+        context(sig.context),
+        signo(signo_),
+        write_flag(sig.write_flag),
+        is_memory_access(sig.is_memory_access) {
     scariness.Clear();
-    if (signal.IsStackOverflow()) {
-      scariness.Scare(10, "stack-overflow");
-    } else if (!signal.is_memory_access) {
-      scariness.Scare(10, "signal");
-    } else if (signal.addr < GetPageSizeCached()) {
-      scariness.Scare(10, "null-deref");
-    } else if (signal.addr == signal.pc) {
-      scariness.Scare(60, "wild-jump");
-    } else if (signal.write_flag == SignalContext::WRITE) {
-      scariness.Scare(30, "wild-addr-write");
-    } else if (signal.write_flag == SignalContext::READ) {
-      scariness.Scare(20, "wild-addr-read");
+    if (is_memory_access) {
+      if (addr < GetPageSizeCached()) {
+        scariness.Scare(10, "null-deref");
+      } else if (addr == pc) {
+        scariness.Scare(60, "wild-jump");
+      } else if (write_flag == SignalContext::WRITE) {
+        scariness.Scare(30, "wild-addr-write");
+      } else if (write_flag == SignalContext::READ) {
+        scariness.Scare(20, "wild-addr-read");
+      } else {
+        scariness.Scare(25, "wild-addr");
+      }
     } else {
-      scariness.Scare(25, "wild-addr");
+      scariness.Scare(10, "signal");
     }
   }
   void Print();
@@ -71,19 +104,17 @@ struct ErrorDoubleFree : ErrorBase {
   void Print();
 };
 
-struct ErrorNewDeleteTypeMismatch : ErrorBase {
-  // ErrorNewDeleteTypeMismatch doesn't own the stack trace.
+struct ErrorNewDeleteSizeMismatch : ErrorBase {
+  // ErrorNewDeleteSizeMismatch doesn't own the stack trace.
   const BufferedStackTrace *free_stack;
   HeapAddressDescription addr_description;
   uptr delete_size;
-  uptr delete_alignment;
   // VS2013 doesn't implement unrestricted unions, so we need a trivial default
   // constructor
-  ErrorNewDeleteTypeMismatch() = default;
-  ErrorNewDeleteTypeMismatch(u32 tid, BufferedStackTrace *stack, uptr addr,
-                             uptr delete_size_, uptr delete_alignment_)
-      : ErrorBase(tid), free_stack(stack), delete_size(delete_size_),
-        delete_alignment(delete_alignment_) {
+  ErrorNewDeleteSizeMismatch() = default;
+  ErrorNewDeleteSizeMismatch(u32 tid, BufferedStackTrace *stack, uptr addr,
+                             uptr delete_size_)
+      : ErrorBase(tid), free_stack(stack), delete_size(delete_size_) {
     GetHeapAddressInformation(addr, 1, &addr_description);
     scariness.Clear();
     scariness.Scare(10, "new-delete-type-mismatch");
@@ -293,9 +324,10 @@ struct ErrorGeneric : ErrorBase {
 
 // clang-format off
 #define ASAN_FOR_EACH_ERROR_KIND(macro)         \
+  macro(StackOverflow)                          \
   macro(DeadlySignal)                           \
   macro(DoubleFree)                             \
-  macro(NewDeleteTypeMismatch)                  \
+  macro(NewDeleteSizeMismatch)                  \
   macro(FreeNotMalloced)                        \
   macro(AllocTypeMismatch)                      \
   macro(MallocUsableSizeNotOwned)               \

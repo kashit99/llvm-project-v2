@@ -2,6 +2,7 @@
  * kmp_io.cpp -- RTL IO
  */
 
+
 //===----------------------------------------------------------------------===//
 //
 //                     The LLVM Compiler Infrastructure
@@ -10,6 +11,7 @@
 // Source Licenses. See LICENSE.txt for details.
 //
 //===----------------------------------------------------------------------===//
+
 
 #include <stdarg.h>
 #include <stddef.h>
@@ -64,7 +66,7 @@ static int is_console(void) {
     err = GetLastError();
     // err == 0 means buffer too short (we suppose console exists).
     // In Window applications we usually have err == 6 (invalid handle).
-  }
+  }; // if
   return rc > 0 || err == 0;
 }
 

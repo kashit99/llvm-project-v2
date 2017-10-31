@@ -10,7 +10,6 @@
 // test operator new[] replacement by replacing only operator new
 
 // UNSUPPORTED: sanitizer-new-delete
-// XFAIL: libcpp-no-vcruntime
 
 
 #include <new>

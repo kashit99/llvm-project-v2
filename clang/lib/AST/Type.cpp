@@ -12,7 +12,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/AST/Type.h"
-#include "Linkage.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/Attr.h"
 #include "clang/AST/CharUnits.h"
@@ -167,26 +166,6 @@ DependentSizedExtVectorType::Profile(llvm::FoldingSetNodeID &ID,
                                      QualType ElementType, Expr *SizeExpr) {
   ID.AddPointer(ElementType.getAsOpaquePtr());
   SizeExpr->Profile(ID, Context, true);
-}
-
-DependentAddressSpaceType::DependentAddressSpaceType(
-    const ASTContext &Context, QualType PointeeType, QualType can,
-    Expr *AddrSpaceExpr, SourceLocation loc)
-    : Type(DependentAddressSpace, can, /*Dependent=*/true,
-           /*InstantiationDependent=*/true,
-           PointeeType->isVariablyModifiedType(),
-           (PointeeType->containsUnexpandedParameterPack() ||
-            (AddrSpaceExpr &&
-             AddrSpaceExpr->containsUnexpandedParameterPack()))),
-      Context(Context), AddrSpaceExpr(AddrSpaceExpr), PointeeType(PointeeType),
-      loc(loc) {}
-
-void DependentAddressSpaceType::Profile(llvm::FoldingSetNodeID &ID,
-                                        const ASTContext &Context,
-                                        QualType PointeeType,
-                                        Expr *AddrSpaceExpr) {
-  ID.AddPointer(PointeeType.getAsOpaquePtr());
-  AddrSpaceExpr->Profile(ID, Context, true);
 }
 
 VectorType::VectorType(QualType vecType, unsigned nElements, QualType canonType,
@@ -2155,151 +2134,6 @@ bool QualType::isTriviallyCopyableType(const ASTContext &Context) const {
   return false;
 }
 
-bool QualType::unionHasUniqueObjectRepresentations(
-    const ASTContext &Context) const {
-  assert((*this)->isUnionType() && "must be union type");
-  CharUnits UnionSize = Context.getTypeSizeInChars(*this);
-  const RecordDecl *Union = getTypePtr()->getAs<RecordType>()->getDecl();
-
-  for (const auto *Field : Union->fields()) {
-    if (!Field->getType().hasUniqueObjectRepresentations(Context))
-      return false;
-    CharUnits FieldSize = Context.getTypeSizeInChars(Field->getType());
-    if (FieldSize != UnionSize)
-      return false;
-  }
-  return true;
-}
-
-bool isStructEmpty(QualType Ty) {
-  assert(Ty.getTypePtr()->isStructureOrClassType() &&
-         "Must be struct or class");
-  const RecordDecl *RD = Ty.getTypePtr()->getAs<RecordType>()->getDecl();
-
-  if (!RD->field_empty())
-    return false;
-
-  if (const CXXRecordDecl *ClassDecl = dyn_cast<CXXRecordDecl>(RD)) {
-    return ClassDecl->isEmpty();
-  }
-
-  return true;
-}
-
-bool QualType::structHasUniqueObjectRepresentations(
-    const ASTContext &Context) const {
-  assert((*this)->isStructureOrClassType() && "Must be struct or class");
-  const RecordDecl *RD = getTypePtr()->getAs<RecordType>()->getDecl();
-
-  if (isStructEmpty(*this))
-    return false;
-
-  // Check base types.
-  CharUnits BaseSize{};
-  if (const CXXRecordDecl *ClassDecl = dyn_cast<CXXRecordDecl>(RD)) {
-    for (const auto Base : ClassDecl->bases()) {
-      if (Base.isVirtual())
-        return false;
-
-      // Empty bases are permitted, otherwise ensure base has unique
-      // representation. Also, Empty Base Optimization means that an
-      // Empty base takes up 0 size.
-      if (!isStructEmpty(Base.getType())) {
-        if (!Base.getType().structHasUniqueObjectRepresentations(Context))
-          return false;
-        BaseSize += Context.getTypeSizeInChars(Base.getType());
-      }
-    }
-  }
-
-  CharUnits StructSize = Context.getTypeSizeInChars(*this);
-
-  // This struct obviously has bases that keep it from being 'empty', so
-  // checking fields is no longer required.  Ensure that the struct size
-  // is the sum of the bases.
-  if (RD->field_empty())
-    return StructSize == BaseSize;
-  ;
-
-  CharUnits CurOffset =
-      Context.toCharUnitsFromBits(Context.getFieldOffset(*RD->field_begin()));
-
-  // If the first field isn't at the sum of the size of the bases, there
-  // is padding somewhere.
-  if (BaseSize != CurOffset)
-    return false;
-
-  for (const auto *Field : RD->fields()) {
-    if (!Field->getType().hasUniqueObjectRepresentations(Context))
-      return false;
-    CharUnits FieldSize = Context.getTypeSizeInChars(Field->getType());
-    CharUnits FieldOffset =
-        Context.toCharUnitsFromBits(Context.getFieldOffset(Field));
-    // Has padding between fields.
-    if (FieldOffset != CurOffset)
-      return false;
-    CurOffset += FieldSize;
-  }
-  // Check for tail padding.
-  return CurOffset == StructSize;
-}
-
-bool QualType::hasUniqueObjectRepresentations(const ASTContext &Context) const {
-  // C++17 [meta.unary.prop]:
-  //   The predicate condition for a template specialization
-  //   has_unique_object_representations<T> shall be
-  //   satisfied if and only if:
-  //     (9.1) - T is trivially copyable, and
-  //     (9.2) - any two objects of type T with the same value have the same
-  //     object representation, where two objects
-  //   of array or non-union class type are considered to have the same value
-  //   if their respective sequences of
-  //   direct subobjects have the same values, and two objects of union type
-  //   are considered to have the same
-  //   value if they have the same active member and the corresponding members
-  //   have the same value.
-  //   The set of scalar types for which this condition holds is
-  //   implementation-defined. [ Note: If a type has padding
-  //   bits, the condition does not hold; otherwise, the condition holds true
-  //   for unsigned integral types. -- end note ]
-  if (isNull())
-    return false;
-
-  // Arrays are unique only if their element type is unique.
-  if ((*this)->isArrayType())
-    return Context.getBaseElementType(*this).hasUniqueObjectRepresentations(
-        Context);
-
-  // (9.1) - T is trivially copyable, and
-  if (!isTriviallyCopyableType(Context))
-    return false;
-
-  // Functions are not unique.
-  if ((*this)->isFunctionType())
-    return false;
-
-  // All integrals and enums are unique!
-  if ((*this)->isIntegralOrEnumerationType())
-    return true;
-
-  // All pointers are unique, since they're just integrals.
-  if ((*this)->isPointerType() || (*this)->isMemberPointerType())
-    return true;
-
-  if ((*this)->isRecordType()) {
-    const RecordDecl *Record = getTypePtr()->getAs<RecordType>()->getDecl();
-
-    // Lambda types are not unique, so exclude them immediately.
-    if (Record->isLambda())
-      return false;
-
-    if (Record->isUnion())
-      return unionHasUniqueObjectRepresentations(Context);
-    return structHasUniqueObjectRepresentations(Context);
-  }
-  return false;
-}
-
 bool QualType::isNonWeakInMRRWithObjCWeak(const ASTContext &Context) const {
   return !Context.getLangOpts().ObjCAutoRefCount &&
          Context.getLangOpts().ObjCWeak &&
@@ -2718,8 +2552,6 @@ StringRef BuiltinType::getName(const PrintingPolicy &Policy) const {
     return "double";
   case LongDouble:
     return "long double";
-  case Float16:
-    return "_Float16";
   case Float128:
     return "__float128";
   case WChar_S:
@@ -3146,19 +2978,6 @@ TagDecl *TagType::getDecl() const {
 
 bool TagType::isBeingDefined() const {
   return getDecl()->isBeingDefined();
-}
-
-bool RecordType::hasConstFields() const {
-  for (FieldDecl *FD : getDecl()->fields()) {
-    QualType FieldTy = FD->getType();
-    if (FieldTy.isConstQualified())
-      return true;
-    FieldTy = FieldTy.getCanonicalType();
-    if (const RecordType *FieldRecTy = FieldTy->getAs<RecordType>())
-      if (FieldRecTy->hasConstFields())
-        return true;
-  }
-  return false;
 }
 
 bool AttributedType::isQualifier() const {
@@ -3598,7 +3417,9 @@ bool Type::hasUnnamedOrLocalType() const {
   return TypeBits.hasLocalOrUnnamedType();
 }
 
-LinkageInfo LinkageComputer::computeTypeLinkageInfo(const Type *T) {
+static LinkageInfo computeLinkageInfo(QualType T);
+
+static LinkageInfo computeLinkageInfo(const Type *T) {
   switch (T->getTypeClass()) {
 #define TYPE(Class,Base)
 #define NON_CANONICAL_TYPE(Class,Base) case Type::Class:
@@ -3622,76 +3443,73 @@ LinkageInfo LinkageComputer::computeTypeLinkageInfo(const Type *T) {
 
   case Type::Record:
   case Type::Enum:
-    return getDeclLinkageAndVisibility(cast<TagType>(T)->getDecl());
+    return cast<TagType>(T)->getDecl()->getLinkageAndVisibility();
 
   case Type::Complex:
-    return computeTypeLinkageInfo(cast<ComplexType>(T)->getElementType());
+    return computeLinkageInfo(cast<ComplexType>(T)->getElementType());
   case Type::Pointer:
-    return computeTypeLinkageInfo(cast<PointerType>(T)->getPointeeType());
+    return computeLinkageInfo(cast<PointerType>(T)->getPointeeType());
   case Type::BlockPointer:
-    return computeTypeLinkageInfo(cast<BlockPointerType>(T)->getPointeeType());
+    return computeLinkageInfo(cast<BlockPointerType>(T)->getPointeeType());
   case Type::LValueReference:
   case Type::RValueReference:
-    return computeTypeLinkageInfo(cast<ReferenceType>(T)->getPointeeType());
+    return computeLinkageInfo(cast<ReferenceType>(T)->getPointeeType());
   case Type::MemberPointer: {
     const MemberPointerType *MPT = cast<MemberPointerType>(T);
-    LinkageInfo LV = computeTypeLinkageInfo(MPT->getClass());
-    LV.merge(computeTypeLinkageInfo(MPT->getPointeeType()));
+    LinkageInfo LV = computeLinkageInfo(MPT->getClass());
+    LV.merge(computeLinkageInfo(MPT->getPointeeType()));
     return LV;
   }
   case Type::ConstantArray:
   case Type::IncompleteArray:
   case Type::VariableArray:
-    return computeTypeLinkageInfo(cast<ArrayType>(T)->getElementType());
+    return computeLinkageInfo(cast<ArrayType>(T)->getElementType());
   case Type::Vector:
   case Type::ExtVector:
-    return computeTypeLinkageInfo(cast<VectorType>(T)->getElementType());
+    return computeLinkageInfo(cast<VectorType>(T)->getElementType());
   case Type::FunctionNoProto:
-    return computeTypeLinkageInfo(cast<FunctionType>(T)->getReturnType());
+    return computeLinkageInfo(cast<FunctionType>(T)->getReturnType());
   case Type::FunctionProto: {
     const FunctionProtoType *FPT = cast<FunctionProtoType>(T);
-    LinkageInfo LV = computeTypeLinkageInfo(FPT->getReturnType());
+    LinkageInfo LV = computeLinkageInfo(FPT->getReturnType());
     for (const auto &ai : FPT->param_types())
-      LV.merge(computeTypeLinkageInfo(ai));
+      LV.merge(computeLinkageInfo(ai));
     return LV;
   }
   case Type::ObjCInterface:
-    return getDeclLinkageAndVisibility(cast<ObjCInterfaceType>(T)->getDecl());
+    return cast<ObjCInterfaceType>(T)->getDecl()->getLinkageAndVisibility();
   case Type::ObjCObject:
-    return computeTypeLinkageInfo(cast<ObjCObjectType>(T)->getBaseType());
+    return computeLinkageInfo(cast<ObjCObjectType>(T)->getBaseType());
   case Type::ObjCObjectPointer:
-    return computeTypeLinkageInfo(
-        cast<ObjCObjectPointerType>(T)->getPointeeType());
+    return computeLinkageInfo(cast<ObjCObjectPointerType>(T)->getPointeeType());
   case Type::Atomic:
-    return computeTypeLinkageInfo(cast<AtomicType>(T)->getValueType());
+    return computeLinkageInfo(cast<AtomicType>(T)->getValueType());
   case Type::Pipe:
-    return computeTypeLinkageInfo(cast<PipeType>(T)->getElementType());
+    return computeLinkageInfo(cast<PipeType>(T)->getElementType());
   }
 
   llvm_unreachable("unhandled type class");
+}
+
+static LinkageInfo computeLinkageInfo(QualType T) {
+  return computeLinkageInfo(T.getTypePtr());
 }
 
 bool Type::isLinkageValid() const {
   if (!TypeBits.isCacheValid())
     return true;
 
-  Linkage L = LinkageComputer{}
-                  .computeTypeLinkageInfo(getCanonicalTypeInternal())
-                  .getLinkage();
-  return L == TypeBits.getLinkage();
-}
-
-LinkageInfo LinkageComputer::getTypeLinkageAndVisibility(const Type *T) {
-  if (!T->isCanonicalUnqualified())
-    return computeTypeLinkageInfo(T->getCanonicalTypeInternal());
-
-  LinkageInfo LV = computeTypeLinkageInfo(T);
-  assert(LV.getLinkage() == T->getLinkage());
-  return LV;
+  return computeLinkageInfo(getCanonicalTypeInternal()).getLinkage() ==
+    TypeBits.getLinkage();
 }
 
 LinkageInfo Type::getLinkageAndVisibility() const {
-  return LinkageComputer{}.getTypeLinkageAndVisibility(this);
+  if (!isCanonicalUnqualified())
+    return computeLinkageInfo(getCanonicalTypeInternal());
+
+  LinkageInfo LV = computeLinkageInfo(this);
+  assert(LV.getLinkage() == getLinkage());
+  return LV;
 }
 
 Optional<NullabilityKind> Type::getNullability(const ASTContext &context) const {
@@ -3805,7 +3623,6 @@ bool Type::canHaveNullability(bool ResultIfUnknown) const {
   case Type::DependentSizedExtVector:
   case Type::Vector:
   case Type::ExtVector:
-  case Type::DependentAddressSpace:
   case Type::FunctionProto:
   case Type::FunctionNoProto:
   case Type::Record:

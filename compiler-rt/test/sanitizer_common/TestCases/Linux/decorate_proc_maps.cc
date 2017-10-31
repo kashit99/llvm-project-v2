@@ -1,9 +1,6 @@
 // RUN: %clangxx -g %s -o %t
 // RUN: %env_tool_opts=decorate_proc_maps=1 %run %t 2>&1 | FileCheck %s --check-prefix=CHECK-%tool_name
-
 // REQUIRES: stable-runtime
-// XFAIL: android && asan
-
 #include <errno.h>
 #include <fcntl.h>
 #include <pthread.h>
@@ -60,6 +57,5 @@ int main(void) {
 // CHECK-tsan: rw-p {{.*}} [trace 1]
 // CHECK-tsan: rw-p {{.*}} [trace header 1]
 
-// Nothing interesting with standalone LSan and UBSan.
+// Nothing interesting with standalone LSan.
 // CHECK-lsan: decorate_proc_maps
-// CHECK-ubsan: decorate_proc_maps

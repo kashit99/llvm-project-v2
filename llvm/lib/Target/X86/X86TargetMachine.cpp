@@ -58,10 +58,7 @@ namespace llvm {
 
 void initializeWinEHStatePassPass(PassRegistry &);
 void initializeFixupLEAPassPass(PassRegistry &);
-void initializeX86CallFrameOptimizationPass(PassRegistry &);
-void initializeX86CmovConverterPassPass(PassRegistry &);
 void initializeX86ExecutionDepsFixPass(PassRegistry &);
-void initializeX86DomainReassignmentPass(PassRegistry &);
 
 } // end namespace llvm
 
@@ -76,10 +73,7 @@ extern "C" void LLVMInitializeX86Target() {
   initializeFixupBWInstPassPass(PR);
   initializeEvexToVexInstPassPass(PR);
   initializeFixupLEAPassPass(PR);
-  initializeX86CallFrameOptimizationPass(PR);
-  initializeX86CmovConverterPassPass(PR);
   initializeX86ExecutionDepsFixPass(PR);
-  initializeX86DomainReassignmentPass(PR);
 }
 
 static std::unique_ptr<TargetLoweringObjectFile> createTLOF(const Triple &TT) {
@@ -187,27 +181,15 @@ static Reloc::Model getEffectiveRelocModel(const Triple &TT,
   return *RM;
 }
 
-static CodeModel::Model getEffectiveCodeModel(Optional<CodeModel::Model> CM,
-                                              bool JIT, bool Is64Bit) {
-  if (CM)
-    return *CM;
-  if (JIT)
-    return Is64Bit ? CodeModel::Large : CodeModel::Small;
-  return CodeModel::Small;
-}
-
 /// Create an X86 target.
 ///
 X86TargetMachine::X86TargetMachine(const Target &T, const Triple &TT,
                                    StringRef CPU, StringRef FS,
                                    const TargetOptions &Options,
                                    Optional<Reloc::Model> RM,
-                                   Optional<CodeModel::Model> CM,
-                                   CodeGenOpt::Level OL, bool JIT)
-    : LLVMTargetMachine(
-          T, computeDataLayout(TT), TT, CPU, FS, Options,
-          getEffectiveRelocModel(TT, RM),
-          getEffectiveCodeModel(CM, JIT, TT.getArch() == Triple::x86_64), OL),
+                                   CodeModel::Model CM, CodeGenOpt::Level OL)
+    : LLVMTargetMachine(T, computeDataLayout(TT), TT, CPU, FS, Options,
+                        getEffectiveRelocModel(TT, RM), CM, OL),
       TLOF(createTLOF(getTargetTriple())) {
   // Windows stack unwinder gets confused when execution flow "falls through"
   // after a call to 'noreturn' function.
@@ -318,7 +300,6 @@ public:
   bool addGlobalInstructionSelect() override;
   bool addILPOpts() override;
   bool addPreISel() override;
-  void addMachineSSAOptimization() override;
   void addPreRegAlloc() override;
   void addPostRegAlloc() override;
   void addPreEmitPass() override;
@@ -411,10 +392,6 @@ void X86PassConfig::addPreRegAlloc() {
   }
 
   addPass(createX86WinAllocaExpander());
-}
-void X86PassConfig::addMachineSSAOptimization() {
-  addPass(createX86DomainReassignmentPass());
-  TargetPassConfig::addMachineSSAOptimization();
 }
 
 void X86PassConfig::addPostRegAlloc() {

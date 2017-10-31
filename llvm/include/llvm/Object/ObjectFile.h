@@ -23,6 +23,7 @@
 #include "llvm/Object/SymbolicFile.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Error.h"
+#include "llvm/Support/ErrorOr.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include <cassert>
@@ -283,9 +284,6 @@ public:
   virtual SubtargetFeatures getFeatures() const = 0;
   virtual void setARMSubArch(Triple &TheTriple) const { }
 
-  /// @brief Create a triple from the data in this object file.
-  Triple makeTriple() const;
-
   /// Returns platform-specific object flags, if any.
   virtual std::error_code getPlatformFlags(unsigned &Result) const {
     Result = 0;
@@ -321,10 +319,10 @@ public:
     return v->isObject();
   }
 
-  static Expected<std::unique_ptr<COFFObjectFile>>
+  static ErrorOr<std::unique_ptr<COFFObjectFile>>
   createCOFFObjectFile(MemoryBufferRef Object);
 
-  static Expected<std::unique_ptr<ObjectFile>>
+  static ErrorOr<std::unique_ptr<ObjectFile>>
   createELFObjectFile(MemoryBufferRef Object);
 
   static Expected<std::unique_ptr<MachOObjectFile>>

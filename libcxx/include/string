@@ -259,7 +259,7 @@ public:
     size_type find(value_type c, size_type pos = 0) const noexcept;
 
     size_type rfind(const basic_string& str, size_type pos = npos) const noexcept;
-    size_type rfind(basic_string_view<charT, traits> sv, size_type pos = npos) const noexcept;
+    size_type ffind(basic_string_view<charT, traits> sv, size_type pos = 0) const noexcept;
     size_type rfind(const value_type* s, size_type pos, size_type n) const noexcept;
     size_type rfind(const value_type* s, size_type pos = npos) const noexcept;
     size_type rfind(value_type c, size_type pos = npos) const noexcept;
@@ -271,7 +271,7 @@ public:
     size_type find_first_of(value_type c, size_type pos = 0) const noexcept;
 
     size_type find_last_of(const basic_string& str, size_type pos = npos) const noexcept;
-    size_type find_last_of(basic_string_view<charT, traits> sv, size_type pos = npos) const noexcept;
+    size_type find_last_of(basic_string_view<charT, traits> sv, size_type pos = 0) const noexcept;
     size_type find_last_of(const value_type* s, size_type pos, size_type n) const noexcept;
     size_type find_last_of(const value_type* s, size_type pos = npos) const noexcept;
     size_type find_last_of(value_type c, size_type pos = npos) const noexcept;
@@ -283,7 +283,7 @@ public:
     size_type find_first_not_of(value_type c, size_type pos = 0) const noexcept;
 
     size_type find_last_not_of(const basic_string& str, size_type pos = npos) const noexcept;
-    size_type find_last_not_of(basic_string_view<charT, traits> sv, size_type pos = npos) const noexcept;
+    size_type find_last_not_of(basic_string_view<charT, traits> sv, size_type pos = 0) const noexcept;
     size_type find_last_not_of(const value_type* s, size_type pos, size_type n) const noexcept;
     size_type find_last_not_of(const value_type* s, size_type pos = npos) const noexcept;
     size_type find_last_not_of(value_type c, size_type pos = npos) const noexcept;
@@ -670,7 +670,7 @@ private:
         size_type __cap_;
     };
 
-#ifdef _LIBCPP_BIG_ENDIAN
+#if _LIBCPP_BIG_ENDIAN
     static const size_type __short_mask = 0x01;
     static const size_type __long_mask  = 0x1ul;
 #else  // _LIBCPP_BIG_ENDIAN
@@ -700,7 +700,7 @@ private:
         pointer   __data_;
     };
 
-#ifdef _LIBCPP_BIG_ENDIAN
+#if _LIBCPP_BIG_ENDIAN
     static const size_type __short_mask = 0x80;
     static const size_type __long_mask  = ~(size_type(~0) >> 1);
 #else  // _LIBCPP_BIG_ENDIAN
@@ -1147,7 +1147,7 @@ public:
     _LIBCPP_INLINE_VISIBILITY
     size_type rfind(const basic_string& __str, size_type __pos = npos) const _NOEXCEPT;
     _LIBCPP_INLINE_VISIBILITY
-    size_type rfind(__self_view __sv, size_type __pos = npos) const _NOEXCEPT;
+    size_type rfind(__self_view __sv, size_type __pos = 0) const _NOEXCEPT;
     size_type rfind(const value_type* __s, size_type __pos, size_type __n) const _NOEXCEPT;
     _LIBCPP_INLINE_VISIBILITY
     size_type rfind(const value_type* __s, size_type __pos = npos) const _NOEXCEPT;
@@ -1166,7 +1166,7 @@ public:
     _LIBCPP_INLINE_VISIBILITY
     size_type find_last_of(const basic_string& __str, size_type __pos = npos) const _NOEXCEPT;
     _LIBCPP_INLINE_VISIBILITY
-    size_type find_last_of(__self_view __sv, size_type __pos = npos) const _NOEXCEPT;
+    size_type find_last_of(__self_view __sv, size_type __pos = 0) const _NOEXCEPT;
     size_type find_last_of(const value_type* __s, size_type __pos, size_type __n) const _NOEXCEPT;
     _LIBCPP_INLINE_VISIBILITY
     size_type find_last_of(const value_type* __s, size_type __pos = npos) const _NOEXCEPT;
@@ -1186,7 +1186,7 @@ public:
     _LIBCPP_INLINE_VISIBILITY
     size_type find_last_not_of(const basic_string& __str, size_type __pos = npos) const _NOEXCEPT;
     _LIBCPP_INLINE_VISIBILITY
-    size_type find_last_not_of(__self_view __sv, size_type __pos = npos) const _NOEXCEPT;
+    size_type find_last_not_of(__self_view __sv, size_type __pos = 0) const _NOEXCEPT;
     size_type find_last_not_of(const value_type* __s, size_type __pos, size_type __n) const _NOEXCEPT;
     _LIBCPP_INLINE_VISIBILITY
     size_type find_last_not_of(const value_type* __s, size_type __pos = npos) const _NOEXCEPT;
@@ -1241,7 +1241,7 @@ private:
 
     _LIBCPP_INLINE_VISIBILITY
     void __set_short_size(size_type __s) _NOEXCEPT
-#   ifdef _LIBCPP_BIG_ENDIAN
+#   if _LIBCPP_BIG_ENDIAN
         {__r_.first().__s.__size_ = (unsigned char)(__s << 1);}
 #   else
         {__r_.first().__s.__size_ = (unsigned char)(__s);}
@@ -1249,7 +1249,7 @@ private:
 
     _LIBCPP_INLINE_VISIBILITY
     size_type __get_short_size() const _NOEXCEPT
-#   ifdef _LIBCPP_BIG_ENDIAN
+#   if _LIBCPP_BIG_ENDIAN
         {return __r_.first().__s.__size_ >> 1;}
 #   else
         {return __r_.first().__s.__size_;}
@@ -1259,7 +1259,7 @@ private:
 
     _LIBCPP_INLINE_VISIBILITY
     void __set_short_size(size_type __s) _NOEXCEPT
-#   ifdef _LIBCPP_BIG_ENDIAN
+#   if _LIBCPP_BIG_ENDIAN
         {__r_.first().__s.__size_ = (unsigned char)(__s);}
 #   else
         {__r_.first().__s.__size_ = (unsigned char)(__s << 1);}
@@ -1267,7 +1267,7 @@ private:
 
     _LIBCPP_INLINE_VISIBILITY
     size_type __get_short_size() const _NOEXCEPT
-#   ifdef _LIBCPP_BIG_ENDIAN
+#   if _LIBCPP_BIG_ENDIAN
         {return __r_.first().__s.__size_;}
 #   else
         {return __r_.first().__s.__size_ >> 1;}
@@ -2870,7 +2870,7 @@ typename basic_string<_CharT, _Traits, _Allocator>::size_type
 basic_string<_CharT, _Traits, _Allocator>::max_size() const _NOEXCEPT
 {
     size_type __m = __alloc_traits::max_size(__alloc());
-#ifdef _LIBCPP_BIG_ENDIAN
+#if _LIBCPP_BIG_ENDIAN
     return (__m <= ~__long_mask ? __m : __m/2) - __alignment;
 #else
     return __m - __alignment;

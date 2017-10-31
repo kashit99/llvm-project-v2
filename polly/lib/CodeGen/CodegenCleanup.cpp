@@ -18,8 +18,6 @@
 #include "llvm/PassSupport.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Transforms/Scalar.h"
-#include "llvm/Transforms/Scalar/GVN.h"
-
 #define DEBUG_TYPE "polly-cleanup"
 
 using namespace llvm;
@@ -62,46 +60,35 @@ public:
     FPM->add(createCFGSimplificationPass());
     FPM->add(createSROAPass());
     FPM->add(createEarlyCSEPass());
-
-    FPM->add(createPromoteMemoryToRegisterPass());
-    FPM->add(createInstructionCombiningPass(true));
-    FPM->add(createCFGSimplificationPass());
-    FPM->add(createSROAPass());
-    FPM->add(createEarlyCSEPass(true));
-    FPM->add(createSpeculativeExecutionIfHasBranchDivergencePass());
+    FPM->add(createInstructionCombiningPass());
     FPM->add(createJumpThreadingPass());
     FPM->add(createCorrelatedValuePropagationPass());
     FPM->add(createCFGSimplificationPass());
-    FPM->add(createInstructionCombiningPass(true));
-    FPM->add(createLibCallsShrinkWrapPass());
-    FPM->add(createTailCallEliminationPass());
+    FPM->add(createInstructionCombiningPass());
     FPM->add(createCFGSimplificationPass());
     FPM->add(createReassociatePass());
-    FPM->add(createLoopRotatePass(-1));
-    FPM->add(createGVNPass());
+    FPM->add(createLoopRotatePass());
     FPM->add(createLICMPass());
     FPM->add(createLoopUnswitchPass());
     FPM->add(createCFGSimplificationPass());
-    FPM->add(createInstructionCombiningPass(true));
+    FPM->add(createInstructionCombiningPass());
     FPM->add(createIndVarSimplifyPass());
     FPM->add(createLoopIdiomPass());
     FPM->add(createLoopDeletionPass());
     FPM->add(createCFGSimplificationPass());
-    FPM->add(createSimpleLoopUnrollPass(3));
+    FPM->add(createSimpleLoopUnrollPass());
     FPM->add(createMergedLoadStoreMotionPass());
-    FPM->add(createGVNPass());
     FPM->add(createMemCpyOptPass());
-    FPM->add(createSCCPPass());
     FPM->add(createBitTrackingDCEPass());
-    FPM->add(createInstructionCombiningPass(true));
+    FPM->add(createInstructionCombiningPass());
     FPM->add(createJumpThreadingPass());
     FPM->add(createCorrelatedValuePropagationPass());
     FPM->add(createDeadStoreEliminationPass());
     FPM->add(createLICMPass());
+    FPM->add(createLoopRerollPass());
     FPM->add(createAggressiveDCEPass());
     FPM->add(createCFGSimplificationPass());
-    FPM->add(createInstructionCombiningPass(true));
-    FPM->add(createFloat2IntPass());
+    FPM->add(createInstructionCombiningPass());
 
     return FPM->doInitialization();
   }

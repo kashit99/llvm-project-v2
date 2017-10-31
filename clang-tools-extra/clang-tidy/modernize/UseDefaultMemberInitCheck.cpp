@@ -140,7 +140,7 @@ UseDefaultMemberInitCheck::UseDefaultMemberInitCheck(StringRef Name,
                                                      ClangTidyContext *Context)
     : ClangTidyCheck(Name, Context),
       UseAssignment(Options.get("UseAssignment", 0) != 0),
-      IgnoreMacros(Options.getLocalOrGlobal("IgnoreMacros", true) != 0) {}
+      IgnoreMacros(Options.getLocalOrGlobal("IgnoreMacros", 1) != 0) {}
 
 void UseDefaultMemberInitCheck::storeOptions(
     ClangTidyOptions::OptionMap &Opts) {
@@ -166,22 +166,21 @@ void UseDefaultMemberInitCheck::registerMatchers(MatchFinder *Finder) {
       cxxConstructorDecl(
           isDefaultConstructor(), unless(isInstantiated()),
           forEachConstructorInitializer(
-              cxxCtorInitializer(
-                  forField(unless(anyOf(isBitField(),
-                                        hasInClassInitializer(anything()),
-                                        hasParent(recordDecl(isUnion()))))),
-                  isWritten(), withInitializer(ignoringImplicit(Init)))
-                  .bind("default"))),
+              allOf(forField(unless(anyOf(isBitField(),
+                                          hasInClassInitializer(anything())))),
+                    cxxCtorInitializer(isWritten(),
+                                       withInitializer(ignoringImplicit(Init)))
+                        .bind("default")))),
       this);
 
   Finder->addMatcher(
       cxxConstructorDecl(
           unless(ast_matchers::isTemplateInstantiation()),
           forEachConstructorInitializer(
-              cxxCtorInitializer(forField(hasInClassInitializer(anything())),
-                                 isWritten(),
-                                 withInitializer(ignoringImplicit(Init)))
-                  .bind("existing"))),
+              allOf(forField(hasInClassInitializer(anything())),
+                    cxxCtorInitializer(isWritten(),
+                                       withInitializer(ignoringImplicit(Init)))
+                        .bind("existing")))),
       this);
 }
 
@@ -198,7 +197,7 @@ void UseDefaultMemberInitCheck::check(const MatchFinder::MatchResult &Result) {
 
 void UseDefaultMemberInitCheck::checkDefaultInit(
     const MatchFinder::MatchResult &Result, const CXXCtorInitializer *Init) {
-  const FieldDecl *Field = Init->getAnyMember();
+  const FieldDecl *Field = Init->getMember();
 
   SourceLocation StartLoc = Field->getLocStart();
   if (StartLoc.isMacroID() && IgnoreMacros)

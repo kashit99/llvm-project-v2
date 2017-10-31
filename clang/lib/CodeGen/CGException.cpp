@@ -225,12 +225,7 @@ const EHPersonality &EHPersonality::get(CodeGenModule &CGM,
 }
 
 const EHPersonality &EHPersonality::get(CodeGenFunction &CGF) {
-  const auto *FD = CGF.CurCodeDecl;
-  // For outlined finallys and filters, use the SEH personality in case they
-  // contain more SEH. This mostly only affects finallys. Filters could
-  // hypothetically use gnu statement expressions to sneak in nested SEH.
-  FD = FD ? FD : CGF.CurSEHParent;
-  return get(CGF.CGM, dyn_cast_or_null<FunctionDecl>(FD));
+  return get(CGF.CGM, dyn_cast_or_null<FunctionDecl>(CGF.CurCodeDecl));
 }
 
 static llvm::Constant *getPersonalityFn(CodeGenModule &CGM,

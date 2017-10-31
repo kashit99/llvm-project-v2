@@ -10,6 +10,7 @@
 #include "CloexecCreatCheck.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/ASTMatchers/ASTMatchFinder.h"
+#include "clang/Lex/Lexer.h"
 
 using namespace clang::ast_matchers;
 
@@ -20,22 +21,37 @@ namespace android {
 void CloexecCreatCheck::registerMatchers(MatchFinder *Finder) {
   auto CharPointerType = hasType(pointerType(pointee(isAnyCharacter())));
   auto MODETType = hasType(namedDecl(hasName("mode_t")));
-  registerMatchersImpl(Finder,
-                       functionDecl(isExternC(), returns(isInteger()),
-                                    hasName("creat"),
-                                    hasParameter(0, CharPointerType),
-                                    hasParameter(1, MODETType)));
+
+  Finder->addMatcher(
+      callExpr(callee(functionDecl(isExternC(), returns(isInteger()),
+                                   hasName("creat"),
+                                   hasParameter(0, CharPointerType),
+                                   hasParameter(1, MODETType))
+                          .bind("funcDecl")))
+          .bind("creatFn"),
+      this);
 }
 
 void CloexecCreatCheck::check(const MatchFinder::MatchResult &Result) {
+  const auto *MatchedCall = Result.Nodes.getNodeAs<CallExpr>("creatFn");
+  const SourceManager &SM = *Result.SourceManager;
+
   const std::string &ReplacementText =
-      (Twine("open (") + getSpellingArg(Result, 0) +
+      (Twine("open (") +
+       Lexer::getSourceText(CharSourceRange::getTokenRange(
+                                MatchedCall->getArg(0)->getSourceRange()),
+                            SM, Result.Context->getLangOpts()) +
        ", O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, " +
-       getSpellingArg(Result, 1) + ")")
+       Lexer::getSourceText(CharSourceRange::getTokenRange(
+                                MatchedCall->getArg(1)->getSourceRange()),
+                            SM, Result.Context->getLangOpts()) +
+       ")")
           .str();
-  replaceFunc(Result,
-              "prefer open() to creat() because open() allows O_CLOEXEC",
-              ReplacementText);
+
+  diag(MatchedCall->getLocStart(),
+       "prefer open() to creat() because open() allows O_CLOEXEC")
+      << FixItHint::CreateReplacement(MatchedCall->getSourceRange(),
+                                      ReplacementText);
 }
 
 } // namespace android

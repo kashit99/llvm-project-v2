@@ -1,15 +1,11 @@
 // RUN: %clang %s -### -no-canonical-prefixes --target=x86_64-unknown-fuchsia \
-// RUN:     --sysroot=%S/platform 2>&1 \
-// RUN:     | FileCheck -check-prefixes=CHECK,CHECK-X86_64 %s
-// RUN: %clang %s -### -no-canonical-prefixes --target=aarch64-unknown-fuchsia \
-// RUN:     --sysroot=%S/platform 2>&1 \
-// RUN:     | FileCheck -check-prefixes=CHECK,CHECK-AARCH64 %s
+// RUN:     --sysroot=%S/platform -fuse-ld=ld 2>&1 | FileCheck %s
 // CHECK: {{.*}}clang{{.*}}" "-cc1"
-// CHECK: "-munwind-tables"
 // CHECK: "-fuse-init-array"
 // CHECK: "-isysroot" "[[SYSROOT:[^"]+]]"
 // CHECK: "-internal-externc-isystem" "[[SYSROOT]]{{/|\\\\}}include"
-// CHECK: {{.*}}ld.lld{{.*}}" "-z" "rodynamic"
+// CHECK: {{.*}}lld{{.*}}" "-flavor" "gnu"
+// CHECK: "-z" "rodynamic"
 // CHECK: "--sysroot=[[SYSROOT]]"
 // CHECK: "-pie"
 // CHECK: "--build-id"
@@ -19,8 +15,7 @@
 // CHECK-NOT: crti.o
 // CHECK-NOT: crtbegin.o
 // CHECK: "-L[[SYSROOT]]{{/|\\\\}}lib"
-// CHECK-X86_64: "{{.*[/\\]}}libclang_rt.builtins-x86_64.a"
-// CHECK-AARCH64: "{{.*[/\\]}}libclang_rt.builtins-aarch64.a"
+// CHECK: "{{.*[/\\]}}libclang_rt.builtins-x86_64.a"
 // CHECK: "-lc"
 // CHECK-NOT: crtend.o
 // CHECK-NOT: crtn.o
@@ -50,8 +45,6 @@
 // RUN:     -fsanitize=safe-stack 2>&1 \
 // RUN:     | FileCheck %s -check-prefix=CHECK-SAFESTACK
 // CHECK-SAFESTACK: "-fsanitize=safe-stack"
-// CHECK-SAFESTACK-NOT: "{{.*[/\\]}}libclang_rt.safestack-x86_64.a"
-// CHECK-SAFESTACK-NOT: "__safestack_init"
 
 // RUN: %clang %s -### --target=x86_64-unknown-fuchsia \
 // RUN:     -fsanitize=address 2>&1 \

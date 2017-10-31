@@ -17,6 +17,5 @@
 int main()
 {
     std::initializer_list<int> x;
-    (void)x;
 }
 

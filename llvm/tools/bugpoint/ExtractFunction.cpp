@@ -385,7 +385,7 @@ BugDriver::extractMappedBlocksFromModule(const std::vector<BasicBlock *> &BBs,
   }
   sys::RemoveFileOnSignal(Filename);
 
-  ToolOutputFile BlocksToNotExtractFile(Filename.c_str(), FD);
+  tool_output_file BlocksToNotExtractFile(Filename.c_str(), FD);
   for (std::vector<BasicBlock *>::const_iterator I = BBs.begin(), E = BBs.end();
        I != E; ++I) {
     BasicBlock *BB = *I;

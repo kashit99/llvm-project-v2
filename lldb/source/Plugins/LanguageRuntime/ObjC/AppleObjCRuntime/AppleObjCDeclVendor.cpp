@@ -653,11 +653,3 @@ AppleObjCDeclVendor::FindDecls(const ConstString &name, bool append,
 
   return ret;
 }
-
-clang::ExternalASTMerger::ImporterSource
-AppleObjCDeclVendor::GetImporterSource() {
-        return {*m_ast_ctx.getASTContext(),
-                *m_ast_ctx.getFileManager(),
-                m_ast_ctx.GetOriginMap()
-        };
-}

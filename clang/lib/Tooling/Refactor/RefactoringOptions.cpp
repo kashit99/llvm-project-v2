@@ -57,7 +57,7 @@ RefactoringOptionSet::parse(StringRef Source) {
   return std::move(Result);
 }
 
-void OldRefactoringOption::serialize(const SerializationContext &) {}
+void RefactoringOption::serialize(const SerializationContext &) {}
 
 void clang::tooling::option::detail::BoolOptionBase::serializeImpl(
     const SerializationContext &Context, const char *Name) {

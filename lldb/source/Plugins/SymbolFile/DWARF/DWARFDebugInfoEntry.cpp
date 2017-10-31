@@ -161,9 +161,9 @@ bool DWARFDebugInfoEntry::FastExtract(
           case DW_FORM_strp:
           case DW_FORM_sec_offset:
             if (cu->IsDWARF64())
-              debug_info_data.GetU64(&offset);
+              debug_info_data.GetU64(offset_ptr);
             else
-              debug_info_data.GetU32(&offset);
+              debug_info_data.GetU32(offset_ptr);
             break;
 
           default:
@@ -325,9 +325,9 @@ bool DWARFDebugInfoEntry::Extract(SymbolFileDWARF *dwarf2Data,
               case DW_FORM_strp:
               case DW_FORM_sec_offset:
                 if (cu->IsDWARF64())
-                  debug_info_data.GetU64(&offset);
+                  debug_info_data.GetU64(offset_ptr);
                 else
-                  debug_info_data.GetU32(&offset);
+                  debug_info_data.GetU32(offset_ptr);
                 break;
 
               default:
@@ -958,6 +958,15 @@ uint64_t DWARFDebugInfoEntry::GetAttributeValueAsUnsigned(
                         check_specification_or_abstract_origin))
     return form_value.Unsigned();
   return fail_value;
+}
+
+lldb::LanguageType DWARFDebugInfoEntry::GetLanguageAttributeValue(
+    SymbolFileDWARF *dwarf2Data, const DWARFCompileUnit *cu) const {
+  const uint64_t language = GetAttributeValueAsUnsigned(
+      dwarf2Data, cu, DW_AT_language, lldb::eLanguageTypeUnknown);
+  if (language == llvm::dwarf::DW_LANG_Swift)
+    return lldb::eLanguageTypeSwift;
+  return (lldb::LanguageType)language;
 }
 
 //----------------------------------------------------------------------

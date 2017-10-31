@@ -26,9 +26,9 @@ Compilation::Compilation(const Driver &D, const ToolChain &_DefaultToolChain,
                          InputArgList *_Args, DerivedArgList *_TranslatedArgs,
                          bool ContainsError)
     : TheDriver(D), DefaultToolChain(_DefaultToolChain), ActiveOffloadMask(0u),
-      Args(_Args), TranslatedArgs(_TranslatedArgs), ForDiagnostics(false),
-      ContainsError(ContainsError) {
-  // The offloading host toolchain is the default toolchain.
+      Args(_Args), TranslatedArgs(_TranslatedArgs), Redirects(nullptr),
+      ForDiagnostics(false), ContainsError(ContainsError) {
+  // The offloading host toolchain is the default tool chain.
   OrderedOffloadingToolchains.insert(
       std::make_pair(Action::OFK_Host, &DefaultToolChain));
 }
@@ -41,6 +41,14 @@ Compilation::~Compilation() {
   for (auto Arg : TCArgs)
     if (Arg.second != TranslatedArgs)
       delete Arg.second;
+
+  // Free redirections of stdout/stderr.
+  if (Redirects) {
+    delete Redirects[0];
+    delete Redirects[1];
+    delete Redirects[2];
+    delete [] Redirects;
+  }
 }
 
 const DerivedArgList &
@@ -51,32 +59,9 @@ Compilation::getArgsForToolChain(const ToolChain *TC, StringRef BoundArch,
 
   DerivedArgList *&Entry = TCArgs[{TC, BoundArch, DeviceOffloadKind}];
   if (!Entry) {
-    SmallVector<Arg *, 4> AllocatedArgs;
-    DerivedArgList *OpenMPArgs = nullptr;
-    // Translate OpenMP toolchain arguments provided via the -Xopenmp-target flags.
-    if (DeviceOffloadKind == Action::OFK_OpenMP) {
-      const ToolChain *HostTC = getSingleOffloadToolChain<Action::OFK_Host>();
-      bool SameTripleAsHost = (TC->getTriple() == HostTC->getTriple());
-      OpenMPArgs = TC->TranslateOpenMPTargetArgs(
-          *TranslatedArgs, SameTripleAsHost, AllocatedArgs);
-    }
-
-    if (!OpenMPArgs) {
-      Entry = TC->TranslateArgs(*TranslatedArgs, BoundArch, DeviceOffloadKind);
-      if (!Entry)
-        Entry = TranslatedArgs;
-    } else {
-      Entry = TC->TranslateArgs(*OpenMPArgs, BoundArch, DeviceOffloadKind);
-      if (!Entry)
-        Entry = OpenMPArgs;
-      else
-        delete OpenMPArgs;
-    }
-
-    // Add allocated arguments to the final DAL.
-    for (auto ArgPtr : AllocatedArgs) {
-      Entry->AddSynthesizedArg(ArgPtr);
-    }
+    Entry = TC->TranslateArgs(*TranslatedArgs, BoundArch, DeviceOffloadKind);
+    if (!Entry)
+      Entry = TranslatedArgs;
   }
 
   return *Entry;
@@ -220,13 +205,16 @@ void Compilation::initCompilationForDiagnostics() {
   TranslatedArgs->ClaimAllArgs();
 
   // Redirect stdout/stderr to /dev/null.
-  Redirects = {None, {""}, {""}};
+  Redirects = new const StringRef*[3]();
+  Redirects[0] = nullptr;
+  Redirects[1] = new StringRef();
+  Redirects[2] = new StringRef();
 }
 
 StringRef Compilation::getSysRoot() const {
   return getDriver().SysRoot;
 }
 
-void Compilation::Redirect(ArrayRef<Optional<StringRef>> Redirects) {
+void Compilation::Redirect(const StringRef** Redirects) {
   this->Redirects = Redirects;
 }

@@ -108,11 +108,6 @@ static cl::opt<unsigned> LoopToColdBlockRatio(
              "(frequency of block) is greater than this ratio"),
     cl::init(5), cl::Hidden);
 
-static cl::opt<bool> ForceLoopColdBlock(
-    "force-loop-cold-block",
-    cl::desc("Force outlining cold blocks from loops."),
-    cl::init(false), cl::Hidden);
-
 static cl::opt<bool>
     PreciseRotationCost("precise-rotation-cost",
                         cl::desc("Model the cost of loop rotation more "
@@ -161,7 +156,7 @@ static cl::opt<unsigned> TailDupPlacementAggressiveThreshold(
     "tail-dup-placement-aggressive-threshold",
     cl::desc("Instruction cutoff for aggressive tail duplication during "
              "layout. Used at -O3. Tail merging during layout is forced to "
-             "have a threshold that won't conflict."), cl::init(4),
+             "have a threshold that won't conflict."), cl::init(3),
     cl::Hidden);
 
 // Heuristic for tail duplication.
@@ -2178,7 +2173,7 @@ MachineBlockPlacement::collectLoopBlockSet(const MachineLoop &L) {
   // will be merged into the first outer loop chain for which this block is not
   // cold anymore. This needs precise profile data and we only do this when
   // profile data is available.
-  if (F->getFunction()->getEntryCount() || ForceLoopColdBlock) {
+  if (F->getFunction()->getEntryCount()) {
     BlockFrequency LoopFreq(0);
     for (auto LoopPred : L.getHeader()->predecessors())
       if (!L.contains(LoopPred))
@@ -2233,10 +2228,6 @@ void MachineBlockPlacement::buildLoopChains(const MachineLoop &L) {
   // If we selected just the header for the loop top, look for a potentially
   // profitable exit block in the event that rotating the loop can eliminate
   // branches by placing an exit edge at the bottom.
-  //
-  // Loops are processed innermost to uttermost, make sure we clear
-  // PreferredLoopExit before processing a new loop.
-  PreferredLoopExit = nullptr;
   if (!RotateLoopWithProfile && LoopTop == L.getHeader())
     PreferredLoopExit = findBestLoopExit(L, LoopBlockSet);
 
@@ -2762,8 +2753,7 @@ bool MachineBlockPlacement::runOnMachineFunction(MachineFunction &MF) {
     MPDT = &getAnalysis<MachinePostDominatorTree>();
     if (MF.getFunction()->optForSize())
       TailDupSize = 1;
-    bool PreRegAlloc = false;
-    TailDup.initMF(MF, PreRegAlloc, MBPI, /* LayoutMode */ true, TailDupSize);
+    TailDup.initMF(MF, MBPI, /* LayoutMode */ true, TailDupSize);
     precomputeTriangleChains();
   }
 

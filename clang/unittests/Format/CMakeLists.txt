@@ -10,7 +10,6 @@ add_clang_unittest(FormatTests
   FormatTestJava.cpp
   FormatTestObjC.cpp
   FormatTestProto.cpp
-  FormatTestRawStrings.cpp
   FormatTestSelective.cpp
   FormatTestTextProto.cpp
   NamespaceEndCommentsFixerTest.cpp

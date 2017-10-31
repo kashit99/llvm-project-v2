@@ -19,8 +19,9 @@
 ///       BCFixed<16>, // Module format minor version
 ///       BCBlob // misc. version information
 ///     >;
-///     Metadata metadata(Out);
-///     metadata.emit(ScratchRecord, VERSION_MAJOR, VERSION_MINOR, extraData);
+///     unsigned MetadataAbbrevCode = Metadata::emitAbbrev(Out);
+///     Metadata::emitRecord(Out, ScratchRecord, MetadataAbbrevCode,
+///                          VERSION_MAJOR, VERSION_MINOR, extraData);
 /// \endcode
 ///
 /// For details on the bitcode format, see

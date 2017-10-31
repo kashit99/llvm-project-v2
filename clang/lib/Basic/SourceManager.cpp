@@ -409,16 +409,15 @@ SourceManager::getOrCreateContentCache(const FileEntry *FileEnt,
 }
 
 
-/// Create a new ContentCache for the specified memory buffer.
-/// This does no caching.
-const ContentCache *
-SourceManager::createMemBufferContentCache(llvm::MemoryBuffer *Buffer,
-                                           bool DoNotFree) {
+/// createMemBufferContentCache - Create a new ContentCache for the specified
+///  memory buffer.  This does no caching.
+const ContentCache *SourceManager::createMemBufferContentCache(
+    std::unique_ptr<llvm::MemoryBuffer> Buffer) {
   // Add a new ContentCache to the MemBufferInfos list and return it.
   ContentCache *Entry = ContentCacheAlloc.Allocate<ContentCache>();
   new (Entry) ContentCache();
   MemBufferInfos.push_back(Entry);
-  Entry->replaceBuffer(Buffer, DoNotFree);
+  Entry->setBuffer(std::move(Buffer));
   return Entry;
 }
 

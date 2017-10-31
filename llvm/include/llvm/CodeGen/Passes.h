@@ -409,9 +409,12 @@ namespace llvm {
   /// This pass frees the memory occupied by the MachineFunction.
   FunctionPass *createFreeMachineFunctionPass();
 
+  /// This pass combine basic blocks guarded by the same branch.
+  extern char &BranchCoalescingID;
+
   /// This pass performs outlining on machine instructions directly before
   /// printing assembly.
-  ModulePass *createMachineOutlinerPass(bool OutlineFromLinkOnceODRs = false);
+  ModulePass *createMachineOutlinerPass();
 
   /// This pass expands the experimental reduction intrinsics into sequences of
   /// shuffles.

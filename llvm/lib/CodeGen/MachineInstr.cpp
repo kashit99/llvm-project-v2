@@ -73,12 +73,10 @@
 
 using namespace llvm;
 
-static cl::opt<int> PrintRegMaskNumRegs(
-    "print-regmask-num-regs",
-    cl::desc("Number of registers to limit to when "
-             "printing regmask operands in IR dumps. "
-             "unlimited = -1"),
-    cl::init(32), cl::Hidden);
+static cl::opt<bool> PrintWholeRegMask(
+    "print-whole-regmask",
+    cl::desc("Print the full contents of regmask operands in IR dumps"),
+    cl::init(true), cl::Hidden);
 
 //===----------------------------------------------------------------------===//
 // MachineOperand Implementation
@@ -311,7 +309,7 @@ bool MachineOperand::isIdenticalTo(const MachineOperand &Other) const {
       return true;
 
     // Calculate the size of the RegMask
-    const MachineFunction *MF = getParent()->getMF();
+    const MachineFunction *MF = getParent()->getParent()->getParent();
     const TargetRegisterInfo *TRI = MF->getSubtarget().getRegisterInfo();
     unsigned RegMaskSize = (TRI->getNumRegs() + 31) / 32;
 
@@ -518,8 +516,7 @@ void MachineOperand::print(raw_ostream &OS, ModuleSlotTracker &MST,
       unsigned MaskWord = i / 32;
       unsigned MaskBit = i % 32;
       if (getRegMask()[MaskWord] & (1 << MaskBit)) {
-        if (PrintRegMaskNumRegs < 0 ||
-            NumRegsEmitted <= static_cast<unsigned>(PrintRegMaskNumRegs)) {
+        if (PrintWholeRegMask || NumRegsEmitted <= 10) {
           OS << " " << PrintReg(i, TRI);
           NumRegsEmitted++;
         }
@@ -579,11 +576,7 @@ LLVM_DUMP_METHOD void MachineOperand::dump() const {
 /// getAddrSpace - Return the LLVM IR address space number that this pointer
 /// points into.
 unsigned MachinePointerInfo::getAddrSpace() const {
-  if (V.isNull()) return 0;
-
-  if (V.is<const PseudoSourceValue*>())
-    return V.get<const PseudoSourceValue*>()->getAddressSpace();
-
+  if (V.isNull() || V.is<const PseudoSourceValue*>()) return 0;
   return cast<PointerType>(V.get<const Value*>()->getType())->getAddressSpace();
 }
 
@@ -624,9 +617,8 @@ MachinePointerInfo MachinePointerInfo::getGOT(MachineFunction &MF) {
 }
 
 MachinePointerInfo MachinePointerInfo::getStack(MachineFunction &MF,
-                                                int64_t Offset,
-                                                uint8_t ID) {
-  return MachinePointerInfo(MF.getPSVManager().getStack(), Offset,ID);
+                                                int64_t Offset) {
+  return MachinePointerInfo(MF.getPSVManager().getStack(), Offset);
 }
 
 MachineMemOperand::MachineMemOperand(MachinePointerInfo ptrinfo, Flags f,
@@ -1055,7 +1047,7 @@ MachineInstr::mergeMemRefsWith(const MachineInstr& Other) {
   if (CombinedNumMemRefs != uint8_t(CombinedNumMemRefs))
     return std::make_pair(nullptr, 0);
 
-  MachineFunction *MF = getMF();
+  MachineFunction *MF = getParent()->getParent();
   mmo_iterator MemBegin = MF->allocateMemRefsArray(CombinedNumMemRefs);
   mmo_iterator MemEnd = std::copy(memoperands_begin(), memoperands_end(),
                                   MemBegin);
@@ -1129,9 +1121,9 @@ bool MachineInstr::isIdenticalTo(const MachineInstr &Other,
       if (Check == IgnoreDefs)
         continue;
       else if (Check == IgnoreVRegDefs) {
-        if (!TargetRegisterInfo::isVirtualRegister(MO.getReg()) ||
-            !TargetRegisterInfo::isVirtualRegister(OMO.getReg()))
-          if (!MO.isIdenticalTo(OMO))
+        if (TargetRegisterInfo::isPhysicalRegister(MO.getReg()) ||
+            TargetRegisterInfo::isPhysicalRegister(OMO.getReg()))
+          if (MO.getReg() != OMO.getReg())
             return false;
       } else {
         if (!MO.isIdenticalTo(OMO))
@@ -1152,10 +1144,6 @@ bool MachineInstr::isIdenticalTo(const MachineInstr &Other,
         getDebugLoc() != Other.getDebugLoc())
       return false;
   return true;
-}
-
-const MachineFunction *MachineInstr::getMF() const {
-  return getParent()->getParent();
 }
 
 MachineInstr *MachineInstr::removeFromParent() {
@@ -1307,8 +1295,8 @@ MachineInstr::getRegClassConstraint(unsigned OpIdx,
                                     const TargetInstrInfo *TII,
                                     const TargetRegisterInfo *TRI) const {
   assert(getParent() && "Can't have an MBB reference here!");
-  assert(getMF() && "Can't have an MF reference here!");
-  const MachineFunction &MF = *getMF();
+  assert(getParent()->getParent() && "Can't have an MF reference here!");
+  const MachineFunction &MF = *getParent()->getParent();
 
   // Most opcodes have fixed constraints in their MCInstrDesc.
   if (!isInlineAsm())
@@ -1669,9 +1657,8 @@ bool MachineInstr::isSafeToMove(AliasAnalysis *AA, bool &SawStore) const {
 
 bool MachineInstr::mayAlias(AliasAnalysis *AA, MachineInstr &Other,
                             bool UseTBAA) {
-  const MachineFunction *MF = getMF();
+  const MachineFunction *MF = getParent()->getParent();
   const TargetInstrInfo *TII = MF->getSubtarget().getInstrInfo();
-  const MachineFrameInfo &MFI = MF->getFrameInfo();
 
   // If neither instruction stores to memory, they can't alias in any
   // meaningful way, even if they read from the same address.
@@ -1682,12 +1669,18 @@ bool MachineInstr::mayAlias(AliasAnalysis *AA, MachineInstr &Other,
   if (TII->areMemAccessesTriviallyDisjoint(*this, Other, AA))
     return false;
 
+  if (!AA)
+    return true;
+
   // FIXME: Need to handle multiple memory operands to support all targets.
   if (!hasOneMemOperand() || !Other.hasOneMemOperand())
     return true;
 
   MachineMemOperand *MMOa = *memoperands_begin();
   MachineMemOperand *MMOb = *Other.memoperands_begin();
+
+  if (!MMOa->getValue() || !MMOb->getValue())
+    return true;
 
   // The following interface to AA is fashioned after DAGCombiner::isAlias
   // and operates with MachineMemOperand offset with some important
@@ -1701,53 +1694,22 @@ bool MachineInstr::mayAlias(AliasAnalysis *AA, MachineInstr &Other,
   //   - There should never be any negative offsets here.
   //
   // FIXME: Modify API to hide this math from "user"
-  // Even before we go to AA we can reason locally about some
+  // FIXME: Even before we go to AA we can reason locally about some
   // memory objects. It can save compile time, and possibly catch some
   // corner cases not currently covered.
 
-  int64_t OffsetA = MMOa->getOffset();
-  int64_t OffsetB = MMOb->getOffset();
+  assert((MMOa->getOffset() >= 0) && "Negative MachineMemOperand offset");
+  assert((MMOb->getOffset() >= 0) && "Negative MachineMemOperand offset");
 
-  int64_t MinOffset = std::min(OffsetA, OffsetB);
-  int64_t WidthA = MMOa->getSize();
-  int64_t WidthB = MMOb->getSize();
-  const Value *ValA = MMOa->getValue();
-  const Value *ValB = MMOb->getValue();
-  bool SameVal = (ValA && ValB && (ValA == ValB));
-  if (!SameVal) {
-    const PseudoSourceValue *PSVa = MMOa->getPseudoValue();
-    const PseudoSourceValue *PSVb = MMOb->getPseudoValue();
-    if (PSVa && ValB && !PSVa->mayAlias(&MFI))
-      return false;
-    if (PSVb && ValA && !PSVb->mayAlias(&MFI))
-      return false;
-    if (PSVa && PSVb && (PSVa == PSVb))
-      SameVal = true;
-  }
+  int64_t MinOffset = std::min(MMOa->getOffset(), MMOb->getOffset());
+  int64_t Overlapa = MMOa->getSize() + MMOa->getOffset() - MinOffset;
+  int64_t Overlapb = MMOb->getSize() + MMOb->getOffset() - MinOffset;
 
-  if (SameVal) {
-    int64_t MaxOffset = std::max(OffsetA, OffsetB);
-    int64_t LowWidth = (MinOffset == OffsetA) ? WidthA : WidthB;
-    return (MinOffset + LowWidth > MaxOffset);
-  }
-
-  if (!AA)
-    return true;
-
-  if (!ValA || !ValB)
-    return true;
-
-  assert((OffsetA >= 0) && "Negative MachineMemOperand offset");
-  assert((OffsetB >= 0) && "Negative MachineMemOperand offset");
-
-  int64_t Overlapa = WidthA + OffsetA - MinOffset;
-  int64_t Overlapb = WidthB + OffsetB - MinOffset;
-
-  AliasResult AAResult = AA->alias(
-      MemoryLocation(ValA, Overlapa,
-                     UseTBAA ? MMOa->getAAInfo() : AAMDNodes()),
-      MemoryLocation(ValB, Overlapb,
-                     UseTBAA ? MMOb->getAAInfo() : AAMDNodes()));
+  AliasResult AAResult =
+      AA->alias(MemoryLocation(MMOa->getValue(), Overlapa,
+                               UseTBAA ? MMOa->getAAInfo() : AAMDNodes()),
+                MemoryLocation(MMOb->getValue(), Overlapb,
+                               UseTBAA ? MMOb->getAAInfo() : AAMDNodes()));
 
   return (AAResult != NoAlias);
 }

@@ -137,7 +137,7 @@ class SelectorParser {
     Success
   };
   ParseState State = None;
-  const OldSymbolName &Name;
+  const SymbolName &Name;
 
   ParseState stateForToken(const Token &RawTok);
 
@@ -145,7 +145,7 @@ public:
   unsigned SymbolIndex;
   llvm::SmallVector<SourceLocation, 8> SelectorLocations;
 
-  SelectorParser(const OldSymbolName &Name, unsigned SymbolIndex)
+  SelectorParser(const SymbolName &Name, unsigned SymbolIndex)
       : Name(Name), SymbolIndex(SymbolIndex) {}
 
   /// Returns true if the parses has found a '@selector' expression.
@@ -236,7 +236,7 @@ static void collectTextualMatchesInComment(
     ArrayRef<IndexedSymbol> Symbols, SourceLocation CommentLoc,
     StringRef Comment, llvm::SmallVectorImpl<TextualMatchOccurrence> &Result) {
   for (const auto &Symbol : llvm::enumerate(Symbols)) {
-    const OldSymbolName &Name = Symbol.value().Name;
+    const SymbolName &Name = Symbol.value().Name;
     if (Name.containsEmptyPiece()) // Ignore Objective-C selectors with empty
                                    // pieces.
       continue;
@@ -258,7 +258,7 @@ static void findTextualMatchesInComment(
     const SourceManager &SM, const LangOptions &LangOpts,
     ArrayRef<IndexedSymbol> Symbols,
     ArrayRef<TextualMatchOccurrence> TextualMatches, SourceRange CommentRange,
-    llvm::function_ref<void(OldSymbolOccurrence::OccurrenceKind,
+    llvm::function_ref<void(SymbolOccurrence::OccurrenceKind,
                             ArrayRef<SourceLocation> Locations,
                             unsigned SymbolIndex)>
         MatchHandler) {
@@ -266,11 +266,11 @@ static void findTextualMatchesInComment(
       Lexer::getSourceText(CharSourceRange::getCharRange(CommentRange), SM,
                            LangOpts)
           .str();
-  OldSymbolOccurrence::OccurrenceKind Kind =
+  SymbolOccurrence::OccurrenceKind Kind =
       RawComment(SM, CommentRange, /*Merged=*/false, /*ParseAllComments=*/false)
               .isDocumentation()
-          ? OldSymbolOccurrence::MatchingDocComment
-          : OldSymbolOccurrence::MatchingComment;
+          ? SymbolOccurrence::MatchingDocComment
+          : SymbolOccurrence::MatchingComment;
   // Replace some special characters  with ' ' to avoid comments and literals.
   std::replace_if(
       Source.begin(), Source.end(),
@@ -303,7 +303,7 @@ static void findTextualMatchesInComment(
 static void findMatchingTextualOccurrences(
     const SourceManager &SM, const LangOptions &LangOpts,
     ArrayRef<IndexedSymbol> Symbols,
-    llvm::function_ref<void(OldSymbolOccurrence::OccurrenceKind,
+    llvm::function_ref<void(SymbolOccurrence::OccurrenceKind,
                             ArrayRef<SourceLocation> Locations,
                             unsigned SymbolIndex)>
         MatchHandler) {
@@ -336,7 +336,7 @@ static void findMatchingTextualOccurrences(
     } else if (!SelectorParsers.empty()) {
       for (auto &Parser : SelectorParsers) {
         if (Parser.handleToken(RawTok))
-          MatchHandler(OldSymbolOccurrence::MatchingSelector,
+          MatchHandler(SymbolOccurrence::MatchingSelector,
                        Parser.SelectorLocations, Parser.SymbolIndex);
       }
     }
@@ -381,8 +381,8 @@ static void findInclusionDirectiveOccurrence(
   size_t NameOffset = Filename.rfind_lower(Symbol.Name[0]);
   if (NameOffset == StringRef::npos)
     return;
-  OldSymbolOccurrence Result(
-      OldSymbolOccurrence::MatchingFilename,
+  SymbolOccurrence Result(
+      SymbolOccurrence::MatchingFilename,
       /*IsMacroExpansion=*/false, SymbolIndex,
       RawTok.getLocation().getLocWithOffset(
           NameOffset + (Filename.data() - RawTok.getLiteralData())));
@@ -419,9 +419,9 @@ void IndexedFileOccurrenceProducer::ExecuteAction() {
         bool IsImpProp = Match == MatchKind::SourcePropSetterMatch;
         if (IsImpProp)
           Locs.push_back(SymbolRange.getEnd());
-        OldSymbolOccurrence Result(
-            IsImpProp ? OldSymbolOccurrence::MatchingImplicitProperty
-                      : OldSymbolOccurrence::MatchingSymbol,
+        SymbolOccurrence Result(
+            IsImpProp ? SymbolOccurrence::MatchingImplicitProperty
+                      : SymbolOccurrence::MatchingSymbol,
             /*IsMacroExpansion=*/Match == MatchKind::MacroExpansion,
             Symbol.index(), Locs);
         Consumer.handleOccurrence(Result, SM, LangOpts);
@@ -433,10 +433,10 @@ void IndexedFileOccurrenceProducer::ExecuteAction() {
     return;
   findMatchingTextualOccurrences(
       SM, LangOpts, Symbols,
-      [&](OldSymbolOccurrence::OccurrenceKind Kind,
+      [&](SymbolOccurrence::OccurrenceKind Kind,
           ArrayRef<SourceLocation> Locations, unsigned SymbolIndex) {
-        OldSymbolOccurrence Result(Kind, /*IsMacroExpansion=*/false,
-                                   SymbolIndex, Locations);
+        SymbolOccurrence Result(Kind, /*IsMacroExpansion=*/false, SymbolIndex,
+                                Locations);
         Consumer.handleOccurrence(Result, SM, LangOpts);
       });
 }
@@ -460,7 +460,7 @@ static bool isMatchingSelectorName(const Token &Tok, const Token &Next,
 }
 
 static bool
-findObjCSymbolSelectorPieces(ArrayRef<Token> Tokens, const OldSymbolName &Name,
+findObjCSymbolSelectorPieces(ArrayRef<Token> Tokens, const SymbolName &Name,
                              SmallVectorImpl<SourceLocation> &Pieces,
                              ObjCSymbolSelectorKind Kind) {
   assert(!Tokens.empty() && "no tokens");
@@ -559,9 +559,8 @@ findObjCMultiPieceSelectorOccurrences(CompilerInstance &CI,
         continue;
       SourceLocation Loc = SymbolRange.getBegin();
       if (Match == MatchKind::MacroExpansion) {
-        OldSymbolOccurrence Result(OldSymbolOccurrence::MatchingSymbol,
-                                   /*IsMacroExpansion=*/true, Symbol.index(),
-                                   Loc);
+        SymbolOccurrence Result(SymbolOccurrence::MatchingSymbol,
+                                /*IsMacroExpansion=*/true, Symbol.index(), Loc);
         Consumer.handleOccurrence(Result, SM, LangOpts);
         continue;
       }
@@ -612,9 +611,9 @@ findObjCMultiPieceSelectorOccurrences(CompilerInstance &CI,
     if (findObjCSymbolSelectorPieces(
             llvm::makeArrayRef(Tokens).drop_front(I.index()),
             Symbols[SymbolIndex].Name, SelectorPieces, Kind)) {
-      OldSymbolOccurrence Result(OldSymbolOccurrence::MatchingSymbol,
-                                 /*IsMacroExpansion=*/false, SymbolIndex,
-                                 std::move(SelectorPieces));
+      SymbolOccurrence Result(SymbolOccurrence::MatchingSymbol,
+                              /*IsMacroExpansion=*/false, SymbolIndex,
+                              std::move(SelectorPieces));
       Consumer.handleOccurrence(Result, SM, LangOpts);
     }
   }

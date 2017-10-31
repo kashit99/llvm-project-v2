@@ -14,33 +14,24 @@
 #ifndef LLVM_LIB_TARGET_HEXAGON_MCTARGETDESC_HEXAGONMCINSTRINFO_H
 #define LLVM_LIB_TARGET_HEXAGON_MCTARGETDESC_HEXAGONMCINSTRINFO_H
 
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/ADT/iterator_range.h"
+#include "HexagonMCExpr.h"
 #include "llvm/MC/MCInst.h"
-#include "llvm/Support/MathExtras.h"
-#include <cstddef>
-#include <cstdint>
 
 namespace llvm {
-
 class HexagonMCChecker;
-class MCContext;
-class MCExpr;
 class MCInstrDesc;
 class MCInstrInfo;
 class MCSubtargetInfo;
-
+namespace HexagonII {
+enum class MemAccessSize;
+}
 class DuplexCandidate {
 public:
   unsigned packetIndexI, packetIndexJ, iClass;
-
   DuplexCandidate(unsigned i, unsigned j, unsigned iClass)
       : packetIndexI(i), packetIndexJ(j), iClass(iClass) {}
 };
-
 namespace Hexagon {
-
 class PacketIterator {
   MCInstrInfo const &MCII;
   MCInst::const_iterator BundleCurrent;
@@ -51,7 +42,6 @@ class PacketIterator {
 public:
   PacketIterator(MCInstrInfo const &MCII, MCInst const &Inst);
   PacketIterator(MCInstrInfo const &MCII, MCInst const &Inst, std::nullptr_t);
-
   PacketIterator &operator++();
   MCInst const &operator*() const;
   bool operator==(PacketIterator const &Other) const;
@@ -59,11 +49,8 @@ public:
     return !(*this == Other);
   }
 };
-
-} // end namespace Hexagon
-
+} // namespace Hexagon
 namespace HexagonMCInstrInfo {
-
 size_t const innerLoopOffset = 0;
 int64_t const innerLoopMask = 1 << innerLoopOffset;
 
@@ -117,9 +104,9 @@ MCInst const *extenderForIndex(MCInst const &MCB, size_t Index);
 void extendIfNeeded(MCContext &Context, MCInstrInfo const &MCII, MCInst &MCB,
                     MCInst const &MCI);
 
-// Return memory access size in bytes
-unsigned getMemAccessSize(MCInstrInfo const &MCII, MCInst const &MCI);
-
+// Return memory access size
+HexagonII::MemAccessSize getAccessSize(MCInstrInfo const &MCII,
+                                       MCInst const &MCI);
 MCInstrDesc const &getDesc(MCInstrInfo const &MCII, MCInst const &MCI);
 
 // Return which duplex group this instruction belongs to
@@ -316,9 +303,7 @@ unsigned SubregisterBit(unsigned Consumer, unsigned Producer,
 // Attempt to find and replace compound pairs
 void tryCompound(MCInstrInfo const &MCII, MCSubtargetInfo const &STI,
                  MCContext &Context, MCInst &MCI);
-
-} // end namespace HexagonMCInstrInfo
-
-} // end namespace llvm
+} // namespace HexagonMCInstrInfo
+} // namespace llvm
 
 #endif // LLVM_LIB_TARGET_HEXAGON_MCTARGETDESC_HEXAGONMCINSTRINFO_H

@@ -388,6 +388,8 @@ entry:
 
 define arm_aapcscc i32 @test_cmp_i16_slt(i16 %a, i16 %b) {
 ; CHECK-LABEL: test_cmp_i16_slt:
+; CHECK-DAG: sxth r0, r0
+; CHECK-DAG: sxth r1, r1
 ; CHECK-DAG: mov [[V:r[0-9]+]], #0
 ; CHECK: cmp r0, r1
 ; CHECK: movlt [[V]], #1
@@ -439,9 +441,9 @@ define arm_aapcscc void @test_brcond(i32 %n) {
 ; CHECK-NEXT: movgt [[RCMP:r[0-9]+]], #1
 ; CHECK: tst [[RCMP]], #1
 ; CHECK-NEXT: bne [[FALSE:.L[[:alnum:]_]+]]
-; CHECK: bl brcond1
+; CHECK: blx brcond1
 ; CHECK: [[FALSE]]:
-; CHECK: bl brcond2
+; CHECK: blx brcond2
 entry:
   %cmp = icmp sgt i32 %n, 0
   br i1 %cmp, label %if.true, label %if.false

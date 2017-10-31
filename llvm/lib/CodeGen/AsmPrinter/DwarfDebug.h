@@ -1,4 +1,4 @@
-//===- llvm/CodeGen/DwarfDebug.h - Dwarf Debug Framework --------*- C++ -*-===//
+//===-- llvm/CodeGen/DwarfDebug.h - Dwarf Debug Framework ------*- C++ -*--===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -14,52 +14,39 @@
 #ifndef LLVM_LIB_CODEGEN_ASMPRINTER_DWARFDEBUG_H
 #define LLVM_LIB_CODEGEN_ASMPRINTER_DWARFDEBUG_H
 
-#include "AddressPool.h"
 #include "DbgValueHistoryCalculator.h"
 #include "DebugHandlerBase.h"
 #include "DebugLocStream.h"
 #include "DwarfAccelTable.h"
 #include "DwarfFile.h"
-#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/MapVector.h"
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallPtrSet.h"
-#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/BinaryFormat/Dwarf.h"
+#include "llvm/CodeGen/DIE.h"
+#include "llvm/CodeGen/LexicalScopes.h"
 #include "llvm/CodeGen/MachineInstr.h"
-#include "llvm/IR/DebugInfoMetadata.h"
+#include "llvm/IR/DebugInfo.h"
 #include "llvm/IR/DebugLoc.h"
-#include "llvm/IR/Metadata.h"
 #include "llvm/MC/MCDwarf.h"
 #include "llvm/Support/Allocator.h"
 #include "llvm/Target/TargetOptions.h"
-#include <cassert>
-#include <cstdint>
-#include <limits>
 #include <memory>
-#include <utility>
-#include <vector>
 
 namespace llvm {
 
 class AsmPrinter;
 class ByteStreamer;
+class ConstantInt;
+class ConstantFP;
 class DebugLocEntry;
-class DIE;
 class DwarfCompileUnit;
+class DwarfDebug;
 class DwarfTypeUnit;
 class DwarfUnit;
-class LexicalScope;
-class MachineFunction;
-class MCSection;
-class MCSymbol;
-class MDNode;
-class Module;
+class MachineModuleInfo;
 
 //===----------------------------------------------------------------------===//
 /// This class is used to track local variable information.
@@ -101,7 +88,7 @@ public:
     assert(!MInsn && "Already initialized?");
 
     assert((!E || E->isValid()) && "Expected valid expression");
-    assert(FI != std::numeric_limits<int>::max() && "Expected valid index");
+    assert(FI != INT_MAX && "Expected valid index");
 
     FrameIndexExprs.push_back({FI, E});
   }
@@ -123,12 +110,10 @@ public:
   // Accessors.
   const DILocalVariable *getVariable() const { return Var; }
   const DILocation *getInlinedAt() const { return IA; }
-
   const DIExpression *getSingleExpression() const {
     assert(MInsn && FrameIndexExprs.size() <= 1);
     return FrameIndexExprs.size() ? FrameIndexExprs[0].Expr : nullptr;
   }
-
   void setDIE(DIE &D) { TheDIE = &D; }
   DIE *getDIE() const { return TheDIE; }
   void setDebugLocListIndex(unsigned O) { DebugLocListIndex = O; }
@@ -148,7 +133,6 @@ public:
 
     return dwarf::DW_TAG_variable;
   }
-
   /// Return true if DbgVariable is artificial.
   bool isArtificial() const {
     if (Var->isArtificial())
@@ -174,7 +158,6 @@ public:
            "Invalid Expr for DBG_VALUE");
     return !FrameIndexExprs.empty();
   }
-
   bool isBlockByrefVariable() const;
   const DIType *getType() const;
 
@@ -184,10 +167,10 @@ private:
   }
 };
 
+
 /// Helper used to pair up a symbol and its DWARF compile unit.
 struct SymbolCU {
   SymbolCU(DwarfCompileUnit *CU, const MCSymbol *Sym) : Sym(Sym), CU(CU) {}
-
   const MCSymbol *Sym;
   DwarfCompileUnit *CU;
 };
@@ -223,7 +206,7 @@ class DwarfDebug : public DebugHandlerBase {
       ProcessedSPNodes;
 
   /// If nonnull, stores the current machine function we're processing.
-  const MachineFunction *CurFn = nullptr;
+  const MachineFunction *CurFn;
 
   /// If nonnull, stores the CU in which the previous subprogram was contained.
   const DwarfCompileUnit *PrevCU;
@@ -289,7 +272,7 @@ class DwarfDebug : public DebugHandlerBase {
   DwarfAccelTable AccelTypes;
 
   // Identify a debugger for "tuning" the debug info.
-  DebuggerKind DebuggerTuning = DebuggerKind::Default;
+  DebuggerKind DebuggerTuning;
 
   MCDwarfDwoLineTable *getDwoLineTable(const DwarfCompileUnit &);
 
@@ -297,7 +280,7 @@ class DwarfDebug : public DebugHandlerBase {
     return InfoHolder.getUnits();
   }
 
-  using InlinedVariable = DbgValueHistoryMap::InlinedVariable;
+  typedef DbgValueHistoryMap::InlinedVariable InlinedVariable;
 
   void ensureAbstractVariableIsCreated(DwarfCompileUnit &CU, InlinedVariable Var,
                                        const MDNode *Scope);
@@ -544,7 +527,6 @@ public:
   bool tuneForSCE() const { return DebuggerTuning == DebuggerKind::SCE; }
   /// @}
 };
+} // End of namespace llvm
 
-} // end namespace llvm
-
-#endif // LLVM_LIB_CODEGEN_ASMPRINTER_DWARFDEBUG_H
+#endif

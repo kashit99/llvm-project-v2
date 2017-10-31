@@ -10,7 +10,6 @@ from multiprocessing import cpu_count
 import os.path
 import re
 import shutil
-import sys
 
 from pygments import highlight
 from pygments.lexers.c_cpp import CppLexer
@@ -60,14 +59,7 @@ class SourceFileRenderer:
 
     def render_source_lines(self, stream, line_remarks):
         file_text = stream.read()
-        html_highlighted = highlight(
-            file_text,
-            self.cpp_lexer,
-            self.html_formatter)
-
-        # On Python 3, pygments.highlight() returns a bytes object, not a str.
-        if sys.version_info >= (3, 0):
-          html_highlighted = html_highlighted.decode('utf-8')
+        html_highlighted = highlight(file_text, self.cpp_lexer, self.html_formatter)
 
         # Take off the header and footer, these must be
         #   reapplied line-wise, within the page structure
@@ -90,8 +82,7 @@ class SourceFileRenderer:
         inlining_context = r.DemangledFunctionName
         dl = context.caller_loc.get(r.Function)
         if dl:
-            dl_dict = dict(list(dl))
-            link = optrecord.make_link(dl_dict['File'], dl_dict['Line'] - 2)
+            link = optrecord.make_link(dl['File'], dl['Line'] - 2)
             inlining_context = "<a href={link}>{r.DemangledFunctionName}</a>".format(**locals())
 
         # Column is the number of characters *including* tabs, keep those and
@@ -185,11 +176,10 @@ def map_remarks(all_remarks):
     for remark in optrecord.itervalues(all_remarks):
         if isinstance(remark, optrecord.Passed) and remark.Pass == "inline" and remark.Name == "Inlined":
             for arg in remark.Args:
-                arg_dict = dict(list(arg))
-                caller = arg_dict.get('Caller')
+                caller = arg.get('Caller')
                 if caller:
                     try:
-                        context.caller_loc[caller] = arg_dict['DebugLoc']
+                        context.caller_loc[caller] = arg['DebugLoc']
                     except KeyError:
                         pass
 
@@ -263,7 +253,7 @@ if __name__ == '__main__':
 
     print_progress = not args.no_progress_indicator
 
-    files = optrecord.find_opt_files(*args.yaml_dirs_or_files)
+    files = optrecord.find_opt_files(args.yaml_dirs_or_files)
     if not files:
         parser.error("No *.opt.yaml files found")
         sys.exit(1)

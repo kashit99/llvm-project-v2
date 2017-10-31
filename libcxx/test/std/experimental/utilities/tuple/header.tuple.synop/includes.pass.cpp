@@ -16,5 +16,4 @@
 int main()
 {
   std::tuple<int> x(1);
-  (void)x;
 }

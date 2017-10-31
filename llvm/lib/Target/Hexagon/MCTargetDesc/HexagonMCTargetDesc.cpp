@@ -20,8 +20,6 @@
 #include "MCTargetDesc/HexagonMCInstrInfo.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/BinaryFormat/ELF.h"
-#include "llvm/MC/MCAsmBackend.h"
-#include "llvm/MC/MCCodeEmitter.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCDwarf.h"
 #include "llvm/MC/MCELFStreamer.h"
@@ -226,13 +224,13 @@ createMCAsmTargetStreamer(MCStreamer &S, formatted_raw_ostream &OS,
   return new HexagonTargetAsmStreamer(S, OS, IsVerboseAsm, *IP);
 }
 
-static MCStreamer *createMCStreamer(Triple const &T, MCContext &Context,
-                                    std::unique_ptr<MCAsmBackend> &&MAB,
+static MCStreamer *createMCStreamer(Triple const &T,
+                                    MCContext &Context,
+                                    MCAsmBackend &MAB,
                                     raw_pwrite_stream &OS,
-                                    std::unique_ptr<MCCodeEmitter> &&Emitter,
+                                    MCCodeEmitter *Emitter,
                                     bool RelaxAll) {
-  return createHexagonELFStreamer(T, Context, std::move(MAB), OS,
-                                  std::move(Emitter));
+  return createHexagonELFStreamer(T, Context, MAB, OS, Emitter);
 }
 
 static MCTargetStreamer *
@@ -288,7 +286,7 @@ MCSubtargetInfo *Hexagon_MC::createHexagonMCSubtargetInfo(const Triple &TT,
   }
 
   MCSubtargetInfo *X = createHexagonMCSubtargetInfoImpl(TT, CPUName, ArchFS);
-  if (X->getFeatureBits()[Hexagon::ExtensionHVX128B]) {
+  if (X->getFeatureBits()[Hexagon::ExtensionHVXDbl]) {
     llvm::FeatureBitset Features = X->getFeatureBits();
     X->setFeatureBits(Features.set(Hexagon::ExtensionHVX));
   }

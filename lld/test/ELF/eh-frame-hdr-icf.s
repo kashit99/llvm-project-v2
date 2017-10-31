@@ -2,18 +2,17 @@
 
 # RUN: llvm-mc -filetype=obj -triple=x86_64-unknown-linux %s -o %t
 # RUN: ld.lld %t -o %t2 --icf=all --eh-frame-hdr
-# RUN: llvm-objdump -s -section-headers %t2 | FileCheck %s
-
-## Check .eh_frame_hdr contains single FDE and no garbage data at tail.
-# CHECK: Sections:
-# CHECK: Idx Name          Size
-# CHECK:     .eh_frame_hdr 00000014
+# RUN: llvm-objdump -s %t2 | FileCheck %s
 
 # CHECK: Contents of section .eh_frame_hdr:
-# CHECK-NEXT: 200158 011b033b 14000000 01000000
+# CHECK-NEXT: 200158 011b033b 1c000000 01000000 a80e0000
 #                                      ^ FDE count
+# CHECK-NEXT: 200168 38000000 00000000 00000000
+#                    ^ FDE for f2
 
-.globl f1, f2
+.globl _start, f1, f2
+_start:
+  ret
 
 .section .text.f1, "ax"
 f1:

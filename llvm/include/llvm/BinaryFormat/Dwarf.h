@@ -345,6 +345,7 @@ inline bool isUnitType(dwarf::Tag T) {
   case DW_TAG_type_unit:
   case DW_TAG_partial_unit:
   case DW_TAG_skeleton_unit:
+  case DW_TAG_imported_unit:
     return true;
   default:
     return false;

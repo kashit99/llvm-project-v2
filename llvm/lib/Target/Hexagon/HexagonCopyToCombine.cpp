@@ -161,6 +161,7 @@ static bool isCombinableInstType(MachineInstr &MI, const HexagonInstrInfo *TII,
   }
 
   case Hexagon::V6_vassign:
+  case Hexagon::V6_vassign_128B:
     return true;
 
   default:
@@ -230,7 +231,8 @@ static bool isEvenReg(unsigned Reg) {
   assert(TargetRegisterInfo::isPhysicalRegister(Reg));
   if (Hexagon::IntRegsRegClass.contains(Reg))
     return (Reg - Hexagon::R0) % 2 == 0;
-  if (Hexagon::HvxVRRegClass.contains(Reg))
+  if (Hexagon::VectorRegsRegClass.contains(Reg) ||
+      Hexagon::VectorRegs128BRegClass.contains(Reg))
     return (Reg - Hexagon::V0) % 2 == 0;
   llvm_unreachable("Invalid register");
 }
@@ -251,8 +253,7 @@ static bool isUnsafeToMoveAcross(MachineInstr &MI, unsigned UseReg,
                                  const TargetRegisterInfo *TRI) {
   return (UseReg && (MI.modifiesRegister(UseReg, TRI))) ||
          MI.modifiesRegister(DestReg, TRI) || MI.readsRegister(DestReg, TRI) ||
-         MI.hasUnmodeledSideEffects() || MI.isInlineAsm() ||
-         MI.isMetaInstruction();
+         MI.hasUnmodeledSideEffects() || MI.isInlineAsm() || MI.isDebugValue();
 }
 
 static unsigned UseReg(const MachineOperand& MO) {
@@ -591,9 +592,12 @@ void HexagonCopyToCombine::combine(MachineInstr &I1, MachineInstr &I2,
   if (Hexagon::IntRegsRegClass.contains(LoRegDef)) {
     SuperRC = &Hexagon::DoubleRegsRegClass;
     SubLo = Hexagon::isub_lo;
-  } else if (Hexagon::HvxVRRegClass.contains(LoRegDef)) {
+  } else if (Hexagon::VectorRegsRegClass.contains(LoRegDef)) {
     assert(ST->useHVXOps());
-    SuperRC = &Hexagon::HvxWRRegClass;
+    if (ST->useHVXSglOps())
+      SuperRC = &Hexagon::VecDblRegsRegClass;
+    else
+      SuperRC = &Hexagon::VecDblRegs128BRegClass;
     SubLo = Hexagon::vsub_lo;
   } else
     llvm_unreachable("Unexpected register class");
@@ -870,9 +874,12 @@ void HexagonCopyToCombine::emitCombineRR(MachineBasicBlock::iterator &InsertPt,
   unsigned NewOpc;
   if (Hexagon::DoubleRegsRegClass.contains(DoubleDestReg)) {
     NewOpc = Hexagon::A2_combinew;
-  } else if (Hexagon::HvxWRRegClass.contains(DoubleDestReg)) {
+  } else if (Hexagon::VecDblRegsRegClass.contains(DoubleDestReg)) {
     assert(ST->useHVXOps());
-    NewOpc = Hexagon::V6_vcombine;
+    if (ST->useHVXSglOps())
+      NewOpc = Hexagon::V6_vcombine;
+    else
+      NewOpc = Hexagon::V6_vcombine_128B;
   } else
     llvm_unreachable("Unexpected register");
 

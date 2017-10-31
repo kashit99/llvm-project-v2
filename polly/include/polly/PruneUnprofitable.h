@@ -11,22 +11,20 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef POLLY_PRUNEUNPROFITABLE_H
-#define POLLY_PRUNEUNPROFITABLE_H
+#ifndef POLLY_ANALYSIS_PRUNEUNPROFITABLE_H
+#define POLLY_ANALYSIS_PRUNEUNPROFITABLE_H
 
 namespace llvm {
-
-class Pass;
 class PassRegistry;
-
-void initializePruneUnprofitablePass(PassRegistry &);
-
+class Pass;
 } // namespace llvm
 
 namespace polly {
-
 llvm::Pass *createPruneUnprofitablePass();
-
 } // namespace polly
 
-#endif // POLLY_PRUNEUNPROFITABLE_H
+namespace llvm {
+void initializePruneUnprofitablePass(llvm::PassRegistry &);
+} // namespace llvm
+
+#endif /* POLLY_ANALYSIS_PRUNEUNPROFITABLE_H */

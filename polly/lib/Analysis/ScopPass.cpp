@@ -15,11 +15,6 @@
 #include "polly/ScopInfo.h"
 
 #include "llvm/Analysis/AssumptionCache.h"
-#include "llvm/Analysis/BasicAliasAnalysis.h"
-#include "llvm/Analysis/GlobalsModRef.h"
-#include "llvm/Analysis/OptimizationRemarkEmitter.h"
-#include "llvm/Analysis/ScalarEvolutionAliasAnalysis.h"
-#include "llvm/Analysis/TargetTransformInfo.h"
 
 using namespace llvm;
 using namespace polly;
@@ -43,23 +38,7 @@ void ScopPass::print(raw_ostream &OS, const Module *M) const {
 
 void ScopPass::getAnalysisUsage(AnalysisUsage &AU) const {
   AU.addRequired<ScopInfoRegionPass>();
-
-  AU.addPreserved<AAResultsWrapperPass>();
-  AU.addPreserved<BasicAAWrapperPass>();
-  AU.addPreserved<LoopInfoWrapperPass>();
-  AU.addPreserved<DominatorTreeWrapperPass>();
-  AU.addPreserved<GlobalsAAWrapperPass>();
-  AU.addPreserved<ScopDetectionWrapperPass>();
-  AU.addPreserved<ScalarEvolutionWrapperPass>();
-  AU.addPreserved<SCEVAAWrapperPass>();
-  AU.addPreserved<OptimizationRemarkEmitterWrapperPass>();
-  AU.addPreserved<RegionInfoPass>();
-  AU.addPreserved<ScopInfoRegionPass>();
-  AU.addPreserved<TargetTransformInfoWrapperPass>();
-}
-
-namespace polly {
-template class OwningInnerAnalysisManagerProxy<ScopAnalysisManager, Function>;
+  AU.setPreservesAll();
 }
 
 namespace llvm {
@@ -96,17 +75,19 @@ bool ScopAnalysisManagerFunctionProxy::Result::invalidate(
 
   // First, check whether our ScopInfo is about to be invalidated
   auto PAC = PA.getChecker<ScopAnalysisManagerFunctionProxy>();
-  if (!(PAC.preserved() || PAC.preservedSet<AllAnalysesOn<Function>>()) ||
-      Inv.invalidate<ScopInfoAnalysis>(F, PA) ||
-      Inv.invalidate<ScalarEvolutionAnalysis>(F, PA) ||
-      Inv.invalidate<LoopAnalysis>(F, PA) ||
-      Inv.invalidate<DominatorTreeAnalysis>(F, PA)) {
+  if (!(PAC.preserved() || PAC.preservedSet<AllAnalysesOn<Function>>() ||
+        Inv.invalidate<ScopAnalysis>(F, PA) ||
+        Inv.invalidate<ScalarEvolutionAnalysis>(F, PA) ||
+        Inv.invalidate<LoopAnalysis>(F, PA) ||
+        Inv.invalidate<AAManager>(F, PA) ||
+        Inv.invalidate<DominatorTreeAnalysis>(F, PA) ||
+        Inv.invalidate<AssumptionAnalysis>(F, PA))) {
 
     // As everything depends on ScopInfo, we must drop all existing results
     for (auto &S : *SI)
       if (auto *scop = S.second.get())
         if (InnerAM)
-          InnerAM->clear(*scop, scop->getName());
+          InnerAM->clear(*scop);
 
     InnerAM = nullptr;
     return true; // Invalidate the proxy result as well.
@@ -157,12 +138,3 @@ ScopAnalysisManagerFunctionProxy::run(Function &F,
   return Result(*InnerAM, FAM.getResult<ScopInfoAnalysis>(F));
 }
 } // namespace llvm
-
-namespace polly {
-template <>
-OwningScopAnalysisManagerFunctionProxy::Result
-OwningScopAnalysisManagerFunctionProxy::run(Function &F,
-                                            FunctionAnalysisManager &FAM) {
-  return Result(InnerAM, FAM.getResult<ScopInfoAnalysis>(F));
-}
-} // namespace polly

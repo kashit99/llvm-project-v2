@@ -48,9 +48,10 @@ namespace clang {
 
 namespace llvm {
   template <typename T>
-  struct PointerLikeTypeTraits;
+  class PointerLikeTypeTraits;
   template<>
-  struct PointerLikeTypeTraits< ::clang::Type*> {
+  class PointerLikeTypeTraits< ::clang::Type*> {
+  public:
     static inline void *getAsVoidPointer(::clang::Type *P) { return P; }
     static inline ::clang::Type *getFromVoidPointer(void *P) {
       return static_cast< ::clang::Type*>(P);
@@ -58,7 +59,8 @@ namespace llvm {
     enum { NumLowBitsAvailable = clang::TypeAlignmentInBits };
   };
   template<>
-  struct PointerLikeTypeTraits< ::clang::ExtQuals*> {
+  class PointerLikeTypeTraits< ::clang::ExtQuals*> {
+  public:
     static inline void *getAsVoidPointer(::clang::ExtQuals *P) { return P; }
     static inline ::clang::ExtQuals *getFromVoidPointer(void *P) {
       return static_cast< ::clang::ExtQuals*>(P);
@@ -161,6 +163,8 @@ public:
     /// The fast qualifier mask.
     FastMask = (1 << FastWidth) - 1
   };
+
+  Qualifiers() : Mask(0) {}
 
   /// Returns the common set of qualifiers while removing them from
   /// the given sets.
@@ -328,11 +332,9 @@ public:
   }
 
   bool hasAddressSpace() const { return Mask & AddressSpaceMask; }
-  LangAS getAddressSpace() const {
-    return static_cast<LangAS>(Mask >> AddressSpaceShift);
-  }
+  unsigned getAddressSpace() const { return Mask >> AddressSpaceShift; }
   bool hasTargetSpecificAddressSpace() const {
-    return isTargetAddressSpace(getAddressSpace());
+    return getAddressSpace() >= LangAS::FirstTargetAddressSpace;
   }
   /// Get the address space attribute value to be printed by diagnostics.
   unsigned getAddressSpaceAttributePrintValue() const {
@@ -340,22 +342,22 @@ public:
     // This function is not supposed to be used with language specific
     // address spaces. If that happens, the diagnostic message should consider
     // printing the QualType instead of the address space value.
-    assert(Addr == LangAS::Default || hasTargetSpecificAddressSpace());
-    if (Addr != LangAS::Default)
-      return toTargetAddressSpace(Addr);
+    assert(Addr == 0 || hasTargetSpecificAddressSpace());
+    if (Addr)
+      return Addr - LangAS::FirstTargetAddressSpace;
     // TODO: The diagnostic messages where Addr may be 0 should be fixed
     // since it cannot differentiate the situation where 0 denotes the default
     // address space or user specified __attribute__((address_space(0))).
     return 0;
   }
-  void setAddressSpace(LangAS space) {
-    assert((unsigned)space <= MaxAddressSpace);
+  void setAddressSpace(unsigned space) {
+    assert(space <= MaxAddressSpace);
     Mask = (Mask & ~AddressSpaceMask)
          | (((uint32_t) space) << AddressSpaceShift);
   }
-  void removeAddressSpace() { setAddressSpace(LangAS::Default); }
-  void addAddressSpace(LangAS space) {
-    assert(space != LangAS::Default);
+  void removeAddressSpace() { setAddressSpace(0); }
+  void addAddressSpace(unsigned space) {
+    assert(space);
     setAddressSpace(space);
   }
 
@@ -539,7 +541,7 @@ private:
 
   // bits:     |0 1 2|3|4 .. 5|6  ..  8|9   ...   31|
   //           |C R V|U|GCAttr|Lifetime|AddressSpace|
-  uint32_t Mask = 0;
+  uint32_t Mask;
 
   static const uint32_t UMask = 0x8;
   static const uint32_t UShift = 3;
@@ -634,7 +636,7 @@ class QualType {
 
   friend class QualifierCollector;
 public:
-  QualType() = default;
+  QualType() {}
 
   QualType(const Type *Ptr, unsigned Quals)
     : Value(Ptr, Quals) {}
@@ -769,10 +771,6 @@ public:
 
   /// Return true if this is a trivially copyable type (C++0x [basic.types]p9)
   bool isTriviallyCopyableType(const ASTContext &Context) const;
-
-  /// Return true if this has unique object representations according to (C++17
-  /// [meta.unary.prop]p9)
-  bool hasUniqueObjectRepresentations(const ASTContext &Context) const;
 
   // Don't promise in the API that anything besides 'const' can be
   // easily added.
@@ -1011,7 +1009,7 @@ public:
   }
 
   /// Return the address space of this type.
-  inline LangAS getAddressSpace() const;
+  inline unsigned getAddressSpace() const;
 
   /// Returns gc attribute of this type.
   inline Qualifiers::GC getObjCGCAttr() const;
@@ -1118,8 +1116,6 @@ public:
   QualType getAtomicUnqualifiedType() const;
 
 private:
-  bool unionHasUniqueObjectRepresentations(const ASTContext& Context) const;
-  bool structHasUniqueObjectRepresentations(const ASTContext& Context) const;
   // These methods are implemented in a separate translation unit;
   // "static"-ize them to avoid creating temporary QualTypes in the
   // caller.
@@ -1147,7 +1143,8 @@ template<> struct simplify_type< ::clang::QualType> {
 
 // Teach SmallPtrSet that QualType is "basically a pointer".
 template<>
-struct PointerLikeTypeTraits<clang::QualType> {
+class PointerLikeTypeTraits<clang::QualType> {
+public:
   static inline void *getAsVoidPointer(clang::QualType P) {
     return P.getAsOpaquePtr();
   }
@@ -1238,7 +1235,7 @@ public:
   }
 
   bool hasAddressSpace() const { return Quals.hasAddressSpace(); }
-  LangAS getAddressSpace() const { return Quals.getAddressSpace(); }
+  unsigned getAddressSpace() const { return Quals.getAddressSpace(); }
 
   const Type *getBaseType() const { return BaseType; }
 
@@ -1711,7 +1708,6 @@ public:
   bool isComplexIntegerType() const;            // GCC _Complex integer type.
   bool isVectorType() const;                    // GCC vector type.
   bool isExtVectorType() const;                 // Extended vector type.
-  bool isDependentAddressSpaceType() const;     // value-dependent address space qualifier
   bool isObjCObjectPointerType() const;         // pointer to ObjC object
   bool isObjCRetainableType() const;            // ObjC object or block pointer
   bool isObjCLifetimeType() const;              // (array of)* retainable type
@@ -2750,49 +2746,6 @@ public:
                       unsigned TypeQuals, Expr *E);
 };
 
-/// Represents an extended address space qualifier where the input address space
-/// value is dependent. Non-dependent address spaces are not represented with a 
-/// special Type subclass; they are stored on an ExtQuals node as part of a QualType.
-///
-/// For example:
-/// \code
-/// template<typename T, int AddrSpace>
-/// class AddressSpace {
-///   typedef T __attribute__((address_space(AddrSpace))) type;
-/// }
-/// \endcode
-class DependentAddressSpaceType : public Type, public llvm::FoldingSetNode {
-  const ASTContext &Context;
-  Expr *AddrSpaceExpr;
-  QualType PointeeType;
-  SourceLocation loc;
-
-  DependentAddressSpaceType(const ASTContext &Context, QualType PointeeType,
-                            QualType can, Expr *AddrSpaceExpr, 
-                            SourceLocation loc);
-
-  friend class ASTContext;
-
-public:
-  Expr *getAddrSpaceExpr() const { return AddrSpaceExpr; }
-  QualType getPointeeType() const { return PointeeType; }
-  SourceLocation getAttributeLoc() const { return loc; }
-
-  bool isSugared() const { return false; }
-  QualType desugar() const { return QualType(this, 0); }
-
-  static bool classof(const Type *T) {
-    return T->getTypeClass() == DependentAddressSpace;
-  }
-
-  void Profile(llvm::FoldingSetNodeID &ID) {
-    Profile(ID, Context, getPointeeType(), getAddrSpaceExpr());
-  }
-
-  static void Profile(llvm::FoldingSetNodeID &ID, const ASTContext &Context,
-                      QualType PointeeType, Expr *AddrSpaceExpr);
-};
-
 /// Represents an extended vector type where either the type or size is
 /// dependent.
 ///
@@ -3199,7 +3152,6 @@ public:
       ABIMask         = 0x0F,
       IsConsumed      = 0x10,
       HasPassObjSize  = 0x20,
-      IsNoEscape      = 0x40,
     };
     unsigned char Data;
 
@@ -3237,19 +3189,6 @@ public:
     ExtParameterInfo withHasPassObjectSize() const {
       ExtParameterInfo Copy = *this;
       Copy.Data |= HasPassObjSize;
-      return Copy;
-    }
-
-    bool isNoEscape() const {
-      return Data & IsNoEscape;
-    }
-
-    ExtParameterInfo withIsNoEscape(bool NoEscape) const {
-      ExtParameterInfo Copy = *this;
-      if (NoEscape)
-        Copy.Data |= IsNoEscape;
-      else
-        Copy.Data &= ~IsNoEscape;
       return Copy;
     }
 
@@ -3855,9 +3794,10 @@ public:
     return reinterpret_cast<RecordDecl*>(TagType::getDecl());
   }
 
-  /// Recursively check all fields in the record for const-ness. If any field
-  /// is declared const, return true. Otherwise, return false.
-  bool hasConstFields() const;
+  // FIXME: This predicate is a helper to QualType/Type. It needs to
+  // recursively check all fields for const-ness. If any field is declared
+  // const, it needs to return false.
+  bool hasConstFields() const { return false; }
 
   bool isSugared() const { return false; }
   QualType desugar() const { return QualType(this, 0); }
@@ -5662,7 +5602,7 @@ inline void QualType::removeLocalCVRQualifiers(unsigned Mask) {
 }
 
 /// Return the address space of this type.
-inline LangAS QualType::getAddressSpace() const {
+inline unsigned QualType::getAddressSpace() const {
   return getQualifiers().getAddressSpace();
 }
 
@@ -5840,9 +5780,6 @@ inline bool Type::isVectorType() const {
 }
 inline bool Type::isExtVectorType() const {
   return isa<ExtVectorType>(CanonicalType);
-}
-inline bool Type::isDependentAddressSpaceType() const {
-  return isa<DependentAddressSpaceType>(CanonicalType);
 }
 inline bool Type::isObjCObjectPointerType() const {
   return isa<ObjCObjectPointerType>(CanonicalType);

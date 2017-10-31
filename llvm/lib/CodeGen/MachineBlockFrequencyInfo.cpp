@@ -68,14 +68,6 @@ extern cl::opt<std::string> ViewBlockFreqFuncName;
 // Defined in Analysis/BlockFrequencyInfo.cpp:  -view-hot-freq-perc=
 extern cl::opt<unsigned> ViewHotFreqPercent;
 
-static cl::opt<bool> PrintMachineBlockFreq(
-    "print-machine-bfi", cl::init(false), cl::Hidden,
-    cl::desc("Print the machine block frequency info."));
-
-// Command line option to specify the name of the function for block frequency
-// dump. Defined in Analysis/BlockFrequencyInfo.cpp.
-extern cl::opt<std::string> PrintBlockFreqFuncName;
-
 static GVDAGType getGVDT() {
   if (ViewBlockLayoutWithBFI != GVDT_None)
     return ViewBlockLayoutWithBFI;
@@ -192,11 +184,6 @@ void MachineBlockFrequencyInfo::calculate(
       (ViewBlockFreqFuncName.empty() ||
        F.getName().equals(ViewBlockFreqFuncName))) {
     view("MachineBlockFrequencyDAGS." + F.getName());
-  }
-  if (PrintMachineBlockFreq &&
-      (PrintBlockFreqFuncName.empty() ||
-       F.getName().equals(PrintBlockFreqFuncName))) {
-    MBFI->print(dbgs());
   }
 }
 

@@ -60,7 +60,6 @@ Using Clang as a Library
    LibASTMatchers
    HowToSetupToolingForLLVM
    JSONCompilationDatabase
-   RefactoringEngine
 
 Using Clang Tools
 =================

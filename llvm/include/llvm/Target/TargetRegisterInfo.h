@@ -40,7 +40,6 @@ class MachineFunction;
 class MachineInstr;
 class RegScavenger;
 class VirtRegMap;
-class LiveIntervals;
 
 class TargetRegisterClass {
 public:
@@ -50,6 +49,8 @@ public:
 
   // Instance variables filled by tablegen, do not use!
   const MCRegisterClass *MC;
+  const uint16_t SpillSize, SpillAlignment;
+  const MVT::SimpleValueType *VTs;
   const uint32_t *SubClassMask;
   const uint16_t *SuperRegIndices;
   const LaneBitmask LaneMask;
@@ -221,10 +222,7 @@ class TargetRegisterInfo : public MCRegisterInfo {
 public:
   using regclass_iterator = const TargetRegisterClass * const *;
   using vt_iterator = const MVT::SimpleValueType *;
-  struct RegClassInfo {
-    unsigned RegSize, SpillSize, SpillAlignment;
-    vt_iterator VTList;
-  };
+
 private:
   const TargetRegisterInfoDesc *InfoDesc;     // Extra desc array for codegen
   const char *const *SubRegIndexNames;        // Names of subreg indexes.
@@ -233,8 +231,6 @@ private:
 
   regclass_iterator RegClassBegin, RegClassEnd;   // List of regclasses
   LaneBitmask CoveringLanes;
-  const RegClassInfo *const RCInfos;
-  unsigned HwMode;
 
 protected:
   TargetRegisterInfo(const TargetRegisterInfoDesc *ID,
@@ -242,9 +238,7 @@ protected:
                      regclass_iterator RegClassEnd,
                      const char *const *SRINames,
                      const LaneBitmask *SRILaneMasks,
-                     LaneBitmask CoveringLanes,
-                     const RegClassInfo *const RSI,
-                     unsigned Mode = 0);
+                     LaneBitmask CoveringLanes);
   virtual ~TargetRegisterInfo();
 
 public:
@@ -312,37 +306,37 @@ public:
 
   /// Return the size in bits of a register from class RC.
   unsigned getRegSizeInBits(const TargetRegisterClass &RC) const {
-    return getRegClassInfo(RC).RegSize;
+    return RC.SpillSize * 8;
   }
 
   /// Return the size in bytes of the stack slot allocated to hold a spilled
   /// copy of a register from class RC.
   unsigned getSpillSize(const TargetRegisterClass &RC) const {
-    return getRegClassInfo(RC).SpillSize / 8;
+    return RC.SpillSize;
   }
 
-  /// Return the minimum required alignment in bytes for a spill slot for
-  /// a register of this class.
+  /// Return the minimum required alignment for a spill slot for a register
+  /// of this class.
   unsigned getSpillAlignment(const TargetRegisterClass &RC) const {
-    return getRegClassInfo(RC).SpillAlignment / 8;
+    return RC.SpillAlignment;
   }
 
   /// Return true if the given TargetRegisterClass has the ValueType T.
   bool isTypeLegalForClass(const TargetRegisterClass &RC, MVT T) const {
-    for (auto I = legalclasstypes_begin(RC); *I != MVT::Other; ++I)
-      if (MVT(*I) == T)
+    for (int i = 0; RC.VTs[i] != MVT::Other; ++i)
+      if (MVT(RC.VTs[i]) == T)
         return true;
     return false;
   }
 
   /// Loop over all of the value types that can be represented by values
-  /// in the given register class.
+  // in the given register class.
   vt_iterator legalclasstypes_begin(const TargetRegisterClass &RC) const {
-    return getRegClassInfo(RC).VTList;
+    return RC.VTs;
   }
 
   vt_iterator legalclasstypes_end(const TargetRegisterClass &RC) const {
-    vt_iterator I = legalclasstypes_begin(RC);
+    vt_iterator I = RC.VTs;
     while (*I != MVT::Other)
       ++I;
     return I;
@@ -660,12 +654,7 @@ public:
   //===--------------------------------------------------------------------===//
   // Register Class Information
   //
-protected:
-  const RegClassInfo &getRegClassInfo(const TargetRegisterClass &RC) const {
-    return RCInfos[getNumRegClasses() * HwMode + RC.getID()];
-  }
 
-public:
   /// Register class iterators
   regclass_iterator regclass_begin() const { return RegClassBegin; }
   regclass_iterator regclass_end() const { return RegClassEnd; }
@@ -960,8 +949,7 @@ public:
                               unsigned SubReg,
                               const TargetRegisterClass *DstRC,
                               unsigned DstSubReg,
-                              const TargetRegisterClass *NewRC,
-                              LiveIntervals &LIS) const
+                              const TargetRegisterClass *NewRC) const
   { return true; }
 
   //===--------------------------------------------------------------------===//
@@ -1126,8 +1114,7 @@ public:
 };
 
 // This is useful when building IndexedMaps keyed on virtual registers
-struct VirtReg2IndexFunctor {
-  using argument_type = unsigned;
+struct VirtReg2IndexFunctor : public std::unary_function<unsigned, unsigned> {
   unsigned operator()(unsigned Reg) const {
     return TargetRegisterInfo::virtReg2Index(Reg);
   }

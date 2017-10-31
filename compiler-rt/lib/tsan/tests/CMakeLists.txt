@@ -63,7 +63,7 @@ macro(add_tsan_unittest testname)
   endif()
 endmacro()
 
-if(COMPILER_RT_CAN_EXECUTE_TESTS AND NOT ANDROID)
+if(COMPILER_RT_CAN_EXECUTE_TESTS)
   add_subdirectory(rtl)
   add_subdirectory(unit)
 endif()

@@ -271,17 +271,15 @@ void UseAfterMoveFinder::getReinits(
   auto DeclRefMatcher =
       declRefExpr(hasDeclaration(equalsNode(MovedVariable))).bind("declref");
 
-  auto StandardContainerTypeMatcher = hasType(hasUnqualifiedDesugaredType(
-      recordType(hasDeclaration(cxxRecordDecl(hasAnyName(
-          "::std::basic_string", "::std::vector", "::std::deque",
-          "::std::forward_list", "::std::list", "::std::set", "::std::map",
-          "::std::multiset", "::std::multimap", "::std::unordered_set",
-          "::std::unordered_map", "::std::unordered_multiset",
-          "::std::unordered_multimap"))))));
+  auto StandardContainerTypeMatcher = hasType(cxxRecordDecl(
+      hasAnyName("::std::basic_string", "::std::vector", "::std::deque",
+                 "::std::forward_list", "::std::list", "::std::set",
+                 "::std::map", "::std::multiset", "::std::multimap",
+                 "::std::unordered_set", "::std::unordered_map",
+                 "::std::unordered_multiset", "::std::unordered_multimap")));
 
-  auto StandardSmartPointerTypeMatcher = hasType(hasUnqualifiedDesugaredType(
-      recordType(hasDeclaration(cxxRecordDecl(hasAnyName(
-          "::std::unique_ptr", "::std::shared_ptr", "::std::weak_ptr"))))));
+  auto StandardSmartPointerTypeMatcher = hasType(cxxRecordDecl(
+      hasAnyName("::std::unique_ptr", "::std::shared_ptr", "::std::weak_ptr")));
 
   // Matches different types of reinitialization.
   auto ReinitMatcher =

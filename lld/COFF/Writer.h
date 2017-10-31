@@ -18,9 +18,11 @@
 
 namespace lld {
 namespace coff {
+class SymbolTable;
+
 static const int PageSize = 4096;
 
-void writeResult();
+void writeResult(SymbolTable *T);
 
 // OutputSection represents a section in an output file. It's a
 // container of chunks. OutputSection and Chunk are 1:N relationship.

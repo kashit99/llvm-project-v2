@@ -205,7 +205,7 @@ function(add_asan_tests arch test_runtime)
       add_compiler_rt_test(AsanDynamicUnitTests "${dynamic_test_name}" "${arch}"
         SUBDIR "dynamic"
         OBJECTS ${ASAN_INST_TEST_OBJECTS}
-        DEPS asan ${ASAN_INST_TEST_OBJECTS}
+        DEPS gtest asan ${ASAN_INST_TEST_OBJECTS}
         LINK_FLAGS ${ASAN_DYNAMIC_UNITTEST_INSTRUMENTED_LINK_FLAGS}
         )
     endif()
@@ -265,7 +265,7 @@ if(COMPILER_RT_CAN_EXECUTE_TESTS AND NOT ANDROID)
       FOLDER "Compiler-RT Runtime tests")
 
     add_asan_tests(${arch} ${ASAN_TEST_RUNTIME} KIND "-inline")
-    add_asan_tests(${arch} ${ASAN_TEST_RUNTIME} KIND "-calls"
+    add_asan_tests(${arch} ${ASAN_TEST_RUNTIME} KIND "-with-calls"
       CFLAGS -mllvm -asan-instrumentation-with-call-threshold=0)
   endforeach()
 endif()

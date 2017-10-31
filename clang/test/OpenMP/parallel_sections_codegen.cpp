@@ -28,7 +28,9 @@ int main() {
   {
 // CHECK:      store i32 0, i32* [[LB_PTR:%.+]],
 // CHECK:      store i32 1, i32* [[UB_PTR:%.+]],
-// CHECK:      call void @__kmpc_for_static_init_4(%{{.+}}* @{{.+}}, i32 [[GTID:%.+]], i32 34, i32* [[IS_LAST_PTR:%.+]], i32* [[LB_PTR]], i32* [[UB_PTR]], i32* [[STRIDE_PTR:%.+]], i32 1, i32 1)
+// CHECK:      [[GTID_REF:%.+]] = load i32*, i32** [[GTID_REF_ADDR]],
+// CHECK:      [[GTID:%.+]] = load i32, i32* [[GTID_REF]],
+// CHECK:      call void @__kmpc_for_static_init_4(%{{.+}}* @{{.+}}, i32 [[GTID]], i32 34, i32* [[IS_LAST_PTR:%.+]], i32* [[LB_PTR]], i32* [[UB_PTR]], i32* [[STRIDE_PTR:%.+]], i32 1, i32 1)
 // <<UB = min(UB, GlobalUB);>>
 // CHECK:      [[UB:%.+]] = load i32, i32* [[UB_PTR]]
 // CHECK:      [[CMP:%.+]] = icmp slt i32 [[UB]], 1
@@ -74,7 +76,7 @@ int main() {
 
 // CHECK-LABEL: tmain
 // CHECK:       call void {{.*}} @__kmpc_fork_call(
-// CHECK:       __kmpc_global_thread_num
+// CHECK-NOT:   __kmpc_global_thread_num
 // CHECK:       call void @__kmpc_for_static_init_4(
 // CHECK:       invoke void @{{.*}}foo{{.*}}()
 // CHECK-NEXT:  unwind label %[[TERM_LPAD:.+]]

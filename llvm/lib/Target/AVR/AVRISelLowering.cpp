@@ -724,7 +724,7 @@ void AVRTargetLowering::ReplaceNodeResults(SDNode *N,
 /// by AM is legal for this target, for a load/store of the specified type.
 bool AVRTargetLowering::isLegalAddressingMode(const DataLayout &DL,
                                               const AddrMode &AM, Type *Ty,
-                                              unsigned AS, Instruction *I) const {
+                                              unsigned AS) const {
   int64_t Offs = AM.BaseOffs;
 
   // Allow absolute addresses.
@@ -1471,7 +1471,7 @@ MachineBasicBlock *AVRTargetLowering::insertShift(MachineInstr &MI,
   const BasicBlock *LLVM_BB = BB->getBasicBlock();
 
   MachineFunction::iterator I;
-  for (I = BB->getIterator(); I != F->end() && &(*I) != BB; ++I);
+  for (I = F->begin(); I != F->end() && &(*I) != BB; ++I);
   if (I != F->end()) ++I;
 
   // Create loop block.

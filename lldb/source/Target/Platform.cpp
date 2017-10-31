@@ -1316,18 +1316,14 @@ Status Platform::Unlink(const FileSpec &path) {
   return error;
 }
 
-MmapArgList Platform::GetMmapArgumentList(const ArchSpec &arch, addr_t addr,
-                                          addr_t length, unsigned prot,
-                                          unsigned flags, addr_t fd,
-                                          addr_t offset) {
+uint64_t Platform::ConvertMmapFlagsToPlatform(const ArchSpec &arch,
+                                              unsigned flags) {
   uint64_t flags_platform = 0;
   if (flags & eMmapFlagsPrivate)
     flags_platform |= MAP_PRIVATE;
   if (flags & eMmapFlagsAnon)
     flags_platform |= MAP_ANON;
-
-  MmapArgList args({addr, length, prot, flags_platform, fd, offset});
-  return args;
+  return flags_platform;
 }
 
 lldb_private::Status Platform::RunShellCommand(
@@ -1876,12 +1872,6 @@ size_t Platform::GetSoftwareBreakpointTrapOpcode(Target &target,
     static const uint8_t g_ppc_opcode[] = {0x7f, 0xe0, 0x00, 0x08};
     trap_opcode = g_ppc_opcode;
     trap_opcode_size = sizeof(g_ppc_opcode);
-  } break;
-
-  case llvm::Triple::ppc64le: {
-    static const uint8_t g_ppc64le_opcode[] = {0x08, 0x00, 0xe0, 0x7f}; // trap
-    trap_opcode = g_ppc64le_opcode;
-    trap_opcode_size = sizeof(g_ppc64le_opcode);
   } break;
 
   case llvm::Triple::x86:

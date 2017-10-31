@@ -7,7 +7,7 @@
 // REQUIRES: asan-dynamic-runtime
 //
 // This way of setting LD_PRELOAD does not work with Android test runner.
-// REQUIRES: !android
+// REQUIRES: not-android
 
 #include <stdio.h>
 #include <stdlib.h>

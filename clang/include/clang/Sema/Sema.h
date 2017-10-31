@@ -66,7 +66,7 @@ namespace llvm {
   template <typename ValueT> struct DenseMapInfo;
   template <typename ValueT, typename ValueInfoT> class DenseSet;
   class SmallBitVector;
-  struct InlineAsmIdentifierInfo;
+  class InlineAsmIdentifierInfo;
 }
 
 namespace clang {
@@ -210,7 +210,6 @@ namespace sema {
   class FunctionScopeInfo;
   class LambdaScopeInfo;
   class PossiblyUnreachableDiag;
-  class SemaPPCallbacks;
   class TemplateDeductionInfo;
 }
 
@@ -230,10 +229,6 @@ struct FileNullability {
   /// The first pointer declarator (of any pointer kind) in the file that does
   /// not have a corresponding nullability annotation.
   SourceLocation PointerLoc;
-
-  /// The end location for the first pointer declarator in the file. Used for
-  /// placing fix-its.
-  SourceLocation PointerEndLoc;
 
   /// Which kind of pointer declarator we saw.
   uint8_t PointerKind;
@@ -287,21 +282,15 @@ class Sema {
 
   bool isVisibleSlow(const NamedDecl *D);
 
-  /// Determine whether two declarations should be linked together, given that
-  /// the old declaration might not be visible and the new declaration might
-  /// not have external linkage.
   bool shouldLinkPossiblyHiddenDecl(const NamedDecl *Old,
                                     const NamedDecl *New) {
-    if (isVisible(Old))
-     return true;
-    // See comment in below overload for why it's safe to compute the linkage
-    // of the new declaration here.
-    if (New->isExternallyDeclarable()) {
-      assert(Old->isExternallyDeclarable() &&
-             "should not have found a non-externally-declarable previous decl");
-      return true;
-    }
-    return false;
+    // We are about to link these. It is now safe to compute the linkage of
+    // the new decl. If the new decl has external linkage, we will
+    // link it with the hidden decl (which also has external linkage) and
+    // it will keep having external linkage. If it has internal linkage, we
+    // will not link it. Since it has no previous decls, it will remain
+    // with internal linkage.
+    return isVisible(Old) || New->isExternallyVisible();
   }
   bool shouldLinkPossiblyHiddenDecl(LookupResult &Old, const NamedDecl *New);
 
@@ -395,12 +384,11 @@ public:
       llvm::StringRef StackSlotLabel;
       ValueType Value;
       SourceLocation PragmaLocation;
-      SourceLocation PragmaPushLocation;
-      Slot(llvm::StringRef StackSlotLabel, ValueType Value,
-           SourceLocation PragmaLocation, SourceLocation PragmaPushLocation)
-          : StackSlotLabel(StackSlotLabel), Value(Value),
-            PragmaLocation(PragmaLocation),
-            PragmaPushLocation(PragmaPushLocation) {}
+      Slot(llvm::StringRef StackSlotLabel,
+           ValueType Value,
+           SourceLocation PragmaLocation)
+        : StackSlotLabel(StackSlotLabel), Value(Value),
+          PragmaLocation(PragmaLocation) {}
     };
     void Act(SourceLocation PragmaLocation,
              PragmaMsStackAction Action,
@@ -431,8 +419,6 @@ public:
     explicit PragmaStack(const ValueType &Default)
         : DefaultValue(Default), CurrentValue(Default) {}
 
-    bool hasValue() const { return CurrentValue != DefaultValue; }
-
     SmallVector<Slot, 2> Stack;
     ValueType DefaultValue; // Value used for PSK_Reset action.
     ValueType CurrentValue;
@@ -454,13 +440,6 @@ public:
   // Sentinel to represent when the stack is set to mac68k alignment.
   static const unsigned kMac68kAlignmentSentinel = ~0U;
   PragmaStack<unsigned> PackStack;
-  // The current #pragma pack values and locations at each #include.
-  struct PackIncludeState {
-    unsigned CurrentValue;
-    SourceLocation CurrentPragmaLocation;
-    bool HasNonDefaultValue, ShouldWarnOnInclude;
-  };
-  SmallVector<PackIncludeState, 8> PackIncludeStack;
   // Segment #pragmas.
   PragmaStack<StringLiteral *> DataSegStack;
   PragmaStack<StringLiteral *> BSSSegStack;
@@ -1103,11 +1082,6 @@ public:
   /// definition in this translation unit.
   llvm::MapVector<NamedDecl *, SourceLocation> UndefinedButUsed;
 
-  /// Determine if VD, which must be a variable or function, is an external
-  /// symbol that nonetheless can't be referenced from outside this translation
-  /// unit because its type has no linkage and it's not extern "C".
-  bool isExternalWithNoLinkageType(ValueDecl *VD);
-
   /// Obtain a sorted list of functions that are undefined but ODR-used.
   void getUndefinedButUsed(
       SmallVectorImpl<std::pair<NamedDecl *, SourceLocation> > &Undefined);
@@ -1143,13 +1117,12 @@ public:
     CXXInvalid
   };
 
-  typedef llvm::PointerIntPair<CXXRecordDecl *, 3, CXXSpecialMember>
-      SpecialMemberDecl;
+  typedef std::pair<CXXRecordDecl*, CXXSpecialMember> SpecialMemberDecl;
 
   /// The C++ special members which we are currently in the process of
   /// declaring. If this process recursively triggers the declaration of the
   /// same special member, we should act as if it is not yet declared.
-  llvm::SmallPtrSet<SpecialMemberDecl, 4> SpecialMembersBeingDeclared;
+  llvm::SmallSet<SpecialMemberDecl, 4> SpecialMembersBeingDeclared;
 
   /// The function definitions which were renamed as part of typo-correction
   /// to match their respective declarations. We want to keep track of them
@@ -1391,8 +1364,6 @@ public:
                           SourceRange Brackets, DeclarationName Entity);
   QualType BuildExtVectorType(QualType T, Expr *ArraySize,
                               SourceLocation AttrLoc);
-  QualType BuildAddressSpaceAttr(QualType &T, Expr *AddrSpace,
-                                 SourceLocation AttrLoc);
 
   bool CheckFunctionReturnType(QualType T, SourceLocation Loc);
 
@@ -1558,8 +1529,7 @@ private:
                                TypeDiagnoser *Diagnoser);
 
   struct ModuleScope {
-    clang::Module *Module = nullptr;
-    bool ModuleInterface = false;
+    clang::Module *Module;
     VisibleModuleSet OuterVisibleModules;
   };
   /// The modules we're currently parsing.
@@ -2079,9 +2049,9 @@ public:
                               SourceLocation SemiLoc);
 
   enum class ModuleDeclKind {
-    Interface,      ///< 'export module X;'
-    Implementation, ///< 'module X;'
+    Module,         ///< 'module X;'
     Partition,      ///< 'module partition X;'
+    Implementation, ///< 'module implementation X;'
   };
 
   /// The parser has processed a module-declaration that begins the definition
@@ -2737,8 +2707,7 @@ public:
                       OverloadCandidateSet &CandidateSet,
                       TemplateArgumentListInfo *ExplicitTemplateArgs = nullptr,
                       bool SuppressUserConversions = false,
-                      bool PartialOverloading = false,
-                      bool FirstArgumentIsBase = false);
+                      bool PartialOverloading = false);
   void AddMethodCandidate(DeclAccessPair FoundDecl,
                           QualType ObjectType,
                           Expr::Classification ObjectClassification,
@@ -2786,15 +2755,13 @@ public:
                               CXXRecordDecl *ActingContext,
                               Expr *From, QualType ToType,
                               OverloadCandidateSet& CandidateSet,
-                              bool AllowObjCConversionOnExplicit,
-                              bool AllowResultConversion = true);
+                              bool AllowObjCConversionOnExplicit);
   void AddTemplateConversionCandidate(FunctionTemplateDecl *FunctionTemplate,
                                       DeclAccessPair FoundDecl,
                                       CXXRecordDecl *ActingContext,
                                       Expr *From, QualType ToType,
                                       OverloadCandidateSet &CandidateSet,
-                                      bool AllowObjCConversionOnExplicit,
-                                      bool AllowResultConversion = true);
+                                      bool AllowObjCConversionOnExplicit);
   void AddSurrogateCandidate(CXXConversionDecl *Conversion,
                              DeclAccessPair FoundDecl,
                              CXXRecordDecl *ActingContext,
@@ -2833,14 +2800,6 @@ public:
   /// failing attribute, or NULL if they were all successful.
   EnableIfAttr *CheckEnableIf(FunctionDecl *Function, ArrayRef<Expr *> Args,
                               bool MissingImplicitThis = false);
-
-  /// Find the failed Boolean condition within a given Boolean
-  /// constant expression, and describe it with a string.
-  ///
-  /// \param AllowTopLevelCond Whether to allow the result to be the
-  /// complete top-level condition.
-  std::pair<Expr *, std::string>
-  findFailedBooleanCondition(Expr *Cond, bool AllowTopLevelCond);
 
   /// Emit diagnostics for the diagnose_if attributes on Function, ignoring any
   /// non-ArgDependent DiagnoseIfAttrs.
@@ -2952,13 +2911,12 @@ public:
   ExprResult CreateOverloadedUnaryOp(SourceLocation OpLoc,
                                      UnaryOperatorKind Opc,
                                      const UnresolvedSetImpl &Fns,
-                                     Expr *input, bool RequiresADL = true);
+                                     Expr *input);
 
   ExprResult CreateOverloadedBinOp(SourceLocation OpLoc,
                                    BinaryOperatorKind Opc,
                                    const UnresolvedSetImpl &Fns,
-                                   Expr *LHS, Expr *RHS,
-                                   bool RequiresADL = true);
+                                   Expr *LHS, Expr *RHS);
 
   ExprResult CreateOverloadedArraySubscriptExpr(SourceLocation LLoc,
                                                 SourceLocation RLoc,
@@ -3073,31 +3031,14 @@ public:
     /// purpose of redeclaring the name.
     NotForRedeclaration = 0,
     /// \brief The lookup results will be used for redeclaration of a name,
-    /// if an entity by that name already exists and is visible.
-    ForVisibleRedeclaration,
-    /// \brief The lookup results will be used for redeclaration of a name
-    /// with external linkage; non-visible lookup results with external linkage
-    /// may also be found.
-    ForExternalRedeclaration
+    /// if an entity by that name already exists.
+    ForRedeclaration
   };
-
-  RedeclarationKind forRedeclarationInCurContext() {
-    // A declaration with an owning module for linkage can never link against
-    // anything that is not visible. We don't need to check linkage here; if
-    // the context has internal linkage, redeclaration lookup won't find things
-    // from other TUs, and we can't safely compute linkage yet in general.
-    if (cast<Decl>(CurContext)
-            ->getOwningModuleForLinkage(/*IgnoreLinkage*/true))
-      return ForVisibleRedeclaration;
-    return ForExternalRedeclaration;
-  }
 
   /// \brief The possible outcomes of name lookup for a literal operator.
   enum LiteralOperatorLookupResult {
     /// \brief The lookup resulted in an error.
     LOLR_Error,
-    /// \brief The lookup found no match but no diagnostic was issued.
-    LOLR_ErrorNoDiagnostic,
     /// \brief The lookup found a single 'cooked' literal operator, which
     /// expects a normal literal to be built and passed to it.
     LOLR_Cooked,
@@ -3222,8 +3163,7 @@ public:
                                                     ArrayRef<QualType> ArgTys,
                                                     bool AllowRaw,
                                                     bool AllowTemplate,
-                                                    bool AllowStringTemplate,
-                                                    bool DiagnoseMissing);
+                                                    bool AllowStringTemplate);
   bool isKnownName(StringRef name);
 
   void ArgumentDependentLookup(DeclarationName Name, SourceLocation Loc,
@@ -3319,8 +3259,6 @@ public:
   void FilterLookupForScope(LookupResult &R, DeclContext *Ctx, Scope *S,
                             bool ConsiderLinkage, bool AllowInlineNamespace);
 
-  bool CheckRedeclarationModuleOwnership(NamedDecl *New, NamedDecl *Old);
-
   void DiagnoseAmbiguousLookup(LookupResult &Result);
   //@}
 
@@ -3369,7 +3307,7 @@ public:
                                       unsigned ArgNum, StringRef &Str,
                                       SourceLocation *ArgLocation = nullptr);
   bool checkSectionName(SourceLocation LiteralLoc, StringRef Str);
-  bool checkTargetAttr(SourceLocation LiteralLoc, StringRef Str);
+  void checkTargetAttr(SourceLocation LiteralLoc, StringRef Str);
   bool checkMSInheritanceAttrOnDefinition(
       CXXRecordDecl *RD, SourceRange Range, bool BestCase,
       MSInheritanceAttr::Spelling SemanticSpelling);
@@ -3857,15 +3795,15 @@ public:
                              Expr *AsmString, MultiExprArg Clobbers,
                              SourceLocation RParenLoc);
 
-  void FillInlineAsmIdentifierInfo(Expr *Res,
-                                   llvm::InlineAsmIdentifierInfo &Info);
   ExprResult LookupInlineAsmIdentifier(CXXScopeSpec &SS,
                                        SourceLocation TemplateKWLoc,
                                        UnqualifiedId &Id,
+                                       llvm::InlineAsmIdentifierInfo &Info,
                                        bool IsUnevaluatedContext);
   bool LookupInlineAsmField(StringRef Base, StringRef Member,
                             unsigned &Offset, SourceLocation AsmLoc);
   ExprResult LookupInlineAsmVarDeclField(Expr *RefExpr, StringRef Member,
+                                         llvm::InlineAsmIdentifierInfo &Info,
                                          SourceLocation AsmLoc);
   StmtResult ActOnMSAsmStmt(SourceLocation AsmLoc, SourceLocation LBraceLoc,
                             ArrayRef<Token> AsmToks,
@@ -6141,7 +6079,7 @@ public:
                              SourceLocation ExportLoc,
                              SourceLocation TemplateLoc,
                              SourceLocation LAngleLoc,
-                             ArrayRef<NamedDecl *> Params,
+                             ArrayRef<Decl *> Params,
                              SourceLocation RAngleLoc,
                              Expr *RequiresClause);
 
@@ -8291,15 +8229,6 @@ public:
   void ActOnPragmaPack(SourceLocation PragmaLoc, PragmaMsStackAction Action,
                        StringRef SlotLabel, Expr *Alignment);
 
-  enum class PragmaPackDiagnoseKind {
-    NonDefaultStateAtInclude,
-    ChangedStateAtExit
-  };
-
-  void DiagnoseNonDefaultPragmaPack(PragmaPackDiagnoseKind Kind,
-                                    SourceLocation IncludeLoc);
-  void DiagnoseUnterminatedPragmaPack();
-
   /// ActOnPragmaMSStruct - Called on well formed \#pragma ms_struct [on|off].
   void ActOnPragmaMSStruct(PragmaMSStructKind Kind);
 
@@ -8682,11 +8611,9 @@ public:
   /// \brief Finish current declare reduction construct initializer.
   void ActOnOpenMPDeclareReductionCombinerEnd(Decl *D, Expr *Combiner);
   /// \brief Initialize declare reduction construct initializer.
-  /// \return omp_priv variable.
-  VarDecl *ActOnOpenMPDeclareReductionInitializerStart(Scope *S, Decl *D);
+  void ActOnOpenMPDeclareReductionInitializerStart(Scope *S, Decl *D);
   /// \brief Finish current declare reduction construct initializer.
-  void ActOnOpenMPDeclareReductionInitializerEnd(Decl *D, Expr *Initializer,
-                                                 VarDecl *OmpPrivParm);
+  void ActOnOpenMPDeclareReductionInitializerEnd(Decl *D, Expr *Initializer);
   /// \brief Called at the end of '#pragma omp declare reduction'.
   DeclGroupPtrTy ActOnOpenMPDeclareReductionDirectiveEnd(
       Scope *S, DeclGroupPtrTy DeclReductions, bool IsValid);
@@ -9149,13 +9076,6 @@ public:
       ArrayRef<Expr *> UnresolvedReductions = llvm::None);
   /// Called on well-formed 'task_reduction' clause.
   OMPClause *ActOnOpenMPTaskReductionClause(
-      ArrayRef<Expr *> VarList, SourceLocation StartLoc,
-      SourceLocation LParenLoc, SourceLocation ColonLoc, SourceLocation EndLoc,
-      CXXScopeSpec &ReductionIdScopeSpec,
-      const DeclarationNameInfo &ReductionId,
-      ArrayRef<Expr *> UnresolvedReductions = llvm::None);
-  /// Called on well-formed 'in_reduction' clause.
-  OMPClause *ActOnOpenMPInReductionClause(
       ArrayRef<Expr *> VarList, SourceLocation StartLoc,
       SourceLocation LParenLoc, SourceLocation ColonLoc, SourceLocation EndLoc,
       CXXScopeSpec &ReductionIdScopeSpec,
@@ -10258,7 +10178,8 @@ public:
   void CodeCompleteObjCPropertyDefinition(Scope *S);
   void CodeCompleteObjCPropertySynthesizeIvar(Scope *S,
                                               IdentifierInfo *PropertyName);
-  void CodeCompleteObjCMethodDecl(Scope *S, Optional<bool> IsInstanceMethod,
+  void CodeCompleteObjCMethodDecl(Scope *S,
+                                  bool IsInstanceMethod,
                                   ParsedType ReturnType);
   void CodeCompleteObjCMethodDeclSelector(Scope *S,
                                           bool IsInstanceMethod,
@@ -10342,7 +10263,7 @@ private:
   bool CheckPPCBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall);
 
   bool SemaBuiltinVAStart(unsigned BuiltinID, CallExpr *TheCall);
-  bool SemaBuiltinVAStartARMMicrosoft(CallExpr *Call);
+  bool SemaBuiltinVAStartARM(CallExpr *Call);
   bool SemaBuiltinUnorderedCompare(CallExpr *TheCall);
   bool SemaBuiltinFPClassification(CallExpr *TheCall, unsigned NumArgs);
   bool SemaBuiltinVSX(CallExpr *TheCall);
@@ -10513,12 +10434,6 @@ private:
   IdentifierInfo *Ident__Null_unspecified = nullptr;
 
   IdentifierInfo *Ident_NSError = nullptr;
-
-  /// \brief The handler for the FileChanged preprocessor events.
-  ///
-  /// Used for diagnostics that implement custom semantic analysis for #include
-  /// directives, like -Wpragma-pack.
-  sema::SemaPPCallbacks *SemaPPCallbackHandler;
 
 protected:
   friend class Parser;

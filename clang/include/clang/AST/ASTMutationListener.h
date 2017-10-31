@@ -22,7 +22,6 @@ namespace clang {
   class CXXRecordDecl;
   class Decl;
   class DeclContext;
-  class Expr;
   class FieldDecl;
   class FunctionDecl;
   class FunctionTemplateDecl;
@@ -81,8 +80,7 @@ public:
 
   /// \brief A virtual destructor's operator delete has been resolved.
   virtual void ResolvedOperatorDelete(const CXXDestructorDecl *DD,
-                                      const FunctionDecl *Delete,
-                                      Expr *ThisArg) {}
+                                      const FunctionDecl *Delete) {}
 
   /// \brief An implicit member got a definition.
   virtual void CompletedImplicitDefinition(const FunctionDecl *D) {}

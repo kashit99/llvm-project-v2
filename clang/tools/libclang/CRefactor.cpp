@@ -65,19 +65,19 @@ translateRefactoringActionType(RefactoringActionType Action) {
 }
 
 static CXSymbolOccurrenceKind
-translateOccurrenceKind(rename::OldSymbolOccurrence::OccurrenceKind Kind) {
+translateOccurrenceKind(rename::SymbolOccurrence::OccurrenceKind Kind) {
   switch (Kind) {
-  case rename::OldSymbolOccurrence::MatchingSymbol:
+  case rename::SymbolOccurrence::MatchingSymbol:
     return CXSymbolOccurrence_MatchingSymbol;
-  case rename::OldSymbolOccurrence::MatchingSelector:
+  case rename::SymbolOccurrence::MatchingSelector:
     return CXSymbolOccurrence_MatchingSelector;
-  case rename::OldSymbolOccurrence::MatchingImplicitProperty:
+  case rename::SymbolOccurrence::MatchingImplicitProperty:
     return CXSymbolOccurrence_MatchingImplicitProperty;
-  case rename::OldSymbolOccurrence::MatchingComment:
+  case rename::SymbolOccurrence::MatchingComment:
     return CXSymbolOccurrence_MatchingCommentString;
-  case rename::OldSymbolOccurrence::MatchingDocComment:
+  case rename::SymbolOccurrence::MatchingDocComment:
     return CXSymbolOccurrence_MatchingDocCommentString;
-  case rename::OldSymbolOccurrence::MatchingFilename:
+  case rename::SymbolOccurrence::MatchingFilename:
     return CXSymbolOccurrence_MatchingFilename;
   }
 }
@@ -98,7 +98,7 @@ class RenamingResult {
   llvm::SpecificBumpPtrAllocator<CXRefactoringReplacement_Old> Replacements;
   std::vector<std::vector<CXRenamedSymbolOccurrence>> Occurrences;
 
-  void addOccurrence(const rename::OldSymbolOccurrence &RenamedOccurrence,
+  void addOccurrence(const rename::SymbolOccurrence &RenamedOccurrence,
                      const SourceManager &SM, const LangOptions &LangOpts) {
     CXRefactoringReplacement_Old *OccurrenceReplacements =
         Replacements.Allocate(RenamedOccurrence.locations().size());
@@ -106,10 +106,8 @@ class RenamingResult {
     unsigned I = 0;
     const auto &SymbolNameInfo = NameInfo[RenamedOccurrence.SymbolIndex];
     if (!RenamedOccurrence.IsMacroExpansion &&
-        RenamedOccurrence.Kind !=
-            rename::OldSymbolOccurrence::MatchingComment &&
-        RenamedOccurrence.Kind !=
-            rename::OldSymbolOccurrence::MatchingDocComment)
+        RenamedOccurrence.Kind != rename::SymbolOccurrence::MatchingComment &&
+        RenamedOccurrence.Kind != rename::SymbolOccurrence::MatchingDocComment)
       assert(RenamedOccurrence.locations().size() == SymbolNameInfo.size());
     for (const auto &Location : RenamedOccurrence.locations()) {
       CXSourceRange Range = cxloc::translateSourceRange(
@@ -136,7 +134,7 @@ class RenamingResult {
   }
 
 public:
-  RenamingResult(ArrayRef<OldSymbolName> NewNames,
+  RenamingResult(ArrayRef<SymbolName> NewNames,
                  ArrayRef<rename::Symbol> Symbols) {
     assert(NewNames.size() == Symbols.size());
     for (size_t I = 0, E = NewNames.size(); I != E; ++I) {
@@ -153,8 +151,7 @@ public:
   }
 
   // FIXME: Don't duplicate code, Use just one constructor.
-  RenamingResult(ArrayRef<OldSymbolName> NewNames,
-                 ArrayRef<OldSymbolName> OldNames) {
+  RenamingResult(ArrayRef<SymbolName> NewNames, ArrayRef<SymbolName> OldNames) {
     assert(NewNames.size() == OldNames.size());
     for (size_t I = 0, E = NewNames.size(); I != E; ++I) {
       const auto &NewName = NewNames[I];
@@ -179,7 +176,7 @@ public:
 
   void
   handleTUResults(CXTranslationUnit TU,
-                  llvm::MutableArrayRef<rename::OldSymbolOccurrence> Results) {
+                  llvm::MutableArrayRef<rename::SymbolOccurrence> Results) {
     ASTUnit *Unit = cxtu::getASTUnit(TU);
     assert(Unit && "Invalid TU");
     auto &Ctx = Unit->getASTContext();
@@ -187,7 +184,7 @@ public:
     // Find the set of files that have to be modified and gather the indices of
     // the occurrences for each file.
     const SourceManager &SM = Ctx.getSourceManager();
-    typedef std::set<rename::OldSymbolOccurrence> OccurrenceSet;
+    typedef std::set<rename::SymbolOccurrence> OccurrenceSet;
     llvm::StringMap<OccurrenceSet> FilenamesToSymbolOccurrences;
     for (auto &Occurrence : Results) {
       const std::pair<FileID, unsigned> DecomposedLocation =
@@ -226,16 +223,15 @@ public:
 
   void
   handleSingleFileTUResults(const ASTContext &Ctx,
-                            ArrayRef<rename::OldSymbolOccurrence> Occurrences) {
+                            ArrayRef<rename::SymbolOccurrence> Occurrences) {
     addMainFilename(Ctx.getSourceManager());
     for (const auto &Occurrence : Occurrences)
       addOccurrence(Occurrence, Ctx.getSourceManager(), Ctx.getLangOpts());
   }
 
-  void
-  handleIndexedFileOccurrence(const rename::OldSymbolOccurrence &Occurrence,
-                              const SourceManager &SM,
-                              const LangOptions &LangOpts) {
+  void handleIndexedFileOccurrence(const rename::SymbolOccurrence &Occurrence,
+                                   const SourceManager &SM,
+                                   const LangOptions &LangOpts) {
     if (Filenames.empty()) {
       addMainFilename(SM);
     }
@@ -261,7 +257,7 @@ class SymbolOccurrencesResult {
   llvm::SpecificBumpPtrAllocator<CXFileRange> Ranges;
   std::vector<std::vector<CXSymbolOccurrence>> SymbolOccurrences;
 
-  void addOccurrence(const rename::OldSymbolOccurrence &RenamedOccurrence,
+  void addOccurrence(const rename::SymbolOccurrence &RenamedOccurrence,
                      const SourceManager &SM, const LangOptions &LangOpts) {
     ArrayRef<SourceLocation> Locations = RenamedOccurrence.locations();
     CXFileRange *OccurrenceRanges = Ranges.Allocate(Locations.size());
@@ -269,10 +265,8 @@ class SymbolOccurrencesResult {
     unsigned I = 0;
     const auto &SymbolNameInfo = NameInfo[RenamedOccurrence.SymbolIndex];
     if (!RenamedOccurrence.IsMacroExpansion &&
-        RenamedOccurrence.Kind !=
-            rename::OldSymbolOccurrence::MatchingComment &&
-        RenamedOccurrence.Kind !=
-            rename::OldSymbolOccurrence::MatchingDocComment)
+        RenamedOccurrence.Kind != rename::SymbolOccurrence::MatchingComment &&
+        RenamedOccurrence.Kind != rename::SymbolOccurrence::MatchingDocComment)
       assert(Locations.size() == SymbolNameInfo.size());
     for (const auto &Location : Locations) {
       CXSourceRange Range = cxloc::translateSourceRange(
@@ -297,7 +291,7 @@ class SymbolOccurrencesResult {
 public:
   SymbolOccurrencesResult(ArrayRef<rename::Symbol> Symbols) {
     for (const auto &Symbol : Symbols) {
-      const OldSymbolName &Name = Symbol.Name;
+      const SymbolName &Name = Symbol.Name;
       SymbolNameInfo Info;
       for (size_t I = 0, E = Name.size(); I != E; ++I)
         Info.push_back(SymbolNamePiece{(unsigned)Name[I].size()});
@@ -305,8 +299,8 @@ public:
     }
   }
 
-  SymbolOccurrencesResult(ArrayRef<OldSymbolName> Names) {
-    for (const OldSymbolName &Name : Names) {
+  SymbolOccurrencesResult(ArrayRef<SymbolName> Names) {
+    for (const SymbolName &Name : Names) {
       SymbolNameInfo Info;
       for (size_t I = 0, E = Name.size(); I != E; ++I)
         Info.push_back(SymbolNamePiece{(unsigned)Name[I].size()});
@@ -321,7 +315,7 @@ public:
 
   void
   handleTUResults(CXTranslationUnit TU,
-                  llvm::MutableArrayRef<rename::OldSymbolOccurrence> Results) {
+                  llvm::MutableArrayRef<rename::SymbolOccurrence> Results) {
     ASTUnit *Unit = cxtu::getASTUnit(TU);
     assert(Unit && "Invalid TU");
     auto &Ctx = Unit->getASTContext();
@@ -329,7 +323,7 @@ public:
     // Find the set of files that have to be modified and gather the indices of
     // the occurrences for each file.
     const SourceManager &SM = Ctx.getSourceManager();
-    typedef std::set<rename::OldSymbolOccurrence> OccurrenceSet;
+    typedef std::set<rename::SymbolOccurrence> OccurrenceSet;
     llvm::StringMap<OccurrenceSet> FilenamesToSymbolOccurrences;
     for (auto &Occurrence : Results) {
       const std::pair<FileID, unsigned> DecomposedLocation =
@@ -366,10 +360,9 @@ public:
     SymbolOccurrences.push_back(std::vector<CXSymbolOccurrence>());
   }
 
-  void
-  handleIndexedFileOccurrence(const rename::OldSymbolOccurrence &Occurrence,
-                              const SourceManager &SM,
-                              const LangOptions &LangOpts) {
+  void handleIndexedFileOccurrence(const rename::SymbolOccurrence &Occurrence,
+                                   const SourceManager &SM,
+                                   const LangOptions &LangOpts) {
     if (Filenames.empty()) {
       addMainFilename(SM);
     }
@@ -388,7 +381,7 @@ public:
   LangOptions LangOpts;
   IdentifierTable IDs;
   // TODO: Remove
-  SmallVector<OldSymbolName, 4> NewNames;
+  SmallVector<SymbolName, 4> NewNames;
   SymbolOperation Operation;
 
   RenamingAction(const LangOptions &LangOpts, SymbolOperation Operation)
@@ -397,7 +390,7 @@ public:
   /// \brief Sets the new renaming name and returns CXError_Success on success.
   // TODO: Remove
   CXErrorCode setNewName(StringRef Name) {
-    OldSymbolName NewSymbolName(Name, LangOpts);
+    SymbolName NewSymbolName(Name, LangOpts);
     if (NewSymbolName.size() != Operation.symbols()[0].Name.size())
       return CXError_RefactoringNameSizeMismatch;
     if (!rename::isNewNameValid(NewSymbolName, Operation, IDs, LangOpts))
@@ -481,12 +474,12 @@ static bool isObjCSelector(const CXIndexedSymbol &Symbol) {
 
 // New names are initialized and verified after the LangOptions are created.
 CXErrorCode computeNewNames(ArrayRef<CXRenamedIndexedSymbol> Symbols,
-                            ArrayRef<OldSymbolName> SymbolNames,
+                            ArrayRef<SymbolName> SymbolNames,
                             const LangOptions &LangOpts,
-                            SmallVectorImpl<OldSymbolName> &NewNames) {
+                            SmallVectorImpl<SymbolName> &NewNames) {
   IdentifierTable IDs(LangOpts);
   for (const auto &Symbol : Symbols) {
-    OldSymbolName NewSymbolName(Symbol.NewName, LangOpts);
+    SymbolName NewSymbolName(Symbol.NewName, LangOpts);
     if (NewSymbolName.size() != SymbolNames[0].size())
       return CXError_RefactoringNameSizeMismatch;
     if (!rename::isNewNameValid(NewSymbolName, isObjCSelector(Symbol), IDs,
@@ -562,7 +555,7 @@ CXErrorCode performIndexedFileRename(
       IndexedOccurrences.push_back(Result);
     }
 
-    IndexedSymbols.emplace_back(OldSymbolName(Symbol.Name, IsObjCSelector),
+    IndexedSymbols.emplace_back(SymbolName(Symbol.Name, IsObjCSelector),
                                 IndexedOccurrences,
                                 /*IsObjCSelector=*/IsObjCSelector);
   }
@@ -588,16 +581,16 @@ CXErrorCode performIndexedFileRename(
                                                        Options);
     }
 
-    void handleOccurrence(const rename::OldSymbolOccurrence &Occurrence,
+    void handleOccurrence(const rename::SymbolOccurrence &Occurrence,
                           SourceManager &SM,
                           const LangOptions &LangOpts) override {
       if (Err != CXError_Success)
         return;
       if (!Result) {
-        SmallVector<OldSymbolName, 4> SymbolNames;
+        SmallVector<SymbolName, 4> SymbolNames;
         for (const auto &Symbol : IndexedSymbols)
           SymbolNames.push_back(Symbol.Name);
-        SmallVector<OldSymbolName, 4> NewNames;
+        SmallVector<SymbolName, 4> NewNames;
         Err = computeNewNames(Symbols, SymbolNames, LangOpts, NewNames);
         if (Err != CXError_Success)
           return;
@@ -671,7 +664,7 @@ CXErrorCode performIndexedSymbolSearch(
       IndexedOccurrences.push_back(Result);
     }
 
-    IndexedSymbols.emplace_back(OldSymbolName(Symbol.Name, IsObjCSelector),
+    IndexedSymbols.emplace_back(SymbolName(Symbol.Name, IsObjCSelector),
                                 IndexedOccurrences,
                                 /*IsObjCSelector=*/IsObjCSelector);
   }
@@ -693,11 +686,11 @@ CXErrorCode performIndexedSymbolSearch(
                                                        Options);
     }
 
-    void handleOccurrence(const rename::OldSymbolOccurrence &Occurrence,
+    void handleOccurrence(const rename::SymbolOccurrence &Occurrence,
                           SourceManager &SM,
                           const LangOptions &LangOpts) override {
       if (!Result) {
-        SmallVector<OldSymbolName, 4> SymbolNames;
+        SmallVector<SymbolName, 4> SymbolNames;
         for (const auto &Symbol : IndexedSymbols)
           SymbolNames.push_back(Symbol.Name);
         Result = new SymbolOccurrencesResult(SymbolNames);

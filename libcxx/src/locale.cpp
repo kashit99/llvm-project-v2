@@ -36,7 +36,6 @@
 #endif
 #include <stdlib.h>
 #include <stdio.h>
-#include "include/atomic_support.h"
 #include "__undef_macros"
 
 // On Linux, wint_t and wchar_t have different signed-ness, and this causes
@@ -668,7 +667,7 @@ locale::id::__get()
 void
 locale::id::__init()
 {
-    __id_ = __libcpp_atomic_add(&__next_id, 1);
+    __id_ = __sync_add_and_fetch(&__next_id, 1);
 }
 
 // template <> class collate_byname<char>

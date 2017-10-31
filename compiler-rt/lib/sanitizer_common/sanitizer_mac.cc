@@ -23,7 +23,6 @@
 #include <stdio.h>
 
 #include "sanitizer_common.h"
-#include "sanitizer_file.h"
 #include "sanitizer_flags.h"
 #include "sanitizer_internal_defs.h"
 #include "sanitizer_libc.h"
@@ -411,12 +410,10 @@ void GetThreadStackAndTls(bool main, uptr *stk_addr, uptr *stk_size,
 }
 
 void ListOfModules::init() {
-  clearOrInit();
+  clear();
   MemoryMappingLayout memory_mapping(false);
   memory_mapping.DumpListOfModules(&modules_);
 }
-
-void ListOfModules::fallbackInit() { clear(); }
 
 static HandleSignalMode GetHandleSignalModeImpl(int signum) {
   switch (signum) {
@@ -576,7 +573,7 @@ void LogFullErrorReport(const char *buffer) {
 #endif
 }
 
-SignalContext::WriteFlag SignalContext::GetWriteFlag() const {
+SignalContext::WriteFlag SignalContext::GetWriteFlag(void *context) {
 #if defined(__x86_64__) || defined(__i386__)
   ucontext_t *ucontext = static_cast<ucontext_t*>(context);
   return ucontext->uc_mcontext->__es.__err & 2 /*T_PF_WRITE*/ ? WRITE : READ;
@@ -585,7 +582,7 @@ SignalContext::WriteFlag SignalContext::GetWriteFlag() const {
 #endif
 }
 
-static void GetPcSpBp(void *context, uptr *pc, uptr *sp, uptr *bp) {
+void GetPcSpBp(void *context, uptr *pc, uptr *sp, uptr *bp) {
   ucontext_t *ucontext = (ucontext_t*)context;
 # if defined(__aarch64__)
   *pc = ucontext->uc_mcontext->__ss.__pc;
@@ -611,8 +608,6 @@ static void GetPcSpBp(void *context, uptr *pc, uptr *sp, uptr *bp) {
 # error "Unknown architecture"
 # endif
 }
-
-void SignalContext::InitPcSpBp() { GetPcSpBp(context, &pc, &sp, &bp); }
 
 #if !SANITIZER_GO
 static const char kDyldInsertLibraries[] = "DYLD_INSERT_LIBRARIES";
@@ -996,7 +991,7 @@ void CheckNoDeepBind(const char *filename, int flag) {
 }
 
 // FIXME: implement on this platform.
-bool GetRandom(void *buffer, uptr length, bool blocking) {
+bool GetRandom(void *buffer, uptr length) {
   UNIMPLEMENTED();
 }
 

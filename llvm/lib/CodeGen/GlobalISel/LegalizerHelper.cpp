@@ -91,9 +91,6 @@ static RTLIB::Libcall getRTLibDesc(unsigned Opcode, unsigned Size) {
   case TargetOpcode::G_FADD:
     assert((Size == 32 || Size == 64) && "Unsupported size");
     return Size == 64 ? RTLIB::ADD_F64 : RTLIB::ADD_F32;
-  case TargetOpcode::G_FSUB:
-    assert((Size == 32 || Size == 64) && "Unsupported size");
-    return Size == 64 ? RTLIB::SUB_F64 : RTLIB::SUB_F32;
   case TargetOpcode::G_FREM:
     return Size == 64 ? RTLIB::REM_F64 : RTLIB::REM_F32;
   case TargetOpcode::G_FPOW:
@@ -149,7 +146,6 @@ LegalizerHelper::libcall(MachineInstr &MI) {
     break;
   }
   case TargetOpcode::G_FADD:
-  case TargetOpcode::G_FSUB:
   case TargetOpcode::G_FPOW:
   case TargetOpcode::G_FREM: {
     Type *HLTy = Size == 64 ? Type::getDoubleTy(Ctx) : Type::getFloatTy(Ctx);
@@ -395,50 +391,6 @@ LegalizerHelper::LegalizeResult LegalizerHelper::narrowScalar(MachineInstr &MI,
       MIRBuilder.buildConstant(DstReg, *CI);
       DstRegs.push_back(DstReg);
     }
-    unsigned DstReg = MI.getOperand(0).getReg();
-    MIRBuilder.buildMerge(DstReg, DstRegs);
-    MI.eraseFromParent();
-    return Legalized;
-  }
-  case TargetOpcode::G_OR: {
-    // Legalize bitwise operation:
-    // A = BinOp<Ty> B, C
-    // into:
-    // B1, ..., BN = G_UNMERGE_VALUES B
-    // C1, ..., CN = G_UNMERGE_VALUES C
-    // A1 = BinOp<Ty/N> B1, C2
-    // ...
-    // AN = BinOp<Ty/N> BN, CN
-    // A = G_MERGE_VALUES A1, ..., AN
-    unsigned NarrowSize = NarrowTy.getSizeInBits();
-    int NumParts =
-        MRI.getType(MI.getOperand(0).getReg()).getSizeInBits() / NarrowSize;
-
-    // List the registers where the destination will be scattered.
-    SmallVector<unsigned, 2> DstRegs;
-    // List the registers where the first argument will be split.
-    SmallVector<unsigned, 2> SrcsReg1;
-    // List the registers where the second argument will be split.
-    SmallVector<unsigned, 2> SrcsReg2;
-    // Create all the temporary registers.
-    for (int i = 0; i < NumParts; ++i) {
-      unsigned DstReg = MRI.createGenericVirtualRegister(NarrowTy);
-      unsigned SrcReg1 = MRI.createGenericVirtualRegister(NarrowTy);
-      unsigned SrcReg2 = MRI.createGenericVirtualRegister(NarrowTy);
-
-      DstRegs.push_back(DstReg);
-      SrcsReg1.push_back(SrcReg1);
-      SrcsReg2.push_back(SrcReg2);
-    }
-    // Explode the big arguments into smaller chunks.
-    MIRBuilder.buildUnmerge(SrcsReg1, MI.getOperand(1).getReg());
-    MIRBuilder.buildUnmerge(SrcsReg2, MI.getOperand(2).getReg());
-
-    // Do the operation on each small part.
-    for (int i = 0; i < NumParts; ++i)
-      MIRBuilder.buildOr(DstRegs[i], SrcsReg1[i], SrcsReg2[i]);
-
-    // Gather the destination registers into the final destination.
     unsigned DstReg = MI.getOperand(0).getReg();
     MIRBuilder.buildMerge(DstReg, DstRegs);
     MI.eraseFromParent();

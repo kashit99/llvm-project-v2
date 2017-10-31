@@ -53,8 +53,7 @@ public:
                   const MCValue &Target, MutableArrayRef<char> Data,
                   uint64_t Value, bool IsResolved) const override;
 
-  std::unique_ptr<MCObjectWriter>
-  createObjectWriter(raw_pwrite_stream &OS) const override;
+  MCObjectWriter *createObjectWriter(raw_pwrite_stream &OS) const override;
 
   // No instruction requires relaxation
   bool fixupNeedsRelaxation(const MCFixup & /*Fixup*/, uint64_t /*Value*/,
@@ -127,7 +126,7 @@ void LanaiAsmBackend::applyFixup(const MCAssembler &Asm, const MCFixup &Fixup,
   }
 }
 
-std::unique_ptr<MCObjectWriter>
+MCObjectWriter *
 LanaiAsmBackend::createObjectWriter(raw_pwrite_stream &OS) const {
   return createLanaiELFObjectWriter(OS,
                                     MCELFObjectTargetWriter::getOSABI(OSType));

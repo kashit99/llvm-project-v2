@@ -484,10 +484,11 @@ void ARMMachObjectWriter::recordRelocation(MachObjectWriter *Writer,
   Writer->addRelocation(RelSymbol, Fragment->getParent(), MRE);
 }
 
-std::unique_ptr<MCObjectWriter>
-llvm::createARMMachObjectWriter(raw_pwrite_stream &OS, bool Is64Bit,
-                                uint32_t CPUType, uint32_t CPUSubtype) {
-  return createMachObjectWriter(
-      llvm::make_unique<ARMMachObjectWriter>(Is64Bit, CPUType, CPUSubtype), OS,
-      /*IsLittleEndian=*/true);
+MCObjectWriter *llvm::createARMMachObjectWriter(raw_pwrite_stream &OS,
+                                                bool Is64Bit, uint32_t CPUType,
+                                                uint32_t CPUSubtype) {
+  return createMachObjectWriter(new ARMMachObjectWriter(Is64Bit,
+                                                        CPUType,
+                                                        CPUSubtype),
+                                OS, /*IsLittleEndian=*/true);
 }

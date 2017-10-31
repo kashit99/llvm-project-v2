@@ -37,8 +37,8 @@
         round_style
 */
 
-template <class T>
-void test(const T &) {}
+template <class _Tp>
+void test(const _Tp &) {}
 
 #define TEST_NUMERIC_LIMITS(type) \
   test(std::numeric_limits<type>::is_specialized); \

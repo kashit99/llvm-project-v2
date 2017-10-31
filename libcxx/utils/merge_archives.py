@@ -94,18 +94,12 @@ def main():
         help='Paths to search for the libraries along', action='append',
         nargs=1)
     parser.add_argument(
-        '--ar', dest='ar_exe', required=False,
-        help='The ar executable to use, finds \'ar\' in the path if not given',
-        type=str, action='store')
-    parser.add_argument(
         'archives', metavar='archives',  nargs='+',
         help='The archives to merge')
 
     args = parser.parse_args()
 
-    ar_exe = args.ar_exe
-    if not ar_exe:
-        ar_exe = distutils.spawn.find_executable('ar')
+    ar_exe = distutils.spawn.find_executable('ar')
     if not ar_exe:
         print_and_exit("failed to find 'ar' executable")
 
@@ -121,13 +115,13 @@ def main():
     temp_directory_root = tempfile.mkdtemp('.libcxx.merge.archives')
 
     for arc in archives:
-        execute_command_verbose([ar_exe, 'x', arc], cwd=temp_directory_root,
+        execute_command_verbose([ar_exe, '-x', arc], cwd=temp_directory_root,
                                 verbose=args.verbose)
 
-    files = glob.glob(os.path.join(temp_directory_root, '*.o*'))
+    files = glob.glob(os.path.join(temp_directory_root, '*.o'))
     if not files:
-        print_and_exit('Failed to glob for %s' % temp_directory_root)
-    cmd = [ar_exe, 'qcs', args.output] + files
+        print_and_exit('Failed to glob for %s' % glob_path)
+    cmd = [ar_exe, '-qc', args.output] + files
     execute_command_verbose(cmd, cwd=temp_directory_root, verbose=args.verbose)
 
 

@@ -5,11 +5,6 @@
 // FIXME: Fix this test under GCC.
 // REQUIRES: Clang
 
-// FIXME: Fix this test for dynamic runtime on armhf-linux.
-// UNSUPPORTED: armhf-linux && asan-dynamic-runtime
-
-// UNSUPPORTED: ios
-
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>

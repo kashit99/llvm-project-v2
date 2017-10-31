@@ -12,8 +12,6 @@
 
 #include "llvm/Support/DataTypes.h"
 
-#include <memory>
-
 namespace llvm {
 
 class MCAsmBackend;
@@ -93,8 +91,7 @@ MCAsmBackend *createSystemZMCAsmBackend(const Target &T,
                                         const Triple &TT, StringRef CPU,
                                         const MCTargetOptions &Options);
 
-std::unique_ptr<MCObjectWriter> createSystemZObjectWriter(raw_pwrite_stream &OS,
-                                                          uint8_t OSABI);
+MCObjectWriter *createSystemZObjectWriter(raw_pwrite_stream &OS, uint8_t OSABI);
 } // end namespace llvm
 
 // Defines symbolic names for SystemZ registers.

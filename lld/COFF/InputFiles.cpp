@@ -11,10 +11,10 @@
 #include "Chunks.h"
 #include "Config.h"
 #include "Driver.h"
+#include "Error.h"
 #include "Memory.h"
 #include "SymbolTable.h"
 #include "Symbols.h"
-#include "lld/Common/ErrorHandler.h"
 #include "llvm-c/lto.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Triple.h"
@@ -42,10 +42,6 @@ using llvm::support::ulittle32_t;
 
 namespace lld {
 namespace coff {
-
-std::vector<ObjFile *> ObjFile::Instances;
-std::vector<ImportFile *> ImportFile::Instances;
-std::vector<BitcodeFile *> BitcodeFile::Instances;
 
 /// Checks that Source is compatible with being a weak alias to Target.
 /// If Source is Undefined and has no weak alias set, makes it a weak
@@ -83,26 +79,7 @@ void ArchiveFile::addMember(const Archive::Symbol *Sym) {
   Driver->enqueueArchiveMember(C, Sym->getName(), getName());
 }
 
-std::vector<MemoryBufferRef> getArchiveMembers(Archive *File) {
-  std::vector<MemoryBufferRef> V;
-  Error Err = Error::success();
-  for (const ErrorOr<Archive::Child> &COrErr : File->children(Err)) {
-    Archive::Child C =
-        check(COrErr,
-              File->getFileName() + ": could not get the child of the archive");
-    MemoryBufferRef MBRef =
-        check(C.getMemoryBufferRef(),
-              File->getFileName() +
-                  ": could not get the buffer for a child of the archive");
-    V.push_back(MBRef);
-  }
-  if (Err)
-    fatal(File->getFileName() +
-          ": Archive::children failed: " + toString(std::move(Err)));
-  return V;
-}
-
-void ObjFile::parse() {
+void ObjectFile::parse() {
   // Parse a memory buffer as a COFF file.
   std::unique_ptr<Binary> Bin = check(createBinary(MB), toString(this));
 
@@ -119,7 +96,7 @@ void ObjFile::parse() {
   initializeSEH();
 }
 
-void ObjFile::initializeChunks() {
+void ObjectFile::initializeChunks() {
   uint32_t NumSections = COFFObj->getNumberOfSections();
   Chunks.reserve(NumSections);
   SparseChunks.resize(NumSections + 1);
@@ -127,9 +104,9 @@ void ObjFile::initializeChunks() {
     const coff_section *Sec;
     StringRef Name;
     if (auto EC = COFFObj->getSection(I, Sec))
-      fatal("getSection failed: #" + Twine(I) + ": " + EC.message());
+      fatal(EC, "getSection failed: #" + Twine(I));
     if (auto EC = COFFObj->getSectionName(Sec, Name))
-      fatal("getSectionName failed: #" + Twine(I) + ": " + EC.message());
+      fatal(EC, "getSectionName failed: #" + Twine(I));
     if (Name == ".sxdata") {
       SXData = Sec;
       continue;
@@ -170,7 +147,7 @@ void ObjFile::initializeChunks() {
   }
 }
 
-void ObjFile::initializeSymbols() {
+void ObjectFile::initializeSymbols() {
   uint32_t NumSymbols = COFFObj->getNumberOfSymbols();
   SymbolBodies.reserve(NumSymbols);
   SparseSymbolBodies.resize(NumSymbols);
@@ -179,11 +156,15 @@ void ObjFile::initializeSymbols() {
   int32_t LastSectionNumber = 0;
 
   for (uint32_t I = 0; I < NumSymbols; ++I) {
-    COFFSymbolRef Sym = check(COFFObj->getSymbol(I));
+    // Get a COFFSymbolRef object.
+    ErrorOr<COFFSymbolRef> SymOrErr = COFFObj->getSymbol(I);
+    if (!SymOrErr)
+      fatal(SymOrErr.getError(), "broken object file: " + toString(this));
+    COFFSymbolRef Sym = *SymOrErr;
 
     const void *AuxP = nullptr;
     if (Sym.getNumberOfAuxSymbols())
-      AuxP = check(COFFObj->getSymbol(I + 1)).getRawPtr();
+      AuxP = COFFObj->getSymbol(I + 1)->getRawPtr();
     bool IsFirst = (LastSectionNumber != Sym.getSectionNumber());
 
     SymbolBody *Body = nullptr;
@@ -212,14 +193,14 @@ void ObjFile::initializeSymbols() {
   }
 }
 
-SymbolBody *ObjFile::createUndefined(COFFSymbolRef Sym) {
+SymbolBody *ObjectFile::createUndefined(COFFSymbolRef Sym) {
   StringRef Name;
   COFFObj->getSymbolName(Sym, Name);
   return Symtab->addUndefined(Name, this, Sym.isWeakExternal())->body();
 }
 
-SymbolBody *ObjFile::createDefined(COFFSymbolRef Sym, const void *AuxP,
-                                   bool IsFirst) {
+SymbolBody *ObjectFile::createDefined(COFFSymbolRef Sym, const void *AuxP,
+                                      bool IsFirst) {
   StringRef Name;
   if (Sym.isCommon()) {
     auto *C = make<CommonChunk>(Sym);
@@ -292,7 +273,7 @@ SymbolBody *ObjFile::createDefined(COFFSymbolRef Sym, const void *AuxP,
   return B;
 }
 
-void ObjFile::initializeSEH() {
+void ObjectFile::initializeSEH() {
   if (!SEHCompat || !SXData)
     return;
   ArrayRef<uint8_t> A;
@@ -305,7 +286,7 @@ void ObjFile::initializeSEH() {
     SEHandlers.insert(SparseSymbolBodies[*I]);
 }
 
-MachineTypes ObjFile::getMachineType() {
+MachineTypes ObjectFile::getMachineType() {
   if (COFFObj)
     return static_cast<MachineTypes>(COFFObj->getMachine());
   return IMAGE_FILE_MACHINE_UNKNOWN;
@@ -351,16 +332,19 @@ void ImportFile::parse() {
   this->Hdr = Hdr;
   ExternalName = ExtName;
 
-  ImpSym = Symtab->addImportData(ImpName, this);
-
+  ImpSym = cast<DefinedImportData>(
+      Symtab->addImportData(ImpName, this)->body());
   if (Hdr->getType() == llvm::COFF::IMPORT_CONST)
-    static_cast<void>(Symtab->addImportData(Name, this));
+    ConstSym =
+        cast<DefinedImportData>(Symtab->addImportData(Name, this)->body());
 
   // If type is function, we need to create a thunk which jump to an
   // address pointed by the __imp_ symbol. (This allows you to call
   // DLL functions just like regular non-DLL functions.)
-  if (Hdr->getType() == llvm::COFF::IMPORT_CODE)
-    ThunkSym = Symtab->addImportThunk(Name, ImpSym, Hdr->Machine);
+  if (Hdr->getType() != llvm::COFF::IMPORT_CODE)
+    return;
+  ThunkSym = cast<DefinedImportThunk>(
+      Symtab->addImportThunk(Name, ImpSym, Hdr->Machine)->body());
 }
 
 void BitcodeFile::parse() {

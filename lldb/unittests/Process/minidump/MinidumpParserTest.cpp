@@ -23,7 +23,7 @@
 #include "lldb/Utility/DataBufferLLVM.h"
 #include "lldb/Utility/DataExtractor.h"
 #include "lldb/Utility/FileSpec.h"
-#include "TestingSupport/TestUtilities.h"
+#include "unittests/Utility/Helpers/TestUtilities.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/Support/FileSystem.h"

@@ -12,18 +12,16 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/Basic/TargetInfo.h"
-#include "clang/AST/Type.h"
 #include "clang/Basic/AddressSpaces.h"
 #include "clang/Basic/CharInfo.h"
 #include "clang/Basic/LangOptions.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/ErrorHandling.h"
-#include "llvm/Support/TargetParser.h"
 #include <cstdlib>
 using namespace clang;
 
-static const LangASMap DefaultAddrSpaceMap = {0};
+static const LangAS::Map DefaultAddrSpaceMap = { 0 };
 
 // TargetInfo Constructor.
 TargetInfo::TargetInfo(const llvm::Triple &T) : TargetOpts(), Triple(T) {
@@ -291,15 +289,8 @@ bool TargetInfo::isTypeSigned(IntType T) {
 void TargetInfo::adjust(LangOptions &Opts) {
   if (Opts.NoBitFieldTypeAlign)
     UseBitFieldTypeAlignment = false;
-
-  switch (Opts.WCharSize) {
-  default: llvm_unreachable("invalid wchar_t width");
-  case 0: break;
-  case 1: WCharType = Opts.WCharIsSigned ? SignedChar : UnsignedChar; break;
-  case 2: WCharType = Opts.WCharIsSigned ? SignedShort : UnsignedShort; break;
-  case 4: WCharType = Opts.WCharIsSigned ? SignedInt : UnsignedInt; break;
-  }
-
+  if (Opts.ShortWChar)
+    WCharType = UnsignedShort;
   if (Opts.AlignDouble) {
     DoubleAlign = LongLongAlign = 64;
     LongDoubleAlign = 64;
@@ -354,30 +345,6 @@ bool TargetInfo::initFeatureMap(
     setFeatureEnabled(Features, Name.substr(1), Enabled);
   }
   return true;
-}
-
-LangAS TargetInfo::getOpenCLTypeAddrSpace(const Type *T) const {
-  auto BT = dyn_cast<BuiltinType>(T);
-
-  if (!BT) {
-    if (isa<PipeType>(T))
-      return LangAS::opencl_global;
-
-    return LangAS::Default;
-  }
-
-  switch (BT->getKind()) {
-#define IMAGE_TYPE(ImgType, Id, SingletonId, Access, Suffix)                   \
-  case BuiltinType::Id:                                                        \
-    return LangAS::opencl_global;
-#include "clang/Basic/OpenCLImageTypes.def"
-
-  case BuiltinType::OCLSampler:
-    return LangAS::opencl_constant;
-
-  default:
-    return LangAS::Default;
-  }
 }
 
 //===----------------------------------------------------------------------===//

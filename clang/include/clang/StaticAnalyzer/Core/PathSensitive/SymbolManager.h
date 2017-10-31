@@ -633,4 +633,11 @@ public:
 
 } // end clang namespace
 
+namespace llvm {
+static inline raw_ostream &operator<<(raw_ostream &os,
+                                      const clang::ento::SymExpr *SE) {
+  SE->dumpToStream(os);
+  return os;
+}
+} // end llvm namespace
 #endif

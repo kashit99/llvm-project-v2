@@ -13,9 +13,9 @@
 
 #include "Filesystem.h"
 #include "Config.h"
-#include "lld/Common/Threads.h"
-#include "llvm/Support/FileOutputBuffer.h"
 #include "llvm/Support/FileSystem.h"
+#include "llvm/Support/FileOutputBuffer.h"
+#include <thread>
 
 using namespace llvm;
 
@@ -38,7 +38,7 @@ using namespace lld::elf;
 // This function spawns a background thread to call unlink.
 // The calling thread returns almost immediately.
 void elf::unlinkAsync(StringRef Path) {
-  if (!ThreadsEnabled || !sys::fs::exists(Config->OutputFile) ||
+  if (!Config->Threads || !sys::fs::exists(Config->OutputFile) ||
       !sys::fs::is_regular_file(Config->OutputFile))
     return;
 
@@ -55,7 +55,7 @@ void elf::unlinkAsync(StringRef Path) {
   }
 
   // Remove TempPath in background.
-  runBackground([=] { ::remove(TempPath.str().str().c_str()); });
+  std::thread([=] { ::remove(TempPath.str().str().c_str()); }).detach();
 }
 
 // Simulate file creation to see if Path is writable.

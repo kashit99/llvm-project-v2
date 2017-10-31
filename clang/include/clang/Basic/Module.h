@@ -68,11 +68,7 @@ public:
     ModuleMapModule,
 
     /// \brief This is a C++ Modules TS module interface unit.
-    ModuleInterfaceUnit,
-
-    /// \brief This is a fragment of the global module within some C++ Modules
-    /// TS module.
-    GlobalModuleFragment,
+    ModuleInterfaceUnit
   };
 
   /// \brief The kind of this module.
@@ -410,15 +406,6 @@ public:
   /// framework.
   bool isSubFramework() const {
     return IsFramework && Parent && Parent->isPartOfFramework();
-  }
-
-  /// Set the parent of this module. This should only be used if the parent
-  /// could not be set during module creation.
-  void setParent(Module *M) {
-    assert(!Parent);
-    Parent = M;
-    Parent->SubModuleIndex[Name] = Parent->SubModules.size();
-    Parent->SubModules.push_back(this);
   }
 
   /// \brief Retrieve the full name of this module, including the path from

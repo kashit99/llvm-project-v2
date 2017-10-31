@@ -256,7 +256,8 @@ ModuleMap::ModuleMap(SourceManager &SourceMgr, DiagnosticsEngine &Diags,
                      const LangOptions &LangOpts, const TargetInfo *Target,
                      HeaderSearch &HeaderInfo)
     : SourceMgr(SourceMgr), Diags(Diags), LangOpts(LangOpts), Target(Target),
-      HeaderInfo(HeaderInfo) {
+      HeaderInfo(HeaderInfo), BuiltinIncludeDir(nullptr),
+      SourceModule(nullptr), NumCreatedModules(0) {
   MMapLangOpts.LineComment = true;
 }
 
@@ -756,21 +757,12 @@ Module *ModuleMap::createShadowedModule(StringRef Name, bool IsFramework,
   Result->ShadowingModule = ShadowingModule;
   Result->IsAvailable = false;
   ModuleScopeIDs[Result] = CurrentModuleScopeID;
+
   return Result;
 }
 
-Module *ModuleMap::createGlobalModuleForInterfaceUnit(SourceLocation Loc) {
-  assert(!PendingGlobalModule && "created multiple global modules");
-  PendingGlobalModule.reset(
-      new Module("<global>", Loc, nullptr, /*IsFramework*/ false,
-                 /*IsExplicit*/ true, NumCreatedModules++));
-  PendingGlobalModule->Kind = Module::GlobalModuleFragment;
-  return PendingGlobalModule.get();
-}
-
 Module *ModuleMap::createModuleForInterfaceUnit(SourceLocation Loc,
-                                                StringRef Name,
-                                                Module *GlobalModule) {
+                                                StringRef Name) {
   assert(LangOpts.CurrentModule == Name && "module name mismatch");
   assert(!Modules[Name] && "redefining existing module");
 
@@ -779,12 +771,6 @@ Module *ModuleMap::createModuleForInterfaceUnit(SourceLocation Loc,
                  /*IsExplicit*/ false, NumCreatedModules++);
   Result->Kind = Module::ModuleInterfaceUnit;
   Modules[Name] = SourceModule = Result;
-
-  // Reparent the current global module fragment as a submodule of this module.
-  assert(GlobalModule == PendingGlobalModule.get() &&
-         "unexpected global module");
-  GlobalModule->setParent(Result);
-  PendingGlobalModule.release(); // now owned by parent
 
   // Mark the main source file as being within the newly-created module so that
   // declarations and macros are properly visibility-restricted to it.

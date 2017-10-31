@@ -2,6 +2,7 @@
  * kmp_ftn_extra.cpp -- Fortran 'extra' linkage support for OpenMP.
  */
 
+
 //===----------------------------------------------------------------------===//
 //
 //                     The LLVM Compiler Infrastructure
@@ -10,6 +11,7 @@
 // Source Licenses. See LICENSE.txt for details.
 //
 //===----------------------------------------------------------------------===//
+
 
 #include "kmp.h"
 #include "kmp_affinity.h"

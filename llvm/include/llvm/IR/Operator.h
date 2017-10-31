@@ -61,9 +61,9 @@ public:
   }
 };
 
-/// Utility class for integer operators which may exhibit overflow - Add, Sub,
-/// Mul, and Shl. It does not include SDiv, despite that operator having the
-/// potential for overflow.
+/// Utility class for integer arithmetic operators which may exhibit overflow -
+/// Add, Sub, and Mul. It does not include SDiv, despite that operator having
+/// the potential for overflow.
 class OverflowingBinaryOperator : public Operator {
 public:
   enum {
@@ -470,12 +470,6 @@ public:
         return false;
     }
     return true;
-  }
-
-  unsigned countNonConstantIndices() const {
-    return count_if(make_range(idx_begin(), idx_end()), [](const Use& use) {
-        return !isa<ConstantInt>(*use);
-      });
   }
 
   /// \brief Accumulate the constant address offset of this GEP if possible.

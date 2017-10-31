@@ -13,7 +13,7 @@
 
 // constexpr reverse_iterator operator++(int);
 //
-//   constexpr in C++17
+//   constexpr in c++17
 
 #include <iterator>
 #include <cassert>

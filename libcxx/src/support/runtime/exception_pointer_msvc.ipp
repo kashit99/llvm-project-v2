@@ -10,32 +10,26 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <yvals.h> // for _CRTIMP2_PURE
 
-#if !defined(_CRTIMP2_PURE)
-#define _CRTIMP2_PURE __declspec(dllimport)
-#endif
-
-#if !defined(__CLRCALL_PURE_OR_CDECL)
-#define __CLRCALL_PURE_OR_CDECL __cdecl
-#endif
-
-_CRTIMP2_PURE void __CLRCALL_PURE_OR_CDECL __ExceptionPtrCreate(void*);
-_CRTIMP2_PURE void __CLRCALL_PURE_OR_CDECL __ExceptionPtrDestroy(void*);
-_CRTIMP2_PURE void __CLRCALL_PURE_OR_CDECL __ExceptionPtrCopy(void*,
-                                                              const void*);
+_CRTIMP2_PURE void __CLRCALL_PURE_OR_CDECL __ExceptionPtrCreate(_Out_ void*);
+_CRTIMP2_PURE void __CLRCALL_PURE_OR_CDECL __ExceptionPtrDestroy(_Inout_ void*);
+_CRTIMP2_PURE void __CLRCALL_PURE_OR_CDECL __ExceptionPtrCopy(_Out_ void*,
+                                                              _In_ const void*);
 _CRTIMP2_PURE void __CLRCALL_PURE_OR_CDECL
-__ExceptionPtrAssign(void*, const void*);
+__ExceptionPtrAssign(_Inout_ void*, _In_ const void*);
 _CRTIMP2_PURE bool __CLRCALL_PURE_OR_CDECL
-__ExceptionPtrCompare(const void*, const void*);
+__ExceptionPtrCompare(_In_ const void*, _In_ const void*);
 _CRTIMP2_PURE bool __CLRCALL_PURE_OR_CDECL
-__ExceptionPtrToBool(const void*);
-_CRTIMP2_PURE void __CLRCALL_PURE_OR_CDECL __ExceptionPtrSwap(void*, void*);
+__ExceptionPtrToBool(_In_ const void*);
+_CRTIMP2_PURE void __CLRCALL_PURE_OR_CDECL __ExceptionPtrSwap(_Inout_ void*,
+                                                              _Inout_ void*);
 _CRTIMP2_PURE void __CLRCALL_PURE_OR_CDECL
-__ExceptionPtrCurrentException(void*);
+__ExceptionPtrCurrentException(_Out_ void*);
 [[noreturn]] _CRTIMP2_PURE void __CLRCALL_PURE_OR_CDECL
-__ExceptionPtrRethrow(const void*);
+__ExceptionPtrRethrow(_In_ const void*);
 _CRTIMP2_PURE void __CLRCALL_PURE_OR_CDECL
-__ExceptionPtrCopyException(void*, const void*, const void*);
+__ExceptionPtrCopyException(_Inout_ void*, _In_ const void*, _In_ const void*);
 
 namespace std {
 

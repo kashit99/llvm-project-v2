@@ -13,18 +13,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/ADT/APInt.h"
-#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/PointerIntPair.h"
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
-#include "llvm/ADT/SmallPtrSet.h"
-#include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/BlockFrequencyInfo.h"
 #include "llvm/Analysis/BranchProbabilityInfo.h"
-#include "llvm/Analysis/ConstantFolding.h"
+#include "llvm/Analysis/CFG.h"
 #include "llvm/Analysis/InstructionSimplify.h"
 #include "llvm/Analysis/LoopInfo.h"
 #include "llvm/Analysis/MemoryBuiltins.h"
@@ -33,71 +28,38 @@
 #include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/Analysis/ValueTracking.h"
 #include "llvm/CodeGen/Analysis.h"
-#include "llvm/CodeGen/ISDOpcodes.h"
-#include "llvm/CodeGen/MachineValueType.h"
-#include "llvm/CodeGen/SelectionDAGNodes.h"
+#include "llvm/CodeGen/Passes.h"
 #include "llvm/CodeGen/TargetPassConfig.h"
-#include "llvm/CodeGen/ValueTypes.h"
-#include "llvm/IR/Argument.h"
-#include "llvm/IR/Attributes.h"
-#include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/CallSite.h"
-#include "llvm/IR/Constant.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Dominators.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/GetElementPtrTypeIterator.h"
-#include "llvm/IR/GlobalValue.h"
-#include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/InlineAsm.h"
-#include "llvm/IR/InstrTypes.h"
-#include "llvm/IR/Instruction.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/IntrinsicInst.h"
-#include "llvm/IR/Intrinsics.h"
-#include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/MDBuilder.h"
-#include "llvm/IR/Module.h"
-#include "llvm/IR/Operator.h"
 #include "llvm/IR/PatternMatch.h"
 #include "llvm/IR/Statepoint.h"
-#include "llvm/IR/Type.h"
-#include "llvm/IR/Use.h"
-#include "llvm/IR/User.h"
-#include "llvm/IR/Value.h"
 #include "llvm/IR/ValueHandle.h"
 #include "llvm/IR/ValueMap.h"
 #include "llvm/Pass.h"
-#include "llvm/Support/BlockFrequency.h"
 #include "llvm/Support/BranchProbability.h"
-#include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
-#include "llvm/Support/Compiler.h"
 #include "llvm/Support/Debug.h"
-#include "llvm/Support/ErrorHandling.h"
-#include "llvm/Support/MathExtras.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetLowering.h"
-#include "llvm/Target/TargetMachine.h"
-#include "llvm/Target/TargetOptions.h"
 #include "llvm/Target/TargetSubtargetInfo.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
+#include "llvm/Transforms/Utils/BuildLibCalls.h"
 #include "llvm/Transforms/Utils/BypassSlowDivision.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "llvm/Transforms/Utils/Local.h"
 #include "llvm/Transforms/Utils/SimplifyLibCalls.h"
 #include "llvm/Transforms/Utils/ValueMapper.h"
-#include <algorithm>
-#include <cassert>
-#include <cstdint>
-#include <iterator>
-#include <limits>
-#include <memory>
-#include <utility>
-#include <vector>
 
 using namespace llvm;
 using namespace llvm::PatternMatch;
@@ -195,21 +157,19 @@ static cl::opt<unsigned> MemCmpNumLoadsPerBlock(
              "memcmp that is only being compared against zero."));
 
 namespace {
-
-using SetOfInstrs = SmallPtrSet<Instruction *, 16>;
-using TypeIsSExt = PointerIntPair<Type *, 1, bool>;
-using InstrToOrigTy = DenseMap<Instruction *, TypeIsSExt>;
-using SExts = SmallVector<Instruction *, 16>;
-using ValueToSExts = DenseMap<Value *, SExts>;
-
+typedef SmallPtrSet<Instruction *, 16> SetOfInstrs;
+typedef PointerIntPair<Type *, 1, bool> TypeIsSExt;
+typedef DenseMap<Instruction *, TypeIsSExt> InstrToOrigTy;
+typedef SmallVector<Instruction *, 16> SExts;
+typedef DenseMap<Value *, SExts> ValueToSExts;
 class TypePromotionTransaction;
 
   class CodeGenPrepare : public FunctionPass {
-    const TargetMachine *TM = nullptr;
+    const TargetMachine *TM;
     const TargetSubtargetInfo *SubtargetInfo;
-    const TargetLowering *TLI = nullptr;
+    const TargetLowering *TLI;
     const TargetRegisterInfo *TRI;
-    const TargetTransformInfo *TTI = nullptr;
+    const TargetTransformInfo *TTI;
     const TargetLibraryInfo *TLInfo;
     const LoopInfo *LI;
     std::unique_ptr<BlockFrequencyInfo> BFI;
@@ -226,7 +186,6 @@ class TypePromotionTransaction;
 
     /// Keeps track of all instructions inserted for the current function.
     SetOfInstrs InsertedInsts;
-
     /// Keeps track of the type of the related instruction before their
     /// promotion for the current function.
     InstrToOrigTy PromotedInsts;
@@ -247,15 +206,15 @@ class TypePromotionTransaction;
     bool OptSize;
 
     /// DataLayout for the Function being processed.
-    const DataLayout *DL = nullptr;
+    const DataLayout *DL;
 
   public:
     static char ID; // Pass identification, replacement for typeid
-
-    CodeGenPrepare() : FunctionPass(ID) {
+    CodeGenPrepare()
+        : FunctionPass(ID), TM(nullptr), TLI(nullptr), TTI(nullptr),
+          DL(nullptr) {
       initializeCodeGenPreparePass(*PassRegistry::getPassRegistry());
     }
-
     bool runOnFunction(Function &F) override;
 
     StringRef getPassName() const override { return "CodeGen Prepare"; }
@@ -307,11 +266,9 @@ class TypePromotionTransaction;
     bool simplifyOffsetableRelocate(Instruction &I);
     bool splitIndirectCriticalEdges(Function &F);
   };
-
-} // end anonymous namespace
+}
 
 char CodeGenPrepare::ID = 0;
-
 INITIALIZE_PASS_BEGIN(CodeGenPrepare, DEBUG_TYPE,
                       "Optimize for code generation", false, false)
 INITIALIZE_PASS_DEPENDENCY(ProfileSummaryInfoWrapperPass)
@@ -870,6 +827,7 @@ bool CodeGenPrepare::canMergeBlocks(const BasicBlock *BB,
   return true;
 }
 
+
 /// Eliminate a basic block that has only phi's and an unconditional branch in
 /// it.
 void CodeGenPrepare::eliminateMostlyEmptyBlock(BasicBlock *BB) {
@@ -990,21 +948,6 @@ static bool
 simplifyRelocatesOffABase(GCRelocateInst *RelocatedBase,
                           const SmallVectorImpl<GCRelocateInst *> &Targets) {
   bool MadeChange = false;
-  // We must ensure the relocation of derived pointer is defined after
-  // relocation of base pointer. If we find a relocation corresponding to base
-  // defined earlier than relocation of base then we move relocation of base
-  // right before found relocation. We consider only relocation in the same
-  // basic block as relocation of base. Relocations from other basic block will
-  // be skipped by optimization and we do not care about them.
-  for (auto R = RelocatedBase->getParent()->getFirstInsertionPt();
-       &*R != RelocatedBase; ++R)
-    if (auto RI = dyn_cast<GCRelocateInst>(R))
-      if (RI->getStatepoint() == RelocatedBase->getStatepoint())
-        if (RI->getBasePtrIndex() == RelocatedBase->getBasePtrIndex()) {
-          RelocatedBase->moveBefore(RI);
-          break;
-        }
-
   for (GCRelocateInst *ToReplace : Targets) {
     assert(ToReplace->getBasePtrIndex() == RelocatedBase->getBasePtrIndex() &&
            "Not relocating a derived object of the original base object");
@@ -1194,6 +1137,7 @@ static bool SinkCast(CastInst *CI) {
 /// reduce the number of virtual registers that must be created and coalesced.
 ///
 /// Return true if any changes are made.
+///
 static bool OptimizeNoopCopyExpression(CastInst *CI, const TargetLowering &TLI,
                                        const DataLayout &DL) {
   // Sink only "cheap" (or nop) address-space casts.  This is a weaker condition
@@ -1697,79 +1641,56 @@ static bool despeculateCountZeros(IntrinsicInst *CountZeros,
   return true;
 }
 
-namespace {
-
 // This class provides helper functions to expand a memcmp library call into an
 // inline expansion.
 class MemCmpExpansion {
   struct ResultBlock {
-    BasicBlock *BB = nullptr;
-    PHINode *PhiSrc1 = nullptr;
-    PHINode *PhiSrc2 = nullptr;
-
-    ResultBlock() = default;
+    BasicBlock *BB;
+    PHINode *PhiSrc1;
+    PHINode *PhiSrc2;
+    ResultBlock();
   };
 
-  CallInst *const CI;
+  CallInst *CI;
   ResultBlock ResBlock;
-  const uint64_t Size;
   unsigned MaxLoadSize;
-  uint64_t NumLoadsNonOneByte;
-  const uint64_t NumLoadsPerBlock;
+  unsigned NumBlocks;
+  unsigned NumBlocksNonOneByte;
+  unsigned NumLoadsPerBlock;
   std::vector<BasicBlock *> LoadCmpBlocks;
   BasicBlock *EndBlock;
   PHINode *PhiRes;
-  const bool IsUsedForZeroCmp;
+  bool IsUsedForZeroCmp;
   const DataLayout &DL;
   IRBuilder<> Builder;
-  // Represents the decomposition in blocks of the expansion. For example,
-  // comparing 33 bytes on X86+sse can be done with 2x16-byte loads and
-  // 1x1-byte load, which would be represented as [{16, 0}, {16, 16}, {32, 1}.
-  // TODO(courbet): Involve the target more in this computation. On X86, 7
-  // bytes can be done more efficiently with two overlaping 4-byte loads than
-  // covering the interval with [{4, 0},{2, 4},{1, 6}}.
-  struct LoadEntry {
-    LoadEntry(unsigned LoadSize, uint64_t Offset)
-        : LoadSize(LoadSize), Offset(Offset) {
-      assert(Offset % LoadSize == 0 && "invalid load entry");
-    }
 
-    uint64_t getGEPIndex() const { return Offset / LoadSize; }
-
-    // The size of the load for this block, in bytes.
-    const unsigned LoadSize;
-    // The offset of this load WRT the base pointer, in bytes.
-    const uint64_t Offset;
-  };
-  SmallVector<LoadEntry, 8> LoadSequence;
-
+  unsigned calculateNumBlocks(unsigned Size);
   void createLoadCmpBlocks();
   void createResultBlock();
   void setupResultBlockPHINodes();
   void setupEndBlockPHINodes();
-  Value *getCompareLoadPairs(unsigned BlockIndex, unsigned &LoadIndex);
-  void emitLoadCompareBlock(unsigned BlockIndex);
-  void emitLoadCompareBlockMultipleLoads(unsigned BlockIndex,
-                                         unsigned &LoadIndex);
-  void emitLoadCompareByteBlock(unsigned BlockIndex, unsigned GEPIndex);
+  void emitLoadCompareBlock(unsigned Index, unsigned LoadSize,
+                            unsigned GEPIndex);
+  Value *getCompareLoadPairs(unsigned Index, unsigned Size,
+                             unsigned &NumBytesProcessed);
+  void emitLoadCompareBlockMultipleLoads(unsigned Index, unsigned Size,
+                                         unsigned &NumBytesProcessed);
+  void emitLoadCompareByteBlock(unsigned Index, unsigned GEPIndex);
   void emitMemCmpResultBlock();
-  Value *getMemCmpExpansionZeroCase();
-  Value *getMemCmpEqZeroOneBlock();
-  Value *getMemCmpOneBlock();
+  Value *getMemCmpExpansionZeroCase(unsigned Size);
+  Value *getMemCmpEqZeroOneBlock(unsigned Size);
+  Value *getMemCmpOneBlock(unsigned Size);
+  unsigned getLoadSize(unsigned Size);
+  unsigned getNumLoads(unsigned Size);
 
- public:
-  MemCmpExpansion(CallInst *CI, uint64_t Size,
-                  const TargetTransformInfo::MemCmpExpansionOptions &Options,
-                  unsigned MaxNumLoads, const bool IsUsedForZeroCmp,
+public:
+  MemCmpExpansion(CallInst *CI, uint64_t Size, unsigned MaxLoadSize,
                   unsigned NumLoadsPerBlock, const DataLayout &DL);
-
-  unsigned getNumBlocks();
-  uint64_t getNumLoads() const { return LoadSequence.size(); }
-
-  Value *getMemCmpExpansion();
+  Value *getMemCmpExpansion(uint64_t Size);
 };
 
-} // end anonymous namespace
+MemCmpExpansion::ResultBlock::ResultBlock()
+    : BB(nullptr), PhiSrc1(nullptr), PhiSrc2(nullptr) {}
 
 // Initialize the basic block structure required for expansion of memcmp call
 // with given maximum load size and memcmp size parameter.
@@ -1779,66 +1700,44 @@ class MemCmpExpansion {
 // return from.
 // 3. ResultBlock, block to branch to for early exit when a
 // LoadCmpBlock finds a difference.
-MemCmpExpansion::MemCmpExpansion(
-    CallInst *const CI, uint64_t Size,
-    const TargetTransformInfo::MemCmpExpansionOptions &Options,
-    const unsigned MaxNumLoads, const bool IsUsedForZeroCmp,
-    const unsigned NumLoadsPerBlock, const DataLayout &TheDataLayout)
-    : CI(CI),
-      Size(Size),
-      MaxLoadSize(0),
-      NumLoadsNonOneByte(0),
-      NumLoadsPerBlock(NumLoadsPerBlock),
-      IsUsedForZeroCmp(IsUsedForZeroCmp),
-      DL(TheDataLayout),
-      Builder(CI) {
-  assert(Size > 0 && "zero blocks");
-  // Scale the max size down if the target can load more bytes than we need.
-  size_t LoadSizeIndex = 0;
-  while (LoadSizeIndex < Options.LoadSizes.size() &&
-         Options.LoadSizes[LoadSizeIndex] > Size) {
-    ++LoadSizeIndex;
-  }
-  this->MaxLoadSize = Options.LoadSizes[LoadSizeIndex];
-  // Compute the decomposition.
-  uint64_t CurSize = Size;
-  uint64_t Offset = 0;
-  while (CurSize && LoadSizeIndex < Options.LoadSizes.size()) {
-    const unsigned LoadSize = Options.LoadSizes[LoadSizeIndex];
-    assert(LoadSize > 0 && "zero load size");
-    const uint64_t NumLoadsForThisSize = CurSize / LoadSize;
-    if (LoadSequence.size() + NumLoadsForThisSize > MaxNumLoads) {
-      // Do not expand if the total number of loads is larger than what the
-      // target allows. Note that it's important that we exit before completing
-      // the expansion to avoid using a ton of memory to store the expansion for
-      // large sizes.
-      LoadSequence.clear();
-      return;
-    }
-    if (NumLoadsForThisSize > 0) {
-      for (uint64_t I = 0; I < NumLoadsForThisSize; ++I) {
-        LoadSequence.push_back({LoadSize, Offset});
-        Offset += LoadSize;
-      }
-      if (LoadSize > 1) {
-        ++NumLoadsNonOneByte;
-      }
-      CurSize = CurSize % LoadSize;
-    }
-    ++LoadSizeIndex;
-  }
-  assert(LoadSequence.size() <= MaxNumLoads && "broken invariant");
-}
+MemCmpExpansion::MemCmpExpansion(CallInst *CI, uint64_t Size,
+                                 unsigned MaxLoadSize, unsigned LoadsPerBlock,
+                                 const DataLayout &TheDataLayout)
+    : CI(CI), MaxLoadSize(MaxLoadSize), NumLoadsPerBlock(LoadsPerBlock),
+      DL(TheDataLayout), Builder(CI) {
 
-unsigned MemCmpExpansion::getNumBlocks() {
-  if (IsUsedForZeroCmp)
-    return getNumLoads() / NumLoadsPerBlock +
-           (getNumLoads() % NumLoadsPerBlock != 0 ? 1 : 0);
-  return getNumLoads();
+  // A memcmp with zero-comparison with only one block of load and compare does
+  // not need to set up any extra blocks. This case could be handled in the DAG,
+  // but since we have all of the machinery to flexibly expand any memcpy here,
+  // we choose to handle this case too to avoid fragmented lowering.
+  IsUsedForZeroCmp = isOnlyUsedInZeroEqualityComparison(CI);
+  NumBlocks = calculateNumBlocks(Size);
+  if ((!IsUsedForZeroCmp && NumLoadsPerBlock != 1) || NumBlocks != 1) {
+    BasicBlock *StartBlock = CI->getParent();
+    EndBlock = StartBlock->splitBasicBlock(CI, "endblock");
+    setupEndBlockPHINodes();
+    createResultBlock();
+
+    // If return value of memcmp is not used in a zero equality, we need to
+    // calculate which source was larger. The calculation requires the
+    // two loaded source values of each load compare block.
+    // These will be saved in the phi nodes created by setupResultBlockPHINodes.
+    if (!IsUsedForZeroCmp)
+      setupResultBlockPHINodes();
+
+    // Create the number of required load compare basic blocks.
+    createLoadCmpBlocks();
+
+    // Update the terminator added by splitBasicBlock to branch to the first
+    // LoadCmpBlock.
+    StartBlock->getTerminator()->setSuccessor(0, LoadCmpBlocks[0]);
+  }
+
+  Builder.SetCurrentDebugLocation(CI->getDebugLoc());
 }
 
 void MemCmpExpansion::createLoadCmpBlocks() {
-  for (unsigned i = 0; i < getNumBlocks(); i++) {
+  for (unsigned i = 0; i < NumBlocks; i++) {
     BasicBlock *BB = BasicBlock::Create(CI->getContext(), "loadbb",
                                         EndBlock->getParent(), EndBlock);
     LoadCmpBlocks.push_back(BB);
@@ -1854,12 +1753,12 @@ void MemCmpExpansion::createResultBlock() {
 // It loads 1 byte from each source of the memcmp parameters with the given
 // GEPIndex. It then subtracts the two loaded values and adds this result to the
 // final phi node for selecting the memcmp result.
-void MemCmpExpansion::emitLoadCompareByteBlock(unsigned BlockIndex,
+void MemCmpExpansion::emitLoadCompareByteBlock(unsigned Index,
                                                unsigned GEPIndex) {
   Value *Source1 = CI->getArgOperand(0);
   Value *Source2 = CI->getArgOperand(1);
 
-  Builder.SetInsertPoint(LoadCmpBlocks[BlockIndex]);
+  Builder.SetInsertPoint(LoadCmpBlocks[Index]);
   Type *LoadSizeType = Type::getInt8Ty(CI->getContext());
   // Cast source to LoadSizeType*.
   if (Source1->getType() != LoadSizeType)
@@ -1882,15 +1781,15 @@ void MemCmpExpansion::emitLoadCompareByteBlock(unsigned BlockIndex,
   LoadSrc2 = Builder.CreateZExt(LoadSrc2, Type::getInt32Ty(CI->getContext()));
   Value *Diff = Builder.CreateSub(LoadSrc1, LoadSrc2);
 
-  PhiRes->addIncoming(Diff, LoadCmpBlocks[BlockIndex]);
+  PhiRes->addIncoming(Diff, LoadCmpBlocks[Index]);
 
-  if (BlockIndex < (LoadCmpBlocks.size() - 1)) {
+  if (Index < (LoadCmpBlocks.size() - 1)) {
     // Early exit branch if difference found to EndBlock. Otherwise, continue to
     // next LoadCmpBlock,
     Value *Cmp = Builder.CreateICmp(ICmpInst::ICMP_NE, Diff,
                                     ConstantInt::get(Diff->getType(), 0));
     BranchInst *CmpBr =
-        BranchInst::Create(EndBlock, LoadCmpBlocks[BlockIndex + 1], Cmp);
+        BranchInst::Create(EndBlock, LoadCmpBlocks[Index + 1], Cmp);
     Builder.Insert(CmpBr);
   } else {
     // The last block has an unconditional branch to EndBlock.
@@ -1899,37 +1798,42 @@ void MemCmpExpansion::emitLoadCompareByteBlock(unsigned BlockIndex,
   }
 }
 
+unsigned MemCmpExpansion::getNumLoads(unsigned Size) {
+  return (Size / MaxLoadSize) + countPopulation(Size % MaxLoadSize);
+}
+
+unsigned MemCmpExpansion::getLoadSize(unsigned Size) {
+  return MinAlign(PowerOf2Floor(Size), MaxLoadSize);
+}
+
 /// Generate an equality comparison for one or more pairs of loaded values.
 /// This is used in the case where the memcmp() call is compared equal or not
 /// equal to zero.
-Value *MemCmpExpansion::getCompareLoadPairs(unsigned BlockIndex,
-                                            unsigned &LoadIndex) {
-  assert(LoadIndex < getNumLoads() &&
-         "getCompareLoadPairs() called with no remaining loads");
+Value *MemCmpExpansion::getCompareLoadPairs(unsigned Index, unsigned Size,
+                                            unsigned &NumBytesProcessed) {
   std::vector<Value *> XorList, OrList;
   Value *Diff;
 
-  const unsigned NumLoads =
-      std::min(getNumLoads() - LoadIndex, NumLoadsPerBlock);
+  unsigned RemainingBytes = Size - NumBytesProcessed;
+  unsigned NumLoadsRemaining = getNumLoads(RemainingBytes);
+  unsigned NumLoads = std::min(NumLoadsRemaining, NumLoadsPerBlock);
 
   // For a single-block expansion, start inserting before the memcmp call.
   if (LoadCmpBlocks.empty())
     Builder.SetInsertPoint(CI);
   else
-    Builder.SetInsertPoint(LoadCmpBlocks[BlockIndex]);
+    Builder.SetInsertPoint(LoadCmpBlocks[Index]);
 
   Value *Cmp = nullptr;
-  // If we have multiple loads per block, we need to generate a composite
-  // comparison using xor+or. The type for the combinations is the largest load
-  // type.
-  IntegerType *const MaxLoadType =
-      NumLoads == 1 ? nullptr
-                    : IntegerType::get(CI->getContext(), MaxLoadSize * 8);
-  for (unsigned i = 0; i < NumLoads; ++i, ++LoadIndex) {
-    const LoadEntry &CurLoadEntry = LoadSequence[LoadIndex];
+  for (unsigned i = 0; i < NumLoads; ++i) {
+    unsigned LoadSize = getLoadSize(RemainingBytes);
+    unsigned GEPIndex = NumBytesProcessed / LoadSize;
+    NumBytesProcessed += LoadSize;
+    RemainingBytes -= LoadSize;
 
-    IntegerType *LoadSizeType =
-        IntegerType::get(CI->getContext(), CurLoadEntry.LoadSize * 8);
+    Type *LoadSizeType = IntegerType::get(CI->getContext(), LoadSize * 8);
+    Type *MaxLoadType = IntegerType::get(CI->getContext(), MaxLoadSize * 8);
+    assert(LoadSize <= MaxLoadSize && "Unexpected load type");
 
     Value *Source1 = CI->getArgOperand(0);
     Value *Source2 = CI->getArgOperand(1);
@@ -1940,14 +1844,12 @@ Value *MemCmpExpansion::getCompareLoadPairs(unsigned BlockIndex,
     if (Source2->getType() != LoadSizeType)
       Source2 = Builder.CreateBitCast(Source2, LoadSizeType->getPointerTo());
 
-    // Get the base address using a GEP.
-    if (CurLoadEntry.Offset != 0) {
-      Source1 = Builder.CreateGEP(
-          LoadSizeType, Source1,
-          ConstantInt::get(LoadSizeType, CurLoadEntry.getGEPIndex()));
-      Source2 = Builder.CreateGEP(
-          LoadSizeType, Source2,
-          ConstantInt::get(LoadSizeType, CurLoadEntry.getGEPIndex()));
+    // Get the base address using the GEPIndex.
+    if (GEPIndex != 0) {
+      Source1 = Builder.CreateGEP(LoadSizeType, Source1,
+                                  ConstantInt::get(LoadSizeType, GEPIndex));
+      Source2 = Builder.CreateGEP(LoadSizeType, Source2,
+                                  ConstantInt::get(LoadSizeType, GEPIndex));
     }
 
     // Get a constant or load a value for each source address.
@@ -2004,13 +1906,13 @@ Value *MemCmpExpansion::getCompareLoadPairs(unsigned BlockIndex,
   return Cmp;
 }
 
-void MemCmpExpansion::emitLoadCompareBlockMultipleLoads(unsigned BlockIndex,
-                                                        unsigned &LoadIndex) {
-  Value *Cmp = getCompareLoadPairs(BlockIndex, LoadIndex);
+void MemCmpExpansion::emitLoadCompareBlockMultipleLoads(
+    unsigned Index, unsigned Size, unsigned &NumBytesProcessed) {
+  Value *Cmp = getCompareLoadPairs(Index, Size, NumBytesProcessed);
 
-  BasicBlock *NextBB = (BlockIndex == (LoadCmpBlocks.size() - 1))
+  BasicBlock *NextBB = (Index == (LoadCmpBlocks.size() - 1))
                            ? EndBlock
-                           : LoadCmpBlocks[BlockIndex + 1];
+                           : LoadCmpBlocks[Index + 1];
   // Early exit branch if difference found to ResultBlock. Otherwise,
   // continue to next LoadCmpBlock or EndBlock.
   BranchInst *CmpBr = BranchInst::Create(ResBlock.BB, NextBB, Cmp);
@@ -2019,9 +1921,9 @@ void MemCmpExpansion::emitLoadCompareBlockMultipleLoads(unsigned BlockIndex,
   // Add a phi edge for the last LoadCmpBlock to Endblock with a value of 0
   // since early exit to ResultBlock was not taken (no difference was found in
   // any of the bytes).
-  if (BlockIndex == LoadCmpBlocks.size() - 1) {
+  if (Index == LoadCmpBlocks.size() - 1) {
     Value *Zero = ConstantInt::get(Type::getInt32Ty(CI->getContext()), 0);
-    PhiRes->addIncoming(Zero, LoadCmpBlocks[BlockIndex]);
+    PhiRes->addIncoming(Zero, LoadCmpBlocks[Index]);
   }
 }
 
@@ -2034,39 +1936,33 @@ void MemCmpExpansion::emitLoadCompareBlockMultipleLoads(unsigned BlockIndex,
 // the EndBlock if this is the last LoadCmpBlock. Loading 1 byte is handled with
 // a special case through emitLoadCompareByteBlock. The special handling can
 // simply subtract the loaded values and add it to the result phi node.
-void MemCmpExpansion::emitLoadCompareBlock(unsigned BlockIndex) {
-  // There is one load per block in this case, BlockIndex == LoadIndex.
-  const LoadEntry &CurLoadEntry = LoadSequence[BlockIndex];
-
-  if (CurLoadEntry.LoadSize == 1) {
-    MemCmpExpansion::emitLoadCompareByteBlock(BlockIndex,
-                                              CurLoadEntry.getGEPIndex());
+void MemCmpExpansion::emitLoadCompareBlock(unsigned Index, unsigned LoadSize,
+                                           unsigned GEPIndex) {
+  if (LoadSize == 1) {
+    MemCmpExpansion::emitLoadCompareByteBlock(Index, GEPIndex);
     return;
   }
 
-  Type *LoadSizeType =
-      IntegerType::get(CI->getContext(), CurLoadEntry.LoadSize * 8);
+  Type *LoadSizeType = IntegerType::get(CI->getContext(), LoadSize * 8);
   Type *MaxLoadType = IntegerType::get(CI->getContext(), MaxLoadSize * 8);
-  assert(CurLoadEntry.LoadSize <= MaxLoadSize && "Unexpected load type");
+  assert(LoadSize <= MaxLoadSize && "Unexpected load type");
 
   Value *Source1 = CI->getArgOperand(0);
   Value *Source2 = CI->getArgOperand(1);
 
-  Builder.SetInsertPoint(LoadCmpBlocks[BlockIndex]);
+  Builder.SetInsertPoint(LoadCmpBlocks[Index]);
   // Cast source to LoadSizeType*.
   if (Source1->getType() != LoadSizeType)
     Source1 = Builder.CreateBitCast(Source1, LoadSizeType->getPointerTo());
   if (Source2->getType() != LoadSizeType)
     Source2 = Builder.CreateBitCast(Source2, LoadSizeType->getPointerTo());
 
-  // Get the base address using a GEP.
-  if (CurLoadEntry.Offset != 0) {
-    Source1 = Builder.CreateGEP(
-        LoadSizeType, Source1,
-        ConstantInt::get(LoadSizeType, CurLoadEntry.getGEPIndex()));
-    Source2 = Builder.CreateGEP(
-        LoadSizeType, Source2,
-        ConstantInt::get(LoadSizeType, CurLoadEntry.getGEPIndex()));
+  // Get the base address using the GEPIndex.
+  if (GEPIndex != 0) {
+    Source1 = Builder.CreateGEP(LoadSizeType, Source1,
+                                ConstantInt::get(LoadSizeType, GEPIndex));
+    Source2 = Builder.CreateGEP(LoadSizeType, Source2,
+                                ConstantInt::get(LoadSizeType, GEPIndex));
   }
 
   // Load LoadSizeType from the base address.
@@ -2088,14 +1984,14 @@ void MemCmpExpansion::emitLoadCompareBlock(unsigned BlockIndex) {
   // Add the loaded values to the phi nodes for calculating memcmp result only
   // if result is not used in a zero equality.
   if (!IsUsedForZeroCmp) {
-    ResBlock.PhiSrc1->addIncoming(LoadSrc1, LoadCmpBlocks[BlockIndex]);
-    ResBlock.PhiSrc2->addIncoming(LoadSrc2, LoadCmpBlocks[BlockIndex]);
+    ResBlock.PhiSrc1->addIncoming(LoadSrc1, LoadCmpBlocks[Index]);
+    ResBlock.PhiSrc2->addIncoming(LoadSrc2, LoadCmpBlocks[Index]);
   }
 
   Value *Cmp = Builder.CreateICmp(ICmpInst::ICMP_EQ, LoadSrc1, LoadSrc2);
-  BasicBlock *NextBB = (BlockIndex == (LoadCmpBlocks.size() - 1))
+  BasicBlock *NextBB = (Index == (LoadCmpBlocks.size() - 1))
                            ? EndBlock
-                           : LoadCmpBlocks[BlockIndex + 1];
+                           : LoadCmpBlocks[Index + 1];
   // Early exit branch if difference found to ResultBlock. Otherwise, continue
   // to next LoadCmpBlock or EndBlock.
   BranchInst *CmpBr = BranchInst::Create(NextBB, ResBlock.BB, Cmp);
@@ -2104,9 +2000,9 @@ void MemCmpExpansion::emitLoadCompareBlock(unsigned BlockIndex) {
   // Add a phi edge for the last LoadCmpBlock to Endblock with a value of 0
   // since early exit to ResultBlock was not taken (no difference was found in
   // any of the bytes).
-  if (BlockIndex == LoadCmpBlocks.size() - 1) {
+  if (Index == LoadCmpBlocks.size() - 1) {
     Value *Zero = ConstantInt::get(Type::getInt32Ty(CI->getContext()), 0);
-    PhiRes->addIncoming(Zero, LoadCmpBlocks[BlockIndex]);
+    PhiRes->addIncoming(Zero, LoadCmpBlocks[Index]);
   }
 }
 
@@ -2140,14 +2036,34 @@ void MemCmpExpansion::emitMemCmpResultBlock() {
   PhiRes->addIncoming(Res, ResBlock.BB);
 }
 
+unsigned MemCmpExpansion::calculateNumBlocks(unsigned Size) {
+  unsigned NumBlocks = 0;
+  bool HaveOneByteLoad = false;
+  unsigned RemainingSize = Size;
+  unsigned LoadSize = MaxLoadSize;
+  while (RemainingSize) {
+    if (LoadSize == 1)
+      HaveOneByteLoad = true;
+    NumBlocks += RemainingSize / LoadSize;
+    RemainingSize = RemainingSize % LoadSize;
+    LoadSize = LoadSize / 2;
+  }
+  NumBlocksNonOneByte = HaveOneByteLoad ? (NumBlocks - 1) : NumBlocks;
+
+  if (IsUsedForZeroCmp)
+    NumBlocks = NumBlocks / NumLoadsPerBlock +
+                (NumBlocks % NumLoadsPerBlock != 0 ? 1 : 0);
+
+  return NumBlocks;
+}
+
 void MemCmpExpansion::setupResultBlockPHINodes() {
   Type *MaxLoadType = IntegerType::get(CI->getContext(), MaxLoadSize * 8);
   Builder.SetInsertPoint(ResBlock.BB);
-  // Note: this assumes one load per block.
   ResBlock.PhiSrc1 =
-      Builder.CreatePHI(MaxLoadType, NumLoadsNonOneByte, "phi.src1");
+      Builder.CreatePHI(MaxLoadType, NumBlocksNonOneByte, "phi.src1");
   ResBlock.PhiSrc2 =
-      Builder.CreatePHI(MaxLoadType, NumLoadsNonOneByte, "phi.src2");
+      Builder.CreatePHI(MaxLoadType, NumBlocksNonOneByte, "phi.src2");
 }
 
 void MemCmpExpansion::setupEndBlockPHINodes() {
@@ -2155,13 +2071,12 @@ void MemCmpExpansion::setupEndBlockPHINodes() {
   PhiRes = Builder.CreatePHI(Type::getInt32Ty(CI->getContext()), 2, "phi.res");
 }
 
-Value *MemCmpExpansion::getMemCmpExpansionZeroCase() {
-  unsigned LoadIndex = 0;
+Value *MemCmpExpansion::getMemCmpExpansionZeroCase(unsigned Size) {
+  unsigned NumBytesProcessed = 0;
   // This loop populates each of the LoadCmpBlocks with the IR sequence to
   // handle multiple loads per block.
-  for (unsigned I = 0; I < getNumBlocks(); ++I) {
-    emitLoadCompareBlockMultipleLoads(I, LoadIndex);
-  }
+  for (unsigned i = 0; i < NumBlocks; ++i)
+    emitLoadCompareBlockMultipleLoads(i, Size, NumBytesProcessed);
 
   emitMemCmpResultBlock();
   return PhiRes;
@@ -2170,16 +2085,15 @@ Value *MemCmpExpansion::getMemCmpExpansionZeroCase() {
 /// A memcmp expansion that compares equality with 0 and only has one block of
 /// load and compare can bypass the compare, branch, and phi IR that is required
 /// in the general case.
-Value *MemCmpExpansion::getMemCmpEqZeroOneBlock() {
-  unsigned LoadIndex = 0;
-  Value *Cmp = getCompareLoadPairs(0, LoadIndex);
-  assert(LoadIndex == getNumLoads() && "some entries were not consumed");
+Value *MemCmpExpansion::getMemCmpEqZeroOneBlock(unsigned Size) {
+  unsigned NumBytesProcessed = 0;
+  Value *Cmp = getCompareLoadPairs(0, Size, NumBytesProcessed);
   return Builder.CreateZExt(Cmp, Type::getInt32Ty(CI->getContext()));
 }
 
 /// A memcmp expansion that only has one block of load and compare can bypass
 /// the compare, branch, and phi IR that is required in the general case.
-Value *MemCmpExpansion::getMemCmpOneBlock() {
+Value *MemCmpExpansion::getMemCmpOneBlock(unsigned Size) {
   assert(NumLoadsPerBlock == 1 && "Only handles one load pair per block");
 
   Type *LoadSizeType = IntegerType::get(CI->getContext(), Size * 8);
@@ -2203,65 +2117,48 @@ Value *MemCmpExpansion::getMemCmpOneBlock() {
     LoadSrc2 = Builder.CreateCall(Bswap, LoadSrc2);
   }
 
-  if (Size < 4) {
-    // The i8 and i16 cases don't need compares. We zext the loaded values and
-    // subtract them to get the suitable negative, zero, or positive i32 result.
-    LoadSrc1 = Builder.CreateZExt(LoadSrc1, Builder.getInt32Ty());
-    LoadSrc2 = Builder.CreateZExt(LoadSrc2, Builder.getInt32Ty());
-    return Builder.CreateSub(LoadSrc1, LoadSrc2);
-  }
-
-  // The result of memcmp is negative, zero, or positive, so produce that by
-  // subtracting 2 extended compare bits: sub (ugt, ult).
-  // If a target prefers to use selects to get -1/0/1, they should be able
-  // to transform this later. The inverse transform (going from selects to math)
-  // may not be possible in the DAG because the selects got converted into
-  // branches before we got there.
-  Value *CmpUGT = Builder.CreateICmpUGT(LoadSrc1, LoadSrc2);
+  // TODO: Instead of comparing ULT, just subtract and return the difference?
+  Value *CmpNE = Builder.CreateICmpNE(LoadSrc1, LoadSrc2);
   Value *CmpULT = Builder.CreateICmpULT(LoadSrc1, LoadSrc2);
-  Value *ZextUGT = Builder.CreateZExt(CmpUGT, Builder.getInt32Ty());
-  Value *ZextULT = Builder.CreateZExt(CmpULT, Builder.getInt32Ty());
-  return Builder.CreateSub(ZextUGT, ZextULT);
+  Type *I32 = Builder.getInt32Ty();
+  Value *Sel1 = Builder.CreateSelect(CmpULT, ConstantInt::get(I32, -1),
+                                             ConstantInt::get(I32, 1));
+  return Builder.CreateSelect(CmpNE, Sel1, ConstantInt::get(I32, 0));
 }
 
 // This function expands the memcmp call into an inline expansion and returns
 // the memcmp result.
-Value *MemCmpExpansion::getMemCmpExpansion() {
-  // A memcmp with zero-comparison with only one block of load and compare does
-  // not need to set up any extra blocks. This case could be handled in the DAG,
-  // but since we have all of the machinery to flexibly expand any memcpy here,
-  // we choose to handle this case too to avoid fragmented lowering.
-  if ((!IsUsedForZeroCmp && NumLoadsPerBlock != 1) || getNumBlocks() != 1) {
-    BasicBlock *StartBlock = CI->getParent();
-    EndBlock = StartBlock->splitBasicBlock(CI, "endblock");
-    setupEndBlockPHINodes();
-    createResultBlock();
-
-    // If return value of memcmp is not used in a zero equality, we need to
-    // calculate which source was larger. The calculation requires the
-    // two loaded source values of each load compare block.
-    // These will be saved in the phi nodes created by setupResultBlockPHINodes.
-    if (!IsUsedForZeroCmp) setupResultBlockPHINodes();
-
-    // Create the number of required load compare basic blocks.
-    createLoadCmpBlocks();
-
-    // Update the terminator added by splitBasicBlock to branch to the first
-    // LoadCmpBlock.
-    StartBlock->getTerminator()->setSuccessor(0, LoadCmpBlocks[0]);
-  }
-
-  Builder.SetCurrentDebugLocation(CI->getDebugLoc());
-
+Value *MemCmpExpansion::getMemCmpExpansion(uint64_t Size) {
   if (IsUsedForZeroCmp)
-    return getNumBlocks() == 1 ? getMemCmpEqZeroOneBlock()
-                               : getMemCmpExpansionZeroCase();
+    return NumBlocks == 1 ? getMemCmpEqZeroOneBlock(Size) :
+                            getMemCmpExpansionZeroCase(Size);
 
   // TODO: Handle more than one load pair per block in getMemCmpOneBlock().
-  if (getNumBlocks() == 1 && NumLoadsPerBlock == 1) return getMemCmpOneBlock();
+  if (NumBlocks == 1 && NumLoadsPerBlock == 1)
+    return getMemCmpOneBlock(Size);
 
-  for (unsigned I = 0; I < getNumBlocks(); ++I) {
-    emitLoadCompareBlock(I);
+  // This loop calls emitLoadCompareBlock for comparing Size bytes of the two
+  // memcmp sources. It starts with loading using the maximum load size set by
+  // the target. It processes any remaining bytes using a load size which is the
+  // next smallest power of 2.
+  unsigned LoadSize = MaxLoadSize;
+  unsigned NumBytesToBeProcessed = Size;
+  unsigned Index = 0;
+  while (NumBytesToBeProcessed) {
+    // Calculate how many blocks we can create with the current load size.
+    unsigned NumBlocks = NumBytesToBeProcessed / LoadSize;
+    unsigned GEPIndex = (Size - NumBytesToBeProcessed) / LoadSize;
+    NumBytesToBeProcessed = NumBytesToBeProcessed % LoadSize;
+
+    // For each NumBlocks, populate the instruction sequence for loading and
+    // comparing LoadSize bytes.
+    while (NumBlocks--) {
+      emitLoadCompareBlock(Index, LoadSize, GEPIndex);
+      Index++;
+      GEPIndex++;
+    }
+    // Get the next LoadSize to use.
+    LoadSize = LoadSize / 2;
   }
 
   emitMemCmpResultBlock();
@@ -2345,6 +2242,12 @@ static bool expandMemCmp(CallInst *CI, const TargetTransformInfo *TTI,
                          const TargetLowering *TLI, const DataLayout *DL) {
   NumMemCmpCalls++;
 
+  // TTI call to check if target would like to expand memcmp. Also, get the
+  // MaxLoadSize.
+  unsigned MaxLoadSize;
+  if (!TTI->expandMemCmp(CI, MaxLoadSize))
+    return false;
+
   // Early exit from expansion if -Oz.
   if (CI->getFunction()->optForMinSize())
     return false;
@@ -2355,33 +2258,31 @@ static bool expandMemCmp(CallInst *CI, const TargetTransformInfo *TTI,
     NumMemCmpNotConstant++;
     return false;
   }
-  const uint64_t SizeVal = SizeCast->getZExtValue();
 
-  if (SizeVal == 0) {
-    return false;
+  // Early exit from expansion if size greater than max bytes to load.
+  uint64_t SizeVal = SizeCast->getZExtValue();
+  unsigned NumLoads = 0;
+  unsigned RemainingSize = SizeVal;
+  unsigned LoadSize = MaxLoadSize;
+  while (RemainingSize) {
+    NumLoads += RemainingSize / LoadSize;
+    RemainingSize = RemainingSize % LoadSize;
+    LoadSize = LoadSize / 2;
   }
 
-  // TTI call to check if target would like to expand memcmp. Also, get the
-  // available load sizes.
-  const bool IsUsedForZeroCmp = isOnlyUsedInZeroEqualityComparison(CI);
-  const auto *const Options = TTI->enableMemCmpExpansion(IsUsedForZeroCmp);
-  if (!Options) return false;
-
-  const unsigned MaxNumLoads =
-      TLI->getMaxExpandSizeMemcmp(CI->getFunction()->optForSize());
-
-  MemCmpExpansion Expansion(CI, SizeVal, *Options, MaxNumLoads,
-                            IsUsedForZeroCmp, MemCmpNumLoadsPerBlock, *DL);
-
-  // Don't expand if this will require more loads than desired by the target.
-  if (Expansion.getNumLoads() == 0) {
+  if (NumLoads > TLI->getMaxExpandSizeMemcmp(CI->getFunction()->optForSize())) {
     NumMemCmpGreaterThanMax++;
     return false;
   }
 
   NumMemCmpInlined++;
 
-  Value *Res = Expansion.getMemCmpExpansion();
+  // MemCmpHelper object creates and sets up basic blocks required for
+  // expanding memcmp with size SizeVal.
+  unsigned NumLoadsPerBlock = MemCmpNumLoadsPerBlock;
+  MemCmpExpansion MemCmpHelper(CI, SizeVal, MaxLoadSize, NumLoadsPerBlock, *DL);
+
+  Value *Res = MemCmpHelper.getMemCmpExpansion(SizeVal);
 
   // Replace call with result of expansion and erase call.
   CI->replaceAllUsesWith(Res);
@@ -2698,74 +2599,18 @@ namespace {
 /// This is an extended version of TargetLowering::AddrMode
 /// which holds actual Value*'s for register values.
 struct ExtAddrMode : public TargetLowering::AddrMode {
-  Value *BaseReg = nullptr;
-  Value *ScaledReg = nullptr;
-  Value *OriginalValue = nullptr;
-
-  enum FieldName {
-    NoField        = 0x00,
-    BaseRegField   = 0x01,
-    BaseGVField    = 0x02,
-    BaseOffsField  = 0x04,
-    ScaledRegField = 0x08,
-    ScaleField     = 0x10,
-    MultipleFields = 0xff
-  };
-
-  ExtAddrMode() = default;
-
+  Value *BaseReg;
+  Value *ScaledReg;
+  ExtAddrMode() : BaseReg(nullptr), ScaledReg(nullptr) {}
   void print(raw_ostream &OS) const;
   void dump() const;
 
-  FieldName compare(const ExtAddrMode &other) {
-    // First check that the types are the same on each field, as differing types
-    // is something we can't cope with later on.
-    if (BaseReg && other.BaseReg &&
-        BaseReg->getType() != other.BaseReg->getType())
-      return MultipleFields;
-    if (BaseGV && other.BaseGV &&
-        BaseGV->getType() != other.BaseGV->getType())
-      return MultipleFields;
-    if (ScaledReg && other.ScaledReg &&
-        ScaledReg->getType() != other.ScaledReg->getType())
-      return MultipleFields;
-
-    // Check each field to see if it differs.
-    unsigned Result = NoField;
-    if (BaseReg != other.BaseReg)
-      Result |= BaseRegField;
-    if (BaseGV != other.BaseGV)
-      Result |= BaseGVField;
-    if (BaseOffs != other.BaseOffs)
-      Result |= BaseOffsField;
-    if (ScaledReg != other.ScaledReg)
-      Result |= ScaledRegField;
-    // Don't count 0 as being a different scale, because that actually means
-    // unscaled (which will already be counted by having no ScaledReg).
-    if (Scale && other.Scale && Scale != other.Scale)
-      Result |= ScaleField;
-
-    if (countPopulation(Result) > 1)
-      return MultipleFields;
-    else
-      return static_cast<FieldName>(Result);
-  }
-
-  // AddrModes with a base reg or gv where the reg/gv is just the original
-  // value are trivial.
-  bool isTrivial() {
-    bool Trivial = (BaseGV && BaseGV == OriginalValue) ||
-      (BaseReg && BaseReg == OriginalValue);
-    // If the AddrMode is trivial it shouldn't have an offset or be scaled.
-    if (Trivial) {
-      assert(BaseOffs == 0);
-      assert(Scale == 0);
-    }
-    return Trivial;
+  bool operator==(const ExtAddrMode& O) const {
+    return (BaseReg == O.BaseReg) && (ScaledReg == O.ScaledReg) &&
+           (BaseGV == O.BaseGV) && (BaseOffs == O.BaseOffs) &&
+           (HasBaseReg == O.HasBaseReg) && (Scale == O.Scale);
   }
 };
-
-} // end anonymous namespace
 
 #ifndef NDEBUG
 static inline raw_ostream &operator<<(raw_ostream &OS, const ExtAddrMode &AM) {
@@ -2812,12 +2657,11 @@ LLVM_DUMP_METHOD void ExtAddrMode::dump() const {
 }
 #endif
 
-namespace {
-
 /// \brief This class provides transaction based operation on the IR.
 /// Every change made through this class is recorded in the internal state and
 /// can be undone (rollback) until commit is called.
 class TypePromotionTransaction {
+
   /// \brief This represents the common interface of the individual transaction.
   /// Each class implements the logic for doing one specific modification on
   /// the IR via the TypePromotionTransaction.
@@ -2831,7 +2675,7 @@ class TypePromotionTransaction {
     /// The constructor performs the related action on the IR.
     TypePromotionAction(Instruction *Inst) : Inst(Inst) {}
 
-    virtual ~TypePromotionAction() = default;
+    virtual ~TypePromotionAction() {}
 
     /// \brief Undo the modification done by this action.
     /// When this method is called, the IR must be in the same state as it was
@@ -2858,7 +2702,6 @@ class TypePromotionTransaction {
       Instruction *PrevInst;
       BasicBlock *BB;
     } Point;
-
     /// Remember whether or not the instruction had a previous instruction.
     bool HasPrevInstruction;
 
@@ -2913,7 +2756,6 @@ class TypePromotionTransaction {
   class OperandSetter : public TypePromotionAction {
     /// Original operand of the instruction.
     Value *Origin;
-
     /// Index of the modified instruction.
     unsigned Idx;
 
@@ -2971,7 +2813,6 @@ class TypePromotionTransaction {
   /// \brief Build a truncate instruction.
   class TruncBuilder : public TypePromotionAction {
     Value *Val;
-
   public:
     /// \brief Build a truncate instruction of \p Opnd producing a \p Ty
     /// result.
@@ -2996,7 +2837,6 @@ class TypePromotionTransaction {
   /// \brief Build a sign extension instruction.
   class SExtBuilder : public TypePromotionAction {
     Value *Val;
-
   public:
     /// \brief Build a sign extension instruction of \p Opnd producing a \p Ty
     /// result.
@@ -3022,7 +2862,6 @@ class TypePromotionTransaction {
   /// \brief Build a zero extension instruction.
   class ZExtBuilder : public TypePromotionAction {
     Value *Val;
-
   public:
     /// \brief Build a zero extension instruction of \p Opnd producing a \p Ty
     /// result.
@@ -3073,18 +2912,15 @@ class TypePromotionTransaction {
     struct InstructionAndIdx {
       /// The instruction using the instruction.
       Instruction *Inst;
-
       /// The index where this instruction is used for Inst.
       unsigned Idx;
-
       InstructionAndIdx(Instruction *Inst, unsigned Idx)
           : Inst(Inst), Idx(Idx) {}
     };
 
     /// Keep track of the original uses (pair Instruction, Index).
     SmallVector<InstructionAndIdx, 4> OriginalUses;
-
-    using use_iterator = SmallVectorImpl<InstructionAndIdx>::iterator;
+    typedef SmallVectorImpl<InstructionAndIdx>::iterator use_iterator;
 
   public:
     /// \brief Replace all the use of \p Inst by \p New.
@@ -3115,14 +2951,11 @@ class TypePromotionTransaction {
   class InstructionRemover : public TypePromotionAction {
     /// Original position of the instruction.
     InsertionHandler Inserter;
-
     /// Helper structure to hide all the link to the instruction. In other
     /// words, this helps to do as if the instruction was removed.
     OperandsHider Hider;
-
     /// Keep track of the uses replaced, if any.
-    UsesReplacer *Replacer = nullptr;
-
+    UsesReplacer *Replacer;
     /// Keep track of instructions removed.
     SetOfInstrs &RemovedInsts;
 
@@ -3134,7 +2967,7 @@ class TypePromotionTransaction {
     InstructionRemover(Instruction *Inst, SetOfInstrs &RemovedInsts,
                        Value *New = nullptr)
         : TypePromotionAction(Inst), Inserter(Inst), Hider(Inst),
-          RemovedInsts(RemovedInsts) {
+          Replacer(nullptr), RemovedInsts(RemovedInsts) {
       if (New)
         Replacer = new UsesReplacer(Inst, New);
       DEBUG(dbgs() << "Do: InstructionRemover: " << *Inst << "\n");
@@ -3163,17 +2996,15 @@ public:
   /// Restoration point.
   /// The restoration point is a pointer to an action instead of an iterator
   /// because the iterator may be invalidated but not the pointer.
-  using ConstRestorationPt = const TypePromotionAction *;
+  typedef const TypePromotionAction *ConstRestorationPt;
 
   TypePromotionTransaction(SetOfInstrs &RemovedInsts)
       : RemovedInsts(RemovedInsts) {}
 
   /// Advocate every changes made in that transaction.
   void commit();
-
   /// Undo all the changes made after the given point.
   void rollback(ConstRestorationPt Point);
-
   /// Get the current restoration point.
   ConstRestorationPt getRestorationPoint() const;
 
@@ -3181,25 +3012,18 @@ public:
   /// @{
   /// Same as Instruction::setOperand.
   void setOperand(Instruction *Inst, unsigned Idx, Value *NewVal);
-
   /// Same as Instruction::eraseFromParent.
   void eraseInstruction(Instruction *Inst, Value *NewVal = nullptr);
-
   /// Same as Value::replaceAllUsesWith.
   void replaceAllUsesWith(Instruction *Inst, Value *New);
-
   /// Same as Value::mutateType.
   void mutateType(Instruction *Inst, Type *NewTy);
-
   /// Same as IRBuilder::createTrunc.
   Value *createTrunc(Instruction *Opnd, Type *Ty);
-
   /// Same as IRBuilder::createSExt.
   Value *createSExt(Instruction *Inst, Value *Opnd, Type *Ty);
-
   /// Same as IRBuilder::createZExt.
   Value *createZExt(Instruction *Inst, Value *Opnd, Type *Ty);
-
   /// Same as Instruction::moveBefore.
   void moveBefore(Instruction *Inst, Instruction *Before);
   /// @}
@@ -3207,36 +3031,30 @@ public:
 private:
   /// The ordered list of actions made so far.
   SmallVector<std::unique_ptr<TypePromotionAction>, 16> Actions;
-
-  using CommitPt = SmallVectorImpl<std::unique_ptr<TypePromotionAction>>::iterator;
-
+  typedef SmallVectorImpl<std::unique_ptr<TypePromotionAction>>::iterator CommitPt;
   SetOfInstrs &RemovedInsts;
 };
 
-} // end anonymous namespace
-
 void TypePromotionTransaction::setOperand(Instruction *Inst, unsigned Idx,
                                           Value *NewVal) {
-  Actions.push_back(llvm::make_unique<TypePromotionTransaction::OperandSetter>(
-      Inst, Idx, NewVal));
+  Actions.push_back(
+      make_unique<TypePromotionTransaction::OperandSetter>(Inst, Idx, NewVal));
 }
 
 void TypePromotionTransaction::eraseInstruction(Instruction *Inst,
                                                 Value *NewVal) {
   Actions.push_back(
-      llvm::make_unique<TypePromotionTransaction::InstructionRemover>(
-          Inst, RemovedInsts, NewVal));
+      make_unique<TypePromotionTransaction::InstructionRemover>(Inst,
+                                                         RemovedInsts, NewVal));
 }
 
 void TypePromotionTransaction::replaceAllUsesWith(Instruction *Inst,
                                                   Value *New) {
-  Actions.push_back(
-      llvm::make_unique<TypePromotionTransaction::UsesReplacer>(Inst, New));
+  Actions.push_back(make_unique<TypePromotionTransaction::UsesReplacer>(Inst, New));
 }
 
 void TypePromotionTransaction::mutateType(Instruction *Inst, Type *NewTy) {
-  Actions.push_back(
-      llvm::make_unique<TypePromotionTransaction::TypeMutator>(Inst, NewTy));
+  Actions.push_back(make_unique<TypePromotionTransaction::TypeMutator>(Inst, NewTy));
 }
 
 Value *TypePromotionTransaction::createTrunc(Instruction *Opnd,
@@ -3266,8 +3084,7 @@ Value *TypePromotionTransaction::createZExt(Instruction *Inst,
 void TypePromotionTransaction::moveBefore(Instruction *Inst,
                                           Instruction *Before) {
   Actions.push_back(
-      llvm::make_unique<TypePromotionTransaction::InstructionMoveBefore>(
-          Inst, Before));
+      make_unique<TypePromotionTransaction::InstructionMoveBefore>(Inst, Before));
 }
 
 TypePromotionTransaction::ConstRestorationPt
@@ -3290,8 +3107,6 @@ void TypePromotionTransaction::rollback(
   }
 }
 
-namespace {
-
 /// \brief A helper class for matching addressing modes.
 ///
 /// This encapsulates the logic for matching the target-legal addressing modes.
@@ -3313,10 +3128,8 @@ class AddressingModeMatcher {
 
   /// The instructions inserted by other CodeGenPrepare optimizations.
   const SetOfInstrs &InsertedInsts;
-
   /// A map from the instructions to their type before promotion.
   InstrToOrigTy &PromotedInsts;
-
   /// The ongoing transaction where every action should be registered.
   TypePromotionTransaction &TPT;
 
@@ -3338,8 +3151,8 @@ class AddressingModeMatcher {
         PromotedInsts(PromotedInsts), TPT(TPT) {
     IgnoreProfitability = false;
   }
-
 public:
+
   /// Find the maximal addressing mode that a load/store of V can fold,
   /// give an access type of AccessTy.  This returns a list of involved
   /// instructions in AddrModeInsts.
@@ -3364,7 +3177,6 @@ public:
     (void)Success; assert(Success && "Couldn't select *anything*?");
     return Result;
   }
-
 private:
   bool matchScaledValue(Value *ScaleReg, int64_t Scale, unsigned Depth);
   bool matchAddr(Value *V, unsigned Depth);
@@ -3377,94 +3189,6 @@ private:
   bool isPromotionProfitable(unsigned NewCost, unsigned OldCost,
                              Value *PromotedOperand) const;
 };
-
-/// \brief A helper class for combining addressing modes.
-class AddressingModeCombiner {
-private:
-  /// The addressing modes we've collected.
-  SmallVector<ExtAddrMode, 16> AddrModes;
-
-  /// The field in which the AddrModes differ, when we have more than one.
-  ExtAddrMode::FieldName DifferentField = ExtAddrMode::NoField;
-
-  /// Are the AddrModes that we have all just equal to their original values?
-  bool AllAddrModesTrivial = true;
-
-public:
-  /// \brief Get the combined AddrMode
-  const ExtAddrMode &getAddrMode() const {
-    return AddrModes[0];
-  }
-
-  /// \brief Add a new AddrMode if it's compatible with the AddrModes we already
-  /// have.
-  /// \return True iff we succeeded in doing so.
-  bool addNewAddrMode(ExtAddrMode &NewAddrMode) {
-    // Take note of if we have any non-trivial AddrModes, as we need to detect
-    // when all AddrModes are trivial as then we would introduce a phi or select
-    // which just duplicates what's already there.
-    AllAddrModesTrivial = AllAddrModesTrivial && NewAddrMode.isTrivial();
-
-    // If this is the first addrmode then everything is fine.
-    if (AddrModes.empty()) {
-      AddrModes.emplace_back(NewAddrMode);
-      return true;
-    }
-
-    // Figure out how different this is from the other address modes, which we
-    // can do just by comparing against the first one given that we only care
-    // about the cumulative difference.
-    ExtAddrMode::FieldName ThisDifferentField =
-      AddrModes[0].compare(NewAddrMode);
-    if (DifferentField == ExtAddrMode::NoField)
-      DifferentField = ThisDifferentField;
-    else if (DifferentField != ThisDifferentField)
-      DifferentField = ExtAddrMode::MultipleFields;
-
-    // If this AddrMode is the same as all the others then everything is fine
-    // (which should only happen when there is actually only one AddrMode).
-    if (DifferentField == ExtAddrMode::NoField) {
-      assert(AddrModes.size() == 1);
-      return true;
-    }
-
-    // If NewAddrMode differs in only one dimension then we can handle it by
-    // inserting a phi/select later on.
-    if (DifferentField != ExtAddrMode::MultipleFields) {
-      AddrModes.emplace_back(NewAddrMode);
-      return true;
-    }
-
-    // We couldn't combine NewAddrMode with the rest, so return failure.
-    AddrModes.clear();
-    return false;
-  }
-
-  /// \brief Combine the addressing modes we've collected into a single
-  /// addressing mode.
-  /// \return True iff we successfully combined them or we only had one so
-  /// didn't need to combine them anyway.
-  bool combineAddrModes() {
-    // If we have no AddrModes then they can't be combined.
-    if (AddrModes.size() == 0)
-      return false;
-
-    // A single AddrMode can trivially be combined.
-    if (AddrModes.size() == 1)
-      return true;
-
-    // If the AddrModes we collected are all just equal to the value they are
-    // derived from then combining them wouldn't do anything useful.
-    if (AllAddrModesTrivial)
-      return false;
-
-    // TODO: Combine multiple AddrModes by inserting a select or phi for the
-    // field in which the AddrModes differ.
-    return false;
-  }
-};
-
-} // end anonymous namespace
 
 /// Try adding ScaleReg*Scale to the current addressing mode.
 /// Return true and update AddrMode if this addr mode is legal for the target,
@@ -3570,8 +3294,6 @@ static bool isPromotedInstructionLegal(const TargetLowering &TLI,
       ISDOpcode, TLI.getValueType(DL, PromotedInst->getType()));
 }
 
-namespace {
-
 /// \brief Hepler class to perform type promotion.
 class TypePromotionHelper {
   /// \brief Utility function to check whether or not a sign or zero extension
@@ -3648,13 +3370,12 @@ class TypePromotionHelper {
 
 public:
   /// Type for the utility function that promotes the operand of Ext.
-  using Action = Value *(*)(Instruction *Ext, TypePromotionTransaction &TPT,
-                            InstrToOrigTy &PromotedInsts,
-                            unsigned &CreatedInstsCost,
-                            SmallVectorImpl<Instruction *> *Exts,
-                            SmallVectorImpl<Instruction *> *Truncs,
-                            const TargetLowering &TLI);
-
+  typedef Value *(*Action)(Instruction *Ext, TypePromotionTransaction &TPT,
+                           InstrToOrigTy &PromotedInsts,
+                           unsigned &CreatedInstsCost,
+                           SmallVectorImpl<Instruction *> *Exts,
+                           SmallVectorImpl<Instruction *> *Truncs,
+                           const TargetLowering &TLI);
   /// \brief Given a sign/zero extend instruction \p Ext, return the approriate
   /// action to promote the operand of \p Ext instead of using Ext.
   /// \return NULL if no promotable action is possible with the current
@@ -3668,8 +3389,6 @@ public:
                           const TargetLowering &TLI,
                           const InstrToOrigTy &PromotedInsts);
 };
-
-} // end anonymous namespace
 
 bool TypePromotionHelper::canGetThrough(const Instruction *Inst,
                                         Type *ConsideredExtType,
@@ -3769,7 +3488,7 @@ TypePromotionHelper::Action TypePromotionHelper::getAction(
 }
 
 Value *TypePromotionHelper::promoteOperandForTruncAndAnyExt(
-    Instruction *SExt, TypePromotionTransaction &TPT,
+    llvm::Instruction *SExt, TypePromotionTransaction &TPT,
     InstrToOrigTy &PromotedInsts, unsigned &CreatedInstsCost,
     SmallVectorImpl<Instruction *> *Exts,
     SmallVectorImpl<Instruction *> *Truncs, const TargetLowering &TLI) {
@@ -3833,8 +3552,9 @@ Value *TypePromotionHelper::promoteOperandForOther(
     // Create the truncate now.
     Value *Trunc = TPT.createTrunc(Ext, ExtOpnd->getType());
     if (Instruction *ITrunc = dyn_cast<Instruction>(Trunc)) {
+      ITrunc->removeFromParent();
       // Insert it just after the definition.
-      ITrunc->moveAfter(ExtOpnd);
+      ITrunc->insertAfter(ExtOpnd);
       if (Truncs)
         Truncs->push_back(ITrunc);
     }
@@ -4514,6 +4234,8 @@ isProfitableToFoldIntoAddressingMode(Instruction *I, ExtAddrMode &AMBefore,
   return true;
 }
 
+} // end anonymous namespace
+
 /// Return true if the specified values are defined in a
 /// different basic block than BB.
 static bool IsNonLocalValue(Value *V, BasicBlock *BB) {
@@ -4551,12 +4273,13 @@ bool CodeGenPrepare::optimizeMemoryInst(Instruction *MemoryInst, Value *Addr,
   SmallPtrSet<Value*, 16> Visited;
   worklist.push_back(Addr);
 
-  // Use a worklist to iteratively look through PHI and select nodes, and
-  // ensure that the addressing mode obtained from the non-PHI/select roots of
-  // the graph are compatible.
-  bool PhiOrSelectSeen = false;
+  // Use a worklist to iteratively look through PHI nodes, and ensure that
+  // the addressing mode obtained from the non-PHI roots of the graph
+  // are equivalent.
+  bool AddrModeFound = false;
+  bool PhiSeen = false;
   SmallVector<Instruction*, 16> AddrModeInsts;
-  AddressingModeCombiner AddrModes;
+  ExtAddrMode AddrMode;
   TypePromotionTransaction TPT(RemovedInsts);
   TypePromotionTransaction::ConstRestorationPt LastKnownGood =
       TPT.getRestorationPoint();
@@ -4580,14 +4303,7 @@ bool CodeGenPrepare::optimizeMemoryInst(Instruction *MemoryInst, Value *Addr,
     if (PHINode *P = dyn_cast<PHINode>(V)) {
       for (Value *IncValue : P->incoming_values())
         worklist.push_back(IncValue);
-      PhiOrSelectSeen = true;
-      continue;
-    }
-    // Similar for select.
-    if (SelectInst *SI = dyn_cast<SelectInst>(V)) {
-      worklist.push_back(SI->getFalseValue());
-      worklist.push_back(SI->getTrueValue());
-      PhiOrSelectSeen = true;
+      PhiSeen = true;
       continue;
     }
 
@@ -4598,29 +4314,30 @@ bool CodeGenPrepare::optimizeMemoryInst(Instruction *MemoryInst, Value *Addr,
     ExtAddrMode NewAddrMode = AddressingModeMatcher::Match(
         V, AccessTy, AddrSpace, MemoryInst, AddrModeInsts, *TLI, *TRI,
         InsertedInsts, PromotedInsts, TPT);
-    NewAddrMode.OriginalValue = V;
 
-    if (!AddrModes.addNewAddrMode(NewAddrMode))
-      break;
+    if (!AddrModeFound) {
+      AddrModeFound = true;
+      AddrMode = NewAddrMode;
+      continue;
+    }
+    if (NewAddrMode == AddrMode)
+      continue;
+
+    AddrModeFound = false;
+    break;
   }
 
-  // Try to combine the AddrModes we've collected. If we couldn't collect any,
-  // or we have multiple but either couldn't combine them or combining them
-  // wouldn't do anything useful, bail out now.
-  if (!AddrModes.combineAddrModes()) {
+  // If the addressing mode couldn't be determined, or if multiple different
+  // ones were determined, bail out now.
+  if (!AddrModeFound) {
     TPT.rollback(LastKnownGood);
     return false;
   }
   TPT.commit();
 
-  // Get the combined AddrMode (or the only AddrMode, if we only had one).
-  ExtAddrMode AddrMode = AddrModes.getAddrMode();
-
   // If all the instructions matched are already in this BB, don't do anything.
-  // If we saw a Phi node then it is not local definitely, and if we saw a select
-  // then we want to push the address calculation past it even if it's already
-  // in this BB.
-  if (!PhiOrSelectSeen && none_of(AddrModeInsts, [&](Value *V) {
+  // If we saw Phi node then it is not local definitely.
+  if (!PhiSeen && none_of(AddrModeInsts, [&](Value *V) {
         return IsNonLocalValue(V, MemoryInst->getParent());
                   })) {
     DEBUG(dbgs() << "CGP: Found      local addrmode: " << AddrMode << "\n");
@@ -5192,7 +4909,8 @@ bool CodeGenPrepare::optimizeExt(Instruction *&Inst) {
     assert(LI && ExtFedByLoad && "Expect a valid load and extension");
     TPT.commit();
     // Move the extend into the same block as the load
-    ExtFedByLoad->moveAfter(LI);
+    ExtFedByLoad->removeFromParent();
+    ExtFedByLoad->insertAfter(LI);
     // CGP does not check if the zext would be speculatively executed when moved
     // to the same basic block as the load. Preserving its original location
     // would pessimize the debugging experience, as well as negatively impact
@@ -5409,7 +5127,10 @@ bool CodeGenPrepare::optimizeExtUses(Instruction *I) {
 // b2:
 //   x = phi x1', x2'
 //   y = and x, 0xff
+//
+
 bool CodeGenPrepare::optimizeLoadExt(LoadInst *Load) {
+
   if (!Load->isSimple() ||
       !(Load->getType()->isIntegerTy() || Load->getType()->isPointerTy()))
     return false;
@@ -5448,7 +5169,7 @@ bool CodeGenPrepare::optimizeLoadExt(LoadInst *Load) {
     }
 
     switch (I->getOpcode()) {
-    case Instruction::And: {
+    case llvm::Instruction::And: {
       auto *AndC = dyn_cast<ConstantInt>(I->getOperand(1));
       if (!AndC)
         return false;
@@ -5462,7 +5183,7 @@ bool CodeGenPrepare::optimizeLoadExt(LoadInst *Load) {
       break;
     }
 
-    case Instruction::Shl: {
+    case llvm::Instruction::Shl: {
       auto *ShlC = dyn_cast<ConstantInt>(I->getOperand(1));
       if (!ShlC)
         return false;
@@ -5471,7 +5192,7 @@ bool CodeGenPrepare::optimizeLoadExt(LoadInst *Load) {
       break;
     }
 
-    case Instruction::Trunc: {
+    case llvm::Instruction::Trunc: {
       EVT TruncVT = TLI->getValueType(*DL, I->getType());
       unsigned TruncBitWidth = TruncVT.getSizeInBits();
       DemandBits.setLowBits(TruncBitWidth);
@@ -5875,7 +5596,6 @@ bool CodeGenPrepare::optimizeSwitchInst(SwitchInst *SI) {
 
 
 namespace {
-
 /// \brief Helper class to promote a scalar operation to a vector one.
 /// This class is used to move downward extractelement transition.
 /// E.g.,
@@ -5903,15 +5623,12 @@ class VectorPromoteHelper {
 
   /// The transition being moved downwards.
   Instruction *Transition;
-
   /// The sequence of instructions to be promoted.
   SmallVector<Instruction *, 4> InstsToBePromoted;
-
   /// Cost of combining a store and an extract.
   unsigned StoreExtractCombineCost;
-
   /// Instruction that will be combined with the transition.
-  Instruction *CombineInst = nullptr;
+  Instruction *CombineInst;
 
   /// \brief The instruction that represents the current end of the transition.
   /// Since we are faking the promotion until we reach the end of the chain
@@ -6017,7 +5734,7 @@ class VectorPromoteHelper {
   /// <undef, ..., undef, Val, undef, ..., undef> where \p Val is only
   /// used at the index of the extract.
   Value *getConstantVector(Constant *Val, bool UseSplat) const {
-    unsigned ExtractIdx = std::numeric_limits<unsigned>::max();
+    unsigned ExtractIdx = UINT_MAX;
     if (!UseSplat) {
       // If we cannot determine where the constant must be, we have to
       // use a splat constant.
@@ -6071,7 +5788,7 @@ public:
                       const TargetTransformInfo &TTI, Instruction *Transition,
                       unsigned CombineCost)
       : DL(DL), TLI(TLI), TTI(TTI), Transition(Transition),
-        StoreExtractCombineCost(CombineCost) {
+        StoreExtractCombineCost(CombineCost), CombineInst(nullptr) {
     assert(Transition && "Do not know how to promote null");
   }
 
@@ -6146,8 +5863,7 @@ public:
     return true;
   }
 };
-
-} // end anonymous namespace
+} // End of anonymous namespace.
 
 void VectorPromoteHelper::promoteImpl(Instruction *ToBePromoted) {
   // At this point, we know that all the operands of ToBePromoted but Def
@@ -6186,7 +5902,8 @@ void VectorPromoteHelper::promoteImpl(Instruction *ToBePromoted) {
                        "this?");
     ToBePromoted->setOperand(U.getOperandNo(), NewVal);
   }
-  Transition->moveAfter(ToBePromoted);
+  Transition->removeFromParent();
+  Transition->insertAfter(ToBePromoted);
   Transition->setOperand(getTransitionOriginalValueIdx(), ToBePromoted);
 }
 
@@ -6194,7 +5911,7 @@ void VectorPromoteHelper::promoteImpl(Instruction *ToBePromoted) {
 /// Try to push the extractelement towards the stores when the target
 /// has this feature and this is profitable.
 bool CodeGenPrepare::optimizeExtractElementInst(Instruction *Inst) {
-  unsigned CombineCost = std::numeric_limits<unsigned>::max();
+  unsigned CombineCost = UINT_MAX;
   if (DisableStoreExtract || !TLI ||
       (!StressStoreExtract &&
        !TLI->canCombineStoreAndExtract(Inst->getOperand(0)->getType(),
@@ -6356,170 +6073,6 @@ static bool splitMergedValStore(StoreInst &SI, const DataLayout &DL,
   return true;
 }
 
-// Return true if the GEP has two operands, the first operand is of a sequential
-// type, and the second operand is a constant.
-static bool GEPSequentialConstIndexed(GetElementPtrInst *GEP) {
-  gep_type_iterator I = gep_type_begin(*GEP);
-  return GEP->getNumOperands() == 2 &&
-      I.isSequential() &&
-      isa<ConstantInt>(GEP->getOperand(1));
-}
-
-// Try unmerging GEPs to reduce liveness interference (register pressure) across
-// IndirectBr edges. Since IndirectBr edges tend to touch on many blocks,
-// reducing liveness interference across those edges benefits global register
-// allocation. Currently handles only certain cases.
-//
-// For example, unmerge %GEPI and %UGEPI as below.
-//
-// ---------- BEFORE ----------
-// SrcBlock:
-//   ...
-//   %GEPIOp = ...
-//   ...
-//   %GEPI = gep %GEPIOp, Idx
-//   ...
-//   indirectbr ... [ label %DstB0, label %DstB1, ... label %DstBi ... ]
-//   (* %GEPI is alive on the indirectbr edges due to other uses ahead)
-//   (* %GEPIOp is alive on the indirectbr edges only because of it's used by
-//   %UGEPI)
-//
-// DstB0: ... (there may be a gep similar to %UGEPI to be unmerged)
-// DstB1: ... (there may be a gep similar to %UGEPI to be unmerged)
-// ...
-//
-// DstBi:
-//   ...
-//   %UGEPI = gep %GEPIOp, UIdx
-// ...
-// ---------------------------
-//
-// ---------- AFTER ----------
-// SrcBlock:
-//   ... (same as above)
-//    (* %GEPI is still alive on the indirectbr edges)
-//    (* %GEPIOp is no longer alive on the indirectbr edges as a result of the
-//    unmerging)
-// ...
-//
-// DstBi:
-//   ...
-//   %UGEPI = gep %GEPI, (UIdx-Idx)
-//   ...
-// ---------------------------
-//
-// The register pressure on the IndirectBr edges is reduced because %GEPIOp is
-// no longer alive on them.
-//
-// We try to unmerge GEPs here in CodGenPrepare, as opposed to limiting merging
-// of GEPs in the first place in InstCombiner::visitGetElementPtrInst() so as
-// not to disable further simplications and optimizations as a result of GEP
-// merging.
-//
-// Note this unmerging may increase the length of the data flow critical path
-// (the path from %GEPIOp to %UGEPI would go through %GEPI), which is a tradeoff
-// between the register pressure and the length of data-flow critical
-// path. Restricting this to the uncommon IndirectBr case would minimize the
-// impact of potentially longer critical path, if any, and the impact on compile
-// time.
-static bool tryUnmergingGEPsAcrossIndirectBr(GetElementPtrInst *GEPI,
-                                             const TargetTransformInfo *TTI) {
-  BasicBlock *SrcBlock = GEPI->getParent();
-  // Check that SrcBlock ends with an IndirectBr. If not, give up. The common
-  // (non-IndirectBr) cases exit early here.
-  if (!isa<IndirectBrInst>(SrcBlock->getTerminator()))
-    return false;
-  // Check that GEPI is a simple gep with a single constant index.
-  if (!GEPSequentialConstIndexed(GEPI))
-    return false;
-  ConstantInt *GEPIIdx = cast<ConstantInt>(GEPI->getOperand(1));
-  // Check that GEPI is a cheap one.
-  if (TTI->getIntImmCost(GEPIIdx->getValue(), GEPIIdx->getType())
-      > TargetTransformInfo::TCC_Basic)
-    return false;
-  Value *GEPIOp = GEPI->getOperand(0);
-  // Check that GEPIOp is an instruction that's also defined in SrcBlock.
-  if (!isa<Instruction>(GEPIOp))
-    return false;
-  auto *GEPIOpI = cast<Instruction>(GEPIOp);
-  if (GEPIOpI->getParent() != SrcBlock)
-    return false;
-  // Check that GEP is used outside the block, meaning it's alive on the
-  // IndirectBr edge(s).
-  if (find_if(GEPI->users(), [&](User *Usr) {
-        if (auto *I = dyn_cast<Instruction>(Usr)) {
-          if (I->getParent() != SrcBlock) {
-            return true;
-          }
-        }
-        return false;
-      }) == GEPI->users().end())
-    return false;
-  // The second elements of the GEP chains to be unmerged.
-  std::vector<GetElementPtrInst *> UGEPIs;
-  // Check each user of GEPIOp to check if unmerging would make GEPIOp not alive
-  // on IndirectBr edges.
-  for (User *Usr : GEPIOp->users()) {
-    if (Usr == GEPI) continue;
-    // Check if Usr is an Instruction. If not, give up.
-    if (!isa<Instruction>(Usr))
-      return false;
-    auto *UI = cast<Instruction>(Usr);
-    // Check if Usr in the same block as GEPIOp, which is fine, skip.
-    if (UI->getParent() == SrcBlock)
-      continue;
-    // Check if Usr is a GEP. If not, give up.
-    if (!isa<GetElementPtrInst>(Usr))
-      return false;
-    auto *UGEPI = cast<GetElementPtrInst>(Usr);
-    // Check if UGEPI is a simple gep with a single constant index and GEPIOp is
-    // the pointer operand to it. If so, record it in the vector. If not, give
-    // up.
-    if (!GEPSequentialConstIndexed(UGEPI))
-      return false;
-    if (UGEPI->getOperand(0) != GEPIOp)
-      return false;
-    if (GEPIIdx->getType() !=
-        cast<ConstantInt>(UGEPI->getOperand(1))->getType())
-      return false;
-    ConstantInt *UGEPIIdx = cast<ConstantInt>(UGEPI->getOperand(1));
-    if (TTI->getIntImmCost(UGEPIIdx->getValue(), UGEPIIdx->getType())
-        > TargetTransformInfo::TCC_Basic)
-      return false;
-    UGEPIs.push_back(UGEPI);
-  }
-  if (UGEPIs.size() == 0)
-    return false;
-  // Check the materializing cost of (Uidx-Idx).
-  for (GetElementPtrInst *UGEPI : UGEPIs) {
-    ConstantInt *UGEPIIdx = cast<ConstantInt>(UGEPI->getOperand(1));
-    APInt NewIdx = UGEPIIdx->getValue() - GEPIIdx->getValue();
-    unsigned ImmCost = TTI->getIntImmCost(NewIdx, GEPIIdx->getType());
-    if (ImmCost > TargetTransformInfo::TCC_Basic)
-      return false;
-  }
-  // Now unmerge between GEPI and UGEPIs.
-  for (GetElementPtrInst *UGEPI : UGEPIs) {
-    UGEPI->setOperand(0, GEPI);
-    ConstantInt *UGEPIIdx = cast<ConstantInt>(UGEPI->getOperand(1));
-    Constant *NewUGEPIIdx =
-        ConstantInt::get(GEPIIdx->getType(),
-                         UGEPIIdx->getValue() - GEPIIdx->getValue());
-    UGEPI->setOperand(1, NewUGEPIIdx);
-    // If GEPI is not inbounds but UGEPI is inbounds, change UGEPI to not
-    // inbounds to avoid UB.
-    if (!GEPI->isInBounds()) {
-      UGEPI->setIsInBounds(false);
-    }
-  }
-  // After unmerging, verify that GEPIOp is actually only used in SrcBlock (not
-  // alive on IndirectBr edges).
-  assert(find_if(GEPIOp->users(), [&](User *Usr) {
-        return cast<Instruction>(Usr)->getParent() != SrcBlock;
-      }) == GEPIOp->users().end() && "GEPIOp is used outside SrcBlock");
-  return true;
-}
-
 bool CodeGenPrepare::optimizeInst(Instruction *I, bool &ModifiedDT) {
   // Bail out if we inserted the instruction to prevent optimizations from
   // stepping on each other's toes.
@@ -6631,9 +6184,6 @@ bool CodeGenPrepare::optimizeInst(Instruction *I, bool &ModifiedDT) {
       GEPI->eraseFromParent();
       ++NumGEPsElim;
       optimizeInst(NC, ModifiedDT);
-      return true;
-    }
-    if (tryUnmergingGEPsAcrossIndirectBr(GEPI, TTI)) {
       return true;
     }
     return false;
@@ -6748,7 +6298,7 @@ bool CodeGenPrepare::placeDbgValues(Function &F) {
 /// \brief Scale down both weights to fit into uint32_t.
 static void scaleWeights(uint64_t &NewTrue, uint64_t &NewFalse) {
   uint64_t NewMax = (NewTrue > NewFalse) ? NewTrue : NewFalse;
-  uint32_t Scale = (NewMax / std::numeric_limits<uint32_t>::max()) + 1;
+  uint32_t Scale = (NewMax / UINT32_MAX) + 1;
   NewTrue = NewTrue / Scale;
   NewFalse = NewFalse / Scale;
 }

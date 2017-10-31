@@ -65,18 +65,6 @@ static cl::opt<bool> WarnOnSkippedPatterns(
 namespace {
 //===- Helper functions ---------------------------------------------------===//
 
-
-/// Get the name of the enum value used to number the predicate function.
-std::string getEnumNameForPredicate(const TreePredicateFn &Predicate) {
-  return "GIPFP_" + Predicate.getImmTypeIdentifier().str() + "_" +
-         Predicate.getFnName();
-}
-
-/// Get the opcode used to check this predicate.
-std::string getMatchOpcodeForPredicate(const TreePredicateFn &Predicate) {
-  return "GIM_Check" + Predicate.getImmTypeIdentifier().str() + "ImmPredicate";
-}
-
 /// This class stands in for LLT wherever we want to tablegen-erate an
 /// equivalent at compiler run-time.
 class LLTCodeGen {
@@ -103,12 +91,6 @@ public:
       OS << "GILLT_v" << Ty.getNumElements() << "s" << Ty.getScalarSizeInBits();
       return;
     }
-    if (Ty.isPointer()) {
-      OS << "GILLT_p" << Ty.getAddressSpace();
-      if (Ty.getSizeInBits() > 0)
-        OS << "s" << Ty.getSizeInBits();
-      return;
-    }
     llvm_unreachable("Unhandled LLT");
   }
 
@@ -120,11 +102,6 @@ public:
     if (Ty.isVector()) {
       OS << "LLT::vector(" << Ty.getNumElements() << ", "
          << Ty.getScalarSizeInBits() << ")";
-      return;
-    }
-    if (Ty.isPointer() && Ty.getSizeInBits() > 0) {
-      OS << "LLT::pointer(" << Ty.getAddressSpace() << ", "
-         << Ty.getSizeInBits() << ")";
       return;
     }
     llvm_unreachable("Unhandled LLT");
@@ -163,11 +140,9 @@ class InstructionMatcher;
 /// MVTs that don't map cleanly to an LLT (e.g., iPTR, *any, ...).
 static Optional<LLTCodeGen> MVTToLLT(MVT::SimpleValueType SVT) {
   MVT VT(SVT);
-
   if (VT.isVector() && VT.getVectorNumElements() != 1)
     return LLTCodeGen(
         LLT::vector(VT.getVectorNumElements(), VT.getScalarSizeInBits()));
-
   if (VT.isInteger() || VT.isFloatingPoint())
     return LLTCodeGen(LLT::scalar(VT.getSizeInBits()));
   return None;
@@ -183,28 +158,6 @@ static std::string explainPredicates(const TreePatternNode *N) {
       Explanation += " always-true";
     if (P.isImmediatePattern())
       Explanation += " immediate";
-
-    if (P.isUnindexed())
-      Explanation += " unindexed";
-
-    if (P.isNonExtLoad())
-      Explanation += " non-extload";
-    if (P.isAnyExtLoad())
-      Explanation += " extload";
-    if (P.isSignExtLoad())
-      Explanation += " sextload";
-    if (P.isZeroExtLoad())
-      Explanation += " zextload";
-
-    if (P.isNonTruncStore())
-      Explanation += " non-truncstore";
-    if (P.isTruncStore())
-      Explanation += " truncstore";
-
-    if (Record *VT = P.getMemoryVT())
-      Explanation += (" MemVT=" + VT->getName()).str();
-    if (Record *VT = P.getScalarMemoryVT())
-      Explanation += (" ScalarVT(MemVT)=" + VT->getName()).str();
   }
   return Explanation;
 }
@@ -216,12 +169,7 @@ std::string explainOperator(Record *Operator) {
   if (Operator->isSubClassOf("Intrinsic"))
     return (" (Operator is an Intrinsic, " + Operator->getName() + ")").str();
 
-  if (Operator->isSubClassOf("ComplexPattern"))
-    return (" (Operator is an unmapped ComplexPattern, " + Operator->getName() +
-            ")")
-        .str();
-
-  return (" (Operator " + Operator->getName() + " not understood)").str();
+  return " (Operator not understood)";
 }
 
 /// Helper function to let the emitter report skip reason error messages.
@@ -241,24 +189,9 @@ static Error isTrivialOperatorNode(const TreePatternNode *N) {
     if (Predicate.isImmediatePattern())
       continue;
 
-    if (Predicate.isLoad() && Predicate.isUnindexed())
-      continue;
-
-    if (Predicate.isNonExtLoad())
-      continue;
-
-    if (Predicate.isStore() && Predicate.isUnindexed())
-      continue;
-
-    if (Predicate.isNonTruncStore())
-      continue;
-
     HasUnsupportedPredicate = true;
     Explanation = Separator + "Has a predicate (" + explainPredicates(N) + ")";
     Separator = ", ";
-    Explanation += (Separator + "first-failing:" +
-                    Predicate.getOrigPatFragRecord()->getRecord()->getName())
-                       .str();
     break;
   }
 
@@ -533,28 +466,14 @@ class RuleMatcher {
   /// emitCaptureOpcodes().
   DefinedInsnVariablesMap InsnVariableIDs;
 
-  /// A map of named operands defined by the matchers that may be referenced by
-  /// the renderers.
-  StringMap<OperandMatcher *> DefinedOperands;
-
   /// ID for the next instruction variable defined with defineInsnVar()
   unsigned NextInsnVarID;
 
   std::vector<Record *> RequiredFeatures;
 
-  ArrayRef<SMLoc> SrcLoc;
-
-  typedef std::tuple<Record *, unsigned, unsigned>
-      DefinedComplexPatternSubOperand;
-  typedef StringMap<DefinedComplexPatternSubOperand>
-      DefinedComplexPatternSubOperandMap;
-  /// A map of Symbolic Names to ComplexPattern sub-operands.
-  DefinedComplexPatternSubOperandMap ComplexSubOperands;
-
 public:
-  RuleMatcher(ArrayRef<SMLoc> SrcLoc)
-      : Matchers(), Actions(), InsnVariableIDs(), DefinedOperands(),
-        NextInsnVarID(0), SrcLoc(SrcLoc), ComplexSubOperands() {}
+  RuleMatcher()
+      : Matchers(), Actions(), InsnVariableIDs(), NextInsnVarID(0) {}
   RuleMatcher(RuleMatcher &&Other) = default;
   RuleMatcher &operator=(RuleMatcher &&Other) = default;
 
@@ -582,24 +501,7 @@ public:
     return make_range(defined_insn_vars_begin(), defined_insn_vars_end());
   }
 
-  void defineOperand(StringRef SymbolicName, OperandMatcher &OM);
-
-  void defineComplexSubOperand(StringRef SymbolicName, Record *ComplexPattern,
-                               unsigned RendererID, unsigned SubOperandID) {
-    assert(ComplexSubOperands.count(SymbolicName) == 0 && "Already defined");
-    ComplexSubOperands[SymbolicName] =
-        std::make_tuple(ComplexPattern, RendererID, SubOperandID);
-  }
-  Optional<DefinedComplexPatternSubOperand>
-  getComplexSubOperand(StringRef SymbolicName) const {
-    const auto &I = ComplexSubOperands.find(SymbolicName);
-    if (I == ComplexSubOperands.end())
-      return None;
-    return I->second;
-  }
-
   const InstructionMatcher &getInstructionMatcher(StringRef SymbolicName) const;
-  const OperandMatcher &getOperandMatcher(StringRef Name) const;
 
   void emitCaptureOpcodes(MatchTable &Table);
 
@@ -630,10 +532,10 @@ private:
 public:
   /// Construct a new operand predicate and add it to the matcher.
   template <class Kind, class... Args>
-  Optional<Kind *> addPredicate(Args&&... args) {
+  Kind &addPredicate(Args&&... args) {
     Predicates.emplace_back(
         llvm::make_unique<Kind>(std::forward<Args>(args)...));
-    return static_cast<Kind *>(Predicates.back().get());
+    return *static_cast<Kind *>(Predicates.back().get());
   }
 
   typename PredicateVec::const_iterator predicates_begin() const {
@@ -679,14 +581,12 @@ public:
   /// but OPM_Int must have priority over OPM_RegBank since constant integers
   /// are represented by a virtual register defined by a G_CONSTANT instruction.
   enum PredicateKind {
-    OPM_SameOperand,
     OPM_ComplexPattern,
     OPM_IntrinsicID,
     OPM_Instruction,
     OPM_Int,
     OPM_LiteralInt,
     OPM_LLT,
-    OPM_PointerToAny,
     OPM_RegBank,
     OPM_MBB,
   };
@@ -699,6 +599,17 @@ public:
   virtual ~OperandPredicateMatcher() {}
 
   PredicateKind getKind() const { return Kind; }
+
+  /// Return the OperandMatcher for the specified operand or nullptr if there
+  /// isn't one by that name in this operand predicate matcher.
+  ///
+  /// InstructionOperandMatcher is the only subclass that can return non-null
+  /// for this.
+  virtual Optional<const OperandMatcher *>
+  getOptionalOperand(StringRef SymbolicName) const {
+    assert(!SymbolicName.empty() && "Cannot lookup unnamed operand");
+    return None;
+  }
 
   /// Emit MatchTable opcodes to capture instructions into the MIs table.
   ///
@@ -728,23 +639,6 @@ PredicateListMatcher<OperandPredicateMatcher>::getNoPredicateComment() const {
   return "No operand predicates";
 }
 
-/// Generates code to check that a register operand is defined by the same exact
-/// one as another.
-class SameOperandMatcher : public OperandPredicateMatcher {
-  std::string MatchingName;
-
-public:
-  SameOperandMatcher(StringRef MatchingName)
-      : OperandPredicateMatcher(OPM_SameOperand), MatchingName(MatchingName) {}
-
-  static bool classof(const OperandPredicateMatcher *P) {
-    return P->getKind() == OPM_SameOperand;
-  }
-
-  void emitPredicateOpcodes(MatchTable &Table, RuleMatcher &Rule,
-                            unsigned InsnVarID, unsigned OpIdx) const override;
-};
-
 /// Generates code to check that an operand is a particular LLT.
 class LLTOperandMatcher : public OperandPredicateMatcher {
 protected:
@@ -773,37 +667,6 @@ public:
 };
 
 std::set<LLTCodeGen> LLTOperandMatcher::KnownTypes;
-
-/// Generates code to check that an operand is a pointer to any address space.
-///
-/// In SelectionDAG, the types did not describe pointers or address spaces. As a
-/// result, iN is used to describe a pointer of N bits to any address space and
-/// PatFrag predicates are typically used to constrain the address space. There's
-/// no reliable means to derive the missing type information from the pattern so
-/// imported rules must test the components of a pointer separately.
-///
-/// If SizeInBits is zero, then the pointer size will be obtained from the
-/// subtarget.
-class PointerToAnyOperandMatcher : public OperandPredicateMatcher {
-protected:
-  unsigned SizeInBits;
-
-public:
-  PointerToAnyOperandMatcher(unsigned SizeInBits)
-      : OperandPredicateMatcher(OPM_PointerToAny), SizeInBits(SizeInBits) {}
-
-  static bool classof(const OperandPredicateMatcher *P) {
-    return P->getKind() == OPM_PointerToAny;
-  }
-
-  void emitPredicateOpcodes(MatchTable &Table, RuleMatcher &Rule,
-                            unsigned InsnVarID, unsigned OpIdx) const override {
-    Table << MatchTable::Opcode("GIM_CheckPointerToAny") << MatchTable::Comment("MI")
-          << MatchTable::IntValue(InsnVarID) << MatchTable::Comment("Op")
-          << MatchTable::IntValue(OpIdx) << MatchTable::Comment("SizeInBits")
-          << MatchTable::IntValue(SizeInBits) << MatchTable::LineBreak;
-  }
-};
 
 /// Generates code to check that an operand is a particular target constant.
 class ComplexPatternOperandMatcher : public OperandPredicateMatcher {
@@ -982,10 +845,20 @@ public:
            llvm::to_string(OpIdx) + ")";
   }
 
-  InstructionMatcher &getInstructionMatcher() const { return Insn; }
+  Optional<const OperandMatcher *>
+  getOptionalOperand(StringRef DesiredSymbolicName) const {
+    assert(!DesiredSymbolicName.empty() && "Cannot lookup unnamed operand");
+    if (DesiredSymbolicName == SymbolicName)
+      return this;
+    for (const auto &OP : predicates()) {
+      const auto &MaybeOperand = OP->getOptionalOperand(DesiredSymbolicName);
+      if (MaybeOperand.hasValue())
+        return MaybeOperand.getValue();
+    }
+    return None;
+  }
 
-  Error addTypeCheckPredicate(const TypeSetByHwMode &VTy,
-                              bool OperandIsAPointer);
+  InstructionMatcher &getInstructionMatcher() const { return Insn; }
 
   /// Emit MatchTable opcodes to capture instructions into the MIs table.
   void emitCaptureOpcodes(MatchTable &Table, RuleMatcher &Rule,
@@ -1045,47 +918,7 @@ public:
   unsigned getAllocatedTemporariesBaseID() const {
     return AllocatedTemporariesBaseID;
   }
-
-  bool isSameAsAnotherOperand() const {
-    for (const auto &Predicate : predicates())
-      if (isa<SameOperandMatcher>(Predicate))
-        return true;
-    return false;
-  }
 };
-
-// Specialize OperandMatcher::addPredicate() to refrain from adding redundant
-// predicates.
-template <>
-template <class Kind, class... Args>
-Optional<Kind *>
-PredicateListMatcher<OperandPredicateMatcher>::addPredicate(Args &&... args) {
-  if (static_cast<OperandMatcher *>(this)->isSameAsAnotherOperand())
-    return None;
-  Predicates.emplace_back(llvm::make_unique<Kind>(std::forward<Args>(args)...));
-  return static_cast<Kind *>(Predicates.back().get());
-}
-
-Error OperandMatcher::addTypeCheckPredicate(const TypeSetByHwMode &VTy,
-                                                     bool OperandIsAPointer) {
-  if (!VTy.isMachineValueType())
-    return failedImport("unsupported typeset");
-
-  if (VTy.getMachineValueType() == MVT::iPTR && OperandIsAPointer) {
-    addPredicate<PointerToAnyOperandMatcher>(0);
-    return Error::success();
-  }
-
-  auto OpTyOrNone = MVTToLLT(VTy.getMachineValueType().SimpleTy);
-  if (!OpTyOrNone)
-    return failedImport("unsupported type");
-
-  if (OperandIsAPointer)
-    addPredicate<PointerToAnyOperandMatcher>(OpTyOrNone->get().getSizeInBits());
-  else
-    addPredicate<LLTOperandMatcher>(*OpTyOrNone);
-  return Error::success();
-}
 
 unsigned ComplexPatternOperandMatcher::getAllocatedTemporariesBaseID() const {
   return Operand.getAllocatedTemporariesBaseID();
@@ -1104,7 +937,6 @@ protected:
   enum PredicateKind {
     IPM_Opcode,
     IPM_ImmPredicate,
-    IPM_NonAtomicMMO,
   };
 
   PredicateKind Kind;
@@ -1225,28 +1057,10 @@ public:
 
   void emitPredicateOpcodes(MatchTable &Table, RuleMatcher &Rule,
                             unsigned InsnVarID) const override {
-    Table << MatchTable::Opcode(getMatchOpcodeForPredicate(Predicate))
+    Table << MatchTable::Opcode("GIM_CheckImmPredicate")
           << MatchTable::Comment("MI") << MatchTable::IntValue(InsnVarID)
           << MatchTable::Comment("Predicate")
-          << MatchTable::NamedValue(getEnumNameForPredicate(Predicate))
-          << MatchTable::LineBreak;
-  }
-};
-
-/// Generates code to check that a memory instruction has a non-atomic MachineMemoryOperand.
-class NonAtomicMMOPredicateMatcher : public InstructionPredicateMatcher {
-public:
-  NonAtomicMMOPredicateMatcher()
-      : InstructionPredicateMatcher(IPM_NonAtomicMMO) {}
-
-  static bool classof(const InstructionPredicateMatcher *P) {
-    return P->getKind() == IPM_NonAtomicMMO;
-  }
-
-  void emitPredicateOpcodes(MatchTable &Table, RuleMatcher &Rule,
-                            unsigned InsnVarID) const override {
-    Table << MatchTable::Opcode("GIM_CheckNonAtomic")
-          << MatchTable::Comment("MI") << MatchTable::IntValue(InsnVarID)
+          << MatchTable::NamedValue("GIPFP_" + Predicate.getFnName())
           << MatchTable::LineBreak;
   }
 };
@@ -1262,8 +1076,6 @@ class InstructionMatcher
 protected:
   typedef std::vector<std::unique_ptr<OperandMatcher>> OperandVec;
 
-  RuleMatcher &Rule;
-
   /// The operands to match. All rendered operands must be present even if the
   /// condition is always true.
   OperandVec Operands;
@@ -1271,19 +1083,13 @@ protected:
   std::string SymbolicName;
 
 public:
-  InstructionMatcher(RuleMatcher &Rule, StringRef SymbolicName)
-      : Rule(Rule), SymbolicName(SymbolicName) {}
-
-  RuleMatcher &getRuleMatcher() const { return Rule; }
+  InstructionMatcher(StringRef SymbolicName) : SymbolicName(SymbolicName) {}
 
   /// Add an operand to the matcher.
   OperandMatcher &addOperand(unsigned OpIdx, const std::string &SymbolicName,
                              unsigned AllocatedTemporariesBaseID) {
     Operands.emplace_back(new OperandMatcher(*this, OpIdx, SymbolicName,
                                              AllocatedTemporariesBaseID));
-    if (!SymbolicName.empty())
-      Rule.defineOperand(SymbolicName, *Operands.back());
-
     return *Operands.back();
   }
 
@@ -1294,6 +1100,24 @@ public:
                           });
     if (I != Operands.end())
       return **I;
+    llvm_unreachable("Failed to lookup operand");
+  }
+
+  Optional<const OperandMatcher *>
+  getOptionalOperand(StringRef SymbolicName) const {
+    assert(!SymbolicName.empty() && "Cannot lookup unnamed operand");
+    for (const auto &Operand : Operands) {
+      const auto &OM = Operand->getOptionalOperand(SymbolicName);
+      if (OM.hasValue())
+        return OM.getValue();
+    }
+    return None;
+  }
+
+  const OperandMatcher &getOperand(StringRef SymbolicName) const {
+    Optional<const OperandMatcher *>OM = getOptionalOperand(SymbolicName);
+    if (OM.hasValue())
+      return *OM.getValue();
     llvm_unreachable("Failed to lookup operand");
   }
 
@@ -1397,15 +1221,21 @@ protected:
   std::unique_ptr<InstructionMatcher> InsnMatcher;
 
 public:
-  InstructionOperandMatcher(RuleMatcher &Rule, StringRef SymbolicName)
+  InstructionOperandMatcher(StringRef SymbolicName)
       : OperandPredicateMatcher(OPM_Instruction),
-        InsnMatcher(new InstructionMatcher(Rule, SymbolicName)) {}
+        InsnMatcher(new InstructionMatcher(SymbolicName)) {}
 
   static bool classof(const OperandPredicateMatcher *P) {
     return P->getKind() == OPM_Instruction;
   }
 
   InstructionMatcher &getInsnMatcher() const { return *InsnMatcher; }
+
+  Optional<const OperandMatcher *>
+  getOptionalOperand(StringRef SymbolicName) const override {
+    assert(!SymbolicName.empty() && "Cannot lookup unnamed operand");
+    return InsnMatcher->getOptionalOperand(SymbolicName);
+  }
 
   void emitCaptureOpcodes(MatchTable &Table, RuleMatcher &Rule,
                           unsigned InsnID, unsigned OpIdx) const override {
@@ -1426,10 +1256,8 @@ class OperandRenderer {
 public:
   enum RendererKind {
     OR_Copy,
-    OR_CopyOrAddZeroReg,
     OR_CopySubReg,
     OR_CopyConstantAsImm,
-    OR_CopyFConstantAsFPImm,
     OR_Imm,
     OR_Register,
     OR_ComplexPattern
@@ -1453,12 +1281,17 @@ public:
 class CopyRenderer : public OperandRenderer {
 protected:
   unsigned NewInsnID;
+  /// The matcher for the instruction that this operand is copied from.
+  /// This provides the facility for looking up an a operand by it's name so
+  /// that it can be used as a source for the instruction being built.
+  const InstructionMatcher &Matched;
   /// The name of the operand.
   const StringRef SymbolicName;
 
 public:
-  CopyRenderer(unsigned NewInsnID, StringRef SymbolicName)
-      : OperandRenderer(OR_Copy), NewInsnID(NewInsnID),
+  CopyRenderer(unsigned NewInsnID, const InstructionMatcher &Matched,
+               StringRef SymbolicName)
+      : OperandRenderer(OR_Copy), NewInsnID(NewInsnID), Matched(Matched),
         SymbolicName(SymbolicName) {
     assert(!SymbolicName.empty() && "Cannot copy from an unspecified source");
   }
@@ -1470,53 +1303,12 @@ public:
   const StringRef getSymbolicName() const { return SymbolicName; }
 
   void emitRenderOpcodes(MatchTable &Table, RuleMatcher &Rule) const override {
-    const OperandMatcher &Operand = Rule.getOperandMatcher(SymbolicName);
+    const OperandMatcher &Operand = Matched.getOperand(SymbolicName);
     unsigned OldInsnVarID = Rule.getInsnVarID(Operand.getInstructionMatcher());
     Table << MatchTable::Opcode("GIR_Copy") << MatchTable::Comment("NewInsnID")
           << MatchTable::IntValue(NewInsnID) << MatchTable::Comment("OldInsnID")
           << MatchTable::IntValue(OldInsnVarID) << MatchTable::Comment("OpIdx")
           << MatchTable::IntValue(Operand.getOperandIndex())
-          << MatchTable::Comment(SymbolicName) << MatchTable::LineBreak;
-  }
-};
-
-/// A CopyOrAddZeroRegRenderer emits code to copy a single operand from an
-/// existing instruction to the one being built. If the operand turns out to be
-/// a 'G_CONSTANT 0' then it replaces the operand with a zero register.
-class CopyOrAddZeroRegRenderer : public OperandRenderer {
-protected:
-  unsigned NewInsnID;
-  /// The name of the operand.
-  const StringRef SymbolicName;
-  const Record *ZeroRegisterDef;
-
-public:
-  CopyOrAddZeroRegRenderer(unsigned NewInsnID,
-                           StringRef SymbolicName, Record *ZeroRegisterDef)
-      : OperandRenderer(OR_CopyOrAddZeroReg), NewInsnID(NewInsnID),
-        SymbolicName(SymbolicName), ZeroRegisterDef(ZeroRegisterDef) {
-    assert(!SymbolicName.empty() && "Cannot copy from an unspecified source");
-  }
-
-  static bool classof(const OperandRenderer *R) {
-    return R->getKind() == OR_CopyOrAddZeroReg;
-  }
-
-  const StringRef getSymbolicName() const { return SymbolicName; }
-
-  void emitRenderOpcodes(MatchTable &Table, RuleMatcher &Rule) const override {
-    const OperandMatcher &Operand = Rule.getOperandMatcher(SymbolicName);
-    unsigned OldInsnVarID = Rule.getInsnVarID(Operand.getInstructionMatcher());
-    Table << MatchTable::Opcode("GIR_CopyOrAddZeroReg")
-          << MatchTable::Comment("NewInsnID") << MatchTable::IntValue(NewInsnID)
-          << MatchTable::Comment("OldInsnID")
-          << MatchTable::IntValue(OldInsnVarID) << MatchTable::Comment("OpIdx")
-          << MatchTable::IntValue(Operand.getOperandIndex())
-          << MatchTable::NamedValue(
-                 (ZeroRegisterDef->getValue("Namespace")
-                      ? ZeroRegisterDef->getValueAsString("Namespace")
-                      : ""),
-                 ZeroRegisterDef->getName())
           << MatchTable::Comment(SymbolicName) << MatchTable::LineBreak;
   }
 };
@@ -1553,51 +1345,25 @@ public:
   }
 };
 
-/// A CopyFConstantAsFPImmRenderer emits code to render a G_FCONSTANT
-/// instruction to an extended immediate operand.
-class CopyFConstantAsFPImmRenderer : public OperandRenderer {
-protected:
-  unsigned NewInsnID;
-  /// The name of the operand.
-  const std::string SymbolicName;
-
-public:
-  CopyFConstantAsFPImmRenderer(unsigned NewInsnID, StringRef SymbolicName)
-      : OperandRenderer(OR_CopyFConstantAsFPImm), NewInsnID(NewInsnID),
-        SymbolicName(SymbolicName) {}
-
-  static bool classof(const OperandRenderer *R) {
-    return R->getKind() == OR_CopyFConstantAsFPImm;
-  }
-
-  const StringRef getSymbolicName() const { return SymbolicName; }
-
-  void emitRenderOpcodes(MatchTable &Table, RuleMatcher &Rule) const override {
-    const InstructionMatcher &InsnMatcher = Rule.getInstructionMatcher(SymbolicName);
-    unsigned OldInsnVarID = Rule.getInsnVarID(InsnMatcher);
-    Table << MatchTable::Opcode("GIR_CopyFConstantAsFPImm")
-          << MatchTable::Comment("NewInsnID") << MatchTable::IntValue(NewInsnID)
-          << MatchTable::Comment("OldInsnID")
-          << MatchTable::IntValue(OldInsnVarID)
-          << MatchTable::Comment(SymbolicName) << MatchTable::LineBreak;
-  }
-};
-
 /// A CopySubRegRenderer emits code to copy a single register operand from an
 /// existing instruction to the one being built and indicate that only a
 /// subregister should be copied.
 class CopySubRegRenderer : public OperandRenderer {
 protected:
   unsigned NewInsnID;
+  /// The matcher for the instruction that this operand is copied from.
+  /// This provides the facility for looking up an a operand by it's name so
+  /// that it can be used as a source for the instruction being built.
+  const InstructionMatcher &Matched;
   /// The name of the operand.
   const StringRef SymbolicName;
   /// The subregister to extract.
   const CodeGenSubRegIndex *SubReg;
 
 public:
-  CopySubRegRenderer(unsigned NewInsnID, StringRef SymbolicName,
-                     const CodeGenSubRegIndex *SubReg)
-      : OperandRenderer(OR_CopySubReg), NewInsnID(NewInsnID),
+  CopySubRegRenderer(unsigned NewInsnID, const InstructionMatcher &Matched,
+                     StringRef SymbolicName, const CodeGenSubRegIndex *SubReg)
+      : OperandRenderer(OR_CopySubReg), NewInsnID(NewInsnID), Matched(Matched),
         SymbolicName(SymbolicName), SubReg(SubReg) {}
 
   static bool classof(const OperandRenderer *R) {
@@ -1607,7 +1373,7 @@ public:
   const StringRef getSymbolicName() const { return SymbolicName; }
 
   void emitRenderOpcodes(MatchTable &Table, RuleMatcher &Rule) const override {
-    const OperandMatcher &Operand = Rule.getOperandMatcher(SymbolicName);
+    const OperandMatcher &Operand = Matched.getOperand(SymbolicName);
     unsigned OldInsnVarID = Rule.getInsnVarID(Operand.getInstructionMatcher());
     Table << MatchTable::Opcode("GIR_CopySubReg")
           << MatchTable::Comment("NewInsnID") << MatchTable::IntValue(NewInsnID)
@@ -1680,9 +1446,6 @@ private:
   /// The renderer number. This must be unique within a rule since it's used to
   /// identify a temporary variable to hold the renderer function.
   unsigned RendererID;
-  /// When provided, this is the suboperand of the ComplexPattern operand to
-  /// render. Otherwise all the suboperands will be rendered.
-  Optional<unsigned> SubOperand;
 
   unsigned getNumOperands() const {
     return TheDef.getValueAsDag("Operands")->getNumArgs();
@@ -1690,26 +1453,19 @@ private:
 
 public:
   RenderComplexPatternOperand(unsigned InsnID, const Record &TheDef,
-                              StringRef SymbolicName, unsigned RendererID,
-                              Optional<unsigned> SubOperand = None)
+                              StringRef SymbolicName, unsigned RendererID)
       : OperandRenderer(OR_ComplexPattern), InsnID(InsnID), TheDef(TheDef),
-        SymbolicName(SymbolicName), RendererID(RendererID),
-        SubOperand(SubOperand) {}
+        SymbolicName(SymbolicName), RendererID(RendererID) {}
 
   static bool classof(const OperandRenderer *R) {
     return R->getKind() == OR_ComplexPattern;
   }
 
   void emitRenderOpcodes(MatchTable &Table, RuleMatcher &Rule) const override {
-    Table << MatchTable::Opcode(SubOperand.hasValue() ? "GIR_ComplexSubOperandRenderer"
-                                                      : "GIR_ComplexRenderer")
+    Table << MatchTable::Opcode("GIR_ComplexRenderer")
           << MatchTable::Comment("InsnID") << MatchTable::IntValue(InsnID)
           << MatchTable::Comment("RendererID")
-          << MatchTable::IntValue(RendererID);
-    if (SubOperand.hasValue())
-      Table << MatchTable::Comment("SubOperand")
-            << MatchTable::IntValue(SubOperand.getValue());
-    Table << MatchTable::Comment(SymbolicName) << MatchTable::LineBreak;
+          << MatchTable::IntValue(RendererID) << MatchTable::LineBreak;
   }
 };
 
@@ -1753,21 +1509,18 @@ class BuildMIAction : public MatchAction {
 private:
   unsigned InsnID;
   const CodeGenInstruction *I;
-  const InstructionMatcher *Matched;
+  const InstructionMatcher &Matched;
   std::vector<std::unique_ptr<OperandRenderer>> OperandRenderers;
 
   /// True if the instruction can be built solely by mutating the opcode.
-  bool canMutate(RuleMatcher &Rule) const {
-    if (!Matched)
-      return false;
-
-    if (OperandRenderers.size() != Matched->getNumOperands())
+  bool canMutate() const {
+    if (OperandRenderers.size() != Matched.getNumOperands())
       return false;
 
     for (const auto &Renderer : enumerate(OperandRenderers)) {
       if (const auto *Copy = dyn_cast<CopyRenderer>(&*Renderer.value())) {
-        const OperandMatcher &OM = Rule.getOperandMatcher(Copy->getSymbolicName());
-        if (Matched != &OM.getInstructionMatcher() ||
+        const OperandMatcher &OM = Matched.getOperand(Copy->getSymbolicName());
+        if (&Matched != &OM.getInstructionMatcher() ||
             OM.getOperandIndex() != Renderer.index())
           return false;
       } else
@@ -1779,7 +1532,7 @@ private:
 
 public:
   BuildMIAction(unsigned InsnID, const CodeGenInstruction *I,
-                const InstructionMatcher *Matched)
+                const InstructionMatcher &Matched)
       : InsnID(InsnID), I(I), Matched(Matched) {}
 
   template <class Kind, class... Args>
@@ -1791,7 +1544,7 @@ public:
 
   void emitActionOpcodes(MatchTable &Table, RuleMatcher &Rule,
                          unsigned RecycleInsnID) const override {
-    if (canMutate(Rule)) {
+    if (canMutate()) {
       Table << MatchTable::Opcode("GIR_MutateOpcode")
             << MatchTable::Comment("InsnID") << MatchTable::IntValue(InsnID)
             << MatchTable::Comment("RecycleInsnID")
@@ -1899,7 +1652,7 @@ public:
 };
 
 InstructionMatcher &RuleMatcher::addInstructionMatcher(StringRef SymbolicName) {
-  Matchers.emplace_back(new InstructionMatcher(*this, SymbolicName));
+  Matchers.emplace_back(new InstructionMatcher(SymbolicName));
   return *Matchers.back();
 }
 
@@ -1944,17 +1697,6 @@ unsigned RuleMatcher::getInsnVarID(const InstructionMatcher &InsnMatcher) const 
   llvm_unreachable("Matched Insn was not captured in a local variable");
 }
 
-void RuleMatcher::defineOperand(StringRef SymbolicName, OperandMatcher &OM) {
-  if (DefinedOperands.find(SymbolicName) == DefinedOperands.end()) {
-    DefinedOperands[SymbolicName] = &OM;
-    return;
-  }
-
-  // If the operand is already defined, then we must ensure both references in
-  // the matcher have the exact same node.
-  OM.addPredicate<SameOperandMatcher>(OM.getSymbolicName());
-}
-
 const InstructionMatcher &
 RuleMatcher::getInstructionMatcher(StringRef SymbolicName) const {
   for (const auto &I : InsnVariableIDs)
@@ -1962,16 +1704,6 @@ RuleMatcher::getInstructionMatcher(StringRef SymbolicName) const {
       return *I.first;
   llvm_unreachable(
       ("Failed to lookup instruction " + SymbolicName).str().c_str());
-}
-
-const OperandMatcher &
-RuleMatcher::getOperandMatcher(StringRef Name) const {
-  const auto &I = DefinedOperands.find(Name);
-
-  if (I == DefinedOperands.end())
-    PrintFatalError(SrcLoc, "Operand " + Name + " was not declared in matcher");
-
-  return *I->second;
 }
 
 /// Emit MatchTable opcodes to check the shape of the match and capture
@@ -2133,23 +1865,6 @@ bool OperandPredicateMatcher::isHigherPriorityThan(
   return Kind < B.Kind;
 }
 
-void SameOperandMatcher::emitPredicateOpcodes(MatchTable &Table,
-                                              RuleMatcher &Rule,
-                                              unsigned InsnVarID,
-                                              unsigned OpIdx) const {
-  const OperandMatcher &OtherOM = Rule.getOperandMatcher(MatchingName);
-  unsigned OtherInsnVarID = Rule.getInsnVarID(OtherOM.getInstructionMatcher());
-
-  Table << MatchTable::Opcode("GIM_CheckIsSameOperand")
-        << MatchTable::Comment("MI") << MatchTable::IntValue(InsnVarID)
-        << MatchTable::Comment("OpIdx") << MatchTable::IntValue(OpIdx)
-        << MatchTable::Comment("OtherMI")
-        << MatchTable::IntValue(OtherInsnVarID)
-        << MatchTable::Comment("OtherOpIdx")
-        << MatchTable::IntValue(OtherOM.getOperandIndex())
-        << MatchTable::LineBreak;
-}
-
 //===- GlobalISelEmitter class --------------------------------------------===//
 
 class GlobalISelEmitter {
@@ -2163,11 +1878,9 @@ private:
   const CodeGenTarget &Target;
   CodeGenRegBank CGRegs;
 
-  /// Keep track of the equivalence between SDNodes and Instruction by mapping
-  /// SDNodes to the GINodeEquiv mapping. We need to map to the GINodeEquiv to
-  /// check for attributes on the relation such as CheckMMOIsNonAtomic.
+  /// Keep track of the equivalence between SDNodes and Instruction.
   /// This is defined using 'GINodeEquiv' in the target description.
-  DenseMap<Record *, Record *> NodeEquivs;
+  DenseMap<Record *, const CodeGenInstruction *> NodeEquivs;
 
   /// Keep track of the equivalence between ComplexPattern's and
   /// GIComplexOperandMatcher. Map entries are specified by subclassing
@@ -2178,23 +1891,20 @@ private:
   SubtargetFeatureInfoMap SubtargetFeatures;
 
   void gatherNodeEquivs();
-  Record *findNodeEquiv(Record *N) const;
+  const CodeGenInstruction *findNodeEquiv(Record *N) const;
 
-  Error importRulePredicates(RuleMatcher &M, ArrayRef<Predicate> Predicates);
-  Expected<InstructionMatcher &> createAndImportSelDAGMatcher(
-      RuleMatcher &Rule, InstructionMatcher &InsnMatcher,
-      const TreePatternNode *Src, unsigned &TempOpIdx) const;
-  Error importComplexPatternOperandMatcher(OperandMatcher &OM, Record *R,
-                                           unsigned &TempOpIdx) const;
-  Error importChildMatcher(RuleMatcher &Rule, InstructionMatcher &InsnMatcher,
-                           const TreePatternNode *SrcChild,
-                           bool OperandIsAPointer, unsigned OpIdx,
+  Error importRulePredicates(RuleMatcher &M, ArrayRef<Init *> Predicates);
+  Expected<InstructionMatcher &>
+  createAndImportSelDAGMatcher(InstructionMatcher &InsnMatcher,
+                               const TreePatternNode *Src,
+                               unsigned &TempOpIdx) const;
+  Error importChildMatcher(InstructionMatcher &InsnMatcher,
+                           const TreePatternNode *SrcChild, unsigned OpIdx,
                            unsigned &TempOpIdx) const;
   Expected<BuildMIAction &>
   createAndImportInstructionRenderer(RuleMatcher &M, const TreePatternNode *Dst,
                                      const InstructionMatcher &InsnMatcher);
-  Error importExplicitUseRenderer(RuleMatcher &Rule,
-                                  BuildMIAction &DstMIBuilder,
+  Error importExplicitUseRenderer(BuildMIAction &DstMIBuilder,
                                   TreePatternNode *DstChild,
                                   const InstructionMatcher &InsnMatcher) const;
   Error importDefaultOperandRenderers(BuildMIAction &DstMIBuilder,
@@ -2202,10 +1912,6 @@ private:
   Error
   importImplicitDefRenderers(BuildMIAction &DstMIBuilder,
                              const std::vector<Record *> &ImplicitDefs) const;
-
-  void emitImmPredicates(raw_ostream &OS, StringRef TypeIdentifier,
-                         StringRef Type,
-                         std::function<bool(const Record *R)> Filter);
 
   /// Analyze pattern \p P, returning a matcher for it if possible.
   /// Otherwise, return an Error explaining why we don't support it.
@@ -2217,7 +1923,8 @@ private:
 void GlobalISelEmitter::gatherNodeEquivs() {
   assert(NodeEquivs.empty());
   for (Record *Equiv : RK.getAllDerivedDefinitions("GINodeEquiv"))
-    NodeEquivs[Equiv->getValueAsDef("Node")] = Equiv;
+    NodeEquivs[Equiv->getValueAsDef("Node")] =
+        &Target.getInstruction(Equiv->getValueAsDef("I"));
 
   assert(ComplexPatternEquivs.empty());
   for (Record *Equiv : RK.getAllDerivedDefinitions("GIComplexPatternEquiv")) {
@@ -2228,33 +1935,31 @@ void GlobalISelEmitter::gatherNodeEquivs() {
  }
 }
 
-Record *GlobalISelEmitter::findNodeEquiv(Record *N) const {
+const CodeGenInstruction *GlobalISelEmitter::findNodeEquiv(Record *N) const {
   return NodeEquivs.lookup(N);
 }
 
 GlobalISelEmitter::GlobalISelEmitter(RecordKeeper &RK)
-    : RK(RK), CGP(RK), Target(CGP.getTargetInfo()),
-      CGRegs(RK, Target.getHwModes()) {}
+    : RK(RK), CGP(RK), Target(CGP.getTargetInfo()), CGRegs(RK) {}
 
 //===- Emitter ------------------------------------------------------------===//
 
 Error
 GlobalISelEmitter::importRulePredicates(RuleMatcher &M,
-                                        ArrayRef<Predicate> Predicates) {
-  for (const Predicate &P : Predicates) {
-    if (!P.Def)
-      continue;
-    declareSubtargetFeature(P.Def);
-    M.addRequiredFeature(P.Def);
+                                        ArrayRef<Init *> Predicates) {
+  for (const Init *Predicate : Predicates) {
+    const DefInit *PredicateDef = static_cast<const DefInit *>(Predicate);
+    declareSubtargetFeature(PredicateDef->getDef());
+    M.addRequiredFeature(PredicateDef->getDef());
   }
 
   return Error::success();
 }
 
-Expected<InstructionMatcher &> GlobalISelEmitter::createAndImportSelDAGMatcher(
-    RuleMatcher &Rule, InstructionMatcher &InsnMatcher,
-    const TreePatternNode *Src, unsigned &TempOpIdx) const {
-  Record *SrcGIEquivOrNull = nullptr;
+Expected<InstructionMatcher &>
+GlobalISelEmitter::createAndImportSelDAGMatcher(InstructionMatcher &InsnMatcher,
+                                                const TreePatternNode *Src,
+                                                unsigned &TempOpIdx) const {
   const CodeGenInstruction *SrcGIOrNull = nullptr;
 
   // Start with the defined operands (i.e., the results of the root operator).
@@ -2270,24 +1975,28 @@ Expected<InstructionMatcher &> GlobalISelEmitter::createAndImportSelDAGMatcher(
       return failedImport(
           "Unable to deduce gMIR opcode to handle Src (which is a leaf)");
   } else {
-    SrcGIEquivOrNull = findNodeEquiv(Src->getOperator());
-    if (!SrcGIEquivOrNull)
+    SrcGIOrNull = findNodeEquiv(Src->getOperator());
+    if (!SrcGIOrNull)
       return failedImport("Pattern operator lacks an equivalent Instruction" +
                           explainOperator(Src->getOperator()));
-    SrcGIOrNull = &Target.getInstruction(SrcGIEquivOrNull->getValueAsDef("I"));
+    auto &SrcGI = *SrcGIOrNull;
 
     // The operators look good: match the opcode
-    InsnMatcher.addPredicate<InstructionOpcodeMatcher>(SrcGIOrNull);
+    InsnMatcher.addPredicate<InstructionOpcodeMatcher>(&SrcGI);
   }
 
   unsigned OpIdx = 0;
-  for (const TypeSetByHwMode &VTy : Src->getExtTypes()) {
+  for (const EEVT::TypeSet &Ty : Src->getExtTypes()) {
+    auto OpTyOrNone = MVTToLLT(Ty.getConcrete());
+
+    if (!OpTyOrNone)
+      return failedImport(
+          "Result of Src pattern operator has an unsupported type");
+
     // Results don't have a name unless they are the root node. The caller will
     // set the name if appropriate.
     OperandMatcher &OM = InsnMatcher.addOperand(OpIdx++, "", TempOpIdx);
-    if (auto Error = OM.addTypeCheckPredicate(VTy, false /* OperandIsAPointer */))
-      return failedImport(toString(std::move(Error)) +
-                          " for result of Src pattern operator");
+    OM.addPredicate<LLTOperandMatcher>(*OpTyOrNone);
   }
 
   for (const auto &Predicate : Src->getPredicateFns()) {
@@ -2299,55 +2008,14 @@ Expected<InstructionMatcher &> GlobalISelEmitter::createAndImportSelDAGMatcher(
       continue;
     }
 
-    // No check required. A G_LOAD is an unindexed load.
-    if (Predicate.isLoad() && Predicate.isUnindexed())
-      continue;
-
-    // No check required. G_LOAD by itself is a non-extending load.
-    if (Predicate.isNonExtLoad())
-      continue;
-
-    if (Predicate.isLoad() && Predicate.getMemoryVT() != nullptr) {
-      Optional<LLTCodeGen> MemTyOrNone =
-          MVTToLLT(getValueType(Predicate.getMemoryVT()));
-
-      if (!MemTyOrNone)
-        return failedImport("MemVT could not be converted to LLT");
-
-      InsnMatcher.getOperand(0).addPredicate<LLTOperandMatcher>(MemTyOrNone.getValue());
-      continue;
-    }
-
-    // No check required. A G_STORE is an unindexed store.
-    if (Predicate.isStore() && Predicate.isUnindexed())
-      continue;
-
-    // No check required. G_STORE by itself is a non-extending store.
-    if (Predicate.isNonTruncStore())
-      continue;
-
-    if (Predicate.isStore() && Predicate.getMemoryVT() != nullptr) {
-      Optional<LLTCodeGen> MemTyOrNone =
-          MVTToLLT(getValueType(Predicate.getMemoryVT()));
-
-      if (!MemTyOrNone)
-        return failedImport("MemVT could not be converted to LLT");
-
-      InsnMatcher.getOperand(0).addPredicate<LLTOperandMatcher>(MemTyOrNone.getValue());
-      continue;
-    }
-
     return failedImport("Src pattern child has predicate (" +
                         explainPredicates(Src) + ")");
   }
-  if (SrcGIEquivOrNull && SrcGIEquivOrNull->getValueAsBit("CheckMMOIsNonAtomic"))
-    InsnMatcher.addPredicate<NonAtomicMMOPredicateMatcher>();
 
   if (Src->isLeaf()) {
     Init *SrcInit = Src->getLeafValue();
     if (IntInit *SrcIntInit = dyn_cast<IntInit>(SrcInit)) {
-      OperandMatcher &OM =
-          InsnMatcher.addOperand(OpIdx++, Src->getName(), TempOpIdx);
+      OperandMatcher &OM = InsnMatcher.addOperand(OpIdx++, "", TempOpIdx);
       OM.addPredicate<LiteralIntOperandMatcher>(SrcIntInit->getValue());
     } else
       return failedImport(
@@ -2355,9 +2023,8 @@ Expected<InstructionMatcher &> GlobalISelEmitter::createAndImportSelDAGMatcher(
   } else {
     assert(SrcGIOrNull &&
            "Expected to have already found an equivalent Instruction");
-    if (SrcGIOrNull->TheDef->getName() == "G_CONSTANT" ||
-        SrcGIOrNull->TheDef->getName() == "G_FCONSTANT") {
-      // imm/fpimm still have operands but we don't need to do anything with it
+    if (SrcGIOrNull->TheDef->getName() == "G_CONSTANT") {
+      // imm still has an operand but we don't need to do anything with it
       // here since we don't support ImmLeaf predicates yet. However, we still
       // need to note the hidden operand to get GIM_CheckNumOperands correct.
       InsnMatcher.addOperand(OpIdx++, "", TempOpIdx);
@@ -2368,19 +2035,9 @@ Expected<InstructionMatcher &> GlobalISelEmitter::createAndImportSelDAGMatcher(
     for (unsigned i = 0, e = Src->getNumChildren(); i != e; ++i) {
       TreePatternNode *SrcChild = Src->getChild(i);
 
-      // SelectionDAG allows pointers to be represented with iN since it doesn't
-      // distinguish between pointers and integers but they are different types in GlobalISel.
-      // Coerce integers to pointers to address space 0 if the context indicates a pointer.
-      // TODO: Find a better way to do this, SDTCisPtrTy?
-      bool OperandIsAPointer =
-          (SrcGIOrNull->TheDef->getName() == "G_LOAD" && i == 0) ||
-          (SrcGIOrNull->TheDef->getName() == "G_STORE" && i == 1);
-
-      // For G_INTRINSIC/G_INTRINSIC_W_SIDE_EFFECTS, the operand immediately
-      // following the defs is an intrinsic ID.
-      if ((SrcGIOrNull->TheDef->getName() == "G_INTRINSIC" ||
-           SrcGIOrNull->TheDef->getName() == "G_INTRINSIC_W_SIDE_EFFECTS") &&
-          i == 0) {
+      // For G_INTRINSIC, the operand immediately following the defs is an
+      // intrinsic ID.
+      if (SrcGIOrNull->TheDef->getName() == "G_INTRINSIC" && i == 0) {
         if (const CodeGenIntrinsic *II = Src->getIntrinsicInfo(CGP)) {
           OperandMatcher &OM =
               InsnMatcher.addOperand(OpIdx++, SrcChild->getName(), TempOpIdx);
@@ -2392,8 +2049,7 @@ Expected<InstructionMatcher &> GlobalISelEmitter::createAndImportSelDAGMatcher(
       }
 
       if (auto Error =
-              importChildMatcher(Rule, InsnMatcher, SrcChild, OperandIsAPointer,
-                                 OpIdx++, TempOpIdx))
+              importChildMatcher(InsnMatcher, SrcChild, OpIdx++, TempOpIdx))
         return std::move(Error);
     }
   }
@@ -2401,30 +2057,14 @@ Expected<InstructionMatcher &> GlobalISelEmitter::createAndImportSelDAGMatcher(
   return InsnMatcher;
 }
 
-Error GlobalISelEmitter::importComplexPatternOperandMatcher(
-    OperandMatcher &OM, Record *R, unsigned &TempOpIdx) const {
-  const auto &ComplexPattern = ComplexPatternEquivs.find(R);
-  if (ComplexPattern == ComplexPatternEquivs.end())
-    return failedImport("SelectionDAG ComplexPattern (" + R->getName() +
-                        ") not mapped to GlobalISel");
-
-  OM.addPredicate<ComplexPatternOperandMatcher>(OM, *ComplexPattern->second);
-  TempOpIdx++;
-  return Error::success();
-}
-
-Error GlobalISelEmitter::importChildMatcher(RuleMatcher &Rule,
-                                            InstructionMatcher &InsnMatcher,
+Error GlobalISelEmitter::importChildMatcher(InstructionMatcher &InsnMatcher,
                                             const TreePatternNode *SrcChild,
-                                            bool OperandIsAPointer,
                                             unsigned OpIdx,
                                             unsigned &TempOpIdx) const {
   OperandMatcher &OM =
       InsnMatcher.addOperand(OpIdx, SrcChild->getName(), TempOpIdx);
-  if (OM.isSameAsAnotherOperand())
-    return Error::success();
 
-  ArrayRef<TypeSetByHwMode> ChildTypes = SrcChild->getExtTypes();
+  ArrayRef<EEVT::TypeSet> ChildTypes = SrcChild->getExtTypes();
   if (ChildTypes.size() != 1)
     return failedImport("Src pattern child has multiple results");
 
@@ -2439,46 +2079,18 @@ Error GlobalISelEmitter::importChildMatcher(RuleMatcher &Rule,
     }
   }
 
-  if (auto Error =
-          OM.addTypeCheckPredicate(ChildTypes.front(), OperandIsAPointer))
-    return failedImport(toString(std::move(Error)) + " for Src operand (" +
-                        to_string(*SrcChild) + ")");
+  auto OpTyOrNone = MVTToLLT(ChildTypes.front().getConcrete());
+  if (!OpTyOrNone)
+    return failedImport("Src operand has an unsupported type (" + to_string(*SrcChild) + ")");
+  OM.addPredicate<LLTOperandMatcher>(*OpTyOrNone);
 
   // Check for nested instructions.
   if (!SrcChild->isLeaf()) {
-    if (SrcChild->getOperator()->isSubClassOf("ComplexPattern")) {
-      // When a ComplexPattern is used as an operator, it should do the same
-      // thing as when used as a leaf. However, the children of the operator
-      // name the sub-operands that make up the complex operand and we must
-      // prepare to reference them in the renderer too.
-      unsigned RendererID = TempOpIdx;
-      if (auto Error = importComplexPatternOperandMatcher(
-              OM, SrcChild->getOperator(), TempOpIdx))
-        return Error;
-
-      for (unsigned i = 0, e = SrcChild->getNumChildren(); i != e; ++i) {
-        auto *SubOperand = SrcChild->getChild(i);
-        if (!SubOperand->getName().empty())
-          Rule.defineComplexSubOperand(SubOperand->getName(),
-                                       SrcChild->getOperator(), RendererID, i);
-      }
-
-      return Error::success();
-    }
-
-    auto MaybeInsnOperand = OM.addPredicate<InstructionOperandMatcher>(
-        InsnMatcher.getRuleMatcher(), SrcChild->getName());
-    if (!MaybeInsnOperand.hasValue()) {
-      // This isn't strictly true. If the user were to provide exactly the same
-      // matchers as the original operand then we could allow it. However, it's
-      // simpler to not permit the redundant specification.
-      return failedImport("Nested instruction cannot be the same as another operand");
-    }
-
     // Map the node to a gMIR instruction.
-    InstructionOperandMatcher &InsnOperand = **MaybeInsnOperand;
+    InstructionOperandMatcher &InsnOperand =
+        OM.addPredicate<InstructionOperandMatcher>(SrcChild->getName());
     auto InsnMatcherOrError = createAndImportSelDAGMatcher(
-        Rule, InsnOperand.getInsnMatcher(), SrcChild, TempOpIdx);
+        InsnOperand.getInsnMatcher(), SrcChild, TempOpIdx);
     if (auto Error = InsnMatcherOrError.takeError())
       return Error;
 
@@ -2503,16 +2115,18 @@ Error GlobalISelEmitter::importChildMatcher(RuleMatcher &Rule,
       return Error::success();
     }
 
-    // Check for ValueType.
-    if (ChildRec->isSubClassOf("ValueType")) {
-      // We already added a type check as standard practice so this doesn't need
-      // to do anything.
+    // Check for ComplexPattern's.
+    if (ChildRec->isSubClassOf("ComplexPattern")) {
+      const auto &ComplexPattern = ComplexPatternEquivs.find(ChildRec);
+      if (ComplexPattern == ComplexPatternEquivs.end())
+        return failedImport("SelectionDAG ComplexPattern (" +
+                            ChildRec->getName() + ") not mapped to GlobalISel");
+
+      OM.addPredicate<ComplexPatternOperandMatcher>(OM,
+                                                    *ComplexPattern->second);
+      TempOpIdx++;
       return Error::success();
     }
-
-    // Check for ComplexPattern's.
-    if (ChildRec->isSubClassOf("ComplexPattern"))
-      return importComplexPatternOperandMatcher(OM, ChildRec, TempOpIdx);
 
     if (ChildRec->isSubClassOf("ImmLeaf")) {
       return failedImport(
@@ -2527,19 +2141,11 @@ Error GlobalISelEmitter::importChildMatcher(RuleMatcher &Rule,
 }
 
 Error GlobalISelEmitter::importExplicitUseRenderer(
-    RuleMatcher &Rule, BuildMIAction &DstMIBuilder, TreePatternNode *DstChild,
+    BuildMIAction &DstMIBuilder, TreePatternNode *DstChild,
     const InstructionMatcher &InsnMatcher) const {
   if (DstChild->getTransformFn() != nullptr) {
     return failedImport("Dst pattern child has transform fn " +
                         DstChild->getTransformFn()->getName());
-  }
-
-  const auto &SubOperand = Rule.getComplexSubOperand(DstChild->getName());
-  if (SubOperand.hasValue()) {
-    DstMIBuilder.addRenderer<RenderComplexPatternOperand>(
-        0, *std::get<0>(*SubOperand), DstChild->getName(),
-        std::get<1>(*SubOperand), std::get<2>(*SubOperand));
-    return Error::success();
   }
 
   if (!DstChild->isLeaf()) {
@@ -2548,7 +2154,8 @@ Error GlobalISelEmitter::importExplicitUseRenderer(
     if (DstChild->getOperator()->isSubClassOf("SDNode")) {
       auto &ChildSDNI = CGP.getSDNodeInfo(DstChild->getOperator());
       if (ChildSDNI.getSDClassName() == "BasicBlockSDNode") {
-        DstMIBuilder.addRenderer<CopyRenderer>(0, DstChild->getName());
+        DstMIBuilder.addRenderer<CopyRenderer>(0, InsnMatcher,
+                                               DstChild->getName());
         return Error::success();
       }
     }
@@ -2561,10 +2168,6 @@ Error GlobalISelEmitter::importExplicitUseRenderer(
       DstMIBuilder.addRenderer<CopyConstantAsImmRenderer>(0,
                                                           DstChild->getName());
       return Error::success();
-    } else if (DstChild->getOperator()->getName() == "fpimm") {
-      DstMIBuilder.addRenderer<CopyFConstantAsFPImmRenderer>(
-          0, DstChild->getName());
-      return Error::success();
     }
 
     return failedImport("Dst pattern child isn't a leaf node or an MBB" + llvm::to_string(*DstChild));
@@ -2574,13 +2177,11 @@ Error GlobalISelEmitter::importExplicitUseRenderer(
   if (auto *ChildDefInit = dyn_cast<DefInit>(DstChild->getLeafValue())) {
     auto *ChildRec = ChildDefInit->getDef();
 
-    ArrayRef<TypeSetByHwMode> ChildTypes = DstChild->getExtTypes();
+    ArrayRef<EEVT::TypeSet> ChildTypes = DstChild->getExtTypes();
     if (ChildTypes.size() != 1)
       return failedImport("Dst pattern child has multiple results");
 
-    Optional<LLTCodeGen> OpTyOrNone = None;
-    if (ChildTypes.front().isMachineValueType())
-      OpTyOrNone = MVTToLLT(ChildTypes.front().getMachineValueType().SimpleTy);
+    auto OpTyOrNone = MVTToLLT(ChildTypes.front().getConcrete());
     if (!OpTyOrNone)
       return failedImport("Dst operand has an unsupported type");
 
@@ -2590,16 +2191,9 @@ Error GlobalISelEmitter::importExplicitUseRenderer(
     }
 
     if (ChildRec->isSubClassOf("RegisterClass") ||
-        ChildRec->isSubClassOf("RegisterOperand") ||
-        ChildRec->isSubClassOf("ValueType")) {
-      if (ChildRec->isSubClassOf("RegisterOperand") &&
-          !ChildRec->isValueUnset("GIZeroRegister")) {
-        DstMIBuilder.addRenderer<CopyOrAddZeroRegRenderer>(
-            0, DstChild->getName(), ChildRec->getValueAsDef("GIZeroRegister"));
-        return Error::success();
-      }
-
-      DstMIBuilder.addRenderer<CopyRenderer>(0, DstChild->getName());
+        ChildRec->isSubClassOf("RegisterOperand")) {
+      DstMIBuilder.addRenderer<CopyRenderer>(0, InsnMatcher,
+                                             DstChild->getName());
       return Error::success();
     }
 
@@ -2609,7 +2203,7 @@ Error GlobalISelEmitter::importExplicitUseRenderer(
         return failedImport(
             "SelectionDAG ComplexPattern not mapped to GlobalISel");
 
-      const OperandMatcher &OM = Rule.getOperandMatcher(DstChild->getName());
+      const OperandMatcher &OM = InsnMatcher.getOperand(DstChild->getName());
       DstMIBuilder.addRenderer<RenderComplexPatternOperand>(
           0, *ComplexPattern->second, DstChild->getName(),
           OM.getAllocatedTemporariesBaseID());
@@ -2654,12 +2248,12 @@ Expected<BuildMIAction &> GlobalISelEmitter::createAndImportInstructionRenderer(
     IsExtractSubReg = true;
   }
 
-  auto &DstMIBuilder = M.addAction<BuildMIAction>(0, DstI, &InsnMatcher);
+  auto &DstMIBuilder = M.addAction<BuildMIAction>(0, DstI, InsnMatcher);
 
   // Render the explicit defs.
   for (unsigned I = 0; I < DstI->Operands.NumDefs; ++I) {
     const CGIOperandList::OperandInfo &DstIOperand = DstI->Operands[I];
-    DstMIBuilder.addRenderer<CopyRenderer>(0, DstIOperand.Name);
+    DstMIBuilder.addRenderer<CopyRenderer>(0, InsnMatcher, DstIOperand.Name);
   }
 
   // EXTRACT_SUBREG needs to use a subregister COPY.
@@ -2682,7 +2276,7 @@ Expected<BuildMIAction &> GlobalISelEmitter::createAndImportInstructionRenderer(
       }
 
       DstMIBuilder.addRenderer<CopySubRegRenderer>(
-          0, Dst->getChild(0)->getName(), SubIdx);
+          0, InsnMatcher, Dst->getChild(0)->getName(), SubIdx);
       return DstMIBuilder;
     }
 
@@ -2710,7 +2304,7 @@ Expected<BuildMIAction &> GlobalISelEmitter::createAndImportInstructionRenderer(
     }
 
     if (auto Error = importExplicitUseRenderer(
-            M, DstMIBuilder, Dst->getChild(Child), InsnMatcher))
+            DstMIBuilder, Dst->getChild(Child), InsnMatcher))
       return std::move(Error);
     ++Child;
   }
@@ -2763,10 +2357,10 @@ Error GlobalISelEmitter::importImplicitDefRenderers(
 
 Expected<RuleMatcher> GlobalISelEmitter::runOnPattern(const PatternToMatch &P) {
   // Keep track of the matchers and actions to emit.
-  RuleMatcher M(P.getSrcRecord()->getLoc());
+  RuleMatcher M;
   M.addAction<DebugCommentAction>(P);
 
-  if (auto Error = importRulePredicates(M, P.getPredicates()))
+  if (auto Error = importRulePredicates(M, P.getPredicates()->getValues()))
     return std::move(Error);
 
   // Next, analyze the pattern operators.
@@ -2784,7 +2378,7 @@ Expected<RuleMatcher> GlobalISelEmitter::runOnPattern(const PatternToMatch &P) {
   InstructionMatcher &InsnMatcherTemp = M.addInstructionMatcher(Src->getName());
   unsigned TempOpIdx = 0;
   auto InsnMatcherOrError =
-      createAndImportSelDAGMatcher(M, InsnMatcherTemp, Src, TempOpIdx);
+      createAndImportSelDAGMatcher(InsnMatcherTemp, Src, TempOpIdx);
   if (auto Error = InsnMatcherOrError.takeError())
     return std::move(Error);
   InstructionMatcher &InsnMatcher = InsnMatcherOrError.get();
@@ -2802,12 +2396,11 @@ Expected<RuleMatcher> GlobalISelEmitter::runOnPattern(const PatternToMatch &P) {
 
       OperandMatcher &OM0 = InsnMatcher.getOperand(0);
       OM0.setSymbolicName(DstIOperand.Name);
-      M.defineOperand(OM0.getSymbolicName(), OM0);
       OM0.addPredicate<RegisterBankOperandMatcher>(RC);
 
-      auto &DstMIBuilder = M.addAction<BuildMIAction>(0, &DstI, &InsnMatcher);
-      DstMIBuilder.addRenderer<CopyRenderer>(0, DstIOperand.Name);
-      DstMIBuilder.addRenderer<CopyRenderer>(0, Dst->getName());
+      auto &DstMIBuilder = M.addAction<BuildMIAction>(0, &DstI, InsnMatcher);
+      DstMIBuilder.addRenderer<CopyRenderer>(0, InsnMatcher, DstIOperand.Name);
+      DstMIBuilder.addRenderer<CopyRenderer>(0, InsnMatcher, Dst->getName());
       M.addAction<ConstrainOperandToRegClassAction>(0, 0, RC);
 
       // We're done with this pattern!  It's eligible for GISel emission; return
@@ -2833,8 +2426,8 @@ Expected<RuleMatcher> GlobalISelEmitter::runOnPattern(const PatternToMatch &P) {
   // The root of the match also has constraints on the register bank so that it
   // matches the result instruction.
   unsigned OpIdx = 0;
-  for (const TypeSetByHwMode &VTy : Src->getExtTypes()) {
-    (void)VTy;
+  for (const EEVT::TypeSet &Ty : Src->getExtTypes()) {
+    (void)Ty;
 
     const auto &DstIOperand = DstI.Operands[OpIdx];
     Record *DstIOpRec = DstIOperand.Rec;
@@ -2863,7 +2456,6 @@ Expected<RuleMatcher> GlobalISelEmitter::runOnPattern(const PatternToMatch &P) {
 
     OperandMatcher &OM = InsnMatcher.getOperand(OpIdx);
     OM.setSymbolicName(DstIOperand.Name);
-    M.defineOperand(OM.getSymbolicName(), OM);
     OM.addPredicate<RegisterBankOperandMatcher>(
         Target.getRegisterClass(DstIOpRec));
     ++OpIdx;
@@ -2950,45 +2542,6 @@ Expected<RuleMatcher> GlobalISelEmitter::runOnPattern(const PatternToMatch &P) {
   return std::move(M);
 }
 
-// Emit imm predicate table and an enum to reference them with.
-// The 'Predicate_' part of the name is redundant but eliminating it is more
-// trouble than it's worth.
-void GlobalISelEmitter::emitImmPredicates(
-    raw_ostream &OS, StringRef TypeIdentifier, StringRef Type,
-    std::function<bool(const Record *R)> Filter) {
-  std::vector<const Record *> MatchedRecords;
-  const auto &Defs = RK.getAllDerivedDefinitions("PatFrag");
-  std::copy_if(Defs.begin(), Defs.end(), std::back_inserter(MatchedRecords),
-               [&](Record *Record) {
-                 return !Record->getValueAsString("ImmediateCode").empty() &&
-                        Filter(Record);
-               });
-
-  if (!MatchedRecords.empty()) {
-    OS << "// PatFrag predicates.\n"
-       << "enum {\n";
-    std::string EnumeratorSeparator =
-        (" = GIPFP_" + TypeIdentifier + "_Invalid + 1,\n").str();
-    for (const auto *Record : MatchedRecords) {
-      OS << "  GIPFP_" << TypeIdentifier << "_Predicate_" << Record->getName()
-         << EnumeratorSeparator;
-      EnumeratorSeparator = ",\n";
-    }
-    OS << "};\n";
-  }
-
-  for (const auto *Record : MatchedRecords)
-    OS << "static bool Predicate_" << Record->getName() << "(" << Type
-       << " Imm) {" << Record->getValueAsString("ImmediateCode") << "}\n";
-
-  OS << "static InstructionSelector::" << TypeIdentifier
-     << "ImmediatePredicateFn " << TypeIdentifier << "ImmPredicateFns[] = {\n"
-     << "  nullptr,\n";
-  for (const auto *Record : MatchedRecords)
-    OS << "  Predicate_" << Record->getName() << ",\n";
-  OS << "};\n";
-}
-
 void GlobalISelEmitter::run(raw_ostream &OS) {
   // Track the GINodeEquiv definitions.
   gatherNodeEquivs();
@@ -3050,19 +2603,22 @@ void GlobalISelEmitter::run(raw_ostream &OS) {
   OS << "#ifdef GET_GLOBALISEL_TEMPORARIES_DECL\n"
      << "  mutable MatcherState State;\n"
      << "  typedef "
-        "ComplexRendererFns("
+        "ComplexRendererFn("
      << Target.getName()
      << "InstructionSelector::*ComplexMatcherMemFn)(MachineOperand &) const;\n"
-     << "  const MatcherInfoTy<PredicateBitset, ComplexMatcherMemFn> "
+     << "const MatcherInfoTy<PredicateBitset, ComplexMatcherMemFn> "
         "MatcherInfo;\n"
-     << "  static " << Target.getName()
-     << "InstructionSelector::ComplexMatcherMemFn ComplexPredicateFns[];\n"
      << "#endif // ifdef GET_GLOBALISEL_TEMPORARIES_DECL\n\n";
 
   OS << "#ifdef GET_GLOBALISEL_TEMPORARIES_INIT\n"
      << ", State(" << MaxTemporaries << "),\n"
-     << "MatcherInfo({TypeObjects, FeatureBitsets, I64ImmPredicateFns, "
-        "APIntImmPredicateFns, APFloatImmPredicateFns, ComplexPredicateFns})\n"
+     << "MatcherInfo({TypeObjects, FeatureBitsets, ImmPredicateFns, {\n"
+     << "  nullptr, // GICP_Invalid\n";
+  for (const auto &Record : ComplexPredicates)
+    OS << "  &" << Target.getName()
+       << "InstructionSelector::" << Record->getValueAsString("MatcherFn")
+       << ", // " << Record->getName() << "\n";
+  OS << "}})\n"
      << "#endif // ifdef GET_GLOBALISEL_TEMPORARIES_INIT\n\n";
 
   OS << "#ifdef GET_GLOBALISEL_IMPL\n";
@@ -3169,28 +2725,32 @@ void GlobalISelEmitter::run(raw_ostream &OS) {
   OS << "};\n"
      << "// See constructor for table contents\n\n";
 
-  emitImmPredicates(OS, "I64", "int64_t", [](const Record *R) {
-    bool Unset;
-    return !R->getValueAsBitOrUnset("IsAPFloat", Unset) &&
-           !R->getValueAsBit("IsAPInt");
-  });
-  emitImmPredicates(OS, "APFloat", "const APFloat &", [](const Record *R) {
-    bool Unset;
-    return R->getValueAsBitOrUnset("IsAPFloat", Unset);
-  });
-  emitImmPredicates(OS, "APInt", "const APInt &", [](const Record *R) {
-    return R->getValueAsBit("IsAPInt");
-  });
-  OS << "\n";
-
-  OS << Target.getName() << "InstructionSelector::ComplexMatcherMemFn\n"
-     << Target.getName() << "InstructionSelector::ComplexPredicateFns[] = {\n"
-     << "  nullptr, // GICP_Invalid\n";
-  for (const auto &Record : ComplexPredicates)
-    OS << "  &" << Target.getName()
-       << "InstructionSelector::" << Record->getValueAsString("MatcherFn")
-       << ", // " << Record->getName() << "\n";
-  OS << "};\n\n";
+  // Emit imm predicate table and an enum to reference them with.
+  // The 'Predicate_' part of the name is redundant but eliminating it is more
+  // trouble than it's worth.
+  {
+    OS << "// PatFrag predicates.\n"
+       << "enum {\n";
+    StringRef EnumeratorSeparator = " = GIPFP_Invalid + 1,\n";
+    for (const auto *Record : RK.getAllDerivedDefinitions("PatFrag")) {
+      if (!Record->getValueAsString("ImmediateCode").empty()) {
+        OS << "  GIPFP_Predicate_" << Record->getName() << EnumeratorSeparator;
+        EnumeratorSeparator = ",\n";
+      }
+    }
+    OS << "};\n";
+  }
+  for (const auto *Record : RK.getAllDerivedDefinitions("PatFrag"))
+    if (!Record->getValueAsString("ImmediateCode").empty())
+      OS << "  static bool Predicate_" << Record->getName() << "(int64_t Imm) {"
+         << Record->getValueAsString("ImmediateCode") << "  }\n";
+  OS << "static InstructionSelector::ImmediatePredicateFn ImmPredicateFns[] = "
+        "{\n"
+     << "  nullptr,\n";
+  for (const auto *Record : RK.getAllDerivedDefinitions("PatFrag"))
+    if (!Record->getValueAsString("ImmediateCode").empty())
+      OS << "  Predicate_" << Record->getName() << ",\n";
+  OS << "};\n";
 
   OS << "bool " << Target.getName()
      << "InstructionSelector::selectImpl(MachineInstr &I) const {\n"

@@ -10,7 +10,7 @@
 #ifndef LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_ANDROID_CLOEXEC_CREAT_H
 #define LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_ANDROID_CLOEXEC_CREAT_H
 
-#include "CloexecCheck.h"
+#include "../ClangTidy.h"
 
 namespace clang {
 namespace tidy {
@@ -20,10 +20,10 @@ namespace android {
 /// Find the usage of creat() and redirect user to use open().
 
 /// http://clang.llvm.org/extra/clang-tidy/checks/android-cloexec-creat.html
-class CloexecCreatCheck : public CloexecCheck {
+class CloexecCreatCheck : public ClangTidyCheck {
 public:
   CloexecCreatCheck(StringRef Name, ClangTidyContext *Context)
-      : CloexecCheck(Name, Context) {}
+      : ClangTidyCheck(Name, Context) {}
   void registerMatchers(ast_matchers::MatchFinder *Finder) override;
   void check(const ast_matchers::MatchFinder::MatchResult &Result) override;
 };

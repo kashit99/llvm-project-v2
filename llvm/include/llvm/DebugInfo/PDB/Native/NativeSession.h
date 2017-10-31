@@ -31,19 +31,13 @@ public:
                 std::unique_ptr<BumpPtrAllocator> Allocator);
   ~NativeSession() override;
 
-  static Error createFromPdb(std::unique_ptr<MemoryBuffer> MB,
+  static Error createFromPdb(StringRef Path,
                              std::unique_ptr<IPDBSession> &Session);
   static Error createFromExe(StringRef Path,
                              std::unique_ptr<IPDBSession> &Session);
 
   std::unique_ptr<PDBSymbolCompiland>
   createCompilandSymbol(DbiModuleDescriptor MI);
-
-  std::unique_ptr<PDBSymbolTypeEnum>
-  createEnumSymbol(codeview::TypeIndex Index);
-
-  std::unique_ptr<IPDBEnumSymbols>
-  createTypeEnumerator(codeview::TypeLeafKind Kind);
 
   SymIndexId findSymbolByTypeIndex(codeview::TypeIndex TI);
 

@@ -27,8 +27,6 @@
 
 namespace llvm {
 
-class LiveIntervals;
-
 /// Register allocation hints.
 namespace ARMRI {
 
@@ -206,8 +204,7 @@ public:
                       unsigned SubReg,
                       const TargetRegisterClass *DstRC,
                       unsigned DstSubReg,
-                      const TargetRegisterClass *NewRC,
-                      LiveIntervals &LIS) const override;
+                      const TargetRegisterClass *NewRC) const override;
 };
 
 } // end namespace llvm

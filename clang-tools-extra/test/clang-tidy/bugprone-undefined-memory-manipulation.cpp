@@ -10,7 +10,6 @@ using ::memmove;
 using ::memset;
 }
 
-namespace types {
 // TriviallyCopyable types:
 struct Plain {
   int n;
@@ -53,118 +52,84 @@ struct VirtualBase : virtual Base {
   int vb;
 };
 
-// Incomplete type, assume it is TriviallyCopyable.
-struct NoDef;
-
-} // end namespace types
-
-void f(types::NoDef *s) {
-  memset(s, 0, 5);
-}
-
 template <typename T>
 void memset_temp(T *b) {
   memset(b, 0, sizeof(T));
-  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: undefined behavior, destination object type 'types::VirtualFunc' is not TriviallyCopyable [bugprone-undefined-memory-manipulation]
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: undefined behavior, destination object is not TriviallyCopyable [bugprone-undefined-memory-manipulation]
 }
 
 template <typename S, typename T>
 void memcpy_temp(S *a, T *b) {
   memcpy(a, b, sizeof(T));
-  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: undefined behavior, source object type 'types::VirtualFunc'
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: undefined behavior, source object is not TriviallyCopyable [bugprone-undefined-memory-manipulation]
 }
 
 template <typename S, typename T>
 void memmove_temp(S *a, T *b) {
   memmove(a, b, sizeof(T));
-  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: undefined behavior, source object type 'types::VirtualFunc'
-}
-
-namespace aliases {
-using Copy2 = types::Copy;
-typedef types::Move Move2;
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: undefined behavior, source object is not TriviallyCopyable [bugprone-undefined-memory-manipulation]
 }
 
 void notTriviallyCopyable() {
-  types::Plain p; // TriviallyCopyable for variety
-  types::Destruct d;
-  types::Copy c;
-  types::Move m;
-  types::VirtualFunc vf;
-  types::VirtualBase vb;
+  Plain p; // TriviallyCopyable for variety
+  Destruct d;
+  Copy c;
+  Move m;
+  VirtualFunc vf;
+  VirtualBase vb;
 
   memset(&vf, 0, sizeof(int));
-  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: undefined behavior, destination object type 'types::VirtualFunc'
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: undefined behavior, destination object is not TriviallyCopyable [bugprone-undefined-memory-manipulation]
   memset(&d, 0, sizeof(int));
-  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: undefined behavior, destination object type 'types::Destruct'
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: undefined behavior, destination object is not TriviallyCopyable [bugprone-undefined-memory-manipulation]
   memset(&c, 0, sizeof(int));
-  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: undefined behavior, destination object type 'types::Copy'
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: undefined behavior, destination object is not TriviallyCopyable [bugprone-undefined-memory-manipulation]
   std::memset(&m, 0, sizeof(int));
-  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: undefined behavior, destination object type 'types::Move'
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: undefined behavior, destination object is not TriviallyCopyable [bugprone-undefined-memory-manipulation]
   ::memset(&vb, 0, sizeof(int));
-  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: undefined behavior, destination object type 'types::VirtualBase'
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: undefined behavior, destination object is not TriviallyCopyable [bugprone-undefined-memory-manipulation]
 
   memcpy(&p, &vf, sizeof(int));
-  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: undefined behavior, source object type 'types::VirtualFunc'
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: undefined behavior, source object is not TriviallyCopyable [bugprone-undefined-memory-manipulation]
   memcpy(&p, &d, sizeof(int));
-  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: undefined behavior, source object type 'types::Destruct'
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: undefined behavior, source object is not TriviallyCopyable [bugprone-undefined-memory-manipulation]
   memcpy(&c, &p, sizeof(int));
-  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: undefined behavior, destination object type 'types::Copy'
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: undefined behavior, destination object is not TriviallyCopyable [bugprone-undefined-memory-manipulation]
   std::memcpy(&m, &p, sizeof(int));
-  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: undefined behavior, destination object type 'types::Move'
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: undefined behavior, destination object is not TriviallyCopyable [bugprone-undefined-memory-manipulation]
   ::memcpy(&vb, &p, sizeof(int));
-  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: undefined behavior, destination object type 'types::VirtualBase'
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: undefined behavior, destination object is not TriviallyCopyable [bugprone-undefined-memory-manipulation]
 
   memmove(&vf, &p, sizeof(int));
-  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: undefined behavior, destination object type 'types::VirtualFunc'
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: undefined behavior, destination object is not TriviallyCopyable [bugprone-undefined-memory-manipulation]
   memmove(&d, &p, sizeof(int));
-  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: undefined behavior, destination object type 'types::Destruct'
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: undefined behavior, destination object is not TriviallyCopyable [bugprone-undefined-memory-manipulation]
   memmove(&p, &c, sizeof(int));
-  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: undefined behavior, source object type 'types::Copy'
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: undefined behavior, source object is not TriviallyCopyable [bugprone-undefined-memory-manipulation]
   std::memmove(&p, &m, sizeof(int));
-  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: undefined behavior, source object type 'types::Move'
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: undefined behavior, source object is not TriviallyCopyable [bugprone-undefined-memory-manipulation]
   ::memmove(&p, &vb, sizeof(int));
-  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: undefined behavior, source object type 'types::VirtualBase'
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: undefined behavior, source object is not TriviallyCopyable [bugprone-undefined-memory-manipulation]
 
 #define MEMSET memset(&vf, 0, sizeof(int));
   MEMSET
-  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: undefined behavior, destination object type 'types::VirtualFunc'
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: undefined behavior, destination object is not TriviallyCopyable [bugprone-undefined-memory-manipulation]
 #define MEMCPY memcpy(&d, &p, sizeof(int));
   MEMCPY
-  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: undefined behavior, destination object type 'types::Destruct'
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: undefined behavior, destination object is not TriviallyCopyable [bugprone-undefined-memory-manipulation]
 #define MEMMOVE memmove(&p, &c, sizeof(int));
   MEMMOVE
-  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: undefined behavior, source object type 'types::Copy'
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: undefined behavior, source object is not TriviallyCopyable [bugprone-undefined-memory-manipulation]
 
-  memset_temp<types::VirtualFunc>(&vf);
-  memcpy_temp<types::Plain, types::VirtualFunc>(&p, &vf);
-  memmove_temp<types::Plain, types::VirtualFunc>(&p, &vf);
-
-  aliases::Copy2 c2;
-  aliases::Move2 m2;
-  memset(&c2, 0, sizeof(int));
-  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: undefined behavior, destination object type 'aliases::Copy2'
-  memset(&m2, 0, sizeof(int));
-  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: undefined behavior, destination object type 'aliases::Move2'
-
-  typedef aliases::Copy2 Copy3;
-  typedef aliases::Copy2 *PCopy2;
-  typedef Copy3 *PCopy3;
-  Copy3 c3;
-  PCopy2 pc2;
-  PCopy3 pc3;
-  memset(&c3, 0, sizeof(int));
-  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: undefined behavior, destination object type 'Copy3'
-  memset(pc2, 0, sizeof(int));
-  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: undefined behavior, destination object type 'aliases::Copy2'
-  memset(pc3, 0, sizeof(int));
-  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: undefined behavior, destination object type 'Copy3'
+  memset_temp<VirtualFunc>(&vf);
+  memcpy_temp<Plain, VirtualFunc>(&p, &vf);
+  memmove_temp<Plain, VirtualFunc>(&p, &vf);
 }
 
 void triviallyCopyable() {
-  types::Plain p;
-  types::Base base;
-  types::Derived derived;
+  Plain p;
+  Base base;
+  Derived derived;
 
   int i = 5;
   int ia[3] = {1, 2, 3};
@@ -172,7 +137,7 @@ void triviallyCopyable() {
   float fa[3] = {1.1, 2.2, 3.3};
   bool b = false;
   bool ba[2] = {true, false};
-  types::E e = types::X;
+  E e = X;
   p.n = 2;
 
   memset(&p, 0, sizeof(int));

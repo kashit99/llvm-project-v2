@@ -907,8 +907,7 @@ bool CursorVisitor::VisitFunctionTemplateDecl(FunctionTemplateDecl *D) {
   if (VisitTemplateParameters(D->getTemplateParameters()))
     return true;
   
-  auto* FD = D->getTemplatedDecl();
-  return VisitAttributes(FD) || VisitFunctionDecl(FD);
+  return VisitFunctionDecl(D->getTemplatedDecl());
 }
 
 bool CursorVisitor::VisitClassTemplateDecl(ClassTemplateDecl *D) {
@@ -917,8 +916,7 @@ bool CursorVisitor::VisitClassTemplateDecl(ClassTemplateDecl *D) {
   if (VisitTemplateParameters(D->getTemplateParameters()))
     return true;
   
-  auto* CD = D->getTemplatedDecl();
-  return VisitAttributes(CD) || VisitCXXRecordDecl(CD);
+  return VisitCXXRecordDecl(D->getTemplatedDecl());
 }
 
 bool CursorVisitor::VisitTemplateTemplateParmDecl(TemplateTemplateParmDecl *D) {
@@ -1744,7 +1742,6 @@ DEFAULT_TYPELOC_IMPL(ConstantArray, ArrayType)
 DEFAULT_TYPELOC_IMPL(IncompleteArray, ArrayType)
 DEFAULT_TYPELOC_IMPL(VariableArray, ArrayType)
 DEFAULT_TYPELOC_IMPL(DependentSizedArray, ArrayType)
-DEFAULT_TYPELOC_IMPL(DependentAddressSpace, Type)
 DEFAULT_TYPELOC_IMPL(DependentSizedExtVector, Type)
 DEFAULT_TYPELOC_IMPL(Vector, Type)
 DEFAULT_TYPELOC_IMPL(ExtVector, VectorType)
@@ -2284,25 +2281,6 @@ void OMPClauseEnqueue::VisitOMPTaskReductionClause(
     Visitor->AddStmt(E);
   }
 }
-void OMPClauseEnqueue::VisitOMPInReductionClause(
-    const OMPInReductionClause *C) {
-  VisitOMPClauseList(C);
-  VisitOMPClauseWithPostUpdate(C);
-  for (auto *E : C->privates()) {
-    Visitor->AddStmt(E);
-  }
-  for (auto *E : C->lhs_exprs()) {
-    Visitor->AddStmt(E);
-  }
-  for (auto *E : C->rhs_exprs()) {
-    Visitor->AddStmt(E);
-  }
-  for (auto *E : C->reduction_ops()) {
-    Visitor->AddStmt(E);
-  }
-  for (auto *E : C->taskgroup_descriptors())
-    Visitor->AddStmt(E);
-}
 void OMPClauseEnqueue::VisitOMPLinearClause(const OMPLinearClause *C) {
   VisitOMPClauseList(C);
   VisitOMPClauseWithPostUpdate(C);
@@ -2760,8 +2738,6 @@ void EnqueueVisitor::VisitOMPTaskwaitDirective(const OMPTaskwaitDirective *D) {
 void EnqueueVisitor::VisitOMPTaskgroupDirective(
     const OMPTaskgroupDirective *D) {
   VisitOMPExecutableDirective(D);
-  if (const Expr *E = D->getReductionRef())
-    VisitStmt(E);
 }
 
 void EnqueueVisitor::VisitOMPFlushDirective(const OMPFlushDirective *D) {
@@ -3507,12 +3483,6 @@ enum CXErrorCode clang_parseTranslationUnit2FullArgv(
         CIdx, source_filename, command_line_args, num_command_line_args,
         llvm::makeArrayRef(unsaved_files, num_unsaved_files), options, out_TU);
   };
-
-  if (getenv("LIBCLANG_NOTHREADS")) {
-    ParseTranslationUnitImpl();
-    return result;
-  }
-
   llvm::CrashRecoveryContext CRC;
 
   if (!RunSafely(CRC, ParseTranslationUnitImpl)) {
@@ -4634,20 +4604,6 @@ CXStringSet *clang_Cursor_getCXXManglings(CXCursor C) {
 
   const Decl *D = getCursorDecl(C);
   if (!(isa<CXXRecordDecl>(D) || isa<CXXMethodDecl>(D)))
-    return nullptr;
-
-  ASTContext &Ctx = D->getASTContext();
-  index::CodegenNameGenerator CGNameGen(Ctx);
-  std::vector<std::string> Manglings = CGNameGen.getAllManglings(D);
-  return cxstring::createSet(Manglings);
-}
-
-CXStringSet *clang_Cursor_getObjCManglings(CXCursor C) {
-  if (clang_isInvalid(C.kind) || !clang_isDeclaration(C.kind))
-    return nullptr;
-
-  const Decl *D = getCursorDecl(C);
-  if (!(isa<ObjCInterfaceDecl>(D) || isa<ObjCImplementationDecl>(D)))
     return nullptr;
 
   ASTContext &Ctx = D->getASTContext();
@@ -7326,8 +7282,7 @@ static void getCursorPlatformAvailabilityForDecl(
 
   std::sort(AvailabilityAttrs.begin(), AvailabilityAttrs.end(),
             [](AvailabilityAttr *LHS, AvailabilityAttr *RHS) {
-              return LHS->getPlatform()->getName() <
-                     RHS->getPlatform()->getName();
+              return LHS->getPlatform() > RHS->getPlatform();
             });
   ASTContext &Ctx = D->getASTContext();
   auto It = std::unique(
@@ -7427,22 +7382,6 @@ CXLanguageKind clang_getCursorLanguage(CXCursor cursor) {
     return getDeclLanguage(cxcursor::getCursorDecl(cursor));
 
   return CXLanguage_Invalid;
-}
-
-CXTLSKind clang_getCursorTLSKind(CXCursor cursor) {
-  const Decl *D = cxcursor::getCursorDecl(cursor);
-  if (const VarDecl *VD = dyn_cast<VarDecl>(D)) {
-    switch (VD->getTLSKind()) {
-    case VarDecl::TLS_None:
-      return CXTLS_None;
-    case VarDecl::TLS_Dynamic:
-      return CXTLS_Dynamic;
-    case VarDecl::TLS_Static:
-      return CXTLS_Static;
-    }
-  }
-
-  return CXTLS_None;
 }
 
  /// \brief If the given cursor is the "templated" declaration

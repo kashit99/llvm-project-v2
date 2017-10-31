@@ -35,9 +35,9 @@ public:
   Fuzzer(UserCallback CB, InputCorpus &Corpus, MutationDispatcher &MD,
          FuzzingOptions Options);
   ~Fuzzer();
-  void Loop(const Vector<std::string> &CorpusDirs);
-  void ReadAndExecuteSeedCorpora(const Vector<std::string> &CorpusDirs);
+  void Loop();
   void MinimizeCrashLoop(const Unit &U);
+  void ShuffleAndMinimize(UnitVector *V);
   void RereadOutputCorpus(size_t MaxSize);
 
   size_t secondsSinceProcessStartUp() {
@@ -69,9 +69,9 @@ public:
               InputInfo *II = nullptr);
 
   // Merge Corpora[1:] into Corpora[0].
-  void Merge(const Vector<std::string> &Corpora);
-  void CrashResistantMerge(const Vector<std::string> &Args,
-                           const Vector<std::string> &Corpora,
+  void Merge(const std::vector<std::string> &Corpora);
+  void CrashResistantMerge(const std::vector<std::string> &Args,
+                           const std::vector<std::string> &Corpora,
                            const char *CoverageSummaryInputPathOrNull,
                            const char *CoverageSummaryOutputPathOrNull);
   void CrashResistantMergeInternalStep(const std::string &ControlFilePath);
@@ -96,13 +96,13 @@ private:
   void CrashOnOverwrittenData();
   void InterruptCallback();
   void MutateAndTestOne();
-  void PurgeAllocator();
   void ReportNewCoverage(InputInfo *II, const Unit &U);
   void PrintPulseAndReportSlowInput(const uint8_t *Data, size_t Size);
   void WriteToOutputCorpus(const Unit &U);
   void WriteUnitToFileWithPrefix(const Unit &U, const char *Prefix);
   void PrintStats(const char *Where, const char *End = "\n", size_t Units = 0);
   void PrintStatusForNewUnit(const Unit &U, const char *Text);
+  void ShuffleCorpus(UnitVector *V);
   void CheckExitOnSrcPosOrItem();
 
   static void StaticDeathCallback();
@@ -125,8 +125,6 @@ private:
   bool HasMoreMallocsThanFrees = false;
   size_t NumberOfLeakDetectionAttempts = 0;
 
-  system_clock::time_point LastAllocatorPurgeAttemptTime = system_clock::now();
-
   UserCallback CB;
   InputCorpus &Corpus;
   MutationDispatcher &MD;
@@ -141,7 +139,7 @@ private:
   size_t MaxMutationLen = 0;
   size_t TmpMaxMutationLen = 0;
 
-  Vector<uint32_t> UniqFeatureSetTmp;
+  std::vector<uint32_t> UniqFeatureSetTmp;
 
   // Need to know our own thread.
   static thread_local bool IsMyThread;

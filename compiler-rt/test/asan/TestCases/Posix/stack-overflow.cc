@@ -16,8 +16,6 @@
 // RUN: not %run %t 2>&1 | FileCheck %s
 // REQUIRES: stable-runtime
 
-// UNSUPPORTED: ios
-
 #include <assert.h>
 #include <stdlib.h>
 #include <pthread.h>

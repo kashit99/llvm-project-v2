@@ -13,5 +13,3 @@ f:
 
 	.section	.debug_info,"dr"
 	.quad	f
-	.section	.eh_frame,"dr"
-	.quad	f

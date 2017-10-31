@@ -26,10 +26,8 @@ namespace llvm {
   class PassRegistry;
   class FunctionPass;
   class MachineInstr;
-  class MachineOperand;
   class AsmPrinter;
   class MCInst;
-  class MCOperand;
 
   FunctionPass *createPPCCTRLoops();
 #ifndef NDEBUG
@@ -43,7 +41,6 @@ namespace llvm {
   FunctionPass *createPPCVSXSwapRemovalPass();
   FunctionPass *createPPCMIPeepholePass();
   FunctionPass *createPPCBranchSelectionPass();
-  FunctionPass *createPPCBranchCoalescingPass();
   FunctionPass *createPPCQPXLoadSplatPass();
   FunctionPass *createPPCISelDag(PPCTargetMachine &TM, CodeGenOpt::Level OL);
   FunctionPass *createPPCTLSDynamicCallPass();
@@ -51,9 +48,6 @@ namespace llvm {
   FunctionPass *createPPCExpandISELPass();
   void LowerPPCMachineInstrToMCInst(const MachineInstr *MI, MCInst &OutMI,
                                     AsmPrinter &AP, bool isDarwin);
-  bool LowerPPCMachineOperandToMCOperand(const MachineOperand &MO,
-                                         MCOperand &OutMO, AsmPrinter &AP,
-                                         bool isDarwin);
 
   void initializePPCVSXFMAMutatePass(PassRegistry&);
   void initializePPCBoolRetToIntPass(PassRegistry&);

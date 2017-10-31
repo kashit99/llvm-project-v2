@@ -362,11 +362,29 @@ static const Target *getTarget(const ObjectFile *Obj = nullptr) {
   llvm::Triple TheTriple("unknown-unknown-unknown");
   if (TripleName.empty()) {
     if (Obj) {
-      TheTriple = Obj->makeTriple();
+      auto Arch = Obj->getArch();
+      TheTriple.setArch(Triple::ArchType(Arch));
+
+      // For ARM targets, try to use the build attributes to build determine
+      // the build target. Target features are also added, but later during
+      // disassembly.
+      if (Arch == Triple::arm || Arch == Triple::armeb) {
+        Obj->setARMSubArch(TheTriple);
+      }
+
+      // TheTriple defaults to ELF, and COFF doesn't have an environment:
+      // the best we can do here is indicate that it is mach-o.
+      if (Obj->isMachO())
+        TheTriple.setObjectFormat(Triple::MachO);
+
+      if (Obj->isCOFF()) {
+        const auto COFFObj = dyn_cast<COFFObjectFile>(Obj);
+        if (COFFObj->getArch() == Triple::thumb)
+          TheTriple.setTriple("thumbv7-windows");
+      }
     }
   } else {
     TheTriple.setTriple(Triple::normalize(TripleName));
-
     // Use the triple, but also try to combine with ARM build attributes.
     if (Obj) {
       auto Arch = Obj->getArch();
@@ -400,7 +418,7 @@ namespace {
 class SourcePrinter {
 protected:
   DILineInfo OldLineInfo;
-  const ObjectFile *Obj = nullptr;
+  const ObjectFile *Obj;
   std::unique_ptr<symbolize::LLVMSymbolizer> Symbolizer;
   // File name to file contents of source
   std::unordered_map<std::string, std::unique_ptr<MemoryBuffer>> SourceCache;
@@ -408,22 +426,22 @@ protected:
   std::unordered_map<std::string, std::vector<StringRef>> LineCache;
 
 private:
-  bool cacheSource(const std::string& File);
+  bool cacheSource(std::string File);
 
 public:
-  SourcePrinter() = default;
+  virtual ~SourcePrinter() {}
+  SourcePrinter() : Obj(nullptr), Symbolizer(nullptr) {}
   SourcePrinter(const ObjectFile *Obj, StringRef DefaultArch) : Obj(Obj) {
     symbolize::LLVMSymbolizer::Options SymbolizerOpts(
         DILineInfoSpecifier::FunctionNameKind::None, true, false, false,
         DefaultArch);
     Symbolizer.reset(new symbolize::LLVMSymbolizer(SymbolizerOpts));
   }
-  virtual ~SourcePrinter() = default;
   virtual void printSourceLine(raw_ostream &OS, uint64_t Address,
                                StringRef Delimiter = "; ");
 };
 
-bool SourcePrinter::cacheSource(const std::string& File) {
+bool SourcePrinter::cacheSource(std::string File) {
   auto BufferOrError = MemoryBuffer::getFile(File);
   if (!BufferOrError)
     return false;
@@ -491,7 +509,7 @@ static bool isArmElf(const ObjectFile *Obj) {
 
 class PrettyPrinter {
 public:
-  virtual ~PrettyPrinter() = default;
+  virtual ~PrettyPrinter(){}
   virtual void printInst(MCInstPrinter &IP, const MCInst *MI,
                          ArrayRef<uint8_t> Bytes, uint64_t Address,
                          raw_ostream &OS, StringRef Annot,

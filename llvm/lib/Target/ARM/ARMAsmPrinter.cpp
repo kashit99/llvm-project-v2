@@ -173,10 +173,10 @@ bool ARMAsmPrinter::runOnMachineFunction(MachineFunction &MF) {
   if (! ThumbIndirectPads.empty()) {
     OutStreamer->EmitAssemblerFlag(MCAF_Code16);
     EmitAlignment(1);
-    for (std::pair<unsigned, MCSymbol *> &TIP : ThumbIndirectPads) {
-      OutStreamer->EmitLabel(TIP.second);
+    for (unsigned i = 0, e = ThumbIndirectPads.size(); i < e; i++) {
+      OutStreamer->EmitLabel(ThumbIndirectPads[i].second);
       EmitToStreamer(*OutStreamer, MCInstBuilder(ARM::tBX)
-        .addReg(TIP.first)
+        .addReg(ThumbIndirectPads[i].first)
         // Add predicate operands.
         .addImm(ARMCC::AL)
         .addReg(0));
@@ -476,7 +476,11 @@ void ARMAsmPrinter::EmitStartOfAsmFile(Module &M) {
   // Use the triple's architecture and subarchitecture to determine
   // if we're thumb for the purposes of the top level code16 assembler
   // flag.
-  if (!M.getModuleInlineAsm().empty() && TT.isThumb())
+  bool isThumb = TT.getArch() == Triple::thumb ||
+                 TT.getArch() == Triple::thumbeb ||
+                 TT.getSubArch() == Triple::ARMSubArch_v7m ||
+                 TT.getSubArch() == Triple::ARMSubArch_v6m;
+  if (!M.getModuleInlineAsm().empty() && isThumb)
     OutStreamer->EmitAssemblerFlag(MCAF_Code16);
 }
 
@@ -865,12 +869,11 @@ EmitMachineConstantPoolValue(MachineConstantPoolValue *MCPV) {
     // However, if this global is promoted into several functions we must ensure
     // we don't try and emit duplicate symbols!
     auto *ACPC = cast<ARMConstantPoolConstant>(ACPV);
-    for (const auto *GV : ACPC->promotedGlobals()) {
-      if (!EmittedPromotedGlobalLabels.count(GV)) {
-        MCSymbol *GVSym = getSymbol(GV);
-        OutStreamer->EmitLabel(GVSym);
-        EmittedPromotedGlobalLabels.insert(GV);
-      }
+    auto *GV = ACPC->getPromotedGlobal();
+    if (!EmittedPromotedGlobalLabels.count(GV)) {
+      MCSymbol *GVSym = getSymbol(GV);
+      OutStreamer->EmitLabel(GVSym);
+      EmittedPromotedGlobalLabels.insert(GV);
     }
     return EmitGlobalConstant(DL, ACPC->getPromotedGlobalInit());
   }
@@ -946,7 +949,8 @@ void ARMAsmPrinter::EmitJumpTableAddrs(const MachineInstr *MI) {
   const std::vector<MachineJumpTableEntry> &JT = MJTI->getJumpTables();
   const std::vector<MachineBasicBlock*> &JTBBs = JT[JTI].MBBs;
 
-  for (MachineBasicBlock *MBB : JTBBs) {
+  for (unsigned i = 0, e = JTBBs.size(); i != e; ++i) {
+    MachineBasicBlock *MBB = JTBBs[i];
     // Construct an MCExpr for the entry. We want a value of the form:
     // (BasicBlockAddr - TableBeginAddr)
     //
@@ -989,7 +993,8 @@ void ARMAsmPrinter::EmitJumpTableInsts(const MachineInstr *MI) {
   const std::vector<MachineJumpTableEntry> &JT = MJTI->getJumpTables();
   const std::vector<MachineBasicBlock*> &JTBBs = JT[JTI].MBBs;
 
-  for (MachineBasicBlock *MBB : JTBBs) {
+  for (unsigned i = 0, e = JTBBs.size(); i != e; ++i) {
+    MachineBasicBlock *MBB = JTBBs[i];
     const MCExpr *MBBSymbolExpr = MCSymbolRefExpr::create(MBB->getSymbol(),
                                                           OutContext);
     // If this isn't a TBB or TBH, the entries are direct branch instructions.
@@ -1204,10 +1209,6 @@ void ARMAsmPrinter::EmitInstruction(const MachineInstr *MI) {
   MCTargetStreamer &TS = *OutStreamer->getTargetStreamer();
   ARMTargetStreamer &ATS = static_cast<ARMTargetStreamer &>(TS);
 
-  const MachineFunction &MF = *MI->getParent()->getParent();
-  const ARMSubtarget &STI = MF.getSubtarget<ARMSubtarget>();
-  unsigned FramePtr = STI.useR7AsFramePointer() ? ARM::R7 : ARM::R11;
-
   // If we just ended a constant pool, mark it as such.
   if (InConstantPool && MI->getOpcode() != ARM::CONSTPOOL_ENTRY) {
     OutStreamer->EmitDataRegion(MCDR_DataRegionEnd);
@@ -1292,9 +1293,9 @@ void ARMAsmPrinter::EmitInstruction(const MachineInstr *MI) {
 
     unsigned TReg = MI->getOperand(0).getReg();
     MCSymbol *TRegSym = nullptr;
-    for (std::pair<unsigned, MCSymbol *> &TIP : ThumbIndirectPads) {
-      if (TIP.first == TReg) {
-        TRegSym = TIP.second;
+    for (unsigned i = 0, e = ThumbIndirectPads.size(); i < e; i++) {
+      if (ThumbIndirectPads[i].first == TReg) {
+        TRegSym = ThumbIndirectPads[i].second;
         break;
       }
     }
@@ -1888,33 +1889,13 @@ void ARMAsmPrinter::EmitInstruction(const MachineInstr *MI) {
       .addImm(ARMCC::AL)
       .addReg(0));
 
-    if (STI.isTargetDarwin() || STI.isTargetWindows()) {
-      // These platforms always use the same frame register
-      EmitToStreamer(*OutStreamer, MCInstBuilder(ARM::LDRi12)
-        .addReg(FramePtr)
-        .addReg(SrcReg)
-        .addImm(0)
-        // Predicate.
-        .addImm(ARMCC::AL)
-        .addReg(0));
-    } else {
-      // If the calling code might use either R7 or R11 as
-      // frame pointer register, restore it into both.
-      EmitToStreamer(*OutStreamer, MCInstBuilder(ARM::LDRi12)
-        .addReg(ARM::R7)
-        .addReg(SrcReg)
-        .addImm(0)
-        // Predicate.
-        .addImm(ARMCC::AL)
-        .addReg(0));
-      EmitToStreamer(*OutStreamer, MCInstBuilder(ARM::LDRi12)
-        .addReg(ARM::R11)
-        .addReg(SrcReg)
-        .addImm(0)
-        // Predicate.
-        .addImm(ARMCC::AL)
-        .addReg(0));
-    }
+    EmitToStreamer(*OutStreamer, MCInstBuilder(ARM::LDRi12)
+      .addReg(ARM::R7)
+      .addReg(SrcReg)
+      .addImm(0)
+      // Predicate.
+      .addImm(ARMCC::AL)
+      .addReg(0));
 
     assert(Subtarget->hasV4TOps());
     EmitToStreamer(*OutStreamer, MCInstBuilder(ARM::BX)
@@ -1958,33 +1939,13 @@ void ARMAsmPrinter::EmitInstruction(const MachineInstr *MI) {
       .addImm(ARMCC::AL)
       .addReg(0));
 
-    if (STI.isTargetDarwin() || STI.isTargetWindows()) {
-      // These platforms always use the same frame register
-      EmitToStreamer(*OutStreamer, MCInstBuilder(ARM::tLDRi)
-        .addReg(FramePtr)
-        .addReg(SrcReg)
-        .addImm(0)
-        // Predicate.
-        .addImm(ARMCC::AL)
-        .addReg(0));
-    } else {
-      // If the calling code might use either R7 or R11 as
-      // frame pointer register, restore it into both.
-      EmitToStreamer(*OutStreamer, MCInstBuilder(ARM::tLDRi)
-        .addReg(ARM::R7)
-        .addReg(SrcReg)
-        .addImm(0)
-        // Predicate.
-        .addImm(ARMCC::AL)
-        .addReg(0));
-      EmitToStreamer(*OutStreamer, MCInstBuilder(ARM::tLDRi)
-        .addReg(ARM::R11)
-        .addReg(SrcReg)
-        .addImm(0)
-        // Predicate.
-        .addImm(ARMCC::AL)
-        .addReg(0));
-    }
+    EmitToStreamer(*OutStreamer, MCInstBuilder(ARM::tLDRi)
+      .addReg(ARM::R7)
+      .addReg(SrcReg)
+      .addImm(0)
+      // Predicate.
+      .addImm(ARMCC::AL)
+      .addReg(0));
 
     EmitToStreamer(*OutStreamer, MCInstBuilder(ARM::tBX)
       .addReg(ScratchReg)

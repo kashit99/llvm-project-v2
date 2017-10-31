@@ -85,14 +85,6 @@ public:
   MDNode *createRange(Constant *Lo, Constant *Hi);
 
   //===------------------------------------------------------------------===//
-  // Callees metadata.
-  //===------------------------------------------------------------------===//
-
-  /// \brief Return metadata indicating the possible callees of indirect
-  /// calls.
-  MDNode *createCallees(ArrayRef<Function *> Callees);
-
-  //===------------------------------------------------------------------===//
   // AA metadata.
   //===------------------------------------------------------------------===//
 

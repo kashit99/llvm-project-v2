@@ -862,28 +862,6 @@ void OMPClausePrinter::VisitOMPTaskReductionClause(
   }
 }
 
-void OMPClausePrinter::VisitOMPInReductionClause(OMPInReductionClause *Node) {
-  if (!Node->varlist_empty()) {
-    OS << "in_reduction(";
-    NestedNameSpecifier *QualifierLoc =
-        Node->getQualifierLoc().getNestedNameSpecifier();
-    OverloadedOperatorKind OOK =
-        Node->getNameInfo().getName().getCXXOverloadedOperator();
-    if (QualifierLoc == nullptr && OOK != OO_None) {
-      // Print reduction identifier in C format
-      OS << getOperatorSpelling(OOK);
-    } else {
-      // Use C++ format
-      if (QualifierLoc != nullptr)
-        QualifierLoc->print(OS, Policy);
-      OS << Node->getNameInfo();
-    }
-    OS << ":";
-    VisitOMPClauseList(Node, ' ');
-    OS << ")";
-  }
-}
-
 void OMPClausePrinter::VisitOMPLinearClause(OMPLinearClause *Node) {
   if (!Node->varlist_empty()) {
     OS << "linear";
@@ -1346,25 +1324,10 @@ void StmtPrinter::VisitUnresolvedLookupExpr(UnresolvedLookupExpr *Node) {
         OS, Node->template_arguments(), Policy);
 }
 
-static bool isImplicitSelf(const Expr *E) {
-  if (const auto *DRE = dyn_cast<DeclRefExpr>(E)) {
-    if (const ImplicitParamDecl *PD =
-            dyn_cast<ImplicitParamDecl>(DRE->getDecl())) {
-      if (PD->getParameterKind() == ImplicitParamDecl::ObjCSelf &&
-          DRE->getLocStart().isInvalid())
-        return true;
-    }
-  }
-  return false;
-}
-
 void StmtPrinter::VisitObjCIvarRefExpr(ObjCIvarRefExpr *Node) {
   if (Node->getBase()) {
-    if (!Policy.SuppressImplicitBase ||
-        !isImplicitSelf(Node->getBase()->IgnoreImpCasts())) {
-      PrintExpr(Node->getBase());
-      OS << (Node->isArrow() ? "->" : ".");
-    }
+    PrintExpr(Node->getBase());
+    OS << (Node->isArrow() ? "->" : ".");
   }
   OS << *Node->getDecl();
 }
@@ -1515,7 +1478,6 @@ static void PrintFloatingLiteral(raw_ostream &OS, FloatingLiteral *Node,
   default: llvm_unreachable("Unexpected type for float literal!");
   case BuiltinType::Half:       break; // FIXME: suffix?
   case BuiltinType::Double:     break; // no suffix.
-  case BuiltinType::Float16:    OS << "F16"; break;
   case BuiltinType::Float:      OS << 'F'; break;
   case BuiltinType::LongDouble: OS << 'L'; break;
   case BuiltinType::Float128:   OS << 'Q'; break;
@@ -1685,25 +1647,16 @@ void StmtPrinter::VisitCallExpr(CallExpr *Call) {
   PrintCallArgs(Call);
   OS << ")";
 }
-
-static bool isImplicitThis(const Expr *E) {
-  if (const auto *TE = dyn_cast<CXXThisExpr>(E))
-    return TE->isImplicit();
-  return false;
-}
-
 void StmtPrinter::VisitMemberExpr(MemberExpr *Node) {
-  if (!Policy.SuppressImplicitBase || !isImplicitThis(Node->getBase())) {
-    PrintExpr(Node->getBase());
+  // FIXME: Suppress printing implicit bases (like "this")
+  PrintExpr(Node->getBase());
 
-    MemberExpr *ParentMember = dyn_cast<MemberExpr>(Node->getBase());
-    FieldDecl *ParentDecl =
-        ParentMember ? dyn_cast<FieldDecl>(ParentMember->getMemberDecl())
-                     : nullptr;
+  MemberExpr *ParentMember = dyn_cast<MemberExpr>(Node->getBase());
+  FieldDecl  *ParentDecl   = ParentMember
+    ? dyn_cast<FieldDecl>(ParentMember->getMemberDecl()) : nullptr;
 
-    if (!ParentDecl || !ParentDecl->isAnonymousStructOrUnion())
-      OS << (Node->isArrow() ? "->" : ".");
-  }
+  if (!ParentDecl || !ParentDecl->isAnonymousStructOrUnion())
+    OS << (Node->isArrow() ? "->" : ".");
 
   if (FieldDecl *FD = dyn_cast<FieldDecl>(Node->getMemberDecl()))
     if (FD->isAnonymousStructOrUnion())
@@ -1940,8 +1893,7 @@ void StmtPrinter::VisitAtomicExpr(AtomicExpr *Node) {
   // AtomicExpr stores its subexpressions in a permuted order.
   PrintExpr(Node->getPtr());
   if (Node->getOp() != AtomicExpr::AO__c11_atomic_load &&
-      Node->getOp() != AtomicExpr::AO__atomic_load_n &&
-      Node->getOp() != AtomicExpr::AO__opencl_atomic_load) {
+      Node->getOp() != AtomicExpr::AO__atomic_load_n) {
     OS << ", ";
     PrintExpr(Node->getVal1());
   }
@@ -1955,8 +1907,7 @@ void StmtPrinter::VisitAtomicExpr(AtomicExpr *Node) {
     OS << ", ";
     PrintExpr(Node->getWeak());
   }
-  if (Node->getOp() != AtomicExpr::AO__c11_atomic_init &&
-      Node->getOp() != AtomicExpr::AO__opencl_atomic_init) {
+  if (Node->getOp() != AtomicExpr::AO__c11_atomic_init) {
     OS << ", ";
     PrintExpr(Node->getOrder());
   }

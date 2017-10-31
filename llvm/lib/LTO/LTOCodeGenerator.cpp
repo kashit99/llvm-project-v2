@@ -131,6 +131,7 @@ void LTOCodeGenerator::initializeLTOPasses() {
   initializeMemCpyOptLegacyPassPass(R);
   initializeDCELegacyPassPass(R);
   initializeCFGSimplifyPassPass(R);
+  initializeLateCFGSimplifyPassPass(R);
 }
 
 void LTOCodeGenerator::setAsmUndefinedRefs(LTOModule *Mod) {
@@ -214,7 +215,7 @@ bool LTOCodeGenerator::writeMergedModules(StringRef Path) {
 
   // create output file
   std::error_code EC;
-  ToolOutputFile Out(Path, EC, sys::fs::F_None);
+  tool_output_file Out(Path, EC, sys::fs::F_None);
   if (EC) {
     std::string ErrMsg = "could not open bitcode file for writing: ";
     ErrMsg += Path.str() + ": " + EC.message();
@@ -254,7 +255,7 @@ bool LTOCodeGenerator::compileOptimizedToFile(const char **Name) {
   }
 
   // generate object file
-  ToolOutputFile objFile(Filename, FD);
+  tool_output_file objFile(Filename, FD);
 
   bool genResult = compileOptimized(&objFile.os());
   objFile.os().close();
@@ -359,8 +360,9 @@ bool LTOCodeGenerator::determineTarget() {
 }
 
 std::unique_ptr<TargetMachine> LTOCodeGenerator::createTargetMachine() {
-  return std::unique_ptr<TargetMachine>(MArch->createTargetMachine(
-      TripleStr, MCpu, FeatureStr, Options, RelocModel, None, CGOptLevel));
+  return std::unique_ptr<TargetMachine>(
+      MArch->createTargetMachine(TripleStr, MCpu, FeatureStr, Options,
+                                 RelocModel, CodeModel::Default, CGOptLevel));
 }
 
 // If a linkonce global is present in the MustPreserveSymbols, we need to make
@@ -612,8 +614,12 @@ void LTOCodeGenerator::parseCodeGenDebugOptions() {
   }
 }
 
+void LTOCodeGenerator::DiagnosticHandler(const DiagnosticInfo &DI,
+                                         void *Context) {
+  ((LTOCodeGenerator *)Context)->DiagnosticHandler2(DI);
+}
 
-void LTOCodeGenerator::DiagnosticHandler(const DiagnosticInfo &DI) {
+void LTOCodeGenerator::DiagnosticHandler2(const DiagnosticInfo &DI) {
   // Map the LLVM internal diagnostic severity to the LTO diagnostic severity.
   lto_codegen_diagnostic_severity_t Severity;
   switch (DI.getSeverity()) {
@@ -643,29 +649,17 @@ void LTOCodeGenerator::DiagnosticHandler(const DiagnosticInfo &DI) {
   (*DiagHandler)(Severity, MsgStorage.c_str(), DiagContext);
 }
 
-namespace {
-struct LTODiagnosticHandler : public DiagnosticHandler {
-  LTOCodeGenerator *CodeGenerator;
-  LTODiagnosticHandler(LTOCodeGenerator *CodeGenPtr)
-      : CodeGenerator(CodeGenPtr) {}
-  bool handleDiagnostics(const DiagnosticInfo &DI) override {
-    CodeGenerator->DiagnosticHandler(DI);
-    return true;
-  }
-};
-}
-
 void
 LTOCodeGenerator::setDiagnosticHandler(lto_diagnostic_handler_t DiagHandler,
                                        void *Ctxt) {
   this->DiagHandler = DiagHandler;
   this->DiagContext = Ctxt;
   if (!DiagHandler)
-    return Context.setDiagnosticHandler(nullptr);
+    return Context.setDiagnosticHandler(nullptr, nullptr);
   // Register the LTOCodeGenerator stub in the LLVMContext to forward the
   // diagnostic to the external DiagHandler.
-  Context.setDiagnosticHandler(llvm::make_unique<LTODiagnosticHandler>(this),
-                               true);
+  Context.setDiagnosticHandler(LTOCodeGenerator::DiagnosticHandler, this,
+                               /* RespectFilters */ true);
 }
 
 namespace {

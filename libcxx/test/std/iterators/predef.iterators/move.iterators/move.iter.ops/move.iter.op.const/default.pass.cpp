@@ -25,7 +25,6 @@ void
 test()
 {
     std::move_iterator<It> r;
-    (void)r;
 }
 
 int main()
@@ -39,7 +38,6 @@ int main()
 #if TEST_STD_VER > 14
     {
     constexpr std::move_iterator<const char *> it;
-    (void)it;
     }
 #endif
 }

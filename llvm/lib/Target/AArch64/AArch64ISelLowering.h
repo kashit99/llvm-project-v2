@@ -290,7 +290,7 @@ public:
 
   /// Return true if the given shuffle mask can be codegen'd directly, or if it
   /// should be stack expanded.
-  bool isShuffleMaskLegal(ArrayRef<int> M, EVT VT) const override;
+  bool isShuffleMaskLegal(const SmallVectorImpl<int> &M, EVT VT) const override;
 
   /// Return the ISD::SETCC ValueType.
   EVT getSetCCResultType(const DataLayout &DL, LLVMContext &Context,
@@ -338,8 +338,7 @@ public:
   /// Return true if the addressing mode represented by AM is legal for this
   /// target, for a load/store of the specified type.
   bool isLegalAddressingMode(const DataLayout &DL, const AddrMode &AM, Type *Ty,
-                             unsigned AS,
-                             Instruction *I = nullptr) const override;
+                             unsigned AS) const override;
 
   /// \brief Return the cost of the scaling factor used in the addressing
   /// mode represented by AM for this target, for a load/store
@@ -538,12 +537,10 @@ private:
                         unsigned Flag) const;
   SDValue getTargetNode(BlockAddressSDNode *N, EVT Ty, SelectionDAG &DAG,
                         unsigned Flag) const;
+  template <class NodeTy> SDValue getGOT(NodeTy *N, SelectionDAG &DAG) const;
   template <class NodeTy>
-  SDValue getGOT(NodeTy *N, SelectionDAG &DAG, unsigned Flags = 0) const;
-  template <class NodeTy>
-  SDValue getAddrLarge(NodeTy *N, SelectionDAG &DAG, unsigned Flags = 0) const;
-  template <class NodeTy>
-  SDValue getAddr(NodeTy *N, SelectionDAG &DAG, unsigned Flags = 0) const;
+  SDValue getAddrLarge(NodeTy *N, SelectionDAG &DAG) const;
+  template <class NodeTy> SDValue getAddr(NodeTy *N, SelectionDAG &DAG) const;
   SDValue LowerGlobalAddress(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerGlobalTLSAddress(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerDarwinGlobalTLSAddress(SDValue Op, SelectionDAG &DAG) const;

@@ -9,7 +9,6 @@
 // lit doesn't set ASAN_OPTIONS anyway.
 // RUN: not %run %t 2>&1 | FileCheck %s
 
-// Android runs with abort_on_error=0
 // UNSUPPORTED: android
 
 #include <stdlib.h>

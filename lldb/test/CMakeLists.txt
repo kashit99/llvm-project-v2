@@ -27,6 +27,10 @@ if(TARGET lldb-mi)
   list(APPEND LLDB_TEST_DEPS lldb-mi)
 endif()
 
+if ("${LLDB_TEST_COMPILER}" STREQUAL "")
+    string(REGEX REPLACE ".*ccache\ +" "" LLDB_TEST_COMPILER ${CMAKE_C_COMPILER} ${CMAKE_C_COMPILER_ARG1})
+endif()
+
 # The default architecture with which to compile test executables is the default LLVM target
 # architecture, which itself defaults to the host architecture.
 string(TOLOWER "${LLVM_TARGET_ARCH}" LLDB_DEFAULT_TEST_ARCH)
@@ -38,6 +42,18 @@ endif ()
 set(LLDB_TEST_ARCH
 	${LLDB_DEFAULT_TEST_ARCH}
 	CACHE STRING "Specify the architecture to run LLDB tests as (x86|x64).  Determines whether tests are compiled with -m32 or -m64")
+
+if(LLDB_TEST_CLANG)
+  set(LLDB_TEST_COMPILER $<TARGET_FILE:clang>)
+endif()
+
+if(LLDB_TEST_SWIFT)
+  set(LLDB_TEST_SWIFT_COMPILER $<TARGET_FILE:swift>c)
+endif()
+
+if(LLDB_TEST_SWIFT_COMPILER)
+  set(SWIFT_TEST_ARGS --swift-compiler ${LLDB_TEST_SWIFT_COMPILER})
+endif()
 
 # Users can override LLDB_TEST_USER_ARGS to specify arbitrary arguments to pass to the script
 set(LLDB_TEST_USER_ARGS
@@ -52,7 +68,8 @@ set(LLDB_TEST_COMMON_ARGS
   -S nm
   -u CXXFLAGS
   -u CFLAGS
-  -C ${LLDB_TEST_C_COMPILER}
+  -C ${LLDB_TEST_COMPILER}
+  ${SWIFT_TEST_ARGS}
   )
 
 if ( CMAKE_SYSTEM_NAME MATCHES "Windows" )
@@ -108,12 +125,6 @@ add_python_test_target(check-lldb
   "-q;${LLDB_DOTEST_ARGS}"
   "Testing LLDB (parallel execution, with a separate subprocess per test)"
   )
-
-# If we're building with an in-tree clang, then list clang as a dependency
-# to run tests.
-if (TARGET clang)
-  add_dependencies(check-lldb clang)
-endif()
 
 add_custom_target(lldb-test-depends DEPENDS ${LLDB_TEST_DEPENDS})
 # This will add LLDB's test dependencies to the depenednecies for check-all and

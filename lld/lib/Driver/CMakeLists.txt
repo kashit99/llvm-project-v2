@@ -9,12 +9,14 @@ add_lld_library(lldDriver
   ${LLD_INCLUDE_DIR}/lld/Driver
 
   LINK_COMPONENTS
+    Object
     Option
     Support
 
   LINK_LIBS
-    lldCore
+    lldConfig
     lldMachO
+    lldCore
     lldReaderWriter
     lldYAML
   )

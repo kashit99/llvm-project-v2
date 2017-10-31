@@ -143,10 +143,8 @@ enum IgnoreObjectResult {
 };
 
 // Functions called from the parent tool.
-const char *MaybeCallLsanDefaultOptions();
 void InitCommonLsan();
 void DoLeakCheck();
-void DoRecoverableLeakCheckVoid();
 void DisableCounterUnderflow();
 bool DisabledInThisThread();
 
@@ -251,9 +249,6 @@ class LsanMetadata {
 }  // namespace __lsan
 
 extern "C" {
-SANITIZER_INTERFACE_ATTRIBUTE SANITIZER_WEAK_ATTRIBUTE
-const char *__lsan_default_options();
-
 SANITIZER_INTERFACE_ATTRIBUTE SANITIZER_WEAK_ATTRIBUTE
 int __lsan_is_turned_off();
 

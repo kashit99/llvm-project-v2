@@ -63,9 +63,8 @@ MCAsmBackend *createHexagonAsmBackend(const Target &T,
                                       const Triple &TT, StringRef CPU,
                                       const MCTargetOptions &Options);
 
-std::unique_ptr<MCObjectWriter>
-createHexagonELFObjectWriter(raw_pwrite_stream &OS, uint8_t OSABI,
-                             StringRef CPU);
+MCObjectWriter *createHexagonELFObjectWriter(raw_pwrite_stream &OS,
+                                             uint8_t OSABI, StringRef CPU);
 
 unsigned HexagonGetLastSlot();
 

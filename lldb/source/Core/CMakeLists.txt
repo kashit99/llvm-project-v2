@@ -58,6 +58,9 @@ add_lldb_library(lldbCore
   ValueObjectVariable.cpp
 
   LINK_LIBS
+    swiftBasic
+    swiftFrontend
+    swiftSerialization
     clangAST
     lldbBreakpoint
     lldbDataFormatters

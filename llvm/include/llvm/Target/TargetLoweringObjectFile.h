@@ -47,10 +47,10 @@ protected:
   bool SupportGOTPCRelWithOffset = true;
 
   /// This section contains the static constructor pointer list.
-  MCSection *StaticCtorSection = nullptr;
+  MCSection *StaticCtorSection;
 
   /// This section contains the static destructor pointer list.
-  MCSection *StaticDtorSection = nullptr;
+  MCSection *StaticDtorSection;
 
 public:
   TargetLoweringObjectFile() = default;

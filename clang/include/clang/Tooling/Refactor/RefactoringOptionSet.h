@@ -24,8 +24,8 @@ class IO;
 namespace clang {
 namespace tooling {
 
-struct OldRefactoringOption {
-  virtual ~OldRefactoringOption() = default;
+struct RefactoringOption {
+  virtual ~RefactoringOption() = default;
 
   struct SerializationContext {
     llvm::yaml::IO &IO;
@@ -39,7 +39,7 @@ struct OldRefactoringOption {
 /// \brief A set of refactoring options that can be given to a refactoring
 /// operation.
 class RefactoringOptionSet final {
-  llvm::StringMap<std::unique_ptr<OldRefactoringOption>> Options;
+  llvm::StringMap<std::unique_ptr<RefactoringOption>> Options;
 
 public:
   RefactoringOptionSet() {}

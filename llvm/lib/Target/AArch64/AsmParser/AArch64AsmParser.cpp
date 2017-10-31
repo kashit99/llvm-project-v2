@@ -139,7 +139,7 @@ public:
 
   AArch64AsmParser(const MCSubtargetInfo &STI, MCAsmParser &Parser,
                    const MCInstrInfo &MII, const MCTargetOptions &Options)
-    : MCTargetAsmParser(Options, STI, MII) {
+    : MCTargetAsmParser(Options, STI) {
     IsILP32 = Options.getABIName() == "ilp32";
     MCAsmParserExtension::Initialize(Parser);
     MCStreamer &S = getParser().getStreamer();
@@ -464,15 +464,6 @@ public:
       return false;
     int64_t Val = MCE->getValue();
     return (Val >= -256 && Val < 256);
-  }
-  bool isSImm10s8() const {
-    if (!isImm())
-      return false;
-    const MCConstantExpr *MCE = dyn_cast<MCConstantExpr>(getImm());
-    if (!MCE)
-      return false;
-    int64_t Val = MCE->getValue();
-    return (Val >= -4096 && Val < 4089 && (Val & 7) == 0);
   }
   bool isSImm7s4() const {
     if (!isImm())
@@ -833,17 +824,6 @@ public:
   bool isGPR64sp0() const {
     return Kind == k_Register && !Reg.isVector &&
       AArch64MCRegisterClasses[AArch64::GPR64spRegClassID].contains(Reg.RegNum);
-  }
-
-  template<int64_t Angle, int64_t Remainder>
-  bool isComplexRotation() const {
-    if (!isImm()) return false;
-
-    const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
-    if (!CE) return false;
-    uint64_t Value = CE->getValue();
-
-    return (Value % Angle == Remainder && Value <= 270);
   }
 
   /// Is this a vector list with the type implicit (presumably attached to the
@@ -1233,12 +1213,6 @@ public:
     Inst.addOperand(MCOperand::createImm(MCE->getValue()));
   }
 
-  void addSImm10s8Operands(MCInst &Inst, unsigned N) const {
-    assert(N == 1 && "Invalid number of operands!");
-    const MCConstantExpr *MCE = cast<MCConstantExpr>(getImm());
-    Inst.addOperand(MCOperand::createImm(MCE->getValue() / 8));
-  }
-
   void addSImm7s4Operands(MCInst &Inst, unsigned N) const {
     assert(N == 1 && "Invalid number of operands!");
     const MCConstantExpr *MCE = cast<MCConstantExpr>(getImm());
@@ -1536,18 +1510,6 @@ public:
     const MCConstantExpr *CE = cast<MCConstantExpr>(getImm());
     uint64_t Value = CE->getValue();
     Inst.addOperand(MCOperand::createImm((~Value >> Shift) & 0xffff));
-  }
-
-  void addComplexRotationEvenOperands(MCInst &Inst, unsigned N) const {
-    assert(N == 1 && "Invalid number of operands!");
-    const MCConstantExpr *MCE = cast<MCConstantExpr>(getImm());
-    Inst.addOperand(MCOperand::createImm(MCE->getValue() / 90));
-  }
-
-  void addComplexRotationOddOperands(MCInst &Inst, unsigned N) const {
-    assert(N == 1 && "Invalid number of operands!");
-    const MCConstantExpr *MCE = cast<MCConstantExpr>(getImm());
-    Inst.addOperand(MCOperand::createImm((MCE->getValue() - 90) / 180));
   }
 
   void print(raw_ostream &OS) const override;
@@ -1848,8 +1810,6 @@ static bool isValidVectorKind(StringRef Name) {
       .Case(".d", true)
       // Needed for fp16 scalar pairwise reductions
       .Case(".2h", true)
-      // another special case for the ARMv8.2a dot product operand
-      .Case(".4b", true)
       .Default(false);
 }
 
@@ -3297,8 +3257,7 @@ bool AArch64AsmParser::validateInstruction(MCInst &Inst,
   }
 }
 
-static std::string AArch64MnemonicSpellCheck(StringRef S, uint64_t FBS,
-                                             unsigned VariantID = 0);
+std::string AArch64MnemonicSpellCheck(StringRef S, uint64_t FBS);
 
 bool AArch64AsmParser::showMatchError(SMLoc Loc, unsigned ErrCode,
                                       OperandVector &Operands) {
@@ -3338,8 +3297,6 @@ bool AArch64AsmParser::showMatchError(SMLoc Loc, unsigned ErrCode,
                  "expected compatible register or floating-point constant");
   case Match_InvalidMemoryIndexedSImm9:
     return Error(Loc, "index must be an integer in range [-256, 255].");
-  case Match_InvalidMemoryIndexedSImm10:
-    return Error(Loc, "index must be a multiple of 8 in range [-4096, 4088].");
   case Match_InvalidMemoryIndexed4SImm7:
     return Error(Loc, "index must be a multiple of 4 in range [-256, 252].");
   case Match_InvalidMemoryIndexed8SImm7:
@@ -3426,10 +3383,6 @@ bool AArch64AsmParser::showMatchError(SMLoc Loc, unsigned ErrCode,
     return Error(Loc, "expected readable system register");
   case Match_MSR:
     return Error(Loc, "expected writable system register or pstate");
-  case Match_InvalidComplexRotationEven:
-    return Error(Loc, "complex rotation must be 0, 90, 180 or 270.");
-  case Match_InvalidComplexRotationOdd:
-    return Error(Loc, "complex rotation must be 90 or 270.");
   case Match_MnemonicFail: {
     std::string Suggestion = AArch64MnemonicSpellCheck(
         ((AArch64Operand &)*Operands[0]).getToken(),
@@ -3811,7 +3764,6 @@ bool AArch64AsmParser::MatchAndEmitInstruction(SMLoc IDLoc, unsigned &Opcode,
   case Match_InvalidMemoryIndexed8SImm7:
   case Match_InvalidMemoryIndexed16SImm7:
   case Match_InvalidMemoryIndexedSImm9:
-  case Match_InvalidMemoryIndexedSImm10:
   case Match_InvalidImm0_1:
   case Match_InvalidImm0_7:
   case Match_InvalidImm0_15:
@@ -3830,8 +3782,6 @@ bool AArch64AsmParser::MatchAndEmitInstruction(SMLoc IDLoc, unsigned &Opcode,
   case Match_InvalidIndexS:
   case Match_InvalidIndexD:
   case Match_InvalidLabel:
-  case Match_InvalidComplexRotationEven:
-  case Match_InvalidComplexRotationOdd:
   case Match_MSR:
   case Match_MRS: {
     if (ErrorInfo >= Operands.size())
@@ -3912,8 +3862,8 @@ bool AArch64AsmParser::parseDirectiveArch(SMLoc L) {
   std::tie(Arch, ExtensionString) =
       getParser().parseStringToEndOfStatement().trim().split('+');
 
-  AArch64::ArchKind ID = AArch64::parseArch(Arch);
-  if (ID == AArch64::ArchKind::INVALID)
+  unsigned ID = AArch64::parseArch(Arch);
+  if (ID == static_cast<unsigned>(AArch64::ArchKind::AK_INVALID))
     return Error(ArchLoc, "unknown arch name");
 
   if (parseToken(AsmToken::EndOfStatement))
@@ -4256,7 +4206,6 @@ extern "C" void LLVMInitializeAArch64AsmParser() {
 #define GET_REGISTER_MATCHER
 #define GET_SUBTARGET_FEATURE_NAME
 #define GET_MATCHER_IMPLEMENTATION
-#define GET_MNEMONIC_SPELL_CHECKER
 #include "AArch64GenAsmMatcher.inc"
 
 // Define this matcher function after the auto-generated include so we

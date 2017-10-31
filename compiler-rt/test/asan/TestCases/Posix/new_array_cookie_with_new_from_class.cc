@@ -3,9 +3,6 @@
 // RUN: %clangxx_asan  %s -o %t && %run %t
 //
 // XFAIL: arm
-
-// UNSUPPORTED: ios
-
 #include <new>
 #include <stdlib.h>
 #include <stdint.h>

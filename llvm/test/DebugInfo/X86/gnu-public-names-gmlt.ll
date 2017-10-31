@@ -1,4 +1,5 @@
-; RUN: sed -e 's/gnuPubnames: false/gnuPubnames: true/' %s | llc -mtriple=x86_64-pc-linux-gnu -filetype=obj | llvm-dwarfdump -v - | FileCheck --check-prefix=GPUB %s
+; RUN: sed -e 's/gnuPubnames: false/gnuPubnames: true/' %s | llc -mtriple=x86_64-pc-linux-gnu -filetype=obj | llvm-dwarfdump -v - | FileCheck --check-prefix=GPUB --check-prefix=CHECK %s
+; RUN: llc -mtriple=x86_64-pc-linux-gnu -filetype=obj < %s -generate-dwarf-pub-sections=Enable | llvm-dwarfdump -v - | FileCheck --check-prefix=PUB --check-prefix=CHECK %s
 ; RUN: llc -mtriple=x86_64-pc-linux-gnu -filetype=obj < %s | llvm-dwarfdump -v - | FileCheck --check-prefix=NONE %s
 
 ; Generated from:
@@ -15,14 +16,16 @@
 ; GPUB: DW_AT_GNU_pubnames
 
 ; GPUB: .debug_gnu_pubnames contents:
-; GPUB-NEXT: unit_offset = 0x00000000
-; GPUB-NEXT: Name
-; GPUB-NEXT: "f2"
-; GPUB-NEXT: "f3"
+; PUB: .debug_pubnames contents:
+; CHECK-NEXT: unit_offset = 0x00000000
+; CHECK-NEXT: Name
+; CHECK-NEXT: "f2"
+; CHECK-NEXT: "f3"
 
 ; GPUB: .debug_gnu_pubtypes contents:
-; GPUB-NEXT: length = 0x0000000e version = 0x0002 unit_offset = 0x00000000
-; GPUB-NEXT: Name
+; PUB: .debug_pubtypes contents:
+; CHECK-NEXT: length = 0x0000000e version = 0x0002 unit_offset = 0x00000000
+; CHECK-NEXT: Name
 
 ; NONE-NOT: .debug_pubnames contents:
 ; NONE-NOT: .debug_pubtypes contents:

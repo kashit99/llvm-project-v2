@@ -14,12 +14,11 @@
 
 #include "sanitizer_platform.h"
 
-#if SANITIZER_FREEBSD || SANITIZER_LINUX || SANITIZER_NETBSD
+#if SANITIZER_FREEBSD || SANITIZER_LINUX
 
 #include "sanitizer_allocator_internal.h"
 #include "sanitizer_atomic.h"
 #include "sanitizer_common.h"
-#include "sanitizer_file.h"
 #include "sanitizer_flags.h"
 #include "sanitizer_freebsd.h"
 #include "sanitizer_linux.h"
@@ -149,8 +148,7 @@ bool SanitizerGetThreadName(char *name, int max_len) {
 #endif
 }
 
-#if !SANITIZER_FREEBSD && !SANITIZER_ANDROID && !SANITIZER_GO && \
-    !SANITIZER_NETBSD
+#if !SANITIZER_FREEBSD && !SANITIZER_ANDROID && !SANITIZER_GO
 static uptr g_tls_size;
 
 #ifdef __i386__
@@ -178,8 +176,7 @@ void InitTlsSize() {
 }
 #else
 void InitTlsSize() { }
-#endif  // !SANITIZER_FREEBSD && !SANITIZER_ANDROID && !SANITIZER_GO &&
-        // !SANITIZER_NETBSD
+#endif  // !SANITIZER_FREEBSD && !SANITIZER_ANDROID && !SANITIZER_GO
 
 #if (defined(__x86_64__) || defined(__i386__) || defined(__mips__) \
     || defined(__aarch64__) || defined(__powerpc64__) || defined(__s390__) \
@@ -334,9 +331,7 @@ static void **ThreadSelfSegbase() {
 uptr ThreadSelf() {
   return (uptr)ThreadSelfSegbase()[2];
 }
-#elif SANITIZER_NETBSD
-uptr ThreadSelf() { return (uptr)pthread_self(); }
-#endif  // SANITIZER_NETBSD
+#endif  // SANITIZER_FREEBSD
 
 #if !SANITIZER_GO
 static void GetTls(uptr *addr, uptr *size) {
@@ -367,7 +362,7 @@ static void GetTls(uptr *addr, uptr *size) {
     *addr = (uptr) dtv[2];
     *size = (*addr == 0) ? 0 : ((uptr) segbase[0] - (uptr) dtv[2]);
   }
-#elif SANITIZER_ANDROID || SANITIZER_NETBSD
+#elif SANITIZER_ANDROID
   *addr = 0;
   *size = 0;
 #else
@@ -378,7 +373,7 @@ static void GetTls(uptr *addr, uptr *size) {
 
 #if !SANITIZER_GO
 uptr GetTlsSize() {
-#if SANITIZER_FREEBSD || SANITIZER_ANDROID || SANITIZER_NETBSD
+#if SANITIZER_FREEBSD || SANITIZER_ANDROID
   uptr addr, size;
   GetTls(&addr, &size);
   return size;
@@ -424,7 +419,7 @@ typedef ElfW(Phdr) Elf_Phdr;
 # endif
 
 struct DlIteratePhdrData {
-  InternalMmapVectorNoCtor<LoadedModule> *modules;
+  InternalMmapVector<LoadedModule> *modules;
   bool first;
 };
 
@@ -462,41 +457,21 @@ extern "C" __attribute__((weak)) int dl_iterate_phdr(
     int (*)(struct dl_phdr_info *, size_t, void *), void *);
 #endif
 
-static bool requiresProcmaps() {
+void ListOfModules::init() {
+  clear();
 #if SANITIZER_ANDROID && __ANDROID_API__ <= 22
+  u32 api_level = AndroidGetApiLevel();
   // Fall back to /proc/maps if dl_iterate_phdr is unavailable or broken.
   // The runtime check allows the same library to work with
   // both K and L (and future) Android releases.
-  return AndroidGetApiLevel() <= ANDROID_LOLLIPOP_MR1;
-#else
-  return false;
+  if (api_level <= ANDROID_LOLLIPOP_MR1) { // L or earlier
+    MemoryMappingLayout memory_mapping(false);
+    memory_mapping.DumpListOfModules(&modules_);
+    return;
+  }
 #endif
-}
-
-static void procmapsInit(InternalMmapVectorNoCtor<LoadedModule> *modules) {
-  MemoryMappingLayout memory_mapping(/*cache_enabled*/true);
-  memory_mapping.DumpListOfModules(modules);
-}
-
-void ListOfModules::init() {
-  clearOrInit();
-  if (requiresProcmaps()) {
-    procmapsInit(&modules_);
-  } else {
-    DlIteratePhdrData data = {&modules_, true};
-    dl_iterate_phdr(dl_iterate_phdr_cb, &data);
-  }
-}
-
-// When a custom loader is used, dl_iterate_phdr may not contain the full
-// list of modules. Allow callers to fall back to using procmaps.
-void ListOfModules::fallbackInit() {
-  if (!requiresProcmaps()) {
-    clearOrInit();
-    procmapsInit(&modules_);
-  } else {
-    clear();
-  }
+  DlIteratePhdrData data = {&modules_, true};
+  dl_iterate_phdr(dl_iterate_phdr_cb, &data);
 }
 
 // getrusage does not give us the current RSS, only the max RSS.

@@ -208,16 +208,9 @@ bool shouldCompletelyUnroll(const Stmt *LoopStmt, ASTContext &ASTCtx,
     return false;
 
   auto CounterVar = Matches[0].getNodeAs<VarDecl>("initVarName");
-  llvm::APInt BoundNum =
-      Matches[0].getNodeAs<IntegerLiteral>("boundNum")->getValue();
-  llvm::APInt InitNum =
-      Matches[0].getNodeAs<IntegerLiteral>("initNum")->getValue();
+  auto BoundNum = Matches[0].getNodeAs<IntegerLiteral>("boundNum")->getValue();
+  auto InitNum = Matches[0].getNodeAs<IntegerLiteral>("initNum")->getValue();
   auto CondOp = Matches[0].getNodeAs<BinaryOperator>("conditionOperator");
-  if (InitNum.getBitWidth() != BoundNum.getBitWidth()) {
-    InitNum = InitNum.zextOrSelf(BoundNum.getBitWidth());
-    BoundNum = BoundNum.zextOrSelf(InitNum.getBitWidth());
-  }
-
   if (CondOp->getOpcode() == BO_GE || CondOp->getOpcode() == BO_LE)
     maxStep = (BoundNum - InitNum + 1).abs().getZExtValue();
   else

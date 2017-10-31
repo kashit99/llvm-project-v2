@@ -1,4 +1,4 @@
-//===- PruneUnprofitable.cpp ----------------------------------------------===//
+//===- PruneUnprofitable.cpp ------------------------------------*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -12,19 +12,12 @@
 //===----------------------------------------------------------------------===//
 
 #include "polly/PruneUnprofitable.h"
-#include "polly/ScopDetection.h"
 #include "polly/ScopInfo.h"
 #include "polly/ScopPass.h"
-#include "llvm/ADT/Statistic.h"
-#include "llvm/IR/DebugLoc.h"
-#include "llvm/Pass.h"
-#include "llvm/Support/Debug.h"
-#include "llvm/Support/raw_ostream.h"
-
-using namespace llvm;
-using namespace polly;
-
 #define DEBUG_TYPE "polly-prune-unprofitable"
+
+using namespace polly;
+using namespace llvm;
 
 namespace {
 
@@ -32,46 +25,22 @@ STATISTIC(ScopsProcessed,
           "Number of SCoPs considered for unprofitability pruning");
 STATISTIC(ScopsPruned, "Number of pruned SCoPs because it they cannot be "
                        "optimized in a significant way");
-STATISTIC(ScopsSurvived, "Number of SCoPs after pruning");
-
-STATISTIC(NumPrunedLoops, "Number of pruned loops");
-STATISTIC(NumPrunedBoxedLoops, "Number of pruned boxed loops");
-STATISTIC(NumPrunedAffineLoops, "Number of pruned affine loops");
-
-STATISTIC(NumLoopsInScop, "Number of loops in scops after pruning");
-STATISTIC(NumBoxedLoops, "Number of boxed loops in SCoPs after pruning");
-STATISTIC(NumAffineLoops, "Number of affine loops in SCoPs after pruning");
 
 class PruneUnprofitable : public ScopPass {
 private:
-  void updateStatistics(Scop &S, bool Pruned) {
-    auto ScopStats = S.getStatistics();
-    if (Pruned) {
-      ScopsPruned++;
-      NumPrunedLoops += ScopStats.NumAffineLoops + ScopStats.NumBoxedLoops;
-      NumPrunedBoxedLoops += ScopStats.NumBoxedLoops;
-      NumPrunedAffineLoops += ScopStats.NumAffineLoops;
-    } else {
-      ScopsSurvived++;
-      NumLoopsInScop += ScopStats.NumAffineLoops + ScopStats.NumBoxedLoops;
-      NumBoxedLoops += ScopStats.NumBoxedLoops;
-      NumAffineLoops += ScopStats.NumAffineLoops;
-    }
-  }
+  PruneUnprofitable(const PruneUnprofitable &) = delete;
+  const PruneUnprofitable &operator=(const PruneUnprofitable &) = delete;
 
 public:
   static char ID;
-
   explicit PruneUnprofitable() : ScopPass(ID) {}
-  PruneUnprofitable(const PruneUnprofitable &) = delete;
-  PruneUnprofitable &operator=(const PruneUnprofitable &) = delete;
 
-  void getAnalysisUsage(AnalysisUsage &AU) const override {
+  virtual void getAnalysisUsage(AnalysisUsage &AU) const override {
     AU.addRequired<ScopInfoRegionPass>();
     AU.setPreservesAll();
   }
 
-  bool runOnScop(Scop &S) override {
+  virtual bool runOnScop(Scop &S) override {
     if (PollyProcessUnprofitable) {
       DEBUG(dbgs() << "NOTE: -polly-process-unprofitable active, won't prune "
                       "anything\n");
@@ -83,19 +52,16 @@ public:
     if (!S.isProfitable(true)) {
       DEBUG(dbgs() << "SCoP pruned because it probably cannot be optimized in "
                       "a significant way\n");
+      ScopsPruned++;
       S.invalidate(PROFITABLE, DebugLoc());
-      updateStatistics(S, true);
-    } else {
-      updateStatistics(S, false);
     }
 
     return false;
   }
 };
 
-} // namespace
-
 char PruneUnprofitable::ID;
+} // anonymous namespace
 
 Pass *polly::createPruneUnprofitablePass() { return new PruneUnprofitable(); }
 

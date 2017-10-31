@@ -36,12 +36,12 @@ struct IndexedOccurrence {
 };
 
 struct IndexedSymbol {
-  OldSymbolName Name;
+  SymbolName Name;
   std::vector<IndexedOccurrence> IndexedOccurrences;
   /// Whether this symbol is an Objective-C selector.
   bool IsObjCSelector;
 
-  IndexedSymbol(OldSymbolName Name,
+  IndexedSymbol(SymbolName Name,
                 std::vector<IndexedOccurrence> IndexedOccurrences,
                 bool IsObjCSelector)
       : Name(std::move(Name)),
@@ -55,7 +55,7 @@ struct IndexedSymbol {
 class IndexedFileOccurrenceConsumer {
 public:
   virtual ~IndexedFileOccurrenceConsumer() {}
-  virtual void handleOccurrence(const OldSymbolOccurrence &Occurrence,
+  virtual void handleOccurrence(const SymbolOccurrence &Occurrence,
                                 SourceManager &SM,
                                 const LangOptions &LangOpts) = 0;
 };

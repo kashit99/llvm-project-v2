@@ -118,12 +118,6 @@ def G_VAARG : Instruction {
   let mayStore = 1;
 }
 
-def G_BSWAP : Instruction {
-  let OutOperandList = (outs type0:$dst);
-  let InOperandList = (ins type0:$src);
-  let hasSideEffects = 0;
-}
-
 //------------------------------------------------------------------------------
 // Binary ops.
 //------------------------------------------------------------------------------
@@ -486,8 +480,8 @@ def G_STORE : Instruction {
 // Variadic ops
 //------------------------------------------------------------------------------
 
-// Extract a register of the specified size, starting from the block given by
-// index. This will almost certainly be mapped to sub-register COPYs after
+// Extract multiple registers specified size, starting from blocks given by
+// indexes. This will almost certainly be mapped to sub-register COPYs after
 // register banks have been selected.
 def G_EXTRACT : Instruction {
   let OutOperandList = (outs type0:$res);
@@ -511,7 +505,6 @@ def G_INSERT : Instruction {
   let hasSideEffects = 0;
 }
 
-/// Concatenante multiple registers of the same size into a wider register.
 def G_MERGE_VALUES : Instruction {
   let OutOperandList = (outs type0:$dst);
   let InOperandList = (ins variable_ops);

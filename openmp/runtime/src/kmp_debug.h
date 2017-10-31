@@ -2,6 +2,7 @@
  * kmp_debug.h -- debug / assertion code for Assure library
  */
 
+
 //===----------------------------------------------------------------------===//
 //
 //                     The LLVM Compiler Infrastructure
@@ -10,6 +11,7 @@
 // Source Licenses. See LICENSE.txt for details.
 //
 //===----------------------------------------------------------------------===//
+
 
 #ifndef KMP_DEBUG_H
 #define KMP_DEBUG_H

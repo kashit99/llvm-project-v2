@@ -12,4 +12,6 @@ add_llvm_tool(llvm-dwarfdump
   llvm-dwarfdump.cpp
   )
 
-add_subdirectory(fuzzer)
+if(LLVM_USE_SANITIZE_COVERAGE)
+  add_subdirectory(fuzzer)
+endif()

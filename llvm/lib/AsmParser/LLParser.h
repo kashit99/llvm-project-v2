@@ -240,9 +240,7 @@ namespace llvm {
     bool ParseOptionalParamAttrs(AttrBuilder &B);
     bool ParseOptionalReturnAttrs(AttrBuilder &B);
     bool ParseOptionalLinkage(unsigned &Linkage, bool &HasLinkage,
-                              unsigned &Visibility, unsigned &DLLStorageClass,
-                              bool &DSOLocal);
-    void ParseOptionalDSOLocal(bool &DSOLocal);
+                              unsigned &Visibility, unsigned &DLLStorageClass);
     void ParseOptionalVisibility(unsigned &Visibility);
     void ParseOptionalDLLStorageClass(unsigned &DLLStorageClass);
     bool ParseOptionalCallingConv(unsigned &CC);
@@ -286,12 +284,12 @@ namespace llvm {
     bool ParseNamedGlobal();
     bool ParseGlobal(const std::string &Name, LocTy Loc, unsigned Linkage,
                      bool HasLinkage, unsigned Visibility,
-                     unsigned DLLStorageClass, bool DSOLocal,
+                     unsigned DLLStorageClass,
                      GlobalVariable::ThreadLocalMode TLM,
                      GlobalVariable::UnnamedAddr UnnamedAddr);
     bool parseIndirectSymbol(const std::string &Name, LocTy Loc,
                              unsigned Linkage, unsigned Visibility,
-                             unsigned DLLStorageClass, bool DSOLocal,
+                             unsigned DLLStorageClass,
                              GlobalVariable::ThreadLocalMode TLM,
                              GlobalVariable::UnnamedAddr UnnamedAddr);
     bool parseComdat();

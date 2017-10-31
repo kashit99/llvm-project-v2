@@ -54,7 +54,6 @@ enum ProcessorTypes {
   AMD_BTVER1,
   AMD_BTVER2,
   AMDFAM17H,
-  INTEL_KNM,
   CPU_TYPE_MAX
 };
 
@@ -360,10 +359,6 @@ getIntelProcessorTypeAndSubtype(unsigned Family, unsigned Model,
 
     case 0x57:
       *Type = INTEL_KNL; // knl
-      break;
-
-    case 0x85:
-      *Type = INTEL_KNM; // knm
       break;
 
     default: // Unknown family 6 CPU.

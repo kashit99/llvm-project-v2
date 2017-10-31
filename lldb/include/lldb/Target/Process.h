@@ -534,7 +534,7 @@ public:
   //------------------------------------------------------------------
   /// Process warning types.
   //------------------------------------------------------------------
-  enum Warnings { eWarningsOptimization = 1 };
+  enum Warnings { eWarningsOptimization = 1, eWarningsCantLoadSwift };
 
   typedef Range<lldb::addr_t, lldb::addr_t> LoadRange;
   // We use a read/write lock to allow on or more clients to
@@ -1594,6 +1594,21 @@ public:
   //------------------------------------------------------------------
   void PrintWarningOptimization(const SymbolContext &sc);
 
+  //------------------------------------------------------------------
+  /// Print a user-visible warning about a module having Swift settings
+  /// incompatible with the current system
+  ///
+  /// Prints a async warning message to the user one time per Process for a
+  /// Module
+  /// whose Swift AST sections couldn't be loaded because they aren't buildable
+  /// on
+  /// the current machine.
+  ///
+  /// @param [in] module
+  ///     The affected Module.
+  //------------------------------------------------------------------
+  void PrintWarningCantLoadSwift(const Module &module);
+
   virtual bool GetProcessInfo(ProcessInstanceInfo &info);
 
 public:
@@ -2462,13 +2477,19 @@ public:
   ///     the process
   ///     needs to have its process IOHandler popped.
   ///
+  /// @param[out] pop_command_interpreter
+  ///     This variable will be set to \b true or \b false ot indicate if the
+  ///     process needs
+  ///     to have its command interpreter popped.
+  ///
   /// @return
   ///     \b true if the event describes a process state changed event, \b false
   ///     otherwise.
   //--------------------------------------------------------------------------------------
   static bool HandleProcessStateChangedEvent(const lldb::EventSP &event_sp,
                                              Stream *stream,
-                                             bool &pop_process_io_handler);
+                                             bool &pop_process_io_handler,
+                                             bool &pop_command_interpreter);
 
   Event *PeekAtStateChangedEvents();
 
@@ -2514,6 +2535,10 @@ public:
 
   OperatingSystem *GetOperatingSystem() { return m_os_ap.get(); }
 
+  ArchSpec::StopInfoOverrideCallbackType GetStopInfoOverrideCallback() const {
+    return m_stop_info_override_callback;
+  }
+
   virtual LanguageRuntime *GetLanguageRuntime(lldb::LanguageType language,
                                               bool retry_if_null = true);
 
@@ -2521,6 +2546,9 @@ public:
 
   virtual ObjCLanguageRuntime *
   GetObjCLanguageRuntime(bool retry_if_null = true);
+
+  virtual SwiftLanguageRuntime *
+  GetSwiftLanguageRuntime(bool retry_if_null = true);
 
   bool IsPossibleDynamicValue(ValueObject &in_value);
 
@@ -3102,6 +3130,7 @@ protected:
   std::vector<PreResumeCallbackAndBaton> m_pre_resume_actions;
   ProcessRunLock m_public_run_lock;
   ProcessRunLock m_private_run_lock;
+  ArchSpec::StopInfoOverrideCallbackType m_stop_info_override_callback;
   bool m_currently_handling_do_on_removals;
   bool m_resume_requested; // If m_currently_handling_event or
                            // m_currently_handling_do_on_removals are true,
@@ -3113,11 +3142,12 @@ protected:
   bool m_finalize_called; // This is set at the end of Process::Finalize()
   bool m_clear_thread_plans_on_stop;
   bool m_force_next_event_delivery;
+  bool m_destroy_in_process;
+  bool m_destroy_complete;
   lldb::StateType m_last_broadcast_state; /// This helps with the Public event
                                           /// coalescing in
                                           /// ShouldBroadcastEvent.
   std::map<lldb::addr_t, lldb::addr_t> m_resolved_indirect_addresses;
-  bool m_destroy_in_process;
   bool m_can_interpret_function_calls;  // Some targets, e.g the OSX kernel,
                                         // don't support the ability to modify
                                         // the stack.
@@ -3200,7 +3230,7 @@ protected:
 
   bool PushProcessIOHandler();
 
-  bool PopProcessIOHandler();
+  bool PopProcessIOHandler(bool pop_command_interpreter);
 
   bool ProcessIOHandlerIsActive();
 

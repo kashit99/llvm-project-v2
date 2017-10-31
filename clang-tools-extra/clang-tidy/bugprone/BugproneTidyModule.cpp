@@ -10,7 +10,6 @@
 #include "../ClangTidy.h"
 #include "../ClangTidyModule.h"
 #include "../ClangTidyModuleRegistry.h"
-#include "IntegerDivisionCheck.h"
 #include "SuspiciousMemsetUsageCheck.h"
 #include "UndefinedMemoryManipulationCheck.h"
 
@@ -21,8 +20,6 @@ namespace bugprone {
 class BugproneModule : public ClangTidyModule {
 public:
   void addCheckFactories(ClangTidyCheckFactories &CheckFactories) override {
-    CheckFactories.registerCheck<IntegerDivisionCheck>(
-        "bugprone-integer-division");
     CheckFactories.registerCheck<SuspiciousMemsetUsageCheck>(
         "bugprone-suspicious-memset-usage");
     CheckFactories.registerCheck<UndefinedMemoryManipulationCheck>(

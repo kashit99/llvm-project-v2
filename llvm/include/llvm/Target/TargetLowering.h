@@ -410,9 +410,8 @@ public:
     return false;
   }
 
-  /// Allow store merging after legalization in addition to before legalization.
-  /// This may catch stores that do not exist earlier (eg, stores created from
-  /// intrinsics).
+  /// Should we merge stores after Legalization (generally
+  /// better quality) or before (simpler)
   virtual bool mergeStoresAfterLegalization() const { return false; }
 
   /// Returns if it's reasonable to merge stores to MemVT size.
@@ -734,7 +733,8 @@ public:
   /// VECTOR_SHUFFLE operations, those with specific masks.  By default, if a
   /// target supports the VECTOR_SHUFFLE node, all mask values are assumed to be
   /// legal.
-  virtual bool isShuffleMaskLegal(ArrayRef<int> /*Mask*/, EVT /*VT*/) const {
+  virtual bool isShuffleMaskLegal(const SmallVectorImpl<int> &/*Mask*/,
+                                  EVT /*VT*/) const {
     return true;
   }
 
@@ -791,10 +791,11 @@ public:
        getOperationAction(Op, VT) == Promote);
   }
 
-  /// Return true if the operation uses custom lowering, regardless of whether
-  /// the type is legal or not.
+  /// Return true if the specified operation is illegal but has a custom lowering
+  /// on that type. This is used to help guide high-level lowering
+  /// decisions.
   bool isOperationCustom(unsigned Op, EVT VT) const {
-    return getOperationAction(Op, VT) == Custom;
+    return (!isTypeLegal(VT) && getOperationAction(Op, VT) == Custom);
   }
 
   /// Return true if lowering to a jump table is allowed.
@@ -1591,7 +1592,7 @@ public:
   /// Return true if a select of constants (select Cond, C1, C2) should be
   /// transformed into simple math ops with the condition value. For example:
   /// select Cond, C1, C1-1 --> add (zext Cond), C1-1
-  virtual bool convertSelectOfConstantsToMath(EVT VT) const {
+  virtual bool convertSelectOfConstantsToMath() const {
     return false;
   }
 
@@ -1886,8 +1887,7 @@ public:
   ///
   /// TODO: Remove default argument
   virtual bool isLegalAddressingMode(const DataLayout &DL, const AddrMode &AM,
-                                     Type *Ty, unsigned AddrSpace,
-                                     Instruction *I = nullptr) const;
+                                     Type *Ty, unsigned AddrSpace) const;
 
   /// \brief Return the cost of the scaling factor used in the addressing mode
   /// represented by AM for this target, for a load/store of the specified type.
@@ -1902,6 +1902,10 @@ public:
     if (isLegalAddressingMode(DL, AM, Ty, AS))
       return 0;
     return -1;
+  }
+
+  virtual bool isFoldableMemAccessOffset(Instruction *I, int64_t Offset) const {
+    return true;
   }
 
   /// Return true if the specified immediate is legal icmp immediate, that is
@@ -1993,8 +1997,7 @@ public:
   bool isExtFree(const Instruction *I) const {
     switch (I->getOpcode()) {
     case Instruction::FPExt:
-      if (isFPExtFree(EVT::getEVT(I->getType()),
-                      EVT::getEVT(I->getOperand(0)->getType())))
+      if (isFPExtFree(EVT::getEVT(I->getType())))
         return true;
       break;
     case Instruction::ZExt:
@@ -2121,19 +2124,9 @@ public:
   /// Return true if an fpext operation is free (for instance, because
   /// single-precision floating-point numbers are implicitly extended to
   /// double-precision).
-  virtual bool isFPExtFree(EVT DestVT, EVT SrcVT) const {
-    assert(SrcVT.isFloatingPoint() && DestVT.isFloatingPoint() &&
-           "invalid fpext types");
+  virtual bool isFPExtFree(EVT VT) const {
+    assert(VT.isFloatingPoint());
     return false;
-  }
-
-  /// Return true if an fpext operation input to an \p Opcode operation is free
-  /// (for instance, because half-precision floating-point numbers are
-  /// implicitly extended to float-precision) for an FMA instruction.
-  virtual bool isFPExtFoldable(unsigned Opcode, EVT DestVT, EVT SrcVT) const {
-    assert(DestVT.isFloatingPoint() && SrcVT.isFloatingPoint() &&
-           "invalid fpext types");
-    return isFPExtFree(DestVT, SrcVT);
   }
 
   /// Return true if folding a vector load into ExtVal (a sign, zero, or any
@@ -2183,12 +2176,11 @@ public:
     return false;
   }
 
-  /// Return true if EXTRACT_SUBVECTOR is cheap for extracting this result type
-  /// from this source type with this index. This is needed because
-  /// EXTRACT_SUBVECTOR usually has custom lowering that depends on the index of
-  /// the first element, and only the target knows which lowering is cheap.
-  virtual bool isExtractSubvectorCheap(EVT ResVT, EVT SrcVT,
-                                       unsigned Index) const {
+  /// Return true if EXTRACT_SUBVECTOR is cheap for this result type
+  /// with this index. This is needed because EXTRACT_SUBVECTOR usually
+  /// has custom lowering that depends on the index of the first element,
+  /// and only the target knows which lowering is cheap.
+  virtual bool isExtractSubvectorCheap(EVT ResVT, unsigned Index) const {
     return false;
   }
 
@@ -2665,7 +2657,7 @@ public:
                             bool AssumeSingleUse = false) const;
 
   /// Helper wrapper around SimplifyDemandedBits
-  bool SimplifyDemandedBits(SDValue Op, const APInt &DemandedMask,
+  bool SimplifyDemandedBits(SDValue Op, APInt &DemandedMask,
                             DAGCombinerInfo &DCI) const;
 
   /// Determine which of the bits specified in Mask are known to be either zero
@@ -2735,9 +2727,6 @@ public:
                         bool foldBooleans, DAGCombinerInfo &DCI,
                         const SDLoc &dl) const;
 
-  // For targets which wrap address, unwrap for analysis.
-  virtual SDValue unwrapAddress(SDValue N) const { return N; }
-
   /// Returns true (and the GlobalValue and the offset) if the node is a
   /// GlobalAddress + offset.
   virtual bool
@@ -2767,17 +2756,15 @@ public:
     return true;
   }
 
-  // Return true if it is profitable to combine a BUILD_VECTOR with a stride-pattern
-  // to a shuffle and a truncate.
+  // Return true if it is profitable to combine a BUILD_VECTOR to a TRUNCATE.
   // Example of such a combine:
-  // v4i32 build_vector((extract_elt V, 1),
-  //                    (extract_elt V, 3),
-  //                    (extract_elt V, 5),
-  //                    (extract_elt V, 7))
+  // v4i32 build_vector((extract_elt V, 0),
+  //                    (extract_elt V, 2),
+  //                    (extract_elt V, 4),
+  //                    (extract_elt V, 6))
   //  -->
-  // v4i32 truncate (bitcast (shuffle<1,u,3,u,5,u,7,u> V, u) to v4i64)
-  virtual bool isDesirableToCombineBuildVectorToShuffleTruncate(
-      ArrayRef<int> ShuffleMask, EVT SrcVT, EVT TruncVT) const {
+  // v4i32 truncate (bitcast V to v4i64)
+  virtual bool isDesirableToCombineBuildVectorToTruncate() const {
     return false;
   }
 
@@ -2879,7 +2866,7 @@ public:
     ArgListTy Args;
     SelectionDAG &DAG;
     SDLoc DL;
-    ImmutableCallSite CS;
+    ImmutableCallSite *CS = nullptr;
     SmallVector<ISD::OutputArg, 32> Outs;
     SmallVector<SDValue, 32> OutVals;
     SmallVector<ISD::InputArg, 32> Ins;
@@ -2906,7 +2893,7 @@ public:
       RetTy = ResultType;
       Callee = Target;
       CallConv = CC;
-      NumFixedArgs = ArgsList.size();
+      NumFixedArgs = Args.size();
       Args = std::move(ArgsList);
 
       DAG.getTargetLoweringInfo().markLibCallAttributes(
@@ -2919,14 +2906,14 @@ public:
       RetTy = ResultType;
       Callee = Target;
       CallConv = CC;
-      NumFixedArgs = ArgsList.size();
+      NumFixedArgs = Args.size();
       Args = std::move(ArgsList);
       return *this;
     }
 
     CallLoweringInfo &setCallee(Type *ResultType, FunctionType *FTy,
                                 SDValue Target, ArgListTy &&ArgsList,
-                                ImmutableCallSite Call) {
+                                ImmutableCallSite &Call) {
       RetTy = ResultType;
 
       IsInReg = Call.hasRetAttr(Attribute::InReg);
@@ -2945,7 +2932,7 @@ public:
       NumFixedArgs = FTy->getNumParams();
       Args = std::move(ArgsList);
 
-      CS = Call;
+      CS = &Call;
 
       return *this;
     }

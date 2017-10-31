@@ -416,12 +416,9 @@ static bool ParseDirective(StringRef S, ExpectedData *ED, SourceManager &SM,
           MatchAnyLine = true;
           ExpectedLoc = SM.translateFileLineCol(FE, 1, 1);
         }
-      } else if (PH.Next("*")) {
-        MatchAnyLine = true;
-        ExpectedLoc = SourceLocation();
       }
 
-      if (ExpectedLoc.isInvalid() && !MatchAnyLine) {
+      if (ExpectedLoc.isInvalid()) {
         Diags.Report(Pos.getLocWithOffset(PH.C-PH.Begin),
                      diag::err_verify_missing_line) << KindStr;
         continue;
@@ -653,10 +650,7 @@ static unsigned PrintExpected(DiagnosticsEngine &Diags,
   llvm::raw_svector_ostream OS(Fmt);
   for (auto *DirPtr : DL) {
     Directive &D = *DirPtr;
-    if (D.DiagnosticLoc.isInvalid())
-      OS << "\n  File *";
-    else
-      OS << "\n  File " << SourceMgr.getFilename(D.DiagnosticLoc);
+    OS << "\n  File " << SourceMgr.getFilename(D.DiagnosticLoc);
     if (D.MatchAnyLine)
       OS << " Line *";
     else
@@ -714,8 +708,7 @@ static unsigned CheckLists(DiagnosticsEngine &Diags, SourceManager &SourceMgr,
             continue;
         }
 
-        if (!D.DiagnosticLoc.isInvalid() &&
-            !IsFromSameFile(SourceMgr, D.DiagnosticLoc, II->first))
+        if (!IsFromSameFile(SourceMgr, D.DiagnosticLoc, II->first))
           continue;
 
         const std::string &RightText = II->second;

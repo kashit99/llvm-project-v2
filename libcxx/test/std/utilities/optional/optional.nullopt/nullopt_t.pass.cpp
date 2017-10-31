@@ -11,30 +11,33 @@
 // <optional>
 
 // struct nullopt_t{see below};
-// inline constexpr nullopt_t nullopt(unspecified);
+// constexpr nullopt_t nullopt(unspecified);
 
 // [optional.nullopt]/2:
-//   Type nullopt_t shall not have a default constructor or an initializer-list
-//   constructor, and shall not be an aggregate.
+//   Type nullopt_t shall not have a default constructor or an initializer-list constructor.
+//   It shall not be an aggregate and shall be a literal type.
+//   Constant nullopt shall be initialized with an argument of literal type.
 
 #include <optional>
 #include <type_traits>
 
+using std::optional;
 using std::nullopt_t;
 using std::nullopt;
 
-constexpr bool test()
+constexpr
+int
+test(const nullopt_t&)
 {
-    nullopt_t foo{nullopt};
-    (void)foo;
-    return true;
+    return 3;
 }
 
 int main()
 {
-    static_assert(std::is_empty_v<nullopt_t>);
-    static_assert(!std::is_default_constructible_v<nullopt_t>);
+    static_assert(( std::is_class<nullopt_t>::value), "");
+    static_assert(( std::is_empty<nullopt_t>::value), "");
+    static_assert(( std::is_literal_type<nullopt_t>::value), "");
+    static_assert((!std::is_default_constructible<nullopt_t>::value), "");
 
-    static_assert(std::is_same_v<const nullopt_t, decltype(nullopt)>);
-    static_assert(test());
+    static_assert(test(nullopt) == 3, "");
 }

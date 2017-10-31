@@ -10,10 +10,10 @@
 #include "SymbolTable.h"
 #include "Config.h"
 #include "Driver.h"
+#include "Error.h"
 #include "LTO.h"
 #include "Memory.h"
 #include "Symbols.h"
-#include "lld/Common/ErrorHandler.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
@@ -68,12 +68,12 @@ void SymbolTable::addFile(InputFile *File) {
           " conflicts with " + machineToStr(Config->Machine));
   }
 
-  if (auto *F = dyn_cast<ObjFile>(File)) {
-    ObjFile::Instances.push_back(F);
+  if (auto *F = dyn_cast<ObjectFile>(File)) {
+    ObjectFiles.push_back(F);
   } else if (auto *F = dyn_cast<BitcodeFile>(File)) {
-    BitcodeFile::Instances.push_back(F);
+    BitcodeFiles.push_back(F);
   } else if (auto *F = dyn_cast<ImportFile>(File)) {
-    ImportFile::Instances.push_back(F);
+    ImportFiles.push_back(F);
   }
 
   StringRef S = File->getDirectives();
@@ -84,16 +84,8 @@ void SymbolTable::addFile(InputFile *File) {
   Driver->parseDirectives(S);
 }
 
-static void errorOrWarn(const Twine &S) {
-  if (Config->Force)
-    warn(S);
-  else
-    error(S);
-}
-
 void SymbolTable::reportRemainingUndefines() {
   SmallPtrSet<SymbolBody *, 8> Undefs;
-
   for (auto &I : Symtab) {
     Symbol *Sym = I.second;
     auto *Undef = dyn_cast<Undefined>(Sym->body());
@@ -101,9 +93,7 @@ void SymbolTable::reportRemainingUndefines() {
       continue;
     if (!Sym->IsUsedInRegularObj)
       continue;
-
     StringRef Name = Undef->getName();
-
     // A weak alias may have been resolved, so check for that.
     if (Defined *D = Undef->getWeakAlias()) {
       // We resolve weak aliases by replacing the alias's SymbolBody with the
@@ -122,7 +112,6 @@ void SymbolTable::reportRemainingUndefines() {
         Sym->Body = D->symbol()->Body;
       continue;
     }
-
     // If we can resolve a symbol by removing __imp_ prefix, do that.
     // This odd rule is for compatibility with MSVC linker.
     if (Name.startswith("__imp_")) {
@@ -135,25 +124,23 @@ void SymbolTable::reportRemainingUndefines() {
         continue;
       }
     }
-
     // Remaining undefined symbols are not fatal if /force is specified.
     // They are replaced with dummy defined symbols.
     if (Config->Force)
       replaceBody<DefinedAbsolute>(Sym, Name, 0);
     Undefs.insert(Sym->body());
   }
-
   if (Undefs.empty())
     return;
-
   for (SymbolBody *B : Config->GCRoot)
     if (Undefs.count(B))
-      errorOrWarn("<root>: undefined symbol: " + B->getName());
-
-  for (ObjFile *File : ObjFile::Instances)
+      warn("<root>: undefined symbol: " + B->getName());
+  for (ObjectFile *File : ObjectFiles)
     for (SymbolBody *Sym : File->getSymbols())
       if (Undefs.count(Sym))
-        errorOrWarn(toString(File) + ": undefined symbol: " + Sym->getName());
+        warn(toString(File) + ": undefined symbol: " + Sym->getName());
+  if (!Config->Force)
+    fatal("link failed");
 }
 
 std::pair<Symbol *, bool> SymbolTable::insert(StringRef Name) {
@@ -282,39 +269,34 @@ Symbol *SymbolTable::addCommon(InputFile *F, StringRef N, uint64_t Size,
   return S;
 }
 
-DefinedImportData *SymbolTable::addImportData(StringRef N, ImportFile *F) {
+Symbol *SymbolTable::addImportData(StringRef N, ImportFile *F) {
   Symbol *S;
   bool WasInserted;
   std::tie(S, WasInserted) = insert(N);
   S->IsUsedInRegularObj = true;
-  if (WasInserted || isa<Undefined>(S->body()) || isa<Lazy>(S->body())) {
+  if (WasInserted || isa<Undefined>(S->body()) || isa<Lazy>(S->body()))
     replaceBody<DefinedImportData>(S, N, F);
-    return cast<DefinedImportData>(S->body());
-  }
-
-  reportDuplicate(S, F);
-  return nullptr;
+  else if (!isa<DefinedCOFF>(S->body()))
+    reportDuplicate(S, nullptr);
+  return S;
 }
 
-DefinedImportThunk *SymbolTable::addImportThunk(StringRef Name,
-                                               DefinedImportData *ID,
-                                               uint16_t Machine) {
+Symbol *SymbolTable::addImportThunk(StringRef Name, DefinedImportData *ID,
+                                    uint16_t Machine) {
   Symbol *S;
   bool WasInserted;
   std::tie(S, WasInserted) = insert(Name);
   S->IsUsedInRegularObj = true;
-  if (WasInserted || isa<Undefined>(S->body()) || isa<Lazy>(S->body())) {
+  if (WasInserted || isa<Undefined>(S->body()) || isa<Lazy>(S->body()))
     replaceBody<DefinedImportThunk>(S, Name, ID, Machine);
-    return cast<DefinedImportThunk>(S->body());
-  }
-
-  reportDuplicate(S, ID->File);
-  return nullptr;
+  else if (!isa<DefinedCOFF>(S->body()))
+    reportDuplicate(S, nullptr);
+  return S;
 }
 
 std::vector<Chunk *> SymbolTable::getChunks() {
   std::vector<Chunk *> Res;
-  for (ObjFile *File : ObjFile::Instances) {
+  for (ObjectFile *File : ObjectFiles) {
     std::vector<Chunk *> &V = File->getChunks();
     Res.insert(Res.end(), V.begin(), V.end());
   }
@@ -351,16 +333,8 @@ StringRef SymbolTable::findMangle(StringRef Name) {
     return findByPrefix(("?" + Name + "@@Y").str());
   if (!Name.startswith("_"))
     return "";
-  // Search for x86 stdcall function.
+  // Search for x86 C function.
   StringRef S = findByPrefix((Name + "@").str());
-  if (!S.empty())
-    return S;
-  // Search for x86 fastcall function.
-  S = findByPrefix(("@" + Name.substr(1) + "@").str());
-  if (!S.empty())
-    return S;
-  // Search for x86 vectorcall function.
-  S = findByPrefix((Name.substr(1) + "@@").str());
   if (!S.empty())
     return S;
   // Search for x86 C++ non-member function.
@@ -372,10 +346,8 @@ void SymbolTable::mangleMaybe(SymbolBody *B) {
   if (!U || U->WeakAlias)
     return;
   StringRef Alias = findMangle(U->getName());
-  if (!Alias.empty()) {
-    log(U->getName() + " aliased to " + Alias);
+  if (!Alias.empty())
     U->WeakAlias = addUndefined(Alias);
-  }
 }
 
 SymbolBody *SymbolTable::addUndefined(StringRef Name) {
@@ -384,18 +356,18 @@ SymbolBody *SymbolTable::addUndefined(StringRef Name) {
 
 std::vector<StringRef> SymbolTable::compileBitcodeFiles() {
   LTO.reset(new BitcodeCompiler);
-  for (BitcodeFile *F : BitcodeFile::Instances)
+  for (BitcodeFile *F : BitcodeFiles)
     LTO->add(*F);
   return LTO->compile();
 }
 
 void SymbolTable::addCombinedLTOObjects() {
-  if (BitcodeFile::Instances.empty())
+  if (BitcodeFiles.empty())
     return;
   for (StringRef Object : compileBitcodeFiles()) {
-    auto *Obj = make<ObjFile>(MemoryBufferRef(Object, "lto.tmp"));
+    auto *Obj = make<ObjectFile>(MemoryBufferRef(Object, "lto.tmp"));
     Obj->parse();
-    ObjFile::Instances.push_back(Obj);
+    ObjectFiles.push_back(Obj);
   }
 }
 

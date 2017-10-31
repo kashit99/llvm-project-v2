@@ -1,8 +1,6 @@
 set(LLVM_LINK_COMPONENTS support)
 
-if(LLVM_USE_SANITIZE_COVERAGE)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=fuzzer")
-endif()
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=fuzzer")
 
 add_clang_executable(clang-format-fuzzer
   EXCLUDE_FROM_ALL
@@ -10,6 +8,4 @@ add_clang_executable(clang-format-fuzzer
   )
 
 target_link_libraries(clang-format-fuzzer
-  ${CLANG_FORMAT_LIB_DEPS}
-  ${LLVM_LIB_FUZZING_ENGINE}
-  )
+  ${CLANG_FORMAT_LIB_DEPS})

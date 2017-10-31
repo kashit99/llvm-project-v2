@@ -121,18 +121,12 @@ Preprocessor::Preprocessor(std::shared_ptr<PreprocessorOptions> PPOpts,
 
   // We haven't read anything from the external source.
   ReadMacrosFromExternalSource = false;
-
-  // "Poison" __VA_ARGS__, __VA_OPT__ which can only appear in the expansion of
-  // a macro. They get unpoisoned where it is allowed.
+  
+  // "Poison" __VA_ARGS__, which can only appear in the expansion of a macro.
+  // This gets unpoisoned where it is allowed.
   (Ident__VA_ARGS__ = getIdentifierInfo("__VA_ARGS__"))->setIsPoisoned();
   SetPoisonReason(Ident__VA_ARGS__,diag::ext_pp_bad_vaargs_use);
-  if (getLangOpts().CPlusPlus2a) {
-    (Ident__VA_OPT__ = getIdentifierInfo("__VA_OPT__"))->setIsPoisoned();
-    SetPoisonReason(Ident__VA_OPT__,diag::ext_pp_bad_vaopt_use);
-  } else {
-    Ident__VA_OPT__ = nullptr;
-  }
-
+  
   // Initialize the pragma handlers.
   RegisterBuiltinPragmas();
   
@@ -522,9 +516,9 @@ void Preprocessor::EnterMainSourceFile() {
     // If we've been asked to skip bytes in the main file (e.g., as part of a
     // precompiled preamble), do so now.
     if (SkipMainFilePreamble.first > 0)
-      CurLexer->SetByteOffset(SkipMainFilePreamble.first,
-                              SkipMainFilePreamble.second);
-
+      CurLexer->SkipBytes(SkipMainFilePreamble.first, 
+                          SkipMainFilePreamble.second);
+    
     // Tell the header info that the main file was entered.  If the file is later
     // #imported, it won't be re-entered.
     if (const FileEntry *FE = SourceMgr.getFileEntryForID(MainFileID))
@@ -638,8 +632,6 @@ static diag::kind getFutureCompatDiagKind(const IdentifierInfo &II,
     return llvm::StringSwitch<diag::kind>(II.getName())
 #define CXX11_KEYWORD(NAME, FLAGS)                                             \
         .Case(#NAME, diag::warn_cxx11_keyword)
-#define CXX2A_KEYWORD(NAME, FLAGS)                                             \
-        .Case(#NAME, diag::warn_cxx2a_keyword)
 #include "clang/Basic/TokenKinds.def"
         ;
 
@@ -673,15 +665,13 @@ bool Preprocessor::HandleIdentifier(Token &Identifier) {
   // unpoisoned it if we're defining a C99 macro.
   if (II.isOutOfDate()) {
     bool CurrentIsPoisoned = false;
-    const bool IsSpecialVariadicMacro =
-        &II == Ident__VA_ARGS__ || &II == Ident__VA_OPT__;
-    if (IsSpecialVariadicMacro)
-      CurrentIsPoisoned = II.isPoisoned();
+    if (&II == Ident__VA_ARGS__)
+      CurrentIsPoisoned = Ident__VA_ARGS__->isPoisoned();
 
     updateOutOfDateIdentifier(II);
     Identifier.setKind(II.getTokenID());
 
-    if (IsSpecialVariadicMacro)
+    if (&II == Ident__VA_ARGS__)
       II.setIsPoisoned(CurrentIsPoisoned);
   }
   

@@ -70,18 +70,8 @@ struct IncomingArgHandler : public CallLowering::ValueHandler {
   void assignValueToReg(unsigned ValVReg, unsigned PhysReg,
                         CCValAssign &VA) override {
     markPhysRegUsed(PhysReg);
-    switch (VA.getLocInfo()) {
-    default:
-      MIRBuilder.buildCopy(ValVReg, PhysReg);
-      break;
-    case CCValAssign::LocInfo::SExt:
-    case CCValAssign::LocInfo::ZExt:
-    case CCValAssign::LocInfo::AExt: {
-      auto Copy = MIRBuilder.buildCopy(LLT{VA.getLocVT()}, PhysReg);
-      MIRBuilder.buildTrunc(ValVReg, Copy);
-      break;
-    }
-    }
+    MIRBuilder.buildCopy(ValVReg, PhysReg);
+    // FIXME: assert extension
   }
 
   void assignValueToAddress(unsigned ValVReg, unsigned Addr, uint64_t Size,

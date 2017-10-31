@@ -17,24 +17,23 @@
 #ifndef LLVM_ADT_STLEXTRAS_H
 #define LLVM_ADT_STLEXTRAS_H
 
-#include "llvm/ADT/Optional.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/iterator.h"
-#include "llvm/ADT/iterator_range.h"
-#include "llvm/Support/ErrorHandling.h"
-#include <algorithm>
+#include <algorithm> // for std::all_of
 #include <cassert>
-#include <cstddef>
-#include <cstdint>
-#include <cstdlib>
+#include <cstddef> // for std::size_t
+#include <cstdlib> // for qsort
 #include <functional>
-#include <initializer_list>
 #include <iterator>
 #include <limits>
 #include <memory>
 #include <tuple>
-#include <type_traits>
-#include <utility>
+#include <utility> // for std::pair
+
+#include "llvm/ADT/Optional.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/iterator.h"
+#include "llvm/ADT/iterator_range.h"
+#include "llvm/Support/Compiler.h"
+#include "llvm/Support/ErrorHandling.h"
 
 namespace llvm {
 
@@ -51,15 +50,14 @@ template <typename RangeT>
 using ValueOfRange = typename std::remove_reference<decltype(
     *std::begin(std::declval<RangeT &>()))>::type;
 
-} // end namespace detail
+} // End detail namespace
 
 //===----------------------------------------------------------------------===//
 //     Extra additions to <functional>
 //===----------------------------------------------------------------------===//
 
-template <class Ty> struct identity {
-  using argument_type = Ty;
-
+template<class Ty>
+struct identity : public std::unary_function<Ty, Ty> {
   Ty &operator()(Ty &self) const {
     return self;
   }
@@ -68,13 +66,15 @@ template <class Ty> struct identity {
   }
 };
 
-template <class Ty> struct less_ptr {
+template<class Ty>
+struct less_ptr : public std::binary_function<Ty, Ty, bool> {
   bool operator()(const Ty* left, const Ty* right) const {
     return *left < *right;
   }
 };
 
-template <class Ty> struct greater_ptr {
+template<class Ty>
+struct greater_ptr : public std::binary_function<Ty, Ty, bool> {
   bool operator()(const Ty* left, const Ty* right) const {
     return *right < *left;
   }
@@ -90,7 +90,7 @@ template<typename Fn> class function_ref;
 
 template<typename Ret, typename ...Params>
 class function_ref<Ret(Params...)> {
-  Ret (*callback)(intptr_t callable, Params ...params) = nullptr;
+  Ret (*callback)(intptr_t callable, Params ...params);
   intptr_t callable;
 
   template<typename Callable>
@@ -100,7 +100,7 @@ class function_ref<Ret(Params...)> {
   }
 
 public:
-  function_ref() = default;
+  function_ref() : callback(nullptr) {}
 
   template <typename Callable>
   function_ref(Callable &&callable,
@@ -109,7 +109,6 @@ public:
                                  function_ref>::value>::type * = nullptr)
       : callback(callback_fn<typename std::remove_reference<Callable>::type>),
         callable(reinterpret_cast<intptr_t>(&callable)) {}
-
   Ret operator()(Params ...params) const {
     return callback(callable, std::forward<Params>(params)...);
   }
@@ -121,10 +120,13 @@ public:
 // delete on something.  It is used like this:
 //
 //   for_each(V.begin(), B.end(), deleter<Interval>);
+//
 template <class T>
 inline void deleter(T *Ptr) {
   delete Ptr;
 }
+
+
 
 //===----------------------------------------------------------------------===//
 //     Extra additions to <iterator>
@@ -132,23 +134,27 @@ inline void deleter(T *Ptr) {
 
 // mapped_iterator - This is a simple iterator adapter that causes a function to
 // be applied whenever operator* is invoked on the iterator.
+//
 template <class RootIt, class UnaryFunc>
 class mapped_iterator {
   RootIt current;
   UnaryFunc Fn;
-
 public:
-  using iterator_category =
-      typename std::iterator_traits<RootIt>::iterator_category;
-  using difference_type =
-      typename std::iterator_traits<RootIt>::difference_type;
-  using value_type =
-      decltype(std::declval<UnaryFunc>()(*std::declval<RootIt>()));
+  typedef typename std::iterator_traits<RootIt>::iterator_category
+          iterator_category;
+  typedef typename std::iterator_traits<RootIt>::difference_type
+          difference_type;
+  typedef decltype(std::declval<UnaryFunc>()(*std::declval<RootIt>()))
+          value_type;
 
-  using pointer = void;
-  using reference = void; // Can't modify value returned by fn
+  typedef void pointer;
+  //typedef typename UnaryFunc::result_type *pointer;
+  typedef void reference;        // Can't modify value returned by fn
 
-  using iterator_type = RootIt;
+  typedef RootIt iterator_type;
+
+  inline const RootIt &getCurrent() const { return current; }
+  inline const UnaryFunc &getFunc() const { return Fn; }
 
   inline explicit mapped_iterator(const RootIt &I, UnaryFunc F)
     : current(I), Fn(F) {}
@@ -200,9 +206,6 @@ public:
   difference_type operator-(const mapped_iterator &X) const {
     return current - X.current;
   }
-
-  inline const RootIt &getCurrent() const { return current; }
-  inline const UnaryFunc &getFunc() const { return Fn; }
 };
 
 template <class Iterator, class Func>
@@ -212,8 +215,10 @@ operator+(typename mapped_iterator<Iterator, Func>::difference_type N,
   return mapped_iterator<Iterator, Func>(X.getCurrent() - N, X.getFunc());
 }
 
+
 // map_iterator - Provide a convenient way to create mapped_iterators, just like
 // make_pair is useful for creating pairs...
+//
 template <class ItTy, class FuncTy>
 inline mapped_iterator<ItTy, FuncTy> map_iterator(const ItTy &I, FuncTy F) {
   return mapped_iterator<ItTy, FuncTy>(I, F);
@@ -221,8 +226,8 @@ inline mapped_iterator<ItTy, FuncTy> map_iterator(const ItTy &I, FuncTy F) {
 
 /// Helper to determine if type T has a member called rbegin().
 template <typename Ty> class has_rbegin_impl {
-  using yes = char[1];
-  using no = char[2];
+  typedef char yes[1];
+  typedef char no[2];
 
   template <typename Inner>
   static yes& test(Inner *I, decltype(I->rbegin()) * = nullptr);
@@ -360,13 +365,12 @@ template <size_t... I> struct index_sequence;
 template <class... Ts> struct index_sequence_for;
 
 namespace detail {
-
 using std::declval;
 
 // We have to alias this since inlining the actual type at the usage site
 // in the parameter list of iterator_facade_base<> below ICEs MSVC 2017.
 template<typename... Iters> struct ZipTupleType {
-  using type = std::tuple<decltype(*declval<Iters>())...>;
+  typedef std::tuple<decltype(*declval<Iters>())...> type;
 };
 
 template <typename ZipType, typename... Iters>
@@ -452,11 +456,11 @@ class zip_shortest : public zip_common<zip_shortest<Iters...>, Iters...> {
 public:
   using Base = zip_common<zip_shortest<Iters...>, Iters...>;
 
-  zip_shortest(Iters &&... ts) : Base(std::forward<Iters>(ts)...) {}
-
   bool operator==(const zip_shortest<Iters...> &other) const {
     return !test(other, index_sequence_for<Iters...>{});
   }
+
+  zip_shortest(Iters &&... ts) : Base(std::forward<Iters>(ts)...) {}
 };
 
 template <template <typename...> class ItType, typename... Args> class zippy {
@@ -479,13 +483,11 @@ private:
   }
 
 public:
-  zippy(Args &&... ts_) : ts(std::forward<Args>(ts_)...) {}
-
   iterator begin() const { return begin_impl(index_sequence_for<Args...>{}); }
   iterator end() const { return end_impl(index_sequence_for<Args...>{}); }
+  zippy(Args &&... ts_) : ts(std::forward<Args>(ts_)...) {}
 };
-
-} // end namespace detail
+} // End detail namespace
 
 /// zip iterator for two or more iteratable types.
 template <typename T, typename U, typename... Args>
@@ -518,7 +520,7 @@ template <typename ValueT, typename... IterTs>
 class concat_iterator
     : public iterator_facade_base<concat_iterator<ValueT, IterTs...>,
                                   std::forward_iterator_tag, ValueT> {
-  using BaseT = typename concat_iterator::iterator_facade_base;
+  typedef typename concat_iterator::iterator_facade_base BaseT;
 
   /// We store both the current and end iterators for each concatenated
   /// sequence in a tuple of pairs.
@@ -595,7 +597,6 @@ public:
       : IterPairs({std::begin(Ranges), std::end(Ranges)}...) {}
 
   using BaseT::operator++;
-
   concat_iterator &operator++() {
     increment(index_sequence_for<IterTs...>());
     return *this;
@@ -609,7 +610,6 @@ public:
 };
 
 namespace detail {
-
 /// Helper to store a sequence of ranges being concatenated and access them.
 ///
 /// This is designed to facilitate providing actual storage when temporaries
@@ -617,9 +617,9 @@ namespace detail {
 /// based for loops.
 template <typename ValueT, typename... RangeTs> class concat_range {
 public:
-  using iterator =
-      concat_iterator<ValueT,
-                      decltype(std::begin(std::declval<RangeTs &>()))...>;
+  typedef concat_iterator<ValueT,
+                          decltype(std::begin(std::declval<RangeTs &>()))...>
+      iterator;
 
 private:
   std::tuple<RangeTs...> Ranges;
@@ -633,14 +633,12 @@ private:
   }
 
 public:
-  concat_range(RangeTs &&... Ranges)
-      : Ranges(std::forward<RangeTs>(Ranges)...) {}
-
   iterator begin() { return begin_impl(index_sequence_for<RangeTs...>{}); }
   iterator end() { return end_impl(index_sequence_for<RangeTs...>{}); }
+  concat_range(RangeTs &&... Ranges)
+      : Ranges(std::forward<RangeTs>(Ranges)...) {}
 };
-
-} // end namespace detail
+}
 
 /// Concatenated range across two or more ranges.
 ///
@@ -677,7 +675,7 @@ struct less_second {
 
 /// \brief Represents a compile-time sequence of integers.
 template <class T, T... I> struct integer_sequence {
-  using value_type = T;
+  typedef T value_type;
 
   static constexpr size_t size() { return sizeof...(I); }
 };
@@ -753,6 +751,7 @@ inline int (*get_array_pod_sort_comparator(const T &))
              (const void*, const void*) {
   return array_pod_sort_comparator<T>;
 }
+
 
 /// array_pod_sort - This sorts an array with the specified start and end
 /// extent.  This is just like std::sort, except that it calls qsort instead of
@@ -1003,7 +1002,6 @@ struct equal {
 /// operands.
 template <typename T> struct deref {
   T func;
-
   // Could be further improved to cope with non-derivable functors and
   // non-binary functors (should be a variadic template member function
   // operator()).
@@ -1016,13 +1014,12 @@ template <typename T> struct deref {
 };
 
 namespace detail {
-
 template <typename R> class enumerator_iter;
 
 template <typename R> struct result_pair {
   friend class enumerator_iter<R>;
 
-  result_pair() = default;
+  result_pair() : Index(-1) {}
   result_pair(std::size_t Index, IterOfRange<R> Iter)
       : Index(Index), Iter(Iter) {}
 
@@ -1037,7 +1034,7 @@ template <typename R> struct result_pair {
   ValueOfRange<R> &value() { return *Iter; }
 
 private:
-  std::size_t Index = std::numeric_limits<std::size_t>::max();
+  std::size_t Index;
   IterOfRange<R> Iter;
 };
 
@@ -1052,7 +1049,7 @@ class enumerator_iter
 
 public:
   explicit enumerator_iter(IterOfRange<R> EndIter)
-      : Result(std::numeric_limits<size_t>::max(), EndIter) {}
+    : Result(std::numeric_limits<size_t>::max(), EndIter) { }
 
   enumerator_iter(std::size_t Index, IterOfRange<R> Iter)
       : Result(Index, Iter) {}
@@ -1090,7 +1087,6 @@ public:
   enumerator_iter<R> begin() {
     return enumerator_iter<R>(0, std::begin(TheRange));
   }
-
   enumerator_iter<R> end() {
     return enumerator_iter<R>(std::end(TheRange));
   }
@@ -1098,8 +1094,7 @@ public:
 private:
   R TheRange;
 };
-
-} // end namespace detail
+}
 
 /// Given an input range, returns a new range whose values are are pair (A,B)
 /// such that A is the 0-based index of the item in the sequence, and B is
@@ -1121,14 +1116,12 @@ template <typename R> detail::enumerator<R> enumerate(R &&TheRange) {
 }
 
 namespace detail {
-
 template <typename F, typename Tuple, std::size_t... I>
 auto apply_tuple_impl(F &&f, Tuple &&t, index_sequence<I...>)
     -> decltype(std::forward<F>(f)(std::get<I>(std::forward<Tuple>(t))...)) {
   return std::forward<F>(f)(std::get<I>(std::forward<Tuple>(t))...);
 }
-
-} // end namespace detail
+}
 
 /// Given an input tuple (a1, a2, ..., an), pass the arguments of the
 /// tuple variadically to f as if by calling f(a1, a2, ..., an) and
@@ -1144,7 +1137,6 @@ auto apply_tuple(F &&f, Tuple &&t) -> decltype(detail::apply_tuple_impl(
   return detail::apply_tuple_impl(std::forward<F>(f), std::forward<Tuple>(t),
                                   Indices{});
 }
+} // End llvm namespace
 
-} // end namespace llvm
-
-#endif // LLVM_ADT_STLEXTRAS_H
+#endif

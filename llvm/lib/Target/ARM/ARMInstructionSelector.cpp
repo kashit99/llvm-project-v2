@@ -538,8 +538,12 @@ bool ARMInstructionSelector::selectGlobal(MachineInstrBuilder &MIB,
             : (Indirect ? ARM::LDRLIT_ga_pcrel_ldr : ARM::LDRLIT_ga_pcrel);
     MIB->setDesc(TII.get(Opc));
 
+    int TargetFlags = ARMII::MO_NO_FLAG;
     if (STI.isTargetDarwin())
-      MIB->getOperand(1).setTargetFlags(ARMII::MO_NONLAZY);
+      TargetFlags |= ARMII::MO_NONLAZY;
+    if (STI.isGVInGOT(GV))
+      TargetFlags |= ARMII::MO_GOT;
+    MIB->getOperand(1).setTargetFlags(TargetFlags);
 
     if (Indirect)
       MIB.addMemOperand(MF.getMachineMemOperand(
@@ -792,28 +796,6 @@ bool ARMInstructionSelector::select(MachineInstr &I) const {
     I.setDesc(TII.get(ARM::ADDri));
     MIB.addImm(0).add(predOps(ARMCC::AL)).add(condCodeOp());
     break;
-  case G_CONSTANT: {
-    unsigned Reg = I.getOperand(0).getReg();
-
-    if (!validReg(MRI, Reg, 32, ARM::GPRRegBankID))
-      return false;
-
-    I.setDesc(TII.get(ARM::MOVi));
-    MIB.add(predOps(ARMCC::AL)).add(condCodeOp());
-
-    auto &Val = I.getOperand(1);
-    if (Val.isCImm()) {
-      if (Val.getCImm()->getBitWidth() > 32)
-        return false;
-      Val.ChangeToImmediate(Val.getCImm()->getZExtValue());
-    }
-
-    if (!Val.isImm()) {
-      return false;
-    }
-
-    break;
-  }
   case G_GLOBAL_VALUE:
     return selectGlobal(MIB, MRI);
   case G_STORE:

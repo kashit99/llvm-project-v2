@@ -322,6 +322,8 @@ enum VendorSignatures {
   SIG_AMD = 0x68747541 /* Auth */
 };
 
+// This should be kept in sync with libcc/compiler-rt as it should be used
+// by clang as a proxy for what's in libgcc/compiler-rt.
 enum ProcessorFeatures {
   FEATURE_CMOV = 0,
   FEATURE_MMX,
@@ -354,7 +356,8 @@ enum ProcessorFeatures {
   FEATURE_AVX5124VNNIW,
   FEATURE_AVX5124FMAPS,
   FEATURE_AVX512VPOPCNTDQ,
-  // Only one bit free left in the first 32 features.
+  // One bit free here.
+  // Features below here are not in libgcc/compiler-rt.
   FEATURE_MOVBE = 32,
   FEATURE_ADX,
   FEATURE_EM64T,
@@ -637,6 +640,12 @@ getIntelProcessorTypeAndSubtype(unsigned Family, unsigned Model,
       *Subtype = X86::INTEL_COREI7_SKYLAKE_AVX512; // "skylake-avx512"
       break;
 
+    // Cannonlake:
+    case 0x66:
+      *Type = X86::INTEL_COREI7;
+      *Subtype = X86::INTEL_COREI7_CANNONLAKE; // "cannonlake"
+      break;
+
     case 0x1c: // Most 45 nm Intel Atom processors
     case 0x26: // 45 nm Atom Lincroft
     case 0x27: // 32 nm Atom Medfield
@@ -655,8 +664,9 @@ getIntelProcessorTypeAndSubtype(unsigned Family, unsigned Model,
       *Type = X86::INTEL_SILVERMONT;
       break; // "silvermont"
     // Goldmont:
-    case 0x5c:
-    case 0x5f:
+    case 0x5c: // Apollo Lake
+    case 0x5f: // Denverton
+    case 0x7a: // Gemini Lake
       *Type = X86::INTEL_GOLDMONT;
       break; // "goldmont"
     case 0x57:
@@ -667,15 +677,23 @@ getIntelProcessorTypeAndSubtype(unsigned Family, unsigned Model,
       break;
 
     default: // Unknown family 6 CPU, try to guess.
-      if (Features & (1 << FEATURE_AVX512F)) {
-        if (Features & (1 << FEATURE_AVX512VL)) {
-          *Type = X86::INTEL_COREI7;
-          *Subtype = X86::INTEL_COREI7_SKYLAKE_AVX512;
-        } else {
-          *Type = X86::INTEL_KNL; // knl
-        }
+      if (Features & (1 << FEATURE_AVX512VBMI)) {
+        *Type = X86::INTEL_COREI7;
+        *Subtype = X86::INTEL_COREI7_CANNONLAKE;
         break;
       }
+
+      if (Features & (1 << FEATURE_AVX512VL)) {
+        *Type = X86::INTEL_COREI7;
+        *Subtype = X86::INTEL_COREI7_SKYLAKE_AVX512;
+        break;
+      }
+
+      if (Features & (1 << FEATURE_AVX512ER)) {
+        *Type = X86::INTEL_KNL; // knl
+        break;
+      }
+
       if (Features2 & (1 << (FEATURE_CLFLUSHOPT - 32))) {
         if (Features2 & (1 << (FEATURE_SHA - 32))) {
           *Type = X86::INTEL_GOLDMONT;

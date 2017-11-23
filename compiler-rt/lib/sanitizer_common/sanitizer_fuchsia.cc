@@ -191,6 +191,10 @@ uptr GetMaxUserVirtualAddress() {
   return ShadowBounds.memory_limit - 1;
 }
 
+uptr GetMaxVirtualAddress() {
+  return GetMaxUserVirtualAddress();
+}
+
 static void *DoAnonymousMmapOrDie(uptr size, const char *mem_type,
                                   bool raw_report, bool die_for_nomem) {
   size = RoundUpTo(size, PAGE_SIZE);
@@ -522,6 +526,10 @@ bool GetRandom(void *buffer, uptr length, bool blocking) {
   CHECK_EQ(_zx_cprng_draw(buffer, length, &size), ZX_OK);
   CHECK_EQ(size, length);
   return true;
+}
+
+u32 GetNumberOfCPUs() {
+  return zx_system_get_num_cpus();
 }
 
 }  // namespace __sanitizer

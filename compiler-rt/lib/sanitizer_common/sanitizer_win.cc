@@ -70,6 +70,10 @@ uptr GetMaxUserVirtualAddress() {
   return (uptr)si.lpMaximumApplicationAddress;
 }
 
+uptr GetMaxVirtualAddress() {
+  return GetMaxUserVirtualAddress();
+}
+
 bool FileExists(const char *filename) {
   return ::GetFileAttributesA(filename) != INVALID_FILE_ATTRIBUTES;
 }
@@ -1094,6 +1098,11 @@ void CheckNoDeepBind(const char *filename, int flag) {
 
 // FIXME: implement on this platform.
 bool GetRandom(void *buffer, uptr length, bool blocking) {
+  UNIMPLEMENTED();
+}
+
+// FIXME: implement on this platform.
+u32 GetNumberOfCPUs() {
   UNIMPLEMENTED();
 }
 

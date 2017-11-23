@@ -390,6 +390,11 @@ namespace llvm {
       PSHUFHW,
       PSHUFLW,
       SHUFP,
+      // VBMI2 Concat & Shift.
+      VSHLD,
+      VSHRD,
+      VSHLDV,
+      VSHRDV,
       //Shuffle Packed Values at 128-bit granularity.
       SHUF128,
       MOVDDUP,
@@ -474,6 +479,12 @@ namespace llvm {
       // NOTE: These are different than the instruction and perform
       // op0 x op1 + op2.
       VPMADD52L, VPMADD52H,
+
+      // VNNI
+      VPDPBUSD,
+      VPDPBUSDS,
+      VPDPWSSD,
+      VPDPWSSDS,
 
       // FMA nodes.
       // We use the target independent ISD::FMA for the non-inverted case.
@@ -625,8 +636,8 @@ namespace llvm {
       // Vector truncating masked store with unsigned/signed saturation
       VMTRUNCSTOREUS, VMTRUNCSTORES,
 
-      // X86 specific gather
-      MGATHER
+      // X86 specific gather and scatter
+      MGATHER, MSCATTER,
 
       // WARNING: Do not add anything in the end unless you want the node to
       // have memop! In fact, starting from FIRST_TARGET_MEMORY_OPCODE all
@@ -664,7 +675,7 @@ namespace llvm {
     void markLibCallAttributes(MachineFunction *MF, unsigned CC,
                                ArgListTy &Args) const override;
 
-    MVT getScalarShiftAmountTy(const DataLayout &, EVT) const override {
+    MVT getScalarShiftAmountTy(const DataLayout &, EVT VT) const override {
       return MVT::i8;
     }
 
@@ -1405,16 +1416,15 @@ namespace llvm {
     }
   };
 
-  // X86 specific Gather node.
-  // The class has the same order of operands as MaskedGatherSDNode for
+  // X86 specific Gather/Scatter nodes.
+  // The class has the same order of operands as MaskedGatherScatterSDNode for
   // convenience.
-  class X86MaskedGatherSDNode : public MemSDNode {
+  class X86MaskedGatherScatterSDNode : public MemSDNode {
   public:
-    X86MaskedGatherSDNode(unsigned Order,
-                          const DebugLoc &dl, SDVTList VTs, EVT MemVT,
-                          MachineMemOperand *MMO)
-      : MemSDNode(X86ISD::MGATHER, Order, dl, VTs, MemVT, MMO)
-    {}
+    X86MaskedGatherScatterSDNode(unsigned Opc, unsigned Order,
+                                 const DebugLoc &dl, SDVTList VTs, EVT MemVT,
+                                 MachineMemOperand *MMO)
+        : MemSDNode(Opc, Order, dl, VTs, MemVT, MMO) {}
 
     const SDValue &getBasePtr() const { return getOperand(3); }
     const SDValue &getIndex()   const { return getOperand(4); }
@@ -1422,7 +1432,32 @@ namespace llvm {
     const SDValue &getValue()   const { return getOperand(1); }
 
     static bool classof(const SDNode *N) {
+      return N->getOpcode() == X86ISD::MGATHER ||
+             N->getOpcode() == X86ISD::MSCATTER;
+    }
+  };
+
+  class X86MaskedGatherSDNode : public X86MaskedGatherScatterSDNode {
+  public:
+    X86MaskedGatherSDNode(unsigned Order, const DebugLoc &dl, SDVTList VTs,
+                          EVT MemVT, MachineMemOperand *MMO)
+        : X86MaskedGatherScatterSDNode(X86ISD::MGATHER, Order, dl, VTs, MemVT,
+                                       MMO) {}
+
+    static bool classof(const SDNode *N) {
       return N->getOpcode() == X86ISD::MGATHER;
+    }
+  };
+
+  class X86MaskedScatterSDNode : public X86MaskedGatherScatterSDNode {
+  public:
+    X86MaskedScatterSDNode(unsigned Order, const DebugLoc &dl, SDVTList VTs,
+                           EVT MemVT, MachineMemOperand *MMO)
+        : X86MaskedGatherScatterSDNode(X86ISD::MSCATTER, Order, dl, VTs, MemVT,
+                                       MMO) {}
+
+    static bool classof(const SDNode *N) {
+      return N->getOpcode() == X86ISD::MSCATTER;
     }
   };
 

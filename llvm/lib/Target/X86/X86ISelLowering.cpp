@@ -1185,8 +1185,6 @@ X86TargetLowering::X86TargetLowering(const X86TargetMachine &TM,
     setOperationAction(ISD::FP_TO_UINT,         MVT::v4i32, Legal);
     setOperationAction(ISD::FP_TO_UINT,         MVT::v2i32, Custom);
     setOperationAction(ISD::SINT_TO_FP,         MVT::v16i32, Legal);
-    setOperationAction(ISD::SINT_TO_FP,         MVT::v8i1,   Custom);
-    setOperationAction(ISD::SINT_TO_FP,         MVT::v16i1,  Custom);
     setOperationAction(ISD::SINT_TO_FP,         MVT::v16i8,  Promote);
     setOperationAction(ISD::SINT_TO_FP,         MVT::v16i16, Promote);
     setOperationAction(ISD::UINT_TO_FP,         MVT::v16i32, Legal);
@@ -1202,8 +1200,6 @@ X86TargetLowering::X86TargetLowering(const X86TargetMachine &TM,
     setOperationAction(ISD::UINT_TO_FP,         MVT::v4i1,  Custom);
     setOperationAction(ISD::SINT_TO_FP,         MVT::v2i1,  Custom);
     setOperationAction(ISD::UINT_TO_FP,         MVT::v2i1,  Custom);
-    setOperationAction(ISD::FP_ROUND,           MVT::v8f32, Legal);
-    setOperationAction(ISD::FP_EXTEND,          MVT::v8f32, Legal);
 
     setTruncStoreAction(MVT::v8i64,   MVT::v8i8,   Legal);
     setTruncStoreAction(MVT::v8i64,   MVT::v8i16,  Legal);
@@ -1245,13 +1241,6 @@ X86TargetLowering::X86TargetLowering(const X86TargetMachine &TM,
       }
     }
     if (Subtarget.hasVLX()) {
-      setOperationAction(ISD::SINT_TO_FP,       MVT::v8i32, Legal);
-      setOperationAction(ISD::UINT_TO_FP,       MVT::v8i32, Legal);
-      setOperationAction(ISD::FP_TO_SINT,       MVT::v8i32, Legal);
-      setOperationAction(ISD::FP_TO_UINT,       MVT::v8i32, Legal);
-      setOperationAction(ISD::SINT_TO_FP,       MVT::v4i32, Legal);
-      setOperationAction(ISD::FP_TO_SINT,       MVT::v4i32, Legal);
-      setOperationAction(ISD::FP_TO_UINT,       MVT::v4i32, Legal);
       setOperationAction(ISD::ZERO_EXTEND,      MVT::v4i32, Custom);
       setOperationAction(ISD::ZERO_EXTEND,      MVT::v2i64, Custom);
       setOperationAction(ISD::SIGN_EXTEND,      MVT::v4i32, Custom);
@@ -1266,9 +1255,13 @@ X86TargetLowering::X86TargetLowering(const X86TargetMachine &TM,
     setOperationAction(ISD::ANY_EXTEND,         MVT::v8i64, Custom);
     setOperationAction(ISD::SIGN_EXTEND,        MVT::v16i32, Custom);
     setOperationAction(ISD::SIGN_EXTEND,        MVT::v8i64, Custom);
+
     setOperationAction(ISD::SIGN_EXTEND,        MVT::v16i8, Custom);
+    setOperationAction(ISD::ZERO_EXTEND,        MVT::v16i8, Custom);
     setOperationAction(ISD::SIGN_EXTEND,        MVT::v8i16, Custom);
+    setOperationAction(ISD::ZERO_EXTEND,        MVT::v8i16, Custom);
     setOperationAction(ISD::SIGN_EXTEND,        MVT::v16i16, Custom);
+    setOperationAction(ISD::ZERO_EXTEND,        MVT::v16i16, Custom);
 
     for (auto VT : { MVT::v16f32, MVT::v8f64 }) {
       setOperationAction(ISD::FFLOOR,           VT, Legal);
@@ -1718,25 +1711,22 @@ EVT X86TargetLowering::getSetCCResultType(const DataLayout &DL,
   if (!VT.isVector())
     return MVT::i8;
 
+  if (VT.getSizeInBits() >= 512) {
+    EVT EltVT = VT.getVectorElementType();
+    const unsigned NumElts = VT.getVectorNumElements();
+    if (Subtarget.hasAVX512())
+      if (EltVT == MVT::i32 || EltVT == MVT::i64 ||
+          EltVT == MVT::f32 || EltVT == MVT::f64)
+        return EVT::getVectorVT(Context, MVT::i1, NumElts);
+    if (Subtarget.hasBWI())
+      if (EltVT == MVT::i8 || EltVT == MVT::i16)
+        return EVT::getVectorVT(Context, MVT::i1, NumElts);
+  }
+
   if (VT.isSimple()) {
     MVT VVT = VT.getSimpleVT();
     const unsigned NumElts = VVT.getVectorNumElements();
     MVT EltVT = VVT.getVectorElementType();
-    if (VVT.is512BitVector()) {
-      if (Subtarget.hasAVX512())
-        if (EltVT == MVT::i32 || EltVT == MVT::i64 ||
-            EltVT == MVT::f32 || EltVT == MVT::f64)
-          switch(NumElts) {
-          case  8: return MVT::v8i1;
-          case 16: return MVT::v16i1;
-        }
-      if (Subtarget.hasBWI())
-        if (EltVT == MVT::i8 || EltVT == MVT::i16)
-          switch(NumElts) {
-          case 32: return MVT::v32i1;
-          case 64: return MVT::v64i1;
-        }
-    }
 
     if (Subtarget.hasBWI() && Subtarget.hasVLX())
       return MVT::getVectorVT(MVT::i1, NumElts);
@@ -2149,8 +2139,7 @@ static void Passv64i1ArgInRegs(
     const SDLoc &Dl, SelectionDAG &DAG, SDValue Chain, SDValue &Arg,
     SmallVector<std::pair<unsigned, SDValue>, 8> &RegsToPass, CCValAssign &VA,
     CCValAssign &NextVA, const X86Subtarget &Subtarget) {
-  assert((Subtarget.hasBWI() || Subtarget.hasBMI()) &&
-         "Expected AVX512BW or AVX512BMI target!");
+  assert(Subtarget.hasBWI() && "Expected AVX512BW target!");
   assert(Subtarget.is32Bit() && "Expecting 32 bit target");
   assert(Arg.getValueType() == MVT::i64 && "Expecting 64 bit value");
   assert(VA.isRegLoc() && NextVA.isRegLoc() &&
@@ -25169,6 +25158,10 @@ const char *X86TargetLowering::getTargetNodeName(unsigned Opcode) const {
   case X86ISD::FNMADDS3_RND:       return "X86ISD::FNMADDS3_RND";
   case X86ISD::FMSUBS3_RND:        return "X86ISD::FMSUBS3_RND";
   case X86ISD::FNMSUBS3_RND:       return "X86ISD::FNMSUBS3_RND";
+  case X86ISD::FMADD4S:            return "X86ISD::FMADD4S";
+  case X86ISD::FNMADD4S:           return "X86ISD::FNMADD4S";
+  case X86ISD::FMSUB4S:            return "X86ISD::FMSUB4S";
+  case X86ISD::FNMSUB4S:           return "X86ISD::FNMSUB4S";
   case X86ISD::VPMADD52H:          return "X86ISD::VPMADD52H";
   case X86ISD::VPMADD52L:          return "X86ISD::VPMADD52L";
   case X86ISD::VRNDSCALE:          return "X86ISD::VRNDSCALE";
@@ -25250,6 +25243,9 @@ const char *X86TargetLowering::getTargetNodeName(unsigned Opcode) const {
   case X86ISD::VPDPWSSD:           return "X86ISD::VPDPWSSD";
   case X86ISD::VPDPWSSDS:          return "X86ISD::VPDPWSSDS";
   case X86ISD::VPSHUFBITQMB:       return "X86ISD::VPSHUFBITQMB";
+  case X86ISD::GF2P8MULB:          return "X86ISD::GF2P8MULB";
+  case X86ISD::GF2P8AFFINEQB:      return "X86ISD::GF2P8AFFINEQB";
+  case X86ISD::GF2P8AFFINEINVQB:   return "X86ISD::GF2P8AFFINEINVQB";
   }
   return nullptr;
 }
@@ -28337,7 +28333,7 @@ static SDValue combineX86ShuffleChain(ArrayRef<SDValue> Inputs, SDValue Root,
   // Which shuffle domains are permitted?
   // Permit domain crossing at higher combine depths.
   bool AllowFloatDomain = FloatDomain || (Depth > 3);
-  bool AllowIntDomain = (!FloatDomain || (Depth > 3)) &&
+  bool AllowIntDomain = (!FloatDomain || (Depth > 3)) && Subtarget.hasSSE2() &&
                         (!MaskVT.is256BitVector() || Subtarget.hasAVX2());
 
   // Determine zeroable mask elements.
@@ -35724,6 +35720,13 @@ static SDValue combineFMA(SDNode *N, SelectionDAG &DAG,
     case X86ISD::FNMADD: NewOpcode = X86ISD::FNMADDS3_RND; break;
     case X86ISD::FNMSUB: NewOpcode = X86ISD::FNMSUBS3_RND; break;
     }
+  } else if (N->getOpcode() == X86ISD::FMADD4S) {
+    switch (NewOpcode) {
+    case ISD::FMA:       NewOpcode = X86ISD::FMADD4S; break;
+    case X86ISD::FMSUB:  NewOpcode = X86ISD::FMSUB4S; break;
+    case X86ISD::FNMADD: NewOpcode = X86ISD::FNMADD4S; break;
+    case X86ISD::FNMSUB: NewOpcode = X86ISD::FNMSUB4S; break;
+    }
   } else {
     llvm_unreachable("Unexpected opcode!");
   }
@@ -37092,6 +37095,7 @@ SDValue X86TargetLowering::PerformDAGCombine(SDNode *N,
   case X86ISD::FMADDS3_RND:
   case X86ISD::FMADDS1:
   case X86ISD::FMADDS3:
+  case X86ISD::FMADD4S:
   case ISD::FMA:            return combineFMA(N, DAG, Subtarget);
   case X86ISD::FMADDSUB_RND:
   case X86ISD::FMSUBADD_RND:

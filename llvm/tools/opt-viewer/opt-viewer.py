@@ -283,9 +283,14 @@ if __name__ == '__main__':
         action='store_true',
         default=False,
         help='Do not use a syntax highlighter when rendering the source code')
+    parser.add_argument(
+        '--demangler',
+        help='Set the demangler to be used (defaults to %s)' % optrecord.Remark.default_demangler)
     args = parser.parse_args()
 
     print_progress = not args.no_progress_indicator
+    if args.demangler:
+        optrecord.Remark.set_demangler(args.demangler)
 
     files = optrecord.find_opt_files(*args.yaml_dirs_or_files)
     if not files:

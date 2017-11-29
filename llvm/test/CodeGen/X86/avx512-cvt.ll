@@ -430,6 +430,27 @@ define <16 x i32> @f64to16si(<16 x float> %a) nounwind {
   ret <16 x i32> %b
 }
 
+define <16 x i8> @f32to16sc(<16 x float> %f) {
+; ALL-LABEL: f32to16sc:
+; ALL:       # BB#0:
+; ALL-NEXT:    vcvttps2dq %zmm0, %zmm0
+; ALL-NEXT:    vpmovdb %zmm0, %xmm0
+; ALL-NEXT:    vzeroupper
+; ALL-NEXT:    retq
+  %res = fptosi <16 x float> %f to <16 x i8>
+  ret <16 x i8> %res
+}
+
+define <16 x i16> @f32to16ss(<16 x float> %f) {
+; ALL-LABEL: f32to16ss:
+; ALL:       # BB#0:
+; ALL-NEXT:    vcvttps2dq %zmm0, %zmm0
+; ALL-NEXT:    vpmovdw %zmm0, %ymm0
+; ALL-NEXT:    retq
+  %res = fptosi <16 x float> %f to <16 x i16>
+  ret <16 x i16> %res
+}
+
 define <16 x i32> @f32to16ui(<16 x float> %a) nounwind {
 ; ALL-LABEL: f32to16ui:
 ; ALL:       # BB#0:
@@ -442,7 +463,7 @@ define <16 x i32> @f32to16ui(<16 x float> %a) nounwind {
 define <16 x i8> @f32to16uc(<16 x float> %f) {
 ; ALL-LABEL: f32to16uc:
 ; ALL:       # BB#0:
-; ALL-NEXT:    vcvttps2udq %zmm0, %zmm0
+; ALL-NEXT:    vcvttps2dq %zmm0, %zmm0
 ; ALL-NEXT:    vpmovdb %zmm0, %xmm0
 ; ALL-NEXT:    vzeroupper
 ; ALL-NEXT:    retq
@@ -453,7 +474,7 @@ define <16 x i8> @f32to16uc(<16 x float> %f) {
 define <16 x i16> @f32to16us(<16 x float> %f) {
 ; ALL-LABEL: f32to16us:
 ; ALL:       # BB#0:
-; ALL-NEXT:    vcvttps2udq %zmm0, %zmm0
+; ALL-NEXT:    vcvttps2dq %zmm0, %zmm0
 ; ALL-NEXT:    vpmovdw %zmm0, %ymm0
 ; ALL-NEXT:    retq
   %res = fptoui <16 x float> %f to <16 x i16>

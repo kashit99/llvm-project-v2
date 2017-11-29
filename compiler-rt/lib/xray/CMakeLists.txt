@@ -13,47 +13,39 @@ set(XRAY_SOURCES
 
 set(x86_64_SOURCES
     xray_x86_64.cc
-    xray_trampoline_x86_64.S
-    ${XRAY_SOURCES})
+    xray_trampoline_x86_64.S)
 
 set(arm_SOURCES
     xray_arm.cc
-    xray_trampoline_arm.S
-    ${XRAY_SOURCES})
+    xray_trampoline_arm.S)
 
 set(armhf_SOURCES
-  ${arm_SOURCES})
+    ${arm_SOURCES})
 
 set(aarch64_SOURCES
   xray_AArch64.cc
-  xray_trampoline_AArch64.S
-  ${XRAY_SOURCES})
+  xray_trampoline_AArch64.S)
 
 set(mips_SOURCES
     xray_mips.cc
-    xray_trampoline_mips.S
-    ${XRAY_SOURCES})
+    xray_trampoline_mips.S)
 
 set(mipsel_SOURCES
     xray_mips.cc
-    xray_trampoline_mips.S
-    ${XRAY_SOURCES})
+    xray_trampoline_mips.S)
 
 set(mips64_SOURCES
     xray_mips64.cc
-    xray_trampoline_mips64.S
-    ${XRAY_SOURCES})
+    xray_trampoline_mips64.S)
 
 set(mips64el_SOURCES
     xray_mips64.cc
-    xray_trampoline_mips64.S
-    ${XRAY_SOURCES})
+    xray_trampoline_mips64.S)
 
 set(powerpc64le_SOURCES
-        xray_powerpc64.cc
-        xray_trampoline_powerpc64.cc
-        xray_trampoline_powerpc64_asm.S
-        ${XRAY_SOURCES})
+    xray_powerpc64.cc
+    xray_trampoline_powerpc64.cc
+    xray_trampoline_powerpc64_asm.S)
 
 include_directories(..)
 include_directories(../../include)
@@ -74,13 +66,7 @@ set(XRAY_COMMON_RUNTIME_OBJECT_LIBS
 
 if (APPLE)
   set(XRAY_LINK_LIBS ${SANITIZER_COMMON_LINK_LIBS})
-  set(XRAY_ASM_SOURCES xray_trampoline_x86_64.S)
-
-  if (${CMAKE_GENERATOR} STREQUAL "Xcode")
-    enable_language(ASM)
-  else()
-    set_source_files_properties(${XRAY_ASM_SOURCES} PROPERTIES LANGUAGE C)
-  endif()
+  add_asm_sources(XRAY_ASM_SOURCES xray_trampoline_x86_64.S)
 
   add_weak_symbols("sanitizer_common" WEAK_SYMBOL_LINK_FLAGS)
   add_weak_symbols("xray" WEAK_SYMBOL_LINK_FLAGS)

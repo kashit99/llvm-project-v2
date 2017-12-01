@@ -399,7 +399,7 @@ X86TargetLowering::X86TargetLowering(const X86TargetMachine &TM,
   setTruncStoreAction(MVT::f80, MVT::f16, Expand);
 
   if (Subtarget.hasPOPCNT()) {
-    setOperationAction(ISD::CTPOP          , MVT::i8   , Promote);
+    setOperationPromotedToType(ISD::CTPOP, MVT::i8, MVT::i32);
   } else {
     setOperationAction(ISD::CTPOP          , MVT::i8   , Expand);
     setOperationAction(ISD::CTPOP          , MVT::i16  , Expand);
@@ -1683,6 +1683,19 @@ X86TargetLowering::X86TargetLowering(const X86TargetMachine &TM,
 // This has so far only been implemented for 64-bit MachO.
 bool X86TargetLowering::useLoadStackGuardNode() const {
   return Subtarget.isTargetMachO() && Subtarget.is64Bit();
+}
+
+bool X86TargetLowering::useStackGuardXorFP() const {
+  // Currently only MSVC CRTs XOR the frame pointer into the stack guard value.
+  return Subtarget.getTargetTriple().isOSMSVCRT();
+}
+
+SDValue X86TargetLowering::emitStackGuardXorFP(SelectionDAG &DAG, SDValue Val,
+                                               const SDLoc &DL) const {
+  EVT PtrTy = getPointerTy(DAG.getDataLayout());
+  unsigned XorOp = Subtarget.is64Bit() ? X86::XOR64_FP : X86::XOR32_FP;
+  MachineSDNode *Node = DAG.getMachineNode(XorOp, DL, PtrTy, Val);
+  return SDValue(Node, 0);
 }
 
 TargetLoweringBase::LegalizeTypeAction
@@ -6948,10 +6961,10 @@ static int getUnderlyingExtractedFromVec(SDValue &ExtractedFromVec,
 
   // For 256-bit vectors, LowerEXTRACT_VECTOR_ELT_SSE4 may have already
   // lowered this:
-  //   (extract_vector_elt (v8f32 %vreg1), Constant<6>)
+  //   (extract_vector_elt (v8f32 %1), Constant<6>)
   // to:
   //   (extract_vector_elt (vector_shuffle<2,u,u,u>
-  //                           (extract_subvector (v8f32 %vreg0), Constant<4>),
+  //                           (extract_subvector (v8f32 %0), Constant<4>),
   //                           undef)
   //                       Constant<0>)
   // In this case the vector is the extract_subvector expression and the index
@@ -35978,6 +35991,21 @@ static SDValue combineGatherScatter(SDNode *N, SelectionDAG &DAG,
     NewOps[2] = Mask.getOperand(0);
     DAG.UpdateNodeOperands(N, NewOps);
   }
+
+  // With AVX2 we only demand the upper bit of the mask.
+  if (!Subtarget.hasAVX512()) {
+    const TargetLowering &TLI = DAG.getTargetLoweringInfo();
+    TargetLowering::TargetLoweringOpt TLO(DAG, !DCI.isBeforeLegalize(),
+                                          !DCI.isBeforeLegalizeOps());
+    KnownBits Known;
+    APInt DemandedMask(APInt::getSignMask(Mask.getScalarValueSizeInBits()));
+    if (TLI.SimplifyDemandedBits(Mask, DemandedMask, Known, TLO)) {
+      DCI.AddToWorklist(Mask.getNode());
+      DCI.CommitTargetLoweringOpt(TLO);
+      return SDValue(N, 0);
+    }
+  }
+
   return SDValue();
 }
 
@@ -37084,6 +37112,8 @@ SDValue X86TargetLowering::PerformDAGCombine(SDNode *N,
   case X86ISD::FMSUBADD_RND:
   case X86ISD::FMADDSUB:
   case X86ISD::FMSUBADD:    return combineFMADDSUB(N, DAG, Subtarget);
+  case X86ISD::MGATHER:
+  case X86ISD::MSCATTER:
   case ISD::MGATHER:
   case ISD::MSCATTER:       return combineGatherScatter(N, DAG, DCI, Subtarget);
   case X86ISD::TESTM:       return combineTestM(N, DAG, Subtarget);

@@ -8681,7 +8681,13 @@ struct PromotedRange {
   PromotedRange(IntRange R, unsigned BitWidth, bool Unsigned) {
     if (R.Width == 0)
       PromotedMin = PromotedMax = llvm::APSInt(BitWidth, Unsigned);
-    else {
+    else if (R.Width >= BitWidth && !Unsigned) {
+      // Promotion made the type *narrower*. This happens when promoting
+      // a < 32-bit unsigned / <= 32-bit signed bit-field to 'signed int'.
+      // Treat all values of 'signed int' as being in range for now.
+      PromotedMin = llvm::APSInt::getMinValue(BitWidth, Unsigned);
+      PromotedMax = llvm::APSInt::getMaxValue(BitWidth, Unsigned);
+    } else {
       PromotedMin = llvm::APSInt::getMinValue(R.Width, R.NonNegative)
                         .extOrTrunc(BitWidth);
       PromotedMin.setIsUnsigned(Unsigned);
@@ -8809,6 +8815,17 @@ static bool CheckTautologicalComparison(Sema &S, BinaryOperator *E,
   Constant = Constant->IgnoreParenImpCasts();
   Other = Other->IgnoreParenImpCasts();
 
+  // Suppress warnings on tautological comparisons between values of the same
+  // enumeration type. There are only two ways we could warn on this:
+  //  - If the constant is outside the range of representable values of
+  //    the enumeration. In such a case, we should warn about the cast
+  //    to enumeration type, not about the comparison.
+  //  - If the constant is the maximum / minimum in-range value. For an
+  //    enumeratin type, such comparisons can be meaningful and useful.
+  if (Constant->getType()->isEnumeralType() &&
+      S.Context.hasSameUnqualifiedType(Constant->getType(), Other->getType()))
+    return false;
+
   // TODO: Investigate using GetExprRange() to get tighter bounds
   // on the bit ranges.
   QualType OtherT = Other->getType();
@@ -8822,11 +8839,6 @@ static bool CheckTautologicalComparison(Sema &S, BinaryOperator *E,
       !OtherT->isBooleanType() && Other->isKnownToHaveBooleanValue();
   if (OtherIsBooleanDespiteType)
     OtherRange = IntRange::forBoolType();
-
-  if (FieldDecl *Bitfield = Other->getSourceBitField())
-    if (!Bitfield->getBitWidth()->isValueDependent())
-      OtherRange.Width =
-          std::min(Bitfield->getBitWidthValue(S.Context), OtherRange.Width);
 
   // Determine the promoted range of the other type and see if a comparison of
   // the constant against that range is tautological.

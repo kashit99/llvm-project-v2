@@ -8,7 +8,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "Index.h"
-
 #include "clang/Index/IndexDataConsumer.h"
 #include "clang/Index/IndexSymbol.h"
 
@@ -32,7 +31,7 @@ public:
 
   void finish() override;
 
-  SymbolSlab takeSymbols() const { return std::move(Symbols); }
+  SymbolSlab takeSymbols() { return std::move(Symbols); }
 
 private:
   // All Symbols collected from the AST.

@@ -8,7 +8,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "SymbolCollector.h"
-
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclCXX.h"
@@ -94,9 +93,7 @@ bool SymbolCollector::handleDeclOccurence(
   return true;
 }
 
-void SymbolCollector::finish() {
-  Symbols.freeze();
-}
+void SymbolCollector::finish() { Symbols.freeze(); }
 
 } // namespace clangd
 } // namespace clang

@@ -3788,6 +3788,16 @@ bool DAGCombiner::isLegalNarrowLoad(LoadSDNode *LoadN, ISD::LoadExtType ExtType,
   if (LoadN->getNumValues() > 2)
     return false;
 
+  // Only allow byte offsets.
+  if (ShAmt % 8)
+    return false;
+
+  // Ensure that this isn't going to produce an unsupported unaligned access.
+  if (ShAmt && !TLI.allowsMemoryAccess(*DAG.getContext(), DAG.getDataLayout(),
+                                       ExtVT, LoadN->getAddressSpace(),
+                                       ShAmt / 8))
+    return false;
+
   // If the load that we're shrinking is an extload and we're not just
   // discarding the extension we can't simply shrink the load. Bail.
   // TODO: It would be possible to merge the extensions in some cases.
@@ -3988,10 +3998,12 @@ SDValue DAGCombiner::visitAND(SDNode *N) {
   if (SDValue RAND = ReassociateOps(ISD::AND, SDLoc(N), N0, N1))
     return RAND;
   // fold (and (or x, C), D) -> D if (C & D) == D
-  if (N1C && N0.getOpcode() == ISD::OR)
-    if (ConstantSDNode *ORI = isConstOrConstSplat(N0.getOperand(1)))
-      if (N1C->getAPIntValue().isSubsetOf(ORI->getAPIntValue()))
-        return N1;
+  auto MatchSubset = [](ConstantSDNode *LHS, ConstantSDNode *RHS) {
+    return RHS->getAPIntValue().isSubsetOf(LHS->getAPIntValue());
+  };
+  if (N0.getOpcode() == ISD::OR &&
+      matchBinaryPredicate(N0.getOperand(1), N1, MatchSubset))
+    return N1;
   // fold (and (any_ext V), c) -> (zero_ext V) if 'and' only clears top bits.
   if (N1C && N0.getOpcode() == ISD::ANY_EXTEND) {
     SDValue N0Op0 = N0.getOperand(0);
@@ -8274,6 +8286,22 @@ SDValue DAGCombiner::ReduceLoadWidth(SDNode *N) {
       // then the result of the shift+trunc is zero/undef (handled elsewhere).
       if (ShAmt >= cast<LoadSDNode>(N0)->getMemoryVT().getSizeInBits())
         return SDValue();
+
+      // If the SRL is only used by a masking AND, we may be able to adjust
+      // the ExtVT to make the AND redundant.
+      SDNode *Mask = *(N->use_begin());
+      if (Mask->getOpcode() == ISD::AND &&
+          isa<ConstantSDNode>(Mask->getOperand(1))) {
+        const APInt &ShiftMask =
+          cast<ConstantSDNode>(Mask->getOperand(1))->getAPIntValue();
+        if (ShiftMask.isMask()) {
+          EVT MaskedVT = EVT::getIntegerVT(*DAG.getContext(),
+                                           ShiftMask.countTrailingOnes());
+          // Recompute the type.
+          if (TLI.isLoadExtLegal(ExtType, N0.getValueType(), MaskedVT))
+            ExtVT = MaskedVT;
+        }
+      }
     }
   }
 

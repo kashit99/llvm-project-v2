@@ -3137,10 +3137,14 @@ static void warnAboutRedundantParens(Sema &S, Declarator &D, QualType T) {
       (T->isRecordType() || T->isDependentType()) &&
       D.getDeclSpec().getTypeQualifiers() == 0 && D.isFirstDeclarator();
 
+  bool StartsWithDeclaratorId = true;
   for (auto &C : D.type_objects()) {
     switch (C.Kind) {
-    case DeclaratorChunk::Pointer:
     case DeclaratorChunk::Paren:
+      if (&C == &Paren)
+        continue;
+    case DeclaratorChunk::Pointer:
+      StartsWithDeclaratorId = false;
       continue;
 
     case DeclaratorChunk::Array:
@@ -3154,18 +3158,25 @@ static void warnAboutRedundantParens(Sema &S, Declarator &D, QualType T) {
       // We assume that something like 'T (&x) = y;' is highly likely to not
       // be intended to be a temporary object.
       CouldBeTemporaryObject = false;
+      StartsWithDeclaratorId = false;
       continue;
 
     case DeclaratorChunk::Function:
       // In a new-type-id, function chunks require parentheses.
       if (D.getContext() == Declarator::CXXNewContext)
         return;
-      LLVM_FALLTHROUGH;
+      // FIXME: "A(f())" deserves a vexing-parse warning, not just a
+      // redundant-parens warning, but we don't know whether the function
+      // chunk was syntactically valid as an expression here.
+      CouldBeTemporaryObject = false;
+      continue;
+
     case DeclaratorChunk::BlockPointer:
     case DeclaratorChunk::MemberPointer:
     case DeclaratorChunk::Pipe:
       // These cannot appear in expressions.
       CouldBeTemporaryObject = false;
+      StartsWithDeclaratorId = false;
       continue;
     }
   }
@@ -3186,6 +3197,18 @@ static void warnAboutRedundantParens(Sema &S, Declarator &D, QualType T) {
   SourceRange ParenRange(Paren.Loc, Paren.EndLoc);
 
   if (!CouldBeTemporaryObject) {
+    // If we have A (::B), the parentheses affect the meaning of the program.
+    // Suppress the warning in that case. Don't bother looking at the DeclSpec
+    // here: even (e.g.) "int ::x" is visually ambiguous even though it's
+    // formally unambiguous.
+    if (StartsWithDeclaratorId && D.getCXXScopeSpec().isValid()) {
+      for (NestedNameSpecifier *NNS = D.getCXXScopeSpec().getScopeRep(); NNS;
+           NNS = NNS->getPrefix()) {
+        if (NNS->getKind() == NestedNameSpecifier::Global)
+          return;
+      }
+    }
+
     S.Diag(Paren.Loc, diag::warn_redundant_parens_around_declarator)
         << ParenRange << FixItHint::CreateRemoval(Paren.Loc)
         << FixItHint::CreateRemoval(Paren.EndLoc);

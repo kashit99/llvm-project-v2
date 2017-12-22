@@ -52,7 +52,9 @@ public:
 
 private:
   friend llvm::hash_code hash_value(const SymbolID &ID) {
-    return hash_value(ArrayRef<uint8_t>(ID.HashValue));
+    // We already have a good hash, just return the first bytes.
+    static_assert(sizeof(size_t) <= 20, "size_t longer than SHA1!");
+    return *reinterpret_cast<const size_t *>(ID.HashValue.data());
   }
   friend llvm::raw_ostream &operator<<(llvm::raw_ostream &OS,
                                        const SymbolID &ID);
@@ -80,13 +82,13 @@ void operator>>(llvm::StringRef HexStr, SymbolID &ID);
 struct Symbol {
   // The ID of the symbol.
   SymbolID ID;
+  // The symbol information, like symbol kind.
+  index::SymbolInfo SymInfo;
   // The unqualified name of the symbol, e.g. "bar" (for "n1::n2::bar").
   llvm::StringRef Name;
   // The scope (e.g. namespace) of the symbol, e.g. "n1::n2" (for
   // "n1::n2::bar").
   llvm::StringRef Scope;
-  // The symbol information, like symbol kind.
-  index::SymbolInfo SymInfo;
   // The location of the canonical declaration of the symbol.
   //
   // A C++ symbol could have multiple declarations and one definition (e.g.

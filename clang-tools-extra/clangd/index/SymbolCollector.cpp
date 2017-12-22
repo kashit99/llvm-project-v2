@@ -95,13 +95,20 @@ bool SymbolCollector::handleDeclOccurence(
       return true;
 
     auto &SM = ND->getASTContext().getSourceManager();
-    SymbolLocation Location = {
-        makeAbsolutePath(SM, SM.getFilename(D->getLocation())),
-        SM.getFileOffset(D->getLocStart()), SM.getFileOffset(D->getLocEnd())};
+    std::string FilePath =
+        makeAbsolutePath(SM, SM.getFilename(D->getLocation()));
+    SymbolLocation Location = {FilePath, SM.getFileOffset(D->getLocStart()),
+                               SM.getFileOffset(D->getLocEnd())};
     std::string QName = ND->getQualifiedNameAsString();
     auto ScopeAndName = splitQualifiedName(QName);
-    Symbols.insert({std::move(ID), ScopeAndName.second, ScopeAndName.first,
-                    index::getSymbolInfo(D), std::move(Location)});
+
+    Symbol S;
+    S.ID = std::move(ID);
+    S.Scope = ScopeAndName.first;
+    S.Name = ScopeAndName.second;
+    S.SymInfo = index::getSymbolInfo(D);
+    S.CanonicalDeclaration = Location;
+    Symbols.insert(S);
   }
 
   return true;

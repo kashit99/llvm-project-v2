@@ -1922,14 +1922,16 @@ SDValue DAGCombiner::foldBinOpIntoSelect(SDNode *BO) {
   EVT VT = Sel.getValueType();
   SDLoc DL(Sel);
   SDValue NewCT = DAG.getNode(BinOpcode, DL, VT, CT, C1);
-  assert((NewCT.isUndef() || isConstantOrConstantVector(NewCT) ||
-          isConstantFPBuildVectorOrConstantFP(NewCT)) &&
-         "Failed to constant fold a binop with constant operands");
+  if (!NewCT.isUndef() &&
+      !isConstantOrConstantVector(NewCT, true) &&
+      !isConstantFPBuildVectorOrConstantFP(NewCT))
+    return SDValue();
 
   SDValue NewCF = DAG.getNode(BinOpcode, DL, VT, CF, C1);
-  assert((NewCF.isUndef() || isConstantOrConstantVector(NewCF) ||
-          isConstantFPBuildVectorOrConstantFP(NewCF)) &&
-         "Failed to constant fold a binop with constant operands");
+  if (!NewCF.isUndef() &&
+      !isConstantOrConstantVector(NewCF, true) &&
+      !isConstantFPBuildVectorOrConstantFP(NewCF))
+    return SDValue();
 
   return DAG.getSelect(DL, VT, Sel.getOperand(0), NewCT, NewCF);
 }
@@ -3577,7 +3579,8 @@ SDValue DAGCombiner::foldLogicOfSetCCs(bool IsAnd, SDValue N0, SDValue N1,
 
   // TODO: What is the 'or' equivalent of this fold?
   // (and (setne X, 0), (setne X, -1)) --> (setuge (add X, 1), 2)
-  if (IsAnd && LL == RL && CC0 == CC1 && IsInteger && CC0 == ISD::SETNE &&
+  if (IsAnd && LL == RL && CC0 == CC1 && OpVT.getScalarSizeInBits() > 1 &&
+      IsInteger && CC0 == ISD::SETNE &&
       ((isNullConstant(LR) && isAllOnesConstant(RR)) ||
        (isAllOnesConstant(LR) && isNullConstant(RR)))) {
     SDValue One = DAG.getConstant(1, DL, OpVT);
@@ -3641,15 +3644,18 @@ SDValue DAGCombiner::visitANDLike(SDValue N0, SDValue N1, SDNode *N) {
   if (N0.getOpcode() == ISD::ADD && N1.getOpcode() == ISD::SRL &&
       VT.getSizeInBits() <= 64) {
     if (ConstantSDNode *ADDI = dyn_cast<ConstantSDNode>(N0.getOperand(1))) {
-      APInt ADDC = ADDI->getAPIntValue();
-      if (!TLI.isLegalAddImmediate(ADDC.getSExtValue())) {
+      if (ConstantSDNode *SRLI = dyn_cast<ConstantSDNode>(N1.getOperand(1))) {
         // Look for (and (add x, c1), (lshr y, c2)). If C1 wasn't a legal
         // immediate for an add, but it is legal if its top c2 bits are set,
         // transform the ADD so the immediate doesn't need to be materialized
         // in a register.
-        if (ConstantSDNode *SRLI = dyn_cast<ConstantSDNode>(N1.getOperand(1))) {
+        APInt ADDC = ADDI->getAPIntValue();
+        APInt SRLC = SRLI->getAPIntValue();
+        if (ADDC.getMinSignedBits() <= 64 &&
+            SRLC.ult(VT.getSizeInBits()) &&
+            !TLI.isLegalAddImmediate(ADDC.getSExtValue())) {
           APInt Mask = APInt::getHighBitsSet(VT.getSizeInBits(),
-                                             SRLI->getZExtValue());
+                                             SRLC.getZExtValue());
           if (DAG.MaskedValueIsZero(N0.getOperand(1), Mask)) {
             ADDC |= Mask;
             if (TLI.isLegalAddImmediate(ADDC.getSExtValue())) {
@@ -3987,6 +3993,12 @@ SDValue DAGCombiner::visitAND(SDNode *N) {
   // reassociate and
   if (SDValue RAND = ReassociateOps(ISD::AND, SDLoc(N), N0, N1))
     return RAND;
+
+  // Try to convert a constant mask AND into a shuffle clear mask.
+  if (VT.isVector())
+    if (SDValue Shuffle = XformToShuffleWithZero(N))
+      return Shuffle;
+
   // fold (and (or x, C), D) -> D if (C & D) == D
   auto MatchSubset = [](ConstantSDNode *LHS, ConstantSDNode *RHS) {
     return RHS->getAPIntValue().isSubsetOf(LHS->getAPIntValue());
@@ -10542,7 +10554,7 @@ static inline bool CanCombineFCOPYSIGN_EXTEND_ROUND(SDNode *N) {
     // value in one SSE register, but instruction selection cannot handle
     // FCOPYSIGN on SSE registers yet.
     EVT N1VT = N1->getValueType(0);
-    EVT N1Op0VT = N1->getOperand(0)->getValueType(0);
+    EVT N1Op0VT = N1->getOperand(0).getValueType();
     return (N1VT == N1Op0VT || N1Op0VT != MVT::f128);
   }
   return false;
@@ -15097,7 +15109,7 @@ SDValue DAGCombiner::visitCONCAT_VECTORS(SDNode *N) {
 
     // Transform: concat_vectors(scalar, undef) -> scalar_to_vector(sclr).
     if (In->getOpcode() == ISD::BITCAST &&
-        !In->getOperand(0)->getValueType(0).isVector()) {
+        !In->getOperand(0).getValueType().isVector()) {
       SDValue Scalar = In->getOperand(0);
 
       // If the bitcast type isn't legal, it might be a trunc of a legal type;
@@ -15144,7 +15156,7 @@ SDValue DAGCombiner::visitCONCAT_VECTORS(SDNode *N) {
       bool FoundMinVT = false;
       for (const SDValue &Op : N->ops())
         if (ISD::BUILD_VECTOR == Op.getOpcode()) {
-          EVT OpSVT = Op.getOperand(0)->getValueType(0);
+          EVT OpSVT = Op.getOperand(0).getValueType();
           MinVT = (!FoundMinVT || OpSVT.bitsLE(MinVT)) ? OpSVT : MinVT;
           FoundMinVT = true;
         }
@@ -16480,6 +16492,8 @@ SDValue DAGCombiner::visitFP16_TO_FP(SDNode *N) {
 /// e.g. AND V, <0xffffffff, 0, 0xffffffff, 0>. ==>
 ///      vector_shuffle V, Zero, <0, 4, 2, 4>
 SDValue DAGCombiner::XformToShuffleWithZero(SDNode *N) {
+  assert(N->getOpcode() == ISD::AND && "Unexpected opcode!");
+
   EVT VT = N->getValueType(0);
   SDValue LHS = N->getOperand(0);
   SDValue RHS = peekThroughBitcast(N->getOperand(1));
@@ -16488,9 +16502,6 @@ SDValue DAGCombiner::XformToShuffleWithZero(SDNode *N) {
   // Make sure we're not running after operation legalization where it
   // may have custom lowered the vector shuffles.
   if (LegalOperations)
-    return SDValue();
-
-  if (N->getOpcode() != ISD::AND)
     return SDValue();
 
   if (RHS.getOpcode() != ISD::BUILD_VECTOR)
@@ -16580,10 +16591,6 @@ SDValue DAGCombiner::SimplifyVBinOp(SDNode *N) {
   if (SDValue Fold = DAG.FoldConstantVectorArithmetic(
           N->getOpcode(), SDLoc(LHS), LHS.getValueType(), Ops, N->getFlags()))
     return Fold;
-
-  // Try to convert a constant mask AND into a shuffle clear mask.
-  if (SDValue Shuffle = XformToShuffleWithZero(N))
-    return Shuffle;
 
   // Type legalization might introduce new shuffles in the DAG.
   // Fold (VBinOp (shuffle (A, Undef, Mask)), (shuffle (B, Undef, Mask)))
@@ -17405,43 +17412,6 @@ SDValue DAGCombiner::buildSqrtEstimate(SDValue Op, SDNodeFlags Flags) {
   return buildSqrtEstimateImpl(Op, Flags, false);
 }
 
-/// Return true if base is a frame index, which is known not to alias with
-/// anything but itself.  Provides base object and offset as results.
-static bool findBaseOffset(SDValue Ptr, SDValue &Base, int64_t &Offset,
-                           const GlobalValue *&GV, const void *&CV) {
-  // Assume it is a primitive operation.
-  Base = Ptr; Offset = 0; GV = nullptr; CV = nullptr;
-
-  // If it's an adding a simple constant then integrate the offset.
-  if (Base.getOpcode() == ISD::ADD) {
-    if (ConstantSDNode *C = dyn_cast<ConstantSDNode>(Base.getOperand(1))) {
-      Base = Base.getOperand(0);
-      Offset += C->getSExtValue();
-    }
-  }
-
-  // Return the underlying GlobalValue, and update the Offset.  Return false
-  // for GlobalAddressSDNode since the same GlobalAddress may be represented
-  // by multiple nodes with different offsets.
-  if (GlobalAddressSDNode *G = dyn_cast<GlobalAddressSDNode>(Base)) {
-    GV = G->getGlobal();
-    Offset += G->getOffset();
-    return false;
-  }
-
-  // Return the underlying Constant value, and update the Offset.  Return false
-  // for ConstantSDNodes since the same constant pool entry may be represented
-  // by multiple nodes with different offsets.
-  if (ConstantPoolSDNode *C = dyn_cast<ConstantPoolSDNode>(Base)) {
-    CV = C->isMachineConstantPoolEntry() ? (const void *)C->getMachineCPVal()
-                                         : (const void *)C->getConstVal();
-    Offset += C->getOffset();
-    return false;
-  }
-  // If it's any of the following then it can't alias with anything but itself.
-  return isa<FrameIndexSDNode>(Base);
-}
-
 /// Return true if there is any possibility that the two addresses overlap.
 bool DAGCombiner::isAlias(LSBaseSDNode *Op0, LSBaseSDNode *Op1) const {
   // If they are the same then they must be aliases.
@@ -17483,39 +17453,18 @@ bool DAGCombiner::isAlias(LSBaseSDNode *Op0, LSBaseSDNode *Op1) const {
         return false;
     }
 
-  // FIXME: findBaseOffset and ConstantValue/GlobalValue/FrameIndex analysis
-  // modified to use BaseIndexOffset.
+  bool IsFI0 = isa<FrameIndexSDNode>(BasePtr0.getBase());
+  bool IsFI1 = isa<FrameIndexSDNode>(BasePtr1.getBase());
+  bool IsGV0 = isa<GlobalAddressSDNode>(BasePtr0.getBase());
+  bool IsGV1 = isa<GlobalAddressSDNode>(BasePtr1.getBase());
+  bool IsCV0 = isa<ConstantPoolSDNode>(BasePtr0.getBase());
+  bool IsCV1 = isa<ConstantPoolSDNode>(BasePtr1.getBase());
 
-  // Gather base node and offset information.
-  SDValue Base0, Base1;
-  int64_t Offset0, Offset1;
-  const GlobalValue *GV0, *GV1;
-  const void *CV0, *CV1;
-  bool IsFrameIndex0 = findBaseOffset(Op0->getBasePtr(),
-                                      Base0, Offset0, GV0, CV0);
-  bool IsFrameIndex1 = findBaseOffset(Op1->getBasePtr(),
-                                      Base1, Offset1, GV1, CV1);
-
-  // If they have the same base address, then check to see if they overlap.
-  if (Base0 == Base1 || (GV0 && (GV0 == GV1)) || (CV0 && (CV0 == CV1)))
-    return !((Offset0 + NumBytes0) <= Offset1 ||
-             (Offset1 + NumBytes1) <= Offset0);
-
-  // It is possible for different frame indices to alias each other, mostly
-  // when tail call optimization reuses return address slots for arguments.
-  // To catch this case, look up the actual index of frame indices to compute
-  // the real alias relationship.
-  if (IsFrameIndex0 && IsFrameIndex1) {
-    MachineFrameInfo &MFI = DAG.getMachineFunction().getFrameInfo();
-    Offset0 += MFI.getObjectOffset(cast<FrameIndexSDNode>(Base0)->getIndex());
-    Offset1 += MFI.getObjectOffset(cast<FrameIndexSDNode>(Base1)->getIndex());
-    return !((Offset0 + NumBytes0) <= Offset1 ||
-             (Offset1 + NumBytes1) <= Offset0);
-  }
-
-  // Otherwise, if we know what the bases are, and they aren't identical, then
-  // we know they cannot alias.
-  if ((IsFrameIndex0 || CV0 || GV0) && (IsFrameIndex1 || CV1 || GV1))
+  // If of mismatched base types or checkable indices we can check
+  // they do not alias.
+  if ((BasePtr0.getIndex() == BasePtr1.getIndex() || (IsFI0 != IsFI1) ||
+       (IsGV0 != IsGV1) || (IsCV0 != IsCV1)) &&
+      (IsFI0 || IsGV0 || IsCV0) && (IsFI1 || IsGV1 || IsCV1))
     return false;
 
   // If we know required SrcValue1 and SrcValue2 have relatively large alignment

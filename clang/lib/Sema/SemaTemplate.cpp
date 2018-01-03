@@ -1503,7 +1503,6 @@ Sema::CheckClassTemplate(Scope *S, unsigned TagSpec, TagUseKind TUK,
 
   if (Attr)
     ProcessDeclAttributeList(S, NewClass, Attr);
-  ProcessAPINotes(NewClass);
 
   if (PrevClassTemplate)
     mergeDeclAttributes(NewClass, PrevClassTemplate->getTemplatedDecl());
@@ -7652,7 +7651,6 @@ Sema::ActOnClassTemplateSpecialization(Scope *S, unsigned TagSpec,
 
   if (Attr)
     ProcessDeclAttributeList(S, Specialization, Attr);
-  ProcessAPINotes(Specialization);
 
   // Add alignment attributes if necessary; these attributes are checked when
   // the ASTContext lays out the structure.
@@ -8696,7 +8694,6 @@ Sema::ActOnExplicitInstantiation(Scope *S,
   bool PreviouslyDLLExported = Specialization->hasAttr<DLLExportAttr>();
   if (Attr)
     ProcessDeclAttributeList(S, Specialization, Attr);
-  ProcessAPINotes(Specialization);
 
   // Add the explicit instantiation into its lexical context. However,
   // since explicit instantiations are never found by name lookup, we
@@ -9106,7 +9103,6 @@ DeclResult Sema::ActOnExplicitInstantiation(Scope *S,
         // Merge attributes.
         if (AttributeList *Attr = D.getDeclSpec().getAttributes().getList())
           ProcessDeclAttributeList(S, Prev, Attr);
-        ProcessAPINotes(Prev);
       }
       if (TSK == TSK_ExplicitInstantiationDefinition)
         InstantiateVariableDefinition(D.getIdentifierLoc(), Prev);
@@ -9271,7 +9267,6 @@ DeclResult Sema::ActOnExplicitInstantiation(Scope *S,
 
   if (Attr)
     ProcessDeclAttributeList(S, Specialization, Attr);
-  ProcessAPINotes(Specialization);
 
   // In MSVC mode, dllimported explicit instantiation definitions are treated as
   // instantiation declarations.

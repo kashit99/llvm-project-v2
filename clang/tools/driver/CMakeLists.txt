@@ -32,7 +32,6 @@ add_clang_tool(clang
   driver.cpp
   cc1_main.cpp
   cc1as_main.cpp
-  apinotes_main.cpp
 
   DEPENDS
   ${tablegen_deps}
@@ -41,7 +40,6 @@ add_clang_tool(clang
 target_link_libraries(clang
   PRIVATE
   clangBasic
-  clangAPINotes
   clangCodeGen
   clangDriver
   clangFrontend

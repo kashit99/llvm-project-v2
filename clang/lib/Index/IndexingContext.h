@@ -11,11 +11,9 @@
 #define LLVM_CLANG_LIB_INDEX_INDEXINGCONTEXT_H
 
 #include "clang/Basic/LLVM.h"
-#include "clang/Basic/SourceLocation.h"
 #include "clang/Index/IndexSymbol.h"
 #include "clang/Index/IndexingAction.h"
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/DenseMap.h"
 
 namespace clang {
   class ASTContext;
@@ -31,7 +29,7 @@ namespace clang {
   class Stmt;
   class Expr;
   class TypeLoc;
-  class DirectoryEntry;
+  class SourceLocation;
 
 namespace index {
   class IndexDataConsumer;
@@ -40,13 +38,6 @@ class IndexingContext {
   IndexingOptions IndexOpts;
   IndexDataConsumer &DataConsumer;
   ASTContext *Ctx = nullptr;
-  std::string SysrootPath;
-
-  // Records whether a directory entry is system or not.
-  llvm::DenseMap<const DirectoryEntry *, bool> DirEntries;
-  // Keeps track of the last check for whether a FileID is system or
-  // not. This is used to speed up isSystemFile() call.
-  std::pair<FileID, bool> LastFileCheck;
 
 public:
   IndexingContext(IndexingOptions IndexOpts, IndexDataConsumer &DataConsumer)
@@ -56,10 +47,6 @@ public:
   IndexDataConsumer &getDataConsumer() { return DataConsumer; }
 
   void setASTContext(ASTContext &ctx) { Ctx = &ctx; }
-  void setSysrootPath(StringRef path);
-  StringRef getSysrootPath() const { return SysrootPath; }
-
-  bool isSystemFile(FileID FID);
 
   bool shouldIndex(const Decl *D);
 

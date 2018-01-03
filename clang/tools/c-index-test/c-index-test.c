@@ -110,10 +110,6 @@ static void describeLibclangFailure(enum CXErrorCode Err) {
   case CXError_ASTReadError:
     fprintf(stderr, "Failure: AST deserialization error occurred\n");
     return;
-
-  default:
-    fprintf(stderr, "Failure (other)\n");
-    return;
   }
 }
 
@@ -816,8 +812,6 @@ static void PrintCursor(CXCursor Cursor, const char *CommentSchemaFile) {
       printf(" (variadic)");
     if (clang_Cursor_isObjCOptional(Cursor))
       printf(" (@optional)");
-    if (clang_isInvalidDeclaration(Cursor))
-      printf(" (invalid)");
 
     switch (clang_getCursorExceptionSpecificationType(Cursor))
     {

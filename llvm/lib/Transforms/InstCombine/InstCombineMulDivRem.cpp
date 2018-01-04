@@ -487,7 +487,7 @@ static void detectLog2OfHalf(Value *&Op, Value *&Y, IntrinsicInst *&Log2) {
   IntrinsicInst *II = dyn_cast<IntrinsicInst>(Op);
   if (!II)
     return;
-  if (II->getIntrinsicID() != Intrinsic::log2 || !II->hasUnsafeAlgebra())
+  if (II->getIntrinsicID() != Intrinsic::log2 || !II->isFast())
     return;
   Log2 = II;
 
@@ -498,7 +498,8 @@ static void detectLog2OfHalf(Value *&Op, Value *&Y, IntrinsicInst *&Log2) {
   Instruction *I = dyn_cast<Instruction>(OpLog2Of);
   if (!I)
     return;
-  if (I->getOpcode() != Instruction::FMul || !I->hasUnsafeAlgebra())
+
+  if (I->getOpcode() != Instruction::FMul || !I->isFast())
     return;
 
   if (match(I->getOperand(0), m_SpecificFP(0.5)))
@@ -601,7 +602,7 @@ Value *InstCombiner::foldFMulConst(Instruction *FMulOrDiv, Constant *C,
   }
 
   if (R) {
-    R->setHasUnsafeAlgebra(true);
+    R->setFast(true);
     InsertNewInstWith(R, *InsertBefore);
   }
 
@@ -622,7 +623,7 @@ Instruction *InstCombiner::visitFMul(BinaryOperator &I) {
                                   SQ.getWithInstruction(&I)))
     return replaceInstUsesWith(I, V);
 
-  bool AllowReassociate = I.hasUnsafeAlgebra();
+  bool AllowReassociate = I.isFast();
 
   // Simplify mul instructions with a constant RHS.
   if (isa<Constant>(Op1)) {
@@ -724,6 +725,23 @@ Instruction *InstCombiner::visitFMul(BinaryOperator &I) {
       Value *FSub = Builder.CreateFSub(FMulVal, OpX);
       FSub->takeName(&I);
       return replaceInstUsesWith(I, FSub);
+    }
+  }
+
+  // sqrt(a) * sqrt(b) -> sqrt(a * b)
+  if (AllowReassociate &&
+      Op0->hasOneUse() && Op1->hasOneUse()) {
+    Value *Opnd0 = nullptr;
+    Value *Opnd1 = nullptr;
+    if (match(Op0, m_Intrinsic<Intrinsic::sqrt>(m_Value(Opnd0))) &&
+        match(Op1, m_Intrinsic<Intrinsic::sqrt>(m_Value(Opnd1)))) {
+      BuilderTy::FastMathFlagGuard Guard(Builder);
+      Builder.setFastMathFlags(I.getFastMathFlags());
+      Value *FMulVal = Builder.CreateFMul(Opnd0, Opnd1);
+      Value *Sqrt = Intrinsic::getDeclaration(I.getModule(), 
+                                              Intrinsic::sqrt, I.getType());
+      Value *SqrtCall = Builder.CreateCall(Sqrt, FMulVal);
+      return replaceInstUsesWith(I, SqrtCall);
     }
   }
 
@@ -1341,7 +1359,7 @@ Instruction *InstCombiner::visitFDiv(BinaryOperator &I) {
       if (Instruction *R = FoldOpIntoSelect(I, SI))
         return R;
 
-  bool AllowReassociate = I.hasUnsafeAlgebra();
+  bool AllowReassociate = I.isFast();
   bool AllowReciprocal = I.hasAllowReciprocal();
 
   if (Constant *Op1C = dyn_cast<Constant>(Op1)) {
@@ -1629,10 +1647,6 @@ Instruction *InstCombiner::visitFRem(BinaryOperator &I) {
   if (Value *V = SimplifyFRemInst(Op0, Op1, I.getFastMathFlags(),
                                   SQ.getWithInstruction(&I)))
     return replaceInstUsesWith(I, V);
-
-  // Handle cases involving: rem X, (select Cond, Y, Z)
-  if (simplifyDivRemOfSelectWithZeroOp(I))
-    return &I;
 
   return nullptr;
 }

@@ -13,7 +13,7 @@ declare i32 @memcmp(i8*, i8*, i64)
 
 define i32 @length2(i8* %X, i8* %Y) nounwind optsize {
 ; X86-LABEL: length2:
-; X86:       # BB#0:
+; X86:       # %bb.0:
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %eax
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %ecx
 ; X86-NEXT:    movzwl (%ecx), %ecx
@@ -26,7 +26,7 @@ define i32 @length2(i8* %X, i8* %Y) nounwind optsize {
 ; X86-NEXT:    retl
 ;
 ; X64-LABEL: length2:
-; X64:       # BB#0:
+; X64:       # %bb.0:
 ; X64-NEXT:    movzwl (%rdi), %eax
 ; X64-NEXT:    movzwl (%rsi), %ecx
 ; X64-NEXT:    rolw $8, %ax
@@ -41,7 +41,7 @@ define i32 @length2(i8* %X, i8* %Y) nounwind optsize {
 
 define i1 @length2_eq(i8* %X, i8* %Y) nounwind optsize {
 ; X86-LABEL: length2_eq:
-; X86:       # BB#0:
+; X86:       # %bb.0:
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %eax
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %ecx
 ; X86-NEXT:    movzwl (%ecx), %ecx
@@ -50,7 +50,7 @@ define i1 @length2_eq(i8* %X, i8* %Y) nounwind optsize {
 ; X86-NEXT:    retl
 ;
 ; X64-LABEL: length2_eq:
-; X64:       # BB#0:
+; X64:       # %bb.0:
 ; X64-NEXT:    movzwl (%rdi), %eax
 ; X64-NEXT:    cmpw (%rsi), %ax
 ; X64-NEXT:    sete %al
@@ -62,7 +62,7 @@ define i1 @length2_eq(i8* %X, i8* %Y) nounwind optsize {
 
 define i1 @length2_eq_const(i8* %X) nounwind optsize {
 ; X86-LABEL: length2_eq_const:
-; X86:       # BB#0:
+; X86:       # %bb.0:
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %eax
 ; X86-NEXT:    movzwl (%eax), %eax
 ; X86-NEXT:    cmpl $12849, %eax # imm = 0x3231
@@ -70,7 +70,7 @@ define i1 @length2_eq_const(i8* %X) nounwind optsize {
 ; X86-NEXT:    retl
 ;
 ; X64-LABEL: length2_eq_const:
-; X64:       # BB#0:
+; X64:       # %bb.0:
 ; X64-NEXT:    movzwl (%rdi), %eax
 ; X64-NEXT:    cmpl $12849, %eax # imm = 0x3231
 ; X64-NEXT:    setne %al
@@ -82,7 +82,7 @@ define i1 @length2_eq_const(i8* %X) nounwind optsize {
 
 define i1 @length2_eq_nobuiltin_attr(i8* %X, i8* %Y) nounwind optsize {
 ; X86-LABEL: length2_eq_nobuiltin_attr:
-; X86:       # BB#0:
+; X86:       # %bb.0:
 ; X86-NEXT:    pushl $0
 ; X86-NEXT:    pushl $2
 ; X86-NEXT:    pushl {{[0-9]+}}(%esp)
@@ -94,7 +94,7 @@ define i1 @length2_eq_nobuiltin_attr(i8* %X, i8* %Y) nounwind optsize {
 ; X86-NEXT:    retl
 ;
 ; X64-LABEL: length2_eq_nobuiltin_attr:
-; X64:       # BB#0:
+; X64:       # %bb.0:
 ; X64-NEXT:    pushq %rax
 ; X64-NEXT:    movl $2, %edx
 ; X64-NEXT:    callq memcmp
@@ -109,7 +109,7 @@ define i1 @length2_eq_nobuiltin_attr(i8* %X, i8* %Y) nounwind optsize {
 
 define i32 @length3(i8* %X, i8* %Y) nounwind optsize {
 ; X86-LABEL: length3:
-; X86:       # BB#0: # %loadbb
+; X86:       # %bb.0: # %loadbb
 ; X86-NEXT:    pushl %esi
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %ecx
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %eax
@@ -119,7 +119,7 @@ define i32 @length3(i8* %X, i8* %Y) nounwind optsize {
 ; X86-NEXT:    rolw $8, %si
 ; X86-NEXT:    cmpw %si, %dx
 ; X86-NEXT:    jne .LBB4_1
-; X86-NEXT:  # BB#2: # %loadbb1
+; X86-NEXT:  # %bb.2: # %loadbb1
 ; X86-NEXT:    movzbl 2(%eax), %eax
 ; X86-NEXT:    movzbl 2(%ecx), %ecx
 ; X86-NEXT:    subl %ecx, %eax
@@ -133,14 +133,14 @@ define i32 @length3(i8* %X, i8* %Y) nounwind optsize {
 ; X86-NEXT:    retl
 ;
 ; X64-LABEL: length3:
-; X64:       # BB#0: # %loadbb
+; X64:       # %bb.0: # %loadbb
 ; X64-NEXT:    movzwl (%rdi), %eax
 ; X64-NEXT:    movzwl (%rsi), %ecx
 ; X64-NEXT:    rolw $8, %ax
 ; X64-NEXT:    rolw $8, %cx
 ; X64-NEXT:    cmpw %cx, %ax
 ; X64-NEXT:    jne .LBB4_1
-; X64-NEXT:  # BB#2: # %loadbb1
+; X64-NEXT:  # %bb.2: # %loadbb1
 ; X64-NEXT:    movzbl 2(%rdi), %eax
 ; X64-NEXT:    movzbl 2(%rsi), %ecx
 ; X64-NEXT:    subl %ecx, %eax
@@ -156,36 +156,36 @@ define i32 @length3(i8* %X, i8* %Y) nounwind optsize {
 
 define i1 @length3_eq(i8* %X, i8* %Y) nounwind optsize {
 ; X86-LABEL: length3_eq:
-; X86:       # BB#0: # %loadbb
-; X86-NEXT:    movl {{[0-9]+}}(%esp), %ecx
+; X86:       # %bb.0:
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    movzwl (%eax), %edx
-; X86-NEXT:    cmpw (%ecx), %dx
-; X86-NEXT:    jne .LBB5_1
-; X86-NEXT:  # BB#2: # %loadbb1
-; X86-NEXT:    movb 2(%eax), %dl
-; X86-NEXT:    xorl %eax, %eax
-; X86-NEXT:    cmpb 2(%ecx), %dl
+; X86-NEXT:    movl {{[0-9]+}}(%esp), %ecx
+; X86-NEXT:    movzwl (%ecx), %edx
+; X86-NEXT:    cmpw (%eax), %dx
+; X86-NEXT:    jne .LBB5_2
+; X86-NEXT:  # %bb.1: # %loadbb1
+; X86-NEXT:    movb 2(%ecx), %dl
+; X86-NEXT:    xorl %ecx, %ecx
+; X86-NEXT:    cmpb 2(%eax), %dl
 ; X86-NEXT:    je .LBB5_3
-; X86-NEXT:  .LBB5_1: # %res_block
-; X86-NEXT:    xorl %eax, %eax
-; X86-NEXT:    incl %eax
+; X86-NEXT:  .LBB5_2: # %res_block
+; X86-NEXT:    xorl %ecx, %ecx
+; X86-NEXT:    incl %ecx
 ; X86-NEXT:  .LBB5_3: # %endblock
-; X86-NEXT:    testl %eax, %eax
+; X86-NEXT:    testl %ecx, %ecx
 ; X86-NEXT:    setne %al
 ; X86-NEXT:    retl
 ;
 ; X64-LABEL: length3_eq:
-; X64:       # BB#0: # %loadbb
+; X64:       # %bb.0:
 ; X64-NEXT:    movzwl (%rdi), %eax
 ; X64-NEXT:    cmpw (%rsi), %ax
-; X64-NEXT:    jne .LBB5_1
-; X64-NEXT:  # BB#2: # %loadbb1
+; X64-NEXT:    jne .LBB5_2
+; X64-NEXT:  # %bb.1: # %loadbb1
 ; X64-NEXT:    movb 2(%rdi), %cl
 ; X64-NEXT:    xorl %eax, %eax
 ; X64-NEXT:    cmpb 2(%rsi), %cl
 ; X64-NEXT:    je .LBB5_3
-; X64-NEXT:  .LBB5_1: # %res_block
+; X64-NEXT:  .LBB5_2: # %res_block
 ; X64-NEXT:    movl $1, %eax
 ; X64-NEXT:  .LBB5_3: # %endblock
 ; X64-NEXT:    testl %eax, %eax
@@ -198,7 +198,7 @@ define i1 @length3_eq(i8* %X, i8* %Y) nounwind optsize {
 
 define i32 @length4(i8* %X, i8* %Y) nounwind optsize {
 ; X86-LABEL: length4:
-; X86:       # BB#0:
+; X86:       # %bb.0:
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %eax
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %ecx
 ; X86-NEXT:    movl (%ecx), %ecx
@@ -212,7 +212,7 @@ define i32 @length4(i8* %X, i8* %Y) nounwind optsize {
 ; X86-NEXT:    retl
 ;
 ; X64-LABEL: length4:
-; X64:       # BB#0:
+; X64:       # %bb.0:
 ; X64-NEXT:    movl (%rdi), %ecx
 ; X64-NEXT:    movl (%rsi), %edx
 ; X64-NEXT:    bswapl %ecx
@@ -228,7 +228,7 @@ define i32 @length4(i8* %X, i8* %Y) nounwind optsize {
 
 define i1 @length4_eq(i8* %X, i8* %Y) nounwind optsize {
 ; X86-LABEL: length4_eq:
-; X86:       # BB#0:
+; X86:       # %bb.0:
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %eax
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %ecx
 ; X86-NEXT:    movl (%ecx), %ecx
@@ -237,7 +237,7 @@ define i1 @length4_eq(i8* %X, i8* %Y) nounwind optsize {
 ; X86-NEXT:    retl
 ;
 ; X64-LABEL: length4_eq:
-; X64:       # BB#0:
+; X64:       # %bb.0:
 ; X64-NEXT:    movl (%rdi), %eax
 ; X64-NEXT:    cmpl (%rsi), %eax
 ; X64-NEXT:    setne %al
@@ -249,14 +249,14 @@ define i1 @length4_eq(i8* %X, i8* %Y) nounwind optsize {
 
 define i1 @length4_eq_const(i8* %X) nounwind optsize {
 ; X86-LABEL: length4_eq_const:
-; X86:       # BB#0:
+; X86:       # %bb.0:
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %eax
 ; X86-NEXT:    cmpl $875770417, (%eax) # imm = 0x34333231
 ; X86-NEXT:    sete %al
 ; X86-NEXT:    retl
 ;
 ; X64-LABEL: length4_eq_const:
-; X64:       # BB#0:
+; X64:       # %bb.0:
 ; X64-NEXT:    cmpl $875770417, (%rdi) # imm = 0x34333231
 ; X64-NEXT:    sete %al
 ; X64-NEXT:    retq
@@ -267,7 +267,7 @@ define i1 @length4_eq_const(i8* %X) nounwind optsize {
 
 define i32 @length5(i8* %X, i8* %Y) nounwind optsize {
 ; X86-LABEL: length5:
-; X86:       # BB#0: # %loadbb
+; X86:       # %bb.0: # %loadbb
 ; X86-NEXT:    pushl %esi
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %ecx
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %eax
@@ -277,7 +277,7 @@ define i32 @length5(i8* %X, i8* %Y) nounwind optsize {
 ; X86-NEXT:    bswapl %esi
 ; X86-NEXT:    cmpl %esi, %edx
 ; X86-NEXT:    jne .LBB9_1
-; X86-NEXT:  # BB#2: # %loadbb1
+; X86-NEXT:  # %bb.2: # %loadbb1
 ; X86-NEXT:    movzbl 4(%eax), %eax
 ; X86-NEXT:    movzbl 4(%ecx), %ecx
 ; X86-NEXT:    subl %ecx, %eax
@@ -291,14 +291,14 @@ define i32 @length5(i8* %X, i8* %Y) nounwind optsize {
 ; X86-NEXT:    retl
 ;
 ; X64-LABEL: length5:
-; X64:       # BB#0: # %loadbb
+; X64:       # %bb.0: # %loadbb
 ; X64-NEXT:    movl (%rdi), %eax
 ; X64-NEXT:    movl (%rsi), %ecx
 ; X64-NEXT:    bswapl %eax
 ; X64-NEXT:    bswapl %ecx
 ; X64-NEXT:    cmpl %ecx, %eax
 ; X64-NEXT:    jne .LBB9_1
-; X64-NEXT:  # BB#2: # %loadbb1
+; X64-NEXT:  # %bb.2: # %loadbb1
 ; X64-NEXT:    movzbl 4(%rdi), %eax
 ; X64-NEXT:    movzbl 4(%rsi), %ecx
 ; X64-NEXT:    subl %ecx, %eax
@@ -314,36 +314,36 @@ define i32 @length5(i8* %X, i8* %Y) nounwind optsize {
 
 define i1 @length5_eq(i8* %X, i8* %Y) nounwind optsize {
 ; X86-LABEL: length5_eq:
-; X86:       # BB#0: # %loadbb
-; X86-NEXT:    movl {{[0-9]+}}(%esp), %ecx
+; X86:       # %bb.0:
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    movl (%eax), %edx
-; X86-NEXT:    cmpl (%ecx), %edx
-; X86-NEXT:    jne .LBB10_1
-; X86-NEXT:  # BB#2: # %loadbb1
-; X86-NEXT:    movb 4(%eax), %dl
-; X86-NEXT:    xorl %eax, %eax
-; X86-NEXT:    cmpb 4(%ecx), %dl
+; X86-NEXT:    movl {{[0-9]+}}(%esp), %ecx
+; X86-NEXT:    movl (%ecx), %edx
+; X86-NEXT:    cmpl (%eax), %edx
+; X86-NEXT:    jne .LBB10_2
+; X86-NEXT:  # %bb.1: # %loadbb1
+; X86-NEXT:    movb 4(%ecx), %dl
+; X86-NEXT:    xorl %ecx, %ecx
+; X86-NEXT:    cmpb 4(%eax), %dl
 ; X86-NEXT:    je .LBB10_3
-; X86-NEXT:  .LBB10_1: # %res_block
-; X86-NEXT:    xorl %eax, %eax
-; X86-NEXT:    incl %eax
+; X86-NEXT:  .LBB10_2: # %res_block
+; X86-NEXT:    xorl %ecx, %ecx
+; X86-NEXT:    incl %ecx
 ; X86-NEXT:  .LBB10_3: # %endblock
-; X86-NEXT:    testl %eax, %eax
+; X86-NEXT:    testl %ecx, %ecx
 ; X86-NEXT:    setne %al
 ; X86-NEXT:    retl
 ;
 ; X64-LABEL: length5_eq:
-; X64:       # BB#0: # %loadbb
+; X64:       # %bb.0:
 ; X64-NEXT:    movl (%rdi), %eax
 ; X64-NEXT:    cmpl (%rsi), %eax
-; X64-NEXT:    jne .LBB10_1
-; X64-NEXT:  # BB#2: # %loadbb1
+; X64-NEXT:    jne .LBB10_2
+; X64-NEXT:  # %bb.1: # %loadbb1
 ; X64-NEXT:    movb 4(%rdi), %cl
 ; X64-NEXT:    xorl %eax, %eax
 ; X64-NEXT:    cmpb 4(%rsi), %cl
 ; X64-NEXT:    je .LBB10_3
-; X64-NEXT:  .LBB10_1: # %res_block
+; X64-NEXT:  .LBB10_2: # %res_block
 ; X64-NEXT:    movl $1, %eax
 ; X64-NEXT:  .LBB10_3: # %endblock
 ; X64-NEXT:    testl %eax, %eax
@@ -356,7 +356,7 @@ define i1 @length5_eq(i8* %X, i8* %Y) nounwind optsize {
 
 define i32 @length8(i8* %X, i8* %Y) nounwind optsize {
 ; X86-LABEL: length8:
-; X86:       # BB#0: # %loadbb
+; X86:       # %bb.0:
 ; X86-NEXT:    pushl %esi
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %eax
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %esi
@@ -365,8 +365,8 @@ define i32 @length8(i8* %X, i8* %Y) nounwind optsize {
 ; X86-NEXT:    bswapl %ecx
 ; X86-NEXT:    bswapl %edx
 ; X86-NEXT:    cmpl %edx, %ecx
-; X86-NEXT:    jne .LBB11_1
-; X86-NEXT:  # BB#2: # %loadbb1
+; X86-NEXT:    jne .LBB11_2
+; X86-NEXT:  # %bb.1: # %loadbb1
 ; X86-NEXT:    movl 4(%esi), %ecx
 ; X86-NEXT:    movl 4(%eax), %edx
 ; X86-NEXT:    bswapl %ecx
@@ -374,7 +374,7 @@ define i32 @length8(i8* %X, i8* %Y) nounwind optsize {
 ; X86-NEXT:    xorl %eax, %eax
 ; X86-NEXT:    cmpl %edx, %ecx
 ; X86-NEXT:    je .LBB11_3
-; X86-NEXT:  .LBB11_1: # %res_block
+; X86-NEXT:  .LBB11_2: # %res_block
 ; X86-NEXT:    xorl %eax, %eax
 ; X86-NEXT:    cmpl %edx, %ecx
 ; X86-NEXT:    setae %al
@@ -384,7 +384,7 @@ define i32 @length8(i8* %X, i8* %Y) nounwind optsize {
 ; X86-NEXT:    retl
 ;
 ; X64-LABEL: length8:
-; X64:       # BB#0:
+; X64:       # %bb.0:
 ; X64-NEXT:    movq (%rdi), %rcx
 ; X64-NEXT:    movq (%rsi), %rdx
 ; X64-NEXT:    bswapq %rcx
@@ -400,27 +400,27 @@ define i32 @length8(i8* %X, i8* %Y) nounwind optsize {
 
 define i1 @length8_eq(i8* %X, i8* %Y) nounwind optsize {
 ; X86-LABEL: length8_eq:
-; X86:       # BB#0: # %loadbb
-; X86-NEXT:    movl {{[0-9]+}}(%esp), %ecx
+; X86:       # %bb.0:
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    movl (%eax), %edx
-; X86-NEXT:    cmpl (%ecx), %edx
-; X86-NEXT:    jne .LBB12_1
-; X86-NEXT:  # BB#2: # %loadbb1
-; X86-NEXT:    movl 4(%eax), %edx
-; X86-NEXT:    xorl %eax, %eax
-; X86-NEXT:    cmpl 4(%ecx), %edx
+; X86-NEXT:    movl {{[0-9]+}}(%esp), %ecx
+; X86-NEXT:    movl (%ecx), %edx
+; X86-NEXT:    cmpl (%eax), %edx
+; X86-NEXT:    jne .LBB12_2
+; X86-NEXT:  # %bb.1: # %loadbb1
+; X86-NEXT:    movl 4(%ecx), %edx
+; X86-NEXT:    xorl %ecx, %ecx
+; X86-NEXT:    cmpl 4(%eax), %edx
 ; X86-NEXT:    je .LBB12_3
-; X86-NEXT:  .LBB12_1: # %res_block
-; X86-NEXT:    xorl %eax, %eax
-; X86-NEXT:    incl %eax
+; X86-NEXT:  .LBB12_2: # %res_block
+; X86-NEXT:    xorl %ecx, %ecx
+; X86-NEXT:    incl %ecx
 ; X86-NEXT:  .LBB12_3: # %endblock
-; X86-NEXT:    testl %eax, %eax
+; X86-NEXT:    testl %ecx, %ecx
 ; X86-NEXT:    sete %al
 ; X86-NEXT:    retl
 ;
 ; X64-LABEL: length8_eq:
-; X64:       # BB#0:
+; X64:       # %bb.0:
 ; X64-NEXT:    movq (%rdi), %rax
 ; X64-NEXT:    cmpq (%rsi), %rax
 ; X64-NEXT:    sete %al
@@ -432,15 +432,15 @@ define i1 @length8_eq(i8* %X, i8* %Y) nounwind optsize {
 
 define i1 @length8_eq_const(i8* %X) nounwind optsize {
 ; X86-LABEL: length8_eq_const:
-; X86:       # BB#0: # %loadbb
+; X86:       # %bb.0:
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %ecx
 ; X86-NEXT:    cmpl $858927408, (%ecx) # imm = 0x33323130
-; X86-NEXT:    jne .LBB13_1
-; X86-NEXT:  # BB#2: # %loadbb1
+; X86-NEXT:    jne .LBB13_2
+; X86-NEXT:  # %bb.1: # %loadbb1
 ; X86-NEXT:    xorl %eax, %eax
 ; X86-NEXT:    cmpl $926299444, 4(%ecx) # imm = 0x37363534
 ; X86-NEXT:    je .LBB13_3
-; X86-NEXT:  .LBB13_1: # %res_block
+; X86-NEXT:  .LBB13_2: # %res_block
 ; X86-NEXT:    xorl %eax, %eax
 ; X86-NEXT:    incl %eax
 ; X86-NEXT:  .LBB13_3: # %endblock
@@ -449,7 +449,7 @@ define i1 @length8_eq_const(i8* %X) nounwind optsize {
 ; X86-NEXT:    retl
 ;
 ; X64-LABEL: length8_eq_const:
-; X64:       # BB#0:
+; X64:       # %bb.0:
 ; X64-NEXT:    movabsq $3978425819141910832, %rax # imm = 0x3736353433323130
 ; X64-NEXT:    cmpq %rax, (%rdi)
 ; X64-NEXT:    setne %al
@@ -461,7 +461,7 @@ define i1 @length8_eq_const(i8* %X) nounwind optsize {
 
 define i1 @length12_eq(i8* %X, i8* %Y) nounwind optsize {
 ; X86-LABEL: length12_eq:
-; X86:       # BB#0:
+; X86:       # %bb.0:
 ; X86-NEXT:    pushl $0
 ; X86-NEXT:    pushl $12
 ; X86-NEXT:    pushl {{[0-9]+}}(%esp)
@@ -473,16 +473,16 @@ define i1 @length12_eq(i8* %X, i8* %Y) nounwind optsize {
 ; X86-NEXT:    retl
 ;
 ; X64-LABEL: length12_eq:
-; X64:       # BB#0: # %loadbb
+; X64:       # %bb.0:
 ; X64-NEXT:    movq (%rdi), %rax
 ; X64-NEXT:    cmpq (%rsi), %rax
-; X64-NEXT:    jne .LBB14_1
-; X64-NEXT:  # BB#2: # %loadbb1
+; X64-NEXT:    jne .LBB14_2
+; X64-NEXT:  # %bb.1: # %loadbb1
 ; X64-NEXT:    movl 8(%rdi), %ecx
 ; X64-NEXT:    xorl %eax, %eax
 ; X64-NEXT:    cmpl 8(%rsi), %ecx
 ; X64-NEXT:    je .LBB14_3
-; X64-NEXT:  .LBB14_1: # %res_block
+; X64-NEXT:  .LBB14_2: # %res_block
 ; X64-NEXT:    movl $1, %eax
 ; X64-NEXT:  .LBB14_3: # %endblock
 ; X64-NEXT:    testl %eax, %eax
@@ -495,7 +495,7 @@ define i1 @length12_eq(i8* %X, i8* %Y) nounwind optsize {
 
 define i32 @length12(i8* %X, i8* %Y) nounwind optsize {
 ; X86-LABEL: length12:
-; X86:       # BB#0:
+; X86:       # %bb.0:
 ; X86-NEXT:    pushl $0
 ; X86-NEXT:    pushl $12
 ; X86-NEXT:    pushl {{[0-9]+}}(%esp)
@@ -505,28 +505,27 @@ define i32 @length12(i8* %X, i8* %Y) nounwind optsize {
 ; X86-NEXT:    retl
 ;
 ; X64-LABEL: length12:
-; X64:       # BB#0: # %loadbb
+; X64:       # %bb.0:
 ; X64-NEXT:    movq (%rdi), %rcx
 ; X64-NEXT:    movq (%rsi), %rdx
 ; X64-NEXT:    bswapq %rcx
 ; X64-NEXT:    bswapq %rdx
 ; X64-NEXT:    cmpq %rdx, %rcx
-; X64-NEXT:    jne .LBB15_1
-; X64-NEXT:  # BB#2: # %loadbb1
+; X64-NEXT:    jne .LBB15_2
+; X64-NEXT:  # %bb.1: # %loadbb1
 ; X64-NEXT:    movl 8(%rdi), %ecx
 ; X64-NEXT:    movl 8(%rsi), %edx
 ; X64-NEXT:    bswapl %ecx
 ; X64-NEXT:    bswapl %edx
 ; X64-NEXT:    xorl %eax, %eax
 ; X64-NEXT:    cmpq %rdx, %rcx
-; X64-NEXT:    jne .LBB15_1
-; X64-NEXT:  # BB#3: # %endblock
-; X64-NEXT:    retq
-; X64-NEXT:  .LBB15_1: # %res_block
+; X64-NEXT:    je .LBB15_3
+; X64-NEXT:  .LBB15_2: # %res_block
 ; X64-NEXT:    xorl %eax, %eax
 ; X64-NEXT:    cmpq %rdx, %rcx
 ; X64-NEXT:    setae %al
 ; X64-NEXT:    leal -1(%rax,%rax), %eax
+; X64-NEXT:  .LBB15_3: # %endblock
 ; X64-NEXT:    retq
   %m = tail call i32 @memcmp(i8* %X, i8* %Y, i64 12) nounwind
   ret i32 %m
@@ -536,7 +535,7 @@ define i32 @length12(i8* %X, i8* %Y) nounwind optsize {
 
 define i32 @length16(i8* %X, i8* %Y) nounwind optsize {
 ; X86-LABEL: length16:
-; X86:       # BB#0:
+; X86:       # %bb.0:
 ; X86-NEXT:    pushl $0
 ; X86-NEXT:    pushl $16
 ; X86-NEXT:    pushl {{[0-9]+}}(%esp)
@@ -546,28 +545,27 @@ define i32 @length16(i8* %X, i8* %Y) nounwind optsize {
 ; X86-NEXT:    retl
 ;
 ; X64-LABEL: length16:
-; X64:       # BB#0: # %loadbb
+; X64:       # %bb.0:
 ; X64-NEXT:    movq (%rdi), %rcx
 ; X64-NEXT:    movq (%rsi), %rdx
 ; X64-NEXT:    bswapq %rcx
 ; X64-NEXT:    bswapq %rdx
 ; X64-NEXT:    cmpq %rdx, %rcx
-; X64-NEXT:    jne .LBB16_1
-; X64-NEXT:  # BB#2: # %loadbb1
+; X64-NEXT:    jne .LBB16_2
+; X64-NEXT:  # %bb.1: # %loadbb1
 ; X64-NEXT:    movq 8(%rdi), %rcx
 ; X64-NEXT:    movq 8(%rsi), %rdx
 ; X64-NEXT:    bswapq %rcx
 ; X64-NEXT:    bswapq %rdx
 ; X64-NEXT:    xorl %eax, %eax
 ; X64-NEXT:    cmpq %rdx, %rcx
-; X64-NEXT:    jne .LBB16_1
-; X64-NEXT:  # BB#3: # %endblock
-; X64-NEXT:    retq
-; X64-NEXT:  .LBB16_1: # %res_block
+; X64-NEXT:    je .LBB16_3
+; X64-NEXT:  .LBB16_2: # %res_block
 ; X64-NEXT:    xorl %eax, %eax
 ; X64-NEXT:    cmpq %rdx, %rcx
 ; X64-NEXT:    setae %al
 ; X64-NEXT:    leal -1(%rax,%rax), %eax
+; X64-NEXT:  .LBB16_3: # %endblock
 ; X64-NEXT:    retq
   %m = tail call i32 @memcmp(i8* %X, i8* %Y, i64 16) nounwind
   ret i32 %m
@@ -575,7 +573,7 @@ define i32 @length16(i8* %X, i8* %Y) nounwind optsize {
 
 define i1 @length16_eq(i8* %x, i8* %y) nounwind optsize {
 ; X86-NOSSE-LABEL: length16_eq:
-; X86-NOSSE:       # BB#0:
+; X86-NOSSE:       # %bb.0:
 ; X86-NOSSE-NEXT:    pushl $0
 ; X86-NOSSE-NEXT:    pushl $16
 ; X86-NOSSE-NEXT:    pushl {{[0-9]+}}(%esp)
@@ -587,7 +585,7 @@ define i1 @length16_eq(i8* %x, i8* %y) nounwind optsize {
 ; X86-NOSSE-NEXT:    retl
 ;
 ; X86-SSE2-LABEL: length16_eq:
-; X86-SSE2:       # BB#0:
+; X86-SSE2:       # %bb.0:
 ; X86-SSE2-NEXT:    movl {{[0-9]+}}(%esp), %eax
 ; X86-SSE2-NEXT:    movl {{[0-9]+}}(%esp), %ecx
 ; X86-SSE2-NEXT:    movdqu (%ecx), %xmm0
@@ -599,7 +597,7 @@ define i1 @length16_eq(i8* %x, i8* %y) nounwind optsize {
 ; X86-SSE2-NEXT:    retl
 ;
 ; X64-SSE2-LABEL: length16_eq:
-; X64-SSE2:       # BB#0:
+; X64-SSE2:       # %bb.0:
 ; X64-SSE2-NEXT:    movdqu (%rdi), %xmm0
 ; X64-SSE2-NEXT:    movdqu (%rsi), %xmm1
 ; X64-SSE2-NEXT:    pcmpeqb %xmm0, %xmm1
@@ -609,7 +607,7 @@ define i1 @length16_eq(i8* %x, i8* %y) nounwind optsize {
 ; X64-SSE2-NEXT:    retq
 ;
 ; X64-AVX2-LABEL: length16_eq:
-; X64-AVX2:       # BB#0:
+; X64-AVX2:       # %bb.0:
 ; X64-AVX2-NEXT:    vmovdqu (%rdi), %xmm0
 ; X64-AVX2-NEXT:    vpcmpeqb (%rsi), %xmm0, %xmm0
 ; X64-AVX2-NEXT:    vpmovmskb %xmm0, %eax
@@ -623,7 +621,7 @@ define i1 @length16_eq(i8* %x, i8* %y) nounwind optsize {
 
 define i1 @length16_eq_const(i8* %X) nounwind optsize {
 ; X86-NOSSE-LABEL: length16_eq_const:
-; X86-NOSSE:       # BB#0:
+; X86-NOSSE:       # %bb.0:
 ; X86-NOSSE-NEXT:    pushl $0
 ; X86-NOSSE-NEXT:    pushl $16
 ; X86-NOSSE-NEXT:    pushl $.L.str
@@ -635,7 +633,7 @@ define i1 @length16_eq_const(i8* %X) nounwind optsize {
 ; X86-NOSSE-NEXT:    retl
 ;
 ; X86-SSE2-LABEL: length16_eq_const:
-; X86-SSE2:       # BB#0:
+; X86-SSE2:       # %bb.0:
 ; X86-SSE2-NEXT:    movl {{[0-9]+}}(%esp), %eax
 ; X86-SSE2-NEXT:    movdqu (%eax), %xmm0
 ; X86-SSE2-NEXT:    pcmpeqb {{\.LCPI.*}}, %xmm0
@@ -645,7 +643,7 @@ define i1 @length16_eq_const(i8* %X) nounwind optsize {
 ; X86-SSE2-NEXT:    retl
 ;
 ; X64-SSE2-LABEL: length16_eq_const:
-; X64-SSE2:       # BB#0:
+; X64-SSE2:       # %bb.0:
 ; X64-SSE2-NEXT:    movdqu (%rdi), %xmm0
 ; X64-SSE2-NEXT:    pcmpeqb {{.*}}(%rip), %xmm0
 ; X64-SSE2-NEXT:    pmovmskb %xmm0, %eax
@@ -654,7 +652,7 @@ define i1 @length16_eq_const(i8* %X) nounwind optsize {
 ; X64-SSE2-NEXT:    retq
 ;
 ; X64-AVX2-LABEL: length16_eq_const:
-; X64-AVX2:       # BB#0:
+; X64-AVX2:       # %bb.0:
 ; X64-AVX2-NEXT:    vmovdqu (%rdi), %xmm0
 ; X64-AVX2-NEXT:    vpcmpeqb {{.*}}(%rip), %xmm0, %xmm0
 ; X64-AVX2-NEXT:    vpmovmskb %xmm0, %eax
@@ -670,7 +668,7 @@ define i1 @length16_eq_const(i8* %X) nounwind optsize {
 
 define i32 @length24(i8* %X, i8* %Y) nounwind optsize {
 ; X86-LABEL: length24:
-; X86:       # BB#0:
+; X86:       # %bb.0:
 ; X86-NEXT:    pushl $0
 ; X86-NEXT:    pushl $24
 ; X86-NEXT:    pushl {{[0-9]+}}(%esp)
@@ -680,7 +678,7 @@ define i32 @length24(i8* %X, i8* %Y) nounwind optsize {
 ; X86-NEXT:    retl
 ;
 ; X64-LABEL: length24:
-; X64:       # BB#0:
+; X64:       # %bb.0:
 ; X64-NEXT:    movl $24, %edx
 ; X64-NEXT:    jmp memcmp # TAILCALL
   %m = tail call i32 @memcmp(i8* %X, i8* %Y, i64 24) nounwind
@@ -689,7 +687,7 @@ define i32 @length24(i8* %X, i8* %Y) nounwind optsize {
 
 define i1 @length24_eq(i8* %x, i8* %y) nounwind optsize {
 ; X86-LABEL: length24_eq:
-; X86:       # BB#0:
+; X86:       # %bb.0:
 ; X86-NEXT:    pushl $0
 ; X86-NEXT:    pushl $24
 ; X86-NEXT:    pushl {{[0-9]+}}(%esp)
@@ -701,19 +699,19 @@ define i1 @length24_eq(i8* %x, i8* %y) nounwind optsize {
 ; X86-NEXT:    retl
 ;
 ; X64-SSE2-LABEL: length24_eq:
-; X64-SSE2:       # BB#0: # %loadbb
+; X64-SSE2:       # %bb.0:
 ; X64-SSE2-NEXT:    movdqu (%rdi), %xmm0
 ; X64-SSE2-NEXT:    movdqu (%rsi), %xmm1
 ; X64-SSE2-NEXT:    pcmpeqb %xmm0, %xmm1
 ; X64-SSE2-NEXT:    pmovmskb %xmm1, %eax
 ; X64-SSE2-NEXT:    cmpl $65535, %eax # imm = 0xFFFF
-; X64-SSE2-NEXT:    jne .LBB20_1
-; X64-SSE2-NEXT:  # BB#2: # %loadbb1
+; X64-SSE2-NEXT:    jne .LBB20_2
+; X64-SSE2-NEXT:  # %bb.1: # %loadbb1
 ; X64-SSE2-NEXT:    movq 16(%rdi), %rcx
 ; X64-SSE2-NEXT:    xorl %eax, %eax
 ; X64-SSE2-NEXT:    cmpq 16(%rsi), %rcx
 ; X64-SSE2-NEXT:    je .LBB20_3
-; X64-SSE2-NEXT:  .LBB20_1: # %res_block
+; X64-SSE2-NEXT:  .LBB20_2: # %res_block
 ; X64-SSE2-NEXT:    movl $1, %eax
 ; X64-SSE2-NEXT:  .LBB20_3: # %endblock
 ; X64-SSE2-NEXT:    testl %eax, %eax
@@ -721,18 +719,18 @@ define i1 @length24_eq(i8* %x, i8* %y) nounwind optsize {
 ; X64-SSE2-NEXT:    retq
 ;
 ; X64-AVX2-LABEL: length24_eq:
-; X64-AVX2:       # BB#0: # %loadbb
+; X64-AVX2:       # %bb.0:
 ; X64-AVX2-NEXT:    vmovdqu (%rdi), %xmm0
 ; X64-AVX2-NEXT:    vpcmpeqb (%rsi), %xmm0, %xmm0
 ; X64-AVX2-NEXT:    vpmovmskb %xmm0, %eax
 ; X64-AVX2-NEXT:    cmpl $65535, %eax # imm = 0xFFFF
-; X64-AVX2-NEXT:    jne .LBB20_1
-; X64-AVX2-NEXT:  # BB#2: # %loadbb1
+; X64-AVX2-NEXT:    jne .LBB20_2
+; X64-AVX2-NEXT:  # %bb.1: # %loadbb1
 ; X64-AVX2-NEXT:    movq 16(%rdi), %rcx
 ; X64-AVX2-NEXT:    xorl %eax, %eax
 ; X64-AVX2-NEXT:    cmpq 16(%rsi), %rcx
 ; X64-AVX2-NEXT:    je .LBB20_3
-; X64-AVX2-NEXT:  .LBB20_1: # %res_block
+; X64-AVX2-NEXT:  .LBB20_2: # %res_block
 ; X64-AVX2-NEXT:    movl $1, %eax
 ; X64-AVX2-NEXT:  .LBB20_3: # %endblock
 ; X64-AVX2-NEXT:    testl %eax, %eax
@@ -745,7 +743,7 @@ define i1 @length24_eq(i8* %x, i8* %y) nounwind optsize {
 
 define i1 @length24_eq_const(i8* %X) nounwind optsize {
 ; X86-LABEL: length24_eq_const:
-; X86:       # BB#0:
+; X86:       # %bb.0:
 ; X86-NEXT:    pushl $0
 ; X86-NEXT:    pushl $24
 ; X86-NEXT:    pushl $.L.str
@@ -757,18 +755,18 @@ define i1 @length24_eq_const(i8* %X) nounwind optsize {
 ; X86-NEXT:    retl
 ;
 ; X64-SSE2-LABEL: length24_eq_const:
-; X64-SSE2:       # BB#0: # %loadbb
+; X64-SSE2:       # %bb.0:
 ; X64-SSE2-NEXT:    movdqu (%rdi), %xmm0
 ; X64-SSE2-NEXT:    pcmpeqb {{.*}}(%rip), %xmm0
 ; X64-SSE2-NEXT:    pmovmskb %xmm0, %eax
 ; X64-SSE2-NEXT:    cmpl $65535, %eax # imm = 0xFFFF
-; X64-SSE2-NEXT:    jne .LBB21_1
-; X64-SSE2-NEXT:  # BB#2: # %loadbb1
+; X64-SSE2-NEXT:    jne .LBB21_2
+; X64-SSE2-NEXT:  # %bb.1: # %loadbb1
 ; X64-SSE2-NEXT:    xorl %eax, %eax
 ; X64-SSE2-NEXT:    movabsq $3689065127958034230, %rcx # imm = 0x3332313039383736
 ; X64-SSE2-NEXT:    cmpq %rcx, 16(%rdi)
 ; X64-SSE2-NEXT:    je .LBB21_3
-; X64-SSE2-NEXT:  .LBB21_1: # %res_block
+; X64-SSE2-NEXT:  .LBB21_2: # %res_block
 ; X64-SSE2-NEXT:    movl $1, %eax
 ; X64-SSE2-NEXT:  .LBB21_3: # %endblock
 ; X64-SSE2-NEXT:    testl %eax, %eax
@@ -776,18 +774,18 @@ define i1 @length24_eq_const(i8* %X) nounwind optsize {
 ; X64-SSE2-NEXT:    retq
 ;
 ; X64-AVX2-LABEL: length24_eq_const:
-; X64-AVX2:       # BB#0: # %loadbb
+; X64-AVX2:       # %bb.0:
 ; X64-AVX2-NEXT:    vmovdqu (%rdi), %xmm0
 ; X64-AVX2-NEXT:    vpcmpeqb {{.*}}(%rip), %xmm0, %xmm0
 ; X64-AVX2-NEXT:    vpmovmskb %xmm0, %eax
 ; X64-AVX2-NEXT:    cmpl $65535, %eax # imm = 0xFFFF
-; X64-AVX2-NEXT:    jne .LBB21_1
-; X64-AVX2-NEXT:  # BB#2: # %loadbb1
+; X64-AVX2-NEXT:    jne .LBB21_2
+; X64-AVX2-NEXT:  # %bb.1: # %loadbb1
 ; X64-AVX2-NEXT:    xorl %eax, %eax
 ; X64-AVX2-NEXT:    movabsq $3689065127958034230, %rcx # imm = 0x3332313039383736
 ; X64-AVX2-NEXT:    cmpq %rcx, 16(%rdi)
 ; X64-AVX2-NEXT:    je .LBB21_3
-; X64-AVX2-NEXT:  .LBB21_1: # %res_block
+; X64-AVX2-NEXT:  .LBB21_2: # %res_block
 ; X64-AVX2-NEXT:    movl $1, %eax
 ; X64-AVX2-NEXT:  .LBB21_3: # %endblock
 ; X64-AVX2-NEXT:    testl %eax, %eax
@@ -800,7 +798,7 @@ define i1 @length24_eq_const(i8* %X) nounwind optsize {
 
 define i32 @length32(i8* %X, i8* %Y) nounwind optsize {
 ; X86-LABEL: length32:
-; X86:       # BB#0:
+; X86:       # %bb.0:
 ; X86-NEXT:    pushl $0
 ; X86-NEXT:    pushl $32
 ; X86-NEXT:    pushl {{[0-9]+}}(%esp)
@@ -810,7 +808,7 @@ define i32 @length32(i8* %X, i8* %Y) nounwind optsize {
 ; X86-NEXT:    retl
 ;
 ; X64-LABEL: length32:
-; X64:       # BB#0:
+; X64:       # %bb.0:
 ; X64-NEXT:    movl $32, %edx
 ; X64-NEXT:    jmp memcmp # TAILCALL
   %m = tail call i32 @memcmp(i8* %X, i8* %Y, i64 32) nounwind
@@ -821,7 +819,7 @@ define i32 @length32(i8* %X, i8* %Y) nounwind optsize {
 
 define i1 @length32_eq(i8* %x, i8* %y) nounwind optsize {
 ; X86-NOSSE-LABEL: length32_eq:
-; X86-NOSSE:       # BB#0:
+; X86-NOSSE:       # %bb.0:
 ; X86-NOSSE-NEXT:    pushl $0
 ; X86-NOSSE-NEXT:    pushl $32
 ; X86-NOSSE-NEXT:    pushl {{[0-9]+}}(%esp)
@@ -833,7 +831,7 @@ define i1 @length32_eq(i8* %x, i8* %y) nounwind optsize {
 ; X86-NOSSE-NEXT:    retl
 ;
 ; X86-SSE2-LABEL: length32_eq:
-; X86-SSE2:       # BB#0: # %loadbb
+; X86-SSE2:       # %bb.0:
 ; X86-SSE2-NEXT:    movl {{[0-9]+}}(%esp), %eax
 ; X86-SSE2-NEXT:    movl {{[0-9]+}}(%esp), %ecx
 ; X86-SSE2-NEXT:    movdqu (%ecx), %xmm0
@@ -841,8 +839,8 @@ define i1 @length32_eq(i8* %x, i8* %y) nounwind optsize {
 ; X86-SSE2-NEXT:    pcmpeqb %xmm0, %xmm1
 ; X86-SSE2-NEXT:    pmovmskb %xmm1, %edx
 ; X86-SSE2-NEXT:    cmpl $65535, %edx # imm = 0xFFFF
-; X86-SSE2-NEXT:    jne .LBB23_1
-; X86-SSE2-NEXT:  # BB#2: # %loadbb1
+; X86-SSE2-NEXT:    jne .LBB23_2
+; X86-SSE2-NEXT:  # %bb.1: # %loadbb1
 ; X86-SSE2-NEXT:    movdqu 16(%ecx), %xmm0
 ; X86-SSE2-NEXT:    movdqu 16(%eax), %xmm1
 ; X86-SSE2-NEXT:    pcmpeqb %xmm0, %xmm1
@@ -850,7 +848,7 @@ define i1 @length32_eq(i8* %x, i8* %y) nounwind optsize {
 ; X86-SSE2-NEXT:    xorl %eax, %eax
 ; X86-SSE2-NEXT:    cmpl $65535, %ecx # imm = 0xFFFF
 ; X86-SSE2-NEXT:    je .LBB23_3
-; X86-SSE2-NEXT:  .LBB23_1: # %res_block
+; X86-SSE2-NEXT:  .LBB23_2: # %res_block
 ; X86-SSE2-NEXT:    xorl %eax, %eax
 ; X86-SSE2-NEXT:    incl %eax
 ; X86-SSE2-NEXT:  .LBB23_3: # %endblock
@@ -859,14 +857,14 @@ define i1 @length32_eq(i8* %x, i8* %y) nounwind optsize {
 ; X86-SSE2-NEXT:    retl
 ;
 ; X64-SSE2-LABEL: length32_eq:
-; X64-SSE2:       # BB#0: # %loadbb
+; X64-SSE2:       # %bb.0:
 ; X64-SSE2-NEXT:    movdqu (%rdi), %xmm0
 ; X64-SSE2-NEXT:    movdqu (%rsi), %xmm1
 ; X64-SSE2-NEXT:    pcmpeqb %xmm0, %xmm1
 ; X64-SSE2-NEXT:    pmovmskb %xmm1, %eax
 ; X64-SSE2-NEXT:    cmpl $65535, %eax # imm = 0xFFFF
-; X64-SSE2-NEXT:    jne .LBB23_1
-; X64-SSE2-NEXT:  # BB#2: # %loadbb1
+; X64-SSE2-NEXT:    jne .LBB23_2
+; X64-SSE2-NEXT:  # %bb.1: # %loadbb1
 ; X64-SSE2-NEXT:    movdqu 16(%rdi), %xmm0
 ; X64-SSE2-NEXT:    movdqu 16(%rsi), %xmm1
 ; X64-SSE2-NEXT:    pcmpeqb %xmm0, %xmm1
@@ -874,7 +872,7 @@ define i1 @length32_eq(i8* %x, i8* %y) nounwind optsize {
 ; X64-SSE2-NEXT:    xorl %eax, %eax
 ; X64-SSE2-NEXT:    cmpl $65535, %ecx # imm = 0xFFFF
 ; X64-SSE2-NEXT:    je .LBB23_3
-; X64-SSE2-NEXT:  .LBB23_1: # %res_block
+; X64-SSE2-NEXT:  .LBB23_2: # %res_block
 ; X64-SSE2-NEXT:    movl $1, %eax
 ; X64-SSE2-NEXT:  .LBB23_3: # %endblock
 ; X64-SSE2-NEXT:    testl %eax, %eax
@@ -882,7 +880,7 @@ define i1 @length32_eq(i8* %x, i8* %y) nounwind optsize {
 ; X64-SSE2-NEXT:    retq
 ;
 ; X64-AVX2-LABEL: length32_eq:
-; X64-AVX2:       # BB#0:
+; X64-AVX2:       # %bb.0:
 ; X64-AVX2-NEXT:    vmovdqu (%rdi), %ymm0
 ; X64-AVX2-NEXT:    vpcmpeqb (%rsi), %ymm0, %ymm0
 ; X64-AVX2-NEXT:    vpmovmskb %ymm0, %eax
@@ -897,7 +895,7 @@ define i1 @length32_eq(i8* %x, i8* %y) nounwind optsize {
 
 define i1 @length32_eq_const(i8* %X) nounwind optsize {
 ; X86-NOSSE-LABEL: length32_eq_const:
-; X86-NOSSE:       # BB#0:
+; X86-NOSSE:       # %bb.0:
 ; X86-NOSSE-NEXT:    pushl $0
 ; X86-NOSSE-NEXT:    pushl $32
 ; X86-NOSSE-NEXT:    pushl $.L.str
@@ -909,21 +907,21 @@ define i1 @length32_eq_const(i8* %X) nounwind optsize {
 ; X86-NOSSE-NEXT:    retl
 ;
 ; X86-SSE2-LABEL: length32_eq_const:
-; X86-SSE2:       # BB#0: # %loadbb
+; X86-SSE2:       # %bb.0:
 ; X86-SSE2-NEXT:    movl {{[0-9]+}}(%esp), %eax
 ; X86-SSE2-NEXT:    movdqu (%eax), %xmm0
 ; X86-SSE2-NEXT:    pcmpeqb {{\.LCPI.*}}, %xmm0
 ; X86-SSE2-NEXT:    pmovmskb %xmm0, %ecx
 ; X86-SSE2-NEXT:    cmpl $65535, %ecx # imm = 0xFFFF
-; X86-SSE2-NEXT:    jne .LBB24_1
-; X86-SSE2-NEXT:  # BB#2: # %loadbb1
+; X86-SSE2-NEXT:    jne .LBB24_2
+; X86-SSE2-NEXT:  # %bb.1: # %loadbb1
 ; X86-SSE2-NEXT:    movdqu 16(%eax), %xmm0
 ; X86-SSE2-NEXT:    pcmpeqb {{\.LCPI.*}}, %xmm0
 ; X86-SSE2-NEXT:    pmovmskb %xmm0, %ecx
 ; X86-SSE2-NEXT:    xorl %eax, %eax
 ; X86-SSE2-NEXT:    cmpl $65535, %ecx # imm = 0xFFFF
 ; X86-SSE2-NEXT:    je .LBB24_3
-; X86-SSE2-NEXT:  .LBB24_1: # %res_block
+; X86-SSE2-NEXT:  .LBB24_2: # %res_block
 ; X86-SSE2-NEXT:    xorl %eax, %eax
 ; X86-SSE2-NEXT:    incl %eax
 ; X86-SSE2-NEXT:  .LBB24_3: # %endblock
@@ -932,20 +930,20 @@ define i1 @length32_eq_const(i8* %X) nounwind optsize {
 ; X86-SSE2-NEXT:    retl
 ;
 ; X64-SSE2-LABEL: length32_eq_const:
-; X64-SSE2:       # BB#0: # %loadbb
+; X64-SSE2:       # %bb.0:
 ; X64-SSE2-NEXT:    movdqu (%rdi), %xmm0
 ; X64-SSE2-NEXT:    pcmpeqb {{.*}}(%rip), %xmm0
 ; X64-SSE2-NEXT:    pmovmskb %xmm0, %eax
 ; X64-SSE2-NEXT:    cmpl $65535, %eax # imm = 0xFFFF
-; X64-SSE2-NEXT:    jne .LBB24_1
-; X64-SSE2-NEXT:  # BB#2: # %loadbb1
+; X64-SSE2-NEXT:    jne .LBB24_2
+; X64-SSE2-NEXT:  # %bb.1: # %loadbb1
 ; X64-SSE2-NEXT:    movdqu 16(%rdi), %xmm0
 ; X64-SSE2-NEXT:    pcmpeqb {{.*}}(%rip), %xmm0
 ; X64-SSE2-NEXT:    pmovmskb %xmm0, %ecx
 ; X64-SSE2-NEXT:    xorl %eax, %eax
 ; X64-SSE2-NEXT:    cmpl $65535, %ecx # imm = 0xFFFF
 ; X64-SSE2-NEXT:    je .LBB24_3
-; X64-SSE2-NEXT:  .LBB24_1: # %res_block
+; X64-SSE2-NEXT:  .LBB24_2: # %res_block
 ; X64-SSE2-NEXT:    movl $1, %eax
 ; X64-SSE2-NEXT:  .LBB24_3: # %endblock
 ; X64-SSE2-NEXT:    testl %eax, %eax
@@ -953,7 +951,7 @@ define i1 @length32_eq_const(i8* %X) nounwind optsize {
 ; X64-SSE2-NEXT:    retq
 ;
 ; X64-AVX2-LABEL: length32_eq_const:
-; X64-AVX2:       # BB#0:
+; X64-AVX2:       # %bb.0:
 ; X64-AVX2-NEXT:    vmovdqu (%rdi), %ymm0
 ; X64-AVX2-NEXT:    vpcmpeqb {{.*}}(%rip), %ymm0, %ymm0
 ; X64-AVX2-NEXT:    vpmovmskb %ymm0, %eax
@@ -968,7 +966,7 @@ define i1 @length32_eq_const(i8* %X) nounwind optsize {
 
 define i32 @length64(i8* %X, i8* %Y) nounwind optsize {
 ; X86-LABEL: length64:
-; X86:       # BB#0:
+; X86:       # %bb.0:
 ; X86-NEXT:    pushl $0
 ; X86-NEXT:    pushl $64
 ; X86-NEXT:    pushl {{[0-9]+}}(%esp)
@@ -978,7 +976,7 @@ define i32 @length64(i8* %X, i8* %Y) nounwind optsize {
 ; X86-NEXT:    retl
 ;
 ; X64-LABEL: length64:
-; X64:       # BB#0:
+; X64:       # %bb.0:
 ; X64-NEXT:    movl $64, %edx
 ; X64-NEXT:    jmp memcmp # TAILCALL
   %m = tail call i32 @memcmp(i8* %X, i8* %Y, i64 64) nounwind
@@ -987,7 +985,7 @@ define i32 @length64(i8* %X, i8* %Y) nounwind optsize {
 
 define i1 @length64_eq(i8* %x, i8* %y) nounwind optsize {
 ; X86-LABEL: length64_eq:
-; X86:       # BB#0:
+; X86:       # %bb.0:
 ; X86-NEXT:    pushl $0
 ; X86-NEXT:    pushl $64
 ; X86-NEXT:    pushl {{[0-9]+}}(%esp)
@@ -999,7 +997,7 @@ define i1 @length64_eq(i8* %x, i8* %y) nounwind optsize {
 ; X86-NEXT:    retl
 ;
 ; X64-SSE2-LABEL: length64_eq:
-; X64-SSE2:       # BB#0:
+; X64-SSE2:       # %bb.0:
 ; X64-SSE2-NEXT:    pushq %rax
 ; X64-SSE2-NEXT:    movl $64, %edx
 ; X64-SSE2-NEXT:    callq memcmp
@@ -1009,20 +1007,20 @@ define i1 @length64_eq(i8* %x, i8* %y) nounwind optsize {
 ; X64-SSE2-NEXT:    retq
 ;
 ; X64-AVX2-LABEL: length64_eq:
-; X64-AVX2:       # BB#0: # %loadbb
+; X64-AVX2:       # %bb.0:
 ; X64-AVX2-NEXT:    vmovdqu (%rdi), %ymm0
 ; X64-AVX2-NEXT:    vpcmpeqb (%rsi), %ymm0, %ymm0
 ; X64-AVX2-NEXT:    vpmovmskb %ymm0, %eax
 ; X64-AVX2-NEXT:    cmpl $-1, %eax
-; X64-AVX2-NEXT:    jne .LBB26_1
-; X64-AVX2-NEXT:  # BB#2: # %loadbb1
+; X64-AVX2-NEXT:    jne .LBB26_2
+; X64-AVX2-NEXT:  # %bb.1: # %loadbb1
 ; X64-AVX2-NEXT:    vmovdqu 32(%rdi), %ymm0
 ; X64-AVX2-NEXT:    vpcmpeqb 32(%rsi), %ymm0, %ymm0
 ; X64-AVX2-NEXT:    vpmovmskb %ymm0, %ecx
 ; X64-AVX2-NEXT:    xorl %eax, %eax
 ; X64-AVX2-NEXT:    cmpl $-1, %ecx
 ; X64-AVX2-NEXT:    je .LBB26_3
-; X64-AVX2-NEXT:  .LBB26_1: # %res_block
+; X64-AVX2-NEXT:  .LBB26_2: # %res_block
 ; X64-AVX2-NEXT:    movl $1, %eax
 ; X64-AVX2-NEXT:  .LBB26_3: # %endblock
 ; X64-AVX2-NEXT:    testl %eax, %eax
@@ -1036,7 +1034,7 @@ define i1 @length64_eq(i8* %x, i8* %y) nounwind optsize {
 
 define i1 @length64_eq_const(i8* %X) nounwind optsize {
 ; X86-LABEL: length64_eq_const:
-; X86:       # BB#0:
+; X86:       # %bb.0:
 ; X86-NEXT:    pushl $0
 ; X86-NEXT:    pushl $64
 ; X86-NEXT:    pushl $.L.str
@@ -1048,7 +1046,7 @@ define i1 @length64_eq_const(i8* %X) nounwind optsize {
 ; X86-NEXT:    retl
 ;
 ; X64-SSE2-LABEL: length64_eq_const:
-; X64-SSE2:       # BB#0:
+; X64-SSE2:       # %bb.0:
 ; X64-SSE2-NEXT:    pushq %rax
 ; X64-SSE2-NEXT:    movl $.L.str, %esi
 ; X64-SSE2-NEXT:    movl $64, %edx
@@ -1059,20 +1057,20 @@ define i1 @length64_eq_const(i8* %X) nounwind optsize {
 ; X64-SSE2-NEXT:    retq
 ;
 ; X64-AVX2-LABEL: length64_eq_const:
-; X64-AVX2:       # BB#0: # %loadbb
+; X64-AVX2:       # %bb.0:
 ; X64-AVX2-NEXT:    vmovdqu (%rdi), %ymm0
 ; X64-AVX2-NEXT:    vpcmpeqb {{.*}}(%rip), %ymm0, %ymm0
 ; X64-AVX2-NEXT:    vpmovmskb %ymm0, %eax
 ; X64-AVX2-NEXT:    cmpl $-1, %eax
-; X64-AVX2-NEXT:    jne .LBB27_1
-; X64-AVX2-NEXT:  # BB#2: # %loadbb1
+; X64-AVX2-NEXT:    jne .LBB27_2
+; X64-AVX2-NEXT:  # %bb.1: # %loadbb1
 ; X64-AVX2-NEXT:    vmovdqu 32(%rdi), %ymm0
 ; X64-AVX2-NEXT:    vpcmpeqb {{.*}}(%rip), %ymm0, %ymm0
 ; X64-AVX2-NEXT:    vpmovmskb %ymm0, %ecx
 ; X64-AVX2-NEXT:    xorl %eax, %eax
 ; X64-AVX2-NEXT:    cmpl $-1, %ecx
 ; X64-AVX2-NEXT:    je .LBB27_3
-; X64-AVX2-NEXT:  .LBB27_1: # %res_block
+; X64-AVX2-NEXT:  .LBB27_2: # %res_block
 ; X64-AVX2-NEXT:    movl $1, %eax
 ; X64-AVX2-NEXT:  .LBB27_3: # %endblock
 ; X64-AVX2-NEXT:    testl %eax, %eax

@@ -64,10 +64,14 @@ uptr GetMmapGranularity() {
   return si.dwAllocationGranularity;
 }
 
-uptr GetMaxVirtualAddress() {
+uptr GetMaxUserVirtualAddress() {
   SYSTEM_INFO si;
   GetSystemInfo(&si);
   return (uptr)si.lpMaximumApplicationAddress;
+}
+
+uptr GetMaxVirtualAddress() {
+  return GetMaxUserVirtualAddress();
 }
 
 bool FileExists(const char *filename) {
@@ -237,11 +241,11 @@ void *MmapFixedOrDie(uptr fixed_addr, uptr size) {
 
 // Uses fixed_addr for now.
 // Will use offset instead once we've implemented this function for real.
-uptr ReservedAddressRange::Map(uptr fixed_addr, uptr size,
-                               bool tolerate_enomem) {
-  if (tolerate_enomem) {
-    return reinterpret_cast<uptr>(MmapFixedOrDieOnFatalError(fixed_addr, size));
-  }
+uptr ReservedAddressRange::Map(uptr fixed_addr, uptr size) {
+  return reinterpret_cast<uptr>(MmapFixedOrDieOnFatalError(fixed_addr, size));
+}
+
+uptr ReservedAddressRange::MapOrDie(uptr fixed_addr, uptr size) {
   return reinterpret_cast<uptr>(MmapFixedOrDie(fixed_addr, size));
 }
 
@@ -251,6 +255,10 @@ void ReservedAddressRange::Unmap(uptr addr, uptr size) {
   // Only unmap if it covers the entire range.
   CHECK((addr == base_as_uptr) && (size == size_));
   UnmapOrDie(addr_as_void, size);
+  if (addr_as_void == base_) {
+    base_ = reinterpret_cast<void*>(addr + size);
+  }
+  size_ = size_ - size;
 }
 
 void *MmapFixedOrDieOnFatalError(uptr fixed_addr, uptr size) {
@@ -278,6 +286,7 @@ uptr ReservedAddressRange::Init(uptr size, const char *name, uptr fixed_addr) {
   }
   size_ = size;
   name_ = name;
+  (void)os_handle_;  // unsupported
   return reinterpret_cast<uptr>(base_);
 }
 
@@ -493,6 +502,10 @@ void SleepForMillis(int millis) {
 }
 
 u64 NanoTime() {
+  return 0;
+}
+
+u64 MonotonicNanoTime() {
   return 0;
 }
 
@@ -1090,6 +1103,11 @@ void CheckNoDeepBind(const char *filename, int flag) {
 
 // FIXME: implement on this platform.
 bool GetRandom(void *buffer, uptr length, bool blocking) {
+  UNIMPLEMENTED();
+}
+
+// FIXME: implement on this platform.
+u32 GetNumberOfCPUs() {
   UNIMPLEMENTED();
 }
 

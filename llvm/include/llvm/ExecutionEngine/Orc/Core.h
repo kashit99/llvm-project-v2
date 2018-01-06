@@ -17,16 +17,12 @@
 #include "llvm/ExecutionEngine/JITSymbol.h"
 #include "llvm/ExecutionEngine/Orc/SymbolStringPool.h"
 
-#include <deque>
+#include <functional>
 #include <map>
-#include <memory>
 #include <set>
-#include <vector>
 
 namespace llvm {
 namespace orc {
-
-class VSO;
 
 /// @brief A set of symbol names (represented by SymbolStringPtrs for
 //         efficiency).
@@ -35,9 +31,6 @@ using SymbolNameSet = std::set<SymbolStringPtr>;
 /// @brief A map from symbol names (as SymbolStringPtrs) to JITSymbols
 ///        (address/flags pairs).
 using SymbolMap = std::map<SymbolStringPtr, JITSymbol>;
-
-/// @brief A map from symbol names (as SymbolStringPtrs) to JITSymbolFlags.
-using SymbolFlagsMap = std::map<SymbolStringPtr, JITSymbolFlags>;
 
 /// @brief A symbol query that returns results via a callback when results are
 ///        ready.
@@ -87,145 +80,6 @@ private:
   size_t OutstandingFinalizations = 0;
   SymbolsResolvedCallback NotifySymbolsResolved;
   SymbolsReadyCallback NotifySymbolsReady;
-};
-
-/// @brief Represents a source of symbol definitions which may be materialized
-///        (turned into data / code through some materialization process) or
-///        discarded (if the definition is overridden by a stronger one).
-///
-/// SymbolSources are used when providing lazy definitions of symbols to VSOs.
-/// The VSO will call materialize when the address of a symbol is requested via
-/// the lookup method. The VSO will call discard if a stronger definition is
-/// added or already present.
-class SymbolSource {
-public:
-  virtual ~SymbolSource() {}
-
-  /// @brief Implementations of this method should materialize the given
-  ///        symbols (plus any additional symbols required) by adding a
-  ///        Materializer to the ExecutionSession's MaterializationQueue.
-  virtual Error materialize(VSO &V, SymbolNameSet Symbols) = 0;
-
-  /// @brief Implementations of this method should discard the given symbol
-  ///        from the source (e.g. if the source is an LLVM IR Module and the
-  ///        symbol is a function, delete the function body or mark it available
-  ///        externally).
-  virtual void discard(VSO &V, SymbolStringPtr Name) = 0;
-private:
-  virtual void anchor();
-};
-
-/// @brief Represents a dynamic linkage unit in a JIT process.
-///
-/// VSO acts as a symbol table (symbol definitions can be set and the dylib
-/// queried to find symbol addresses) and as a key for tracking resources
-/// (since a VSO's address is fixed).
-class VSO {
-  friend class ExecutionSession;
-public:
-
-  /// @brief 
-  enum RelativeLinkageStrength {
-    NewDefinitionIsStronger,
-    DuplicateDefinition,
-    ExistingDefinitionIsStronger
-  };
-
-  using SetDefinitionsResult =
-    std::map<SymbolStringPtr, RelativeLinkageStrength>;
-  using SourceWorkMap = std::map<SymbolSource*, SymbolNameSet>;
-  
-  struct LookupResult {
-    SourceWorkMap MaterializationWork;
-    SymbolNameSet UnresolvedSymbols;
-  };
-
-  VSO() = default;
-
-  VSO(const VSO&) = delete;
-  VSO& operator=(const VSO&) = delete;
-  VSO(VSO&&) = delete;
-  VSO& operator=(VSO&&) = delete;
-
-  /// @brief Compare new linkage with existing linkage.
-  static RelativeLinkageStrength
-  compareLinkage(Optional<JITSymbolFlags> OldFlags,
-                 JITSymbolFlags NewFlags);
-
-  /// @brief Compare new linkage with an existing symbol's linkage.
-  RelativeLinkageStrength compareLinkage(SymbolStringPtr Name,
-                                         JITSymbolFlags NewFlags) const;
-
-  /// @brief Adds the given symbols to the mapping as resolved, finalized
-  ///        symbols.
-  ///
-  /// FIXME: We can take this by const-ref once symbol-based laziness is
-  ///        removed.
-  Error define(SymbolMap NewSymbols);
-
-  /// @brief Adds the given symbols to the mapping as lazy symbols.
-  Error defineLazy(const SymbolFlagsMap &NewSymbols, SymbolSource &Source);
-
-  /// @brief Add the given symbol/address mappings to the dylib, but do not
-  ///        mark the symbols as finalized yet.
-  void resolve(SymbolMap SymbolValues);
-
-  /// @brief Finalize the given symbols.
-  void finalize(SymbolNameSet SymbolsToFinalize);
-
-  /// @brief Apply the given query to the given symbols in this VSO.
-  ///
-  /// For symbols in this VSO that have already been materialized, their address
-  /// will be set in the query immediately.
-  ///
-  /// For symbols in this VSO that have not been materialized, the query will be
-  /// recorded and the source for those symbols (plus the set of symbols to be
-  /// materialized by that source) will be returned as the MaterializationWork
-  /// field of the LookupResult.
-  ///
-  /// Any symbols not found in this VSO will be returned in the
-  /// UnresolvedSymbols field of the LookupResult.
-  LookupResult lookup(AsynchronousSymbolQuery &Query, SymbolNameSet Symbols);
-
-private:
-
-  class MaterializationInfo {
-  public:
-    MaterializationInfo(JITSymbolFlags Flags, AsynchronousSymbolQuery &Query);
-    JITSymbolFlags getFlags() const;
-    JITTargetAddress getAddress() const;
-    void query(SymbolStringPtr Name, AsynchronousSymbolQuery &Query);
-    void resolve(SymbolStringPtr Name, JITSymbol Sym);
-    void finalize();
-  private:
-    JITSymbolFlags Flags;
-    JITTargetAddress Address = 0;
-    std::vector<AsynchronousSymbolQuery*> PendingResolution;
-    std::vector<AsynchronousSymbolQuery*> PendingFinalization;
-  };
-
-  class SymbolTableEntry {
-  public:
-    SymbolTableEntry(JITSymbolFlags Flags, SymbolSource &Source);
-    SymbolTableEntry(JITSymbol Sym);
-    SymbolTableEntry(SymbolTableEntry &&Other);
-    ~SymbolTableEntry();
-    JITSymbolFlags getFlags() const;
-    void replaceWithSource(VSO &V, SymbolStringPtr Name, JITSymbolFlags Flags,
-                           SymbolSource &NewSource);
-    SymbolSource* query(SymbolStringPtr Name, AsynchronousSymbolQuery &Query);
-    void resolve(VSO &V, SymbolStringPtr Name, JITSymbol Sym);
-    void finalize();
-  private:
-    JITSymbolFlags Flags;
-    union {
-      JITTargetAddress Address;
-      SymbolSource *Source;
-      std::unique_ptr<MaterializationInfo> MatInfo;
-    };
-  };
-
-  std::map<SymbolStringPtr, SymbolTableEntry> Symbols;
 };
 
 } // End namespace orc

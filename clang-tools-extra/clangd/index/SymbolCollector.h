@@ -8,7 +8,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "Index.h"
-
 #include "clang/Index/IndexDataConsumer.h"
 #include "clang/Index/IndexSymbol.h"
 
@@ -30,13 +29,11 @@ public:
                       unsigned Offset,
                       index::IndexDataConsumer::ASTNodeInfo ASTNode) override;
 
-  void finish() override;
-
-  SymbolSlab takeSymbols() const { return std::move(Symbols); }
+  SymbolSlab takeSymbols() { return std::move(Symbols).build(); }
 
 private:
   // All Symbols collected from the AST.
-  SymbolSlab Symbols;
+  SymbolSlab::Builder Symbols;
 };
 
 } // namespace clangd

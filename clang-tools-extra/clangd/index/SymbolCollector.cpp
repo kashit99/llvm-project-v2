@@ -8,7 +8,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "SymbolCollector.h"
-
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclCXX.h"
@@ -49,14 +48,25 @@ std::string makeAbsolutePath(const SourceManager &SM, StringRef Path) {
       llvm::sys::path::parent_path(AbsolutePath.str()));
   if (Dir) {
     StringRef DirName = SM.getFileManager().getCanonicalName(Dir);
-    SmallVector<char, 128> AbsoluteFilename;
+    SmallString<128> AbsoluteFilename;
     llvm::sys::path::append(AbsoluteFilename, DirName,
                             llvm::sys::path::filename(AbsolutePath.str()));
-    return llvm::StringRef(AbsoluteFilename.data(), AbsoluteFilename.size())
-        .str();
+    return AbsoluteFilename.str();
   }
   return AbsolutePath.str();
 }
+
+// Split a qualified symbol name into scope and unqualified name, e.g. given
+// "a::b::c", return {"a::b", "c"}. Scope is empty if it doesn't exist.
+std::pair<llvm::StringRef, llvm::StringRef>
+splitQualifiedName(llvm::StringRef QName) {
+  assert(!QName.startswith("::") && "Qualified names should not start with ::");
+  size_t Pos = QName.rfind("::");
+  if (Pos == llvm::StringRef::npos)
+    return {StringRef(), QName};
+  return {QName.substr(0, Pos), QName.substr(Pos + 2)};
+}
+
 } // namespace
 
 // Always return true to continue indexing.
@@ -74,28 +84,32 @@ bool SymbolCollector::handleDeclOccurence(
     if (!ND->hasExternalFormalLinkage() || ND->isInAnonymousNamespace())
       return true;
 
-    llvm::SmallVector<char, 128> Buff;
-    if (index::generateUSRForDecl(ND, Buff))
+    llvm::SmallString<128> USR;
+    if (index::generateUSRForDecl(ND, USR))
       return true;
 
-    std::string USR(Buff.data(), Buff.size());
     auto ID = SymbolID(USR);
-    if (Symbols.find(ID) != Symbols.end())
+    if (Symbols.find(ID) != nullptr)
       return true;
 
     auto &SM = ND->getASTContext().getSourceManager();
-    SymbolLocation Location = {
-        makeAbsolutePath(SM, SM.getFilename(D->getLocation())),
-        SM.getFileOffset(D->getLocStart()), SM.getFileOffset(D->getLocEnd())};
-    Symbols.insert({std::move(ID), ND->getQualifiedNameAsString(),
-                    index::getSymbolInfo(D), std::move(Location)});
+    std::string FilePath =
+        makeAbsolutePath(SM, SM.getFilename(D->getLocation()));
+    SymbolLocation Location = {FilePath, SM.getFileOffset(D->getLocStart()),
+                               SM.getFileOffset(D->getLocEnd())};
+    std::string QName = ND->getQualifiedNameAsString();
+    auto ScopeAndName = splitQualifiedName(QName);
+
+    Symbol S;
+    S.ID = std::move(ID);
+    S.Scope = ScopeAndName.first;
+    S.Name = ScopeAndName.second;
+    S.SymInfo = index::getSymbolInfo(D);
+    S.CanonicalDeclaration = Location;
+    Symbols.insert(S);
   }
 
   return true;
-}
-
-void SymbolCollector::finish() {
-  Symbols.freeze();
 }
 
 } // namespace clangd

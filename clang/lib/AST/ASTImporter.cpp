@@ -2857,9 +2857,13 @@ Decl *ASTNodeImporter::VisitObjCMethodDecl(ObjCMethodDecl *D) {
     ToParams[I]->setOwningFunction(ToMethod);
     ToMethod->addDeclInternal(ToParams[I]);
   }
+
   SmallVector<SourceLocation, 12> SelLocs;
   D->getSelectorLocs(SelLocs);
-  ToMethod->setMethodParams(Importer.getToContext(), ToParams, SelLocs); 
+  for (SourceLocation &Loc : SelLocs)
+    Loc = Importer.Import(Loc);
+
+  ToMethod->setMethodParams(Importer.getToContext(), ToParams, SelLocs);
 
   ToMethod->setLexicalDeclContext(LexicalDC);
   Importer.Imported(D, ToMethod);
@@ -5120,14 +5124,13 @@ Expr *ASTNodeImporter::VisitUnaryOperator(UnaryOperator *E) {
   if (!SubExpr)
     return nullptr;
 
-  return new (Importer.getToContext()) UnaryOperator(SubExpr, E->getOpcode(),
-                                                     T, E->getValueKind(),
-                                                     E->getObjectKind(),
-                                         Importer.Import(E->getOperatorLoc()));                                        
+  return new (Importer.getToContext()) UnaryOperator(
+      SubExpr, E->getOpcode(), T, E->getValueKind(), E->getObjectKind(),
+      Importer.Import(E->getOperatorLoc()), E->canOverflow());
 }
 
-Expr *ASTNodeImporter::VisitUnaryExprOrTypeTraitExpr(
-                                            UnaryExprOrTypeTraitExpr *E) {
+Expr *
+ASTNodeImporter::VisitUnaryExprOrTypeTraitExpr(UnaryExprOrTypeTraitExpr *E) {
   QualType ResultType = Importer.Import(E->getType());
   
   if (E->isArgumentType()) {

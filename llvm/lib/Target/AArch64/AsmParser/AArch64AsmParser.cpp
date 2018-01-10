@@ -2826,7 +2826,7 @@ AArch64AsmParser::tryParseSVEPredicateVector(OperandVector &Operands) {
   Parser.Lex(); // Eat the slash.
 
   // Zeroing or merging?
-  StringRef Pred = Parser.getTok().getString().lower();
+  auto Pred = Parser.getTok().getString().lower();
   if (Pred != "z" && Pred != "m") {
     Error(getLoc(), "expecting 'm' or 'z' predication");
     return MatchOperand_ParseFail;
@@ -3544,6 +3544,8 @@ static std::string AArch64MnemonicSpellCheck(StringRef S, uint64_t FBS,
 bool AArch64AsmParser::showMatchError(SMLoc Loc, unsigned ErrCode,
                                       OperandVector &Operands) {
   switch (ErrCode) {
+  case Match_InvalidTiedOperand:
+    return Error(Loc, "operand must match destination register");
   case Match_MissingFeature:
     return Error(Loc,
                  "instruction requires a CPU feature not currently enabled");
@@ -4063,6 +4065,7 @@ bool AArch64AsmParser::MatchAndEmitInstruction(SMLoc IDLoc, unsigned &Opcode,
 
     return showMatchError(ErrorLoc, MatchResult, Operands);
   }
+  case Match_InvalidTiedOperand:
   case Match_InvalidMemoryIndexed1:
   case Match_InvalidMemoryIndexed2:
   case Match_InvalidMemoryIndexed4:

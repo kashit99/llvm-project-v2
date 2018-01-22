@@ -24,24 +24,63 @@ namespace objc {
 namespace {
 /// The acronyms are from
 /// https://developer.apple.com/library/content/documentation/Cocoa/Conceptual/CodingGuidelines/Articles/APIAbbreviations.html#//apple_ref/doc/uid/20001285-BCIHCGAE
+///
+/// Keep this list sorted.
 constexpr char DefaultSpecialAcronyms[] =
+    "ACL;"
+    "API;"
+    "ARGB;"
     "ASCII;"
-    "PDF;"
-    "XML;"
-    "HTML;"
-    "URL;"
-    "RTF;"
-    "HTTP;"
-    "TIFF;"
-    "JPG;"
-    "PNG;"
-    "GIF;"
-    "LZW;"
-    "ROM;"
-    "RGB;"
+    "BGRA;"
     "CMYK;"
+    "DNS;"
+    "FPS;"
+    "FTP;"
+    "GIF;"
+    "GPS;"
+    "HD;"
+    "HDR;"
+    "HTML;"
+    "HTTP;"
+    "HTTPS;"
+    "HUD;"
+    "ID;"
+    "JPG;"
+    "JS;"
+    "LAN;"
+    "LZW;"
+    "MDNS;"
     "MIDI;"
-    "FTP";
+    "OS;"
+    "PDF;"
+    "PIN;"
+    "PNG;"
+    "POI;"
+    "PSTN;"
+    "PTR;"
+    "QA;"
+    "QOS;"
+    "RGB;"
+    "RGBA;"
+    "RGBX;"
+    "ROM;"
+    "RPC;"
+    "RTF;"
+    "RTL;"
+    "SDK;"
+    "SSO;"
+    "TCP;"
+    "TIFF;"
+    "TTS;"
+    "UI;"
+    "URI;"
+    "URL;"
+    "VC;"
+    "VOIP;"
+    "VPN;"
+    "VR;"
+    "WAN;"
+    "XML";
 
 /// For now we will only fix 'CamelCase' property to
 /// 'camelCase'. For other cases the users need to
@@ -58,13 +97,13 @@ FixItHint generateFixItHint(const ObjCPropertyDecl *Decl) {
   return FixItHint();
 }
 
-std::string validPropertyNameRegex(const std::vector<std::string> &Prefixes) {
-  std::vector<std::string> EscapedPrefixes;
-  EscapedPrefixes.reserve(Prefixes.size());
+std::string validPropertyNameRegex(const std::vector<std::string> &Acronyms) {
+  std::vector<std::string> EscapedAcronyms;
+  EscapedAcronyms.reserve(Acronyms.size());
   // In case someone defines a custom prefix which includes a regex
   // special character, escape all the prefixes.
-  std::transform(Prefixes.begin(), Prefixes.end(),
-                 std::back_inserter(EscapedPrefixes), [](const std::string& s) {
+  std::transform(Acronyms.begin(), Acronyms.end(),
+                 std::back_inserter(EscapedAcronyms), [](const std::string& s) {
                    return llvm::Regex::escape(s); });
   // Allow any of these names:
   // foo
@@ -73,9 +112,11 @@ std::string validPropertyNameRegex(const std::vector<std::string> &Prefixes) {
   // urlString
   // URL
   // URLString
+  // bundleID
   return std::string("::((") +
-      llvm::join(EscapedPrefixes.begin(), EscapedPrefixes.end(), "|") +
-      ")[A-Z]?)?[a-z]+[a-z0-9]*([A-Z][a-z0-9]+)*$";
+      llvm::join(EscapedAcronyms.begin(), EscapedAcronyms.end(), "|") +
+      ")[A-Z]?)?[a-z]+[a-z0-9]*([A-Z][a-z0-9]+)*" + "(" +
+      llvm::join(EscapedAcronyms.begin(), EscapedAcronyms.end(), "|") + ")?$";
 }
 }  // namespace
 

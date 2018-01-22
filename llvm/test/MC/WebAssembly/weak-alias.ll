@@ -130,7 +130,7 @@ entry:
 ; CHECK-NEXT:     Segments:        
 ; CHECK-NEXT:       - Offset:          
 ; CHECK-NEXT:           Opcode:          I32_CONST
-; CHECK-NEXT:           Value:           0
+; CHECK-NEXT:           Value:           1
 ; CHECK-NEXT:         Functions:       [ 1, 0 ]
 ; CHECK-NEXT:   - Type:            CODE
 ; CHECK-NEXT:     Relocations:     
@@ -171,10 +171,10 @@ entry:
 ; CHECK-NEXT:   - Type:            DATA
 ; CHECK-NEXT:     Relocations:     
 ; CHECK-NEXT:       - Type:            R_WEBASSEMBLY_TABLE_INDEX_I32
-; CHECK-NEXT:         Index:           0
+; CHECK-NEXT:         Index:           1
 ; CHECK-NEXT:         Offset:          0x0000000F
 ; CHECK-NEXT:       - Type:            R_WEBASSEMBLY_TABLE_INDEX_I32
-; CHECK-NEXT:         Index:           1
+; CHECK-NEXT:         Index:           2
 ; CHECK-NEXT:         Offset:          0x00000018
 ; CHECK-NEXT:     Segments:        
 ; CHECK-NEXT:       - SectionOffset:   6
@@ -188,7 +188,7 @@ entry:
 ; CHECK-NEXT:         Offset:          
 ; CHECK-NEXT:           Opcode:          I32_CONST
 ; CHECK-NEXT:           Value:           8
-; CHECK-NEXT:         Content:         '00000000'
+; CHECK-NEXT:         Content:         '01000000'
 
 ; CHECK:        - Type:            CUSTOM
 ; CHECK-NEXT:     Name:            name
@@ -239,12 +239,6 @@ entry:
 ; CHECK-NEXT: ...
 
 ; CHECK-SYMS: SYMBOL TABLE:
-; CHECK-SYMS-NEXT: 00000000 g     F name	foo_alias
-; CHECK-SYMS-NEXT: 00000001 g     F name	foo
-; CHECK-SYMS-NEXT: 00000002 g     F name	call_direct
-; CHECK-SYMS-NEXT: 00000003 g     F name	call_alias
-; CHECK-SYMS-NEXT: 00000004 g     F name	call_direct_ptr
-; CHECK-SYMS-NEXT: 00000005 g     F name	call_alias_ptr
 ; CHECK-SYMS-NEXT: 00000001 gw    F EXPORT	.hidden foo_alias
 ; CHECK-SYMS-NEXT: 00000000 gw      EXPORT	.hidden bar_alias
 ; CHECK-SYMS-NEXT: 00000001 g     F EXPORT	.hidden foo

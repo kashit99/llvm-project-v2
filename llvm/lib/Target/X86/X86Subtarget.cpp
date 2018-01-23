@@ -322,6 +322,8 @@ void X86Subtarget::initializeEnvironment() {
   HasCLFLUSHOPT = false;
   HasCLWB = false;
   HasRDPID = false;
+  UseRetpoline = false;
+  UseRetpolineExternalThunk = false;
   IsPMULLDSlow = false;
   IsSHLDSlow = false;
   IsUAMem16Slow = false;
@@ -329,6 +331,8 @@ void X86Subtarget::initializeEnvironment() {
   HasSSEUnalignedMem = false;
   HasCmpxchg16b = false;
   UseLeaForSP = false;
+  HasPOPCNTFalseDeps = false;
+  HasLZCNTFalseDeps = false;
   HasFastVariableShuffle = false;
   HasFastPartialYMMorZMMWrite = false;
   HasFastGather = false;

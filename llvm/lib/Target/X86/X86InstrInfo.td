@@ -878,6 +878,7 @@ def HasSHSTK     : Predicate<"Subtarget->hasSHSTK()">;
 def HasIBT       : Predicate<"Subtarget->hasIBT()">;
 def HasCLFLUSHOPT : Predicate<"Subtarget->hasCLFLUSHOPT()">;
 def HasCLWB      : Predicate<"Subtarget->hasCLWB()">;
+def HasRDPID     : Predicate<"Subtarget->hasRDPID()">;
 def HasCmpxchg16b: Predicate<"Subtarget->hasCmpxchg16b()">;
 def Not64BitMode : Predicate<"!Subtarget->is64Bit()">,
                              AssemblerPredicate<"!Mode64Bit", "Not 64-bit mode">;
@@ -925,6 +926,8 @@ def HasFastLZCNT : Predicate<"Subtarget->hasFastLZCNT()">;
 def HasFastSHLDRotate : Predicate<"Subtarget->hasFastSHLDRotate()">;
 def HasERMSB : Predicate<"Subtarget->hasERMSB()">;
 def HasMFence    : Predicate<"Subtarget->hasMFence()">;
+def UseRetpoline : Predicate<"Subtarget->useRetpoline()">;
+def NotUseRetpoline : Predicate<"!Subtarget->useRetpoline()">;
 
 //===----------------------------------------------------------------------===//
 // X86 Instruction Format Definitions.
@@ -1649,18 +1652,18 @@ let isCodeGenOnly = 1 in {
 let hasSideEffects = 0 in
 def MOV8rr_NOREX : I<0x88, MRMDestReg,
                      (outs GR8_NOREX:$dst), (ins GR8_NOREX:$src),
-                     "mov{b}\t{$src, $dst|$dst, $src}  # NOREX", [], IIC_MOV>,
+                     "mov{b}\t{$src, $dst|$dst, $src}", [], IIC_MOV>,
                    Sched<[WriteMove]>;
 let mayStore = 1, hasSideEffects = 0 in
 def MOV8mr_NOREX : I<0x88, MRMDestMem,
                      (outs), (ins i8mem_NOREX:$dst, GR8_NOREX:$src),
-                     "mov{b}\t{$src, $dst|$dst, $src}  # NOREX", [],
+                     "mov{b}\t{$src, $dst|$dst, $src}", [],
                      IIC_MOV_MEM>, Sched<[WriteStore]>;
 let mayLoad = 1, hasSideEffects = 0,
     canFoldAsLoad = 1, isReMaterializable = 1 in
 def MOV8rm_NOREX : I<0x8A, MRMSrcMem,
                      (outs GR8_NOREX:$dst), (ins i8mem_NOREX:$src),
-                     "mov{b}\t{$src, $dst|$dst, $src}  # NOREX", [],
+                     "mov{b}\t{$src, $dst|$dst, $src}", [],
                      IIC_MOV_MEM>, Sched<[WriteLoad]>;
 }
 
@@ -1958,13 +1961,7 @@ def XCHG16ar : I<0x90, AddRegFrm, (outs), (ins GR16:$src),
 let Uses = [EAX], Defs = [EAX] in
 def XCHG32ar : I<0x90, AddRegFrm, (outs), (ins GR32:$src),
                   "xchg{l}\t{$src, %eax|eax, $src}", [], IIC_XCHG_REG>,
-                  OpSize32, Requires<[Not64BitMode]>;
-let Uses = [EAX], Defs = [EAX] in
-// Uses GR32_NOAX in 64-bit mode to prevent encoding using the 0x90 NOP encoding.
-// xchg %eax, %eax needs to clear upper 32-bits of RAX so is not a NOP.
-def XCHG32ar64 : I<0x90, AddRegFrm, (outs), (ins GR32_NOAX:$src),
-                   "xchg{l}\t{$src, %eax|eax, $src}", [], IIC_XCHG_REG>,
-                   OpSize32, Requires<[In64BitMode]>;
+                  OpSize32;
 let Uses = [RAX], Defs = [RAX] in
 def XCHG64ar : RI<0x90, AddRegFrm, (outs), (ins GR64:$src),
                   "xchg{q}\t{$src, %rax|rax, $src}", [], IIC_XCHG_REG>;
@@ -3304,11 +3301,18 @@ def : InstAlias<"xchg{q}\t{$mem, $val|$val, $mem}",
 
 // xchg: We accept "xchgX <reg>, %eax" and "xchgX %eax, <reg>" as synonyms.
 def : InstAlias<"xchg{w}\t{%ax, $src|$src, ax}", (XCHG16ar GR16:$src), 0>;
-def : InstAlias<"xchg{l}\t{%eax, $src|$src, eax}",
-                (XCHG32ar GR32:$src), 0>, Requires<[Not64BitMode]>;
-def : InstAlias<"xchg{l}\t{%eax, $src|$src, eax}",
-                (XCHG32ar64 GR32_NOAX:$src), 0>, Requires<[In64BitMode]>;
+def : InstAlias<"xchg{l}\t{%eax, $src|$src, eax}", (XCHG32ar GR32:$src), 0>;
 def : InstAlias<"xchg{q}\t{%rax, $src|$src, rax}", (XCHG64ar GR64:$src), 0>;
+
+// In 64-bit mode, xchg %eax, %eax can't be encoded with the 0x90 opcode we
+// would get by default because it's defined as NOP. But xchg %eax, %eax implies
+// implicit zeroing of the upper 32 bits. So alias to the longer encoding.
+def : InstAlias<"xchg{l}\t{%eax, %eax|eax, eax}",
+                (XCHG32rr EAX, EAX), 0>, Requires<[In64BitMode]>;
+
+// xchg %rax, %rax is a nop in x86-64 and can be encoded as such. Without this
+// we emit an unneeded REX.w prefix.
+def : InstAlias<"xchg{q}\t{%rax, %rax|rax, rax}", (NOOP), 0>;
 
 // These aliases exist to get the parser to prioritize matching 8-bit
 // immediate encodings over matching the implicit ax/eax/rax encodings. By

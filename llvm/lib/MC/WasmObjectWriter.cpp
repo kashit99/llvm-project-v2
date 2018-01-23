@@ -38,6 +38,10 @@ using namespace llvm;
 
 namespace {
 
+// Went we ceate the indirect function table we start at 1, so that there is
+// and emtpy slot at 0 and therefore calling a null function pointer will trap.
+static const uint32_t kInitialTableOffset = 1;
+
 // For patching purposes, we need to remember where each section starts, both
 // for patching up the section size field, and for patching up references to
 // locations within the section.
@@ -221,6 +225,7 @@ class WasmObjectWriter : public MCObjectWriter {
       FunctionTypeIndices;
   SmallVector<WasmFunctionType, 4> FunctionTypes;
   SmallVector<WasmGlobal, 4> Globals;
+  unsigned NumFunctionImports = 0;
   unsigned NumGlobalImports = 0;
 
   // TargetObjectWriter wrappers.
@@ -239,9 +244,9 @@ public:
       : MCObjectWriter(OS, /*IsLittleEndian=*/true),
         TargetObjectWriter(std::move(MOTW)) {}
 
-private:
   ~WasmObjectWriter() override;
 
+private:
   void reset() override {
     CodeRelocations.clear();
     DataRelocations.clear();
@@ -252,6 +257,7 @@ private:
     FunctionTypes.clear();
     Globals.clear();
     MCObjectWriter::reset();
+    NumFunctionImports = 0;
     NumGlobalImports = 0;
   }
 
@@ -286,8 +292,7 @@ private:
                         ArrayRef<WasmFunction> Functions);
   void writeDataSection(ArrayRef<WasmDataSegment> Segments);
   void writeNameSection(ArrayRef<WasmFunction> Functions,
-                        ArrayRef<WasmImport> Imports,
-                        uint32_t NumFuncImports);
+                        ArrayRef<WasmImport> Imports);
   void writeCodeRelocSection();
   void writeDataRelocSection();
   void writeLinkingMetaDataSection(
@@ -494,25 +499,44 @@ static const MCSymbolWasm* ResolveSymbol(const MCSymbolWasm& Symbol) {
 }
 
 // Compute a value to write into the code at the location covered
-// by RelEntry. This value isn't used by the static linker, since
-// we have addends; it just serves to make the code more readable
-// and to make standalone wasm modules directly usable.
+// by RelEntry. This value isn't used by the static linker; it just serves
+// to make the object format more readable and more likely to be directly
+// useable.
 uint32_t
 WasmObjectWriter::getProvisionalValue(const WasmRelocationEntry &RelEntry) {
-  const MCSymbolWasm *Sym = ResolveSymbol(*RelEntry.Symbol);
 
-  // For undefined symbols, use zero
-  if (!Sym->isDefined())
-    return 0;
+  switch (RelEntry.Type) {
+  case wasm::R_WEBASSEMBLY_TABLE_INDEX_SLEB:
+  case wasm::R_WEBASSEMBLY_TABLE_INDEX_I32:
+    // Provitional value is the indirect symbol index
+    if (!IndirectSymbolIndices.count(RelEntry.Symbol))
+      report_fatal_error("symbol not found in table index space: " +
+                         RelEntry.Symbol->getName());
+    return IndirectSymbolIndices[RelEntry.Symbol];
+  case wasm::R_WEBASSEMBLY_FUNCTION_INDEX_LEB:
+  case wasm::R_WEBASSEMBLY_TYPE_INDEX_LEB:
+  case wasm::R_WEBASSEMBLY_GLOBAL_INDEX_LEB:
+    // Provitional value is function/type/global index itself
+    return getRelocationIndexValue(RelEntry);
+  case wasm::R_WEBASSEMBLY_MEMORY_ADDR_LEB:
+  case wasm::R_WEBASSEMBLY_MEMORY_ADDR_I32:
+  case wasm::R_WEBASSEMBLY_MEMORY_ADDR_SLEB: {
+    // Provitional value is address of the global
+    const MCSymbolWasm *Sym = ResolveSymbol(*RelEntry.Symbol);
+    // For undefined symbols, use zero
+    if (!Sym->isDefined())
+      return 0;
 
-  uint32_t GlobalIndex = SymbolIndices[Sym];
-  const WasmGlobal& Global = Globals[GlobalIndex - NumGlobalImports];
-  uint64_t Address = Global.InitialValue + RelEntry.Addend;
+    uint32_t GlobalIndex = SymbolIndices[Sym];
+    const WasmGlobal& Global = Globals[GlobalIndex - NumGlobalImports];
+    uint64_t Address = Global.InitialValue + RelEntry.Addend;
 
-  // Ignore overflow. LLVM allows address arithmetic to silently wrap.
-  uint32_t Value = Address;
-
-  return Value;
+    // Ignore overflow. LLVM allows address arithmetic to silently wrap.
+    return Address;
+  }
+  default:
+    llvm_unreachable("invalid relocation type");
+  }
 }
 
 static void addData(SmallVectorImpl<char> &DataBytes,
@@ -559,32 +583,19 @@ static void addData(SmallVectorImpl<char> &DataBytes,
   DEBUG(dbgs() << "addData -> " << DataBytes.size() << "\n");
 }
 
-uint32_t WasmObjectWriter::getRelocationIndexValue(
-    const WasmRelocationEntry &RelEntry) {
-  switch (RelEntry.Type) {
-  case wasm::R_WEBASSEMBLY_TABLE_INDEX_SLEB:
-  case wasm::R_WEBASSEMBLY_TABLE_INDEX_I32:
-    if (!IndirectSymbolIndices.count(RelEntry.Symbol))
-      report_fatal_error("symbol not found in table index space: " +
-                         RelEntry.Symbol->getName());
-    return IndirectSymbolIndices[RelEntry.Symbol];
-  case wasm::R_WEBASSEMBLY_FUNCTION_INDEX_LEB:
-  case wasm::R_WEBASSEMBLY_GLOBAL_INDEX_LEB:
-  case wasm::R_WEBASSEMBLY_MEMORY_ADDR_LEB:
-  case wasm::R_WEBASSEMBLY_MEMORY_ADDR_SLEB:
-  case wasm::R_WEBASSEMBLY_MEMORY_ADDR_I32:
-    if (!SymbolIndices.count(RelEntry.Symbol))
-      report_fatal_error("symbol not found in function/global index space: " +
-                         RelEntry.Symbol->getName());
-    return SymbolIndices[RelEntry.Symbol];
-  case wasm::R_WEBASSEMBLY_TYPE_INDEX_LEB:
+uint32_t
+WasmObjectWriter::getRelocationIndexValue(const WasmRelocationEntry &RelEntry) {
+  if (RelEntry.Type == wasm::R_WEBASSEMBLY_TYPE_INDEX_LEB) {
     if (!TypeIndices.count(RelEntry.Symbol))
       report_fatal_error("symbol not found in type index space: " +
                          RelEntry.Symbol->getName());
     return TypeIndices[RelEntry.Symbol];
-  default:
-    llvm_unreachable("invalid relocation type");
   }
+
+  if (!SymbolIndices.count(RelEntry.Symbol))
+    report_fatal_error("symbol not found in function/global index space: " +
+                       RelEntry.Symbol->getName());
+  return SymbolIndices[RelEntry.Symbol];
 }
 
 // Apply the portions of the relocation records that we can handle ourselves
@@ -598,35 +609,23 @@ void WasmObjectWriter::applyRelocations(
                       RelEntry.Offset;
 
     DEBUG(dbgs() << "applyRelocation: " << RelEntry << "\n");
+    uint32_t Value = getProvisionalValue(RelEntry);
+
     switch (RelEntry.Type) {
-    case wasm::R_WEBASSEMBLY_TABLE_INDEX_SLEB:
     case wasm::R_WEBASSEMBLY_FUNCTION_INDEX_LEB:
     case wasm::R_WEBASSEMBLY_TYPE_INDEX_LEB:
-    case wasm::R_WEBASSEMBLY_GLOBAL_INDEX_LEB: {
-      uint32_t Index = getRelocationIndexValue(RelEntry);
-      WritePatchableSLEB(Stream, Index, Offset);
-      break;
-    }
-    case wasm::R_WEBASSEMBLY_TABLE_INDEX_I32: {
-      uint32_t Index = getRelocationIndexValue(RelEntry);
-      WriteI32(Stream, Index, Offset);
-      break;
-    }
-    case wasm::R_WEBASSEMBLY_MEMORY_ADDR_SLEB: {
-      uint32_t Value = getProvisionalValue(RelEntry);
-      WritePatchableSLEB(Stream, Value, Offset);
-      break;
-    }
-    case wasm::R_WEBASSEMBLY_MEMORY_ADDR_LEB: {
-      uint32_t Value = getProvisionalValue(RelEntry);
+    case wasm::R_WEBASSEMBLY_GLOBAL_INDEX_LEB:
+    case wasm::R_WEBASSEMBLY_MEMORY_ADDR_LEB:
       WritePatchableLEB(Stream, Value, Offset);
       break;
-    }
-    case wasm::R_WEBASSEMBLY_MEMORY_ADDR_I32: {
-      uint32_t Value = getProvisionalValue(RelEntry);
+    case wasm::R_WEBASSEMBLY_TABLE_INDEX_I32:
+    case wasm::R_WEBASSEMBLY_MEMORY_ADDR_I32:
       WriteI32(Stream, Value, Offset);
       break;
-    }
+    case wasm::R_WEBASSEMBLY_TABLE_INDEX_SLEB:
+    case wasm::R_WEBASSEMBLY_MEMORY_ADDR_SLEB:
+      WritePatchableSLEB(Stream, Value, Offset);
+      break;
     default:
       llvm_unreachable("invalid relocation type");
     }
@@ -788,7 +787,7 @@ void WasmObjectWriter::writeElemSection(ArrayRef<uint32_t> TableElems) {
 
   // init expr for starting offset
   write8(wasm::WASM_OPCODE_I32_CONST);
-  encodeSLEB128(0, getStream());
+  encodeSLEB128(kInitialTableOffset, getStream());
   write8(wasm::WASM_OPCODE_END);
 
   encodeULEB128(TableElems.size(), getStream());
@@ -852,11 +851,9 @@ void WasmObjectWriter::writeDataSection(ArrayRef<WasmDataSegment> Segments) {
   endSection(Section);
 }
 
-void WasmObjectWriter::writeNameSection(
-    ArrayRef<WasmFunction> Functions,
-    ArrayRef<WasmImport> Imports,
-    unsigned NumFuncImports) {
-  uint32_t TotalFunctions = NumFuncImports + Functions.size();
+void WasmObjectWriter::writeNameSection(ArrayRef<WasmFunction> Functions,
+                                        ArrayRef<WasmImport> Imports) {
+  uint32_t TotalFunctions = NumFunctionImports + Functions.size();
   if (TotalFunctions == 0)
     return;
 
@@ -1023,7 +1020,6 @@ void WasmObjectWriter::writeObject(MCAssembler &Asm,
   SmallVector<std::pair<StringRef, uint32_t>, 4> SymbolFlags;
   SmallVector<std::pair<uint16_t, uint32_t>, 2> InitFuncs;
   std::map<StringRef, std::vector<WasmComdatEntry>> Comdats;
-  unsigned NumFuncImports = 0;
   SmallVector<WasmDataSegment, 4> DataSegments;
   uint32_t DataSize = 0;
 
@@ -1113,8 +1109,7 @@ void WasmObjectWriter::writeObject(MCAssembler &Asm,
     const auto &WS = static_cast<const MCSymbolWasm &>(S);
 
     // Register types for all functions, including those with private linkage
-    // (making them
-    // because wasm always needs a type signature.
+    // (because wasm always needs a type signature).
     if (WS.isFunction())
       registerFunctionType(WS);
 
@@ -1131,8 +1126,8 @@ void WasmObjectWriter::writeObject(MCAssembler &Asm,
       if (WS.isFunction()) {
         Import.Kind = wasm::WASM_EXTERNAL_FUNCTION;
         Import.Type = getFunctionType(WS);
-        SymbolIndices[&WS] = NumFuncImports;
-        ++NumFuncImports;
+        SymbolIndices[&WS] = NumFunctionImports;
+        ++NumFunctionImports;
       } else {
         Import.Kind = wasm::WASM_EXTERNAL_GLOBAL;
         Import.Type = int32_t(PtrType);
@@ -1216,7 +1211,7 @@ void WasmObjectWriter::writeObject(MCAssembler &Asm,
               "function symbols must have a size set with .size");
 
         // A definition. Take the next available index.
-        Index = NumFuncImports + Functions.size();
+        Index = NumFunctionImports + Functions.size();
 
         // Prepare the function.
         WasmFunction Func;
@@ -1329,7 +1324,7 @@ void WasmObjectWriter::writeObject(MCAssembler &Asm,
         case wasm::R_WEBASSEMBLY_MEMORY_ADDR_I32:
         case wasm::R_WEBASSEMBLY_MEMORY_ADDR_SLEB: {
           uint32_t Index = SymbolIndices.find(&WS)->second;
-          IndirectSymbolIndices[&WS] = TableElems.size();
+          IndirectSymbolIndices[&WS] = TableElems.size() + kInitialTableOffset;
           DEBUG(dbgs() << "  -> adding to table: " << TableElems.size() << "\n");
           TableElems.push_back(Index);
           registerFunctionType(WS);
@@ -1410,7 +1405,7 @@ void WasmObjectWriter::writeObject(MCAssembler &Asm,
   writeElemSection(TableElems);
   writeCodeSection(Asm, Layout, Functions);
   writeDataSection(DataSegments);
-  writeNameSection(Functions, Imports, NumFuncImports);
+  writeNameSection(Functions, Imports);
   writeCodeRelocSection();
   writeDataRelocSection();
   writeLinkingMetaDataSection(DataSegments, DataSize, SymbolFlags,
@@ -1423,8 +1418,5 @@ void WasmObjectWriter::writeObject(MCAssembler &Asm,
 std::unique_ptr<MCObjectWriter>
 llvm::createWasmObjectWriter(std::unique_ptr<MCWasmObjectTargetWriter> MOTW,
                              raw_pwrite_stream &OS) {
-  // FIXME: Can't use make_unique<WasmObjectWriter>(...) as WasmObjectWriter's
-  //        destructor is private. Is that necessary?
-  return std::unique_ptr<MCObjectWriter>(
-      new WasmObjectWriter(std::move(MOTW), OS));
+  return llvm::make_unique<WasmObjectWriter>(std::move(MOTW), OS);
 }

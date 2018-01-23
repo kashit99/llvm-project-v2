@@ -29,7 +29,7 @@ declare void @f1(i32) #1
 ; CHECK-NEXT:     Segments:
 ; CHECK-NEXT:       - Offset:
 ; CHECK-NEXT:           Opcode:          I32_CONST
-; CHECK-NEXT:           Value:           0
+; CHECK-NEXT:           Value:           1
 ; CHECK-NEXT:         Functions:       [ 0 ]
 ; CHECK:        - Type:            DATA
 ; CHECK-NEXT:     Relocations:

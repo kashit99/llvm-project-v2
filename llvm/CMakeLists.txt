@@ -17,6 +17,11 @@ cmake_policy(SET CMP0056 NEW)
 
 cmake_policy(SET CMP0057 NEW)
 
+if(POLICY CMP0068)
+  cmake_policy(SET CMP0068 NEW)
+  set(CMAKE_BUILD_WITH_INSTALL_NAME_DIR ON)
+endif()
+
 if(NOT DEFINED LLVM_VERSION_MAJOR)
   set(LLVM_VERSION_MAJOR 7)
 endif()
@@ -202,7 +207,7 @@ option(LLVM_APPEND_VC_REV
 
 set(PACKAGE_NAME LLVM)
 set(PACKAGE_STRING "${PACKAGE_NAME} ${PACKAGE_VERSION}")
-set(PACKAGE_BUGREPORT "http://llvm.org/bugs/")
+set(PACKAGE_BUGREPORT "https://bugs.llvm.org/")
 
 set(BUG_REPORT_URL "${PACKAGE_BUGREPORT}" CACHE STRING
   "Default URL where bug reports are to be submitted.")

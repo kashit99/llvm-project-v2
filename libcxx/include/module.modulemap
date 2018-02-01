@@ -493,10 +493,6 @@ module std [system] {
       header "experimental/algorithm"
       export *
     }
-    module any {
-      header "experimental/any"
-      export *
-    }
     module chrono {
       header "experimental/chrono"
       export *
@@ -544,10 +540,6 @@ module std [system] {
     }
     module numeric {
       header "experimental/numeric"
-      export *
-    }
-    module optional {
-      header "experimental/optional"
       export *
     }
     module propagate_const {

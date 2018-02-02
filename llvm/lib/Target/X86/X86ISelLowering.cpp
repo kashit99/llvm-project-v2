@@ -16997,8 +16997,16 @@ static SDValue LowerFGETSIGN(SDValue Op, SelectionDAG &DAG) {
   return Res;
 }
 
+/// Helper for creating a X86ISD::SETCC node.
+static SDValue getSETCC(X86::CondCode Cond, SDValue EFLAGS, const SDLoc &dl,
+                        SelectionDAG &DAG) {
+  return DAG.getNode(X86ISD::SETCC, dl, MVT::i8,
+                     DAG.getConstant(Cond, dl, MVT::i8), EFLAGS);
+}
+
 // Check whether an OR'd tree is PTEST-able.
-static SDValue LowerVectorAllZeroTest(SDValue Op, const X86Subtarget &Subtarget,
+static SDValue LowerVectorAllZeroTest(SDValue Op, ISD::CondCode CC,
+                                      const X86Subtarget &Subtarget,
                                       SelectionDAG &DAG) {
   assert(Op.getOpcode() == ISD::OR && "Only check OR'd tree.");
 
@@ -17085,7 +17093,9 @@ static SDValue LowerVectorAllZeroTest(SDValue Op, const X86Subtarget &Subtarget,
     VecIns.push_back(DAG.getNode(ISD::OR, DL, TestVT, LHS, RHS));
   }
 
-  return DAG.getNode(X86ISD::PTEST, DL, MVT::i32, VecIns.back(), VecIns.back());
+  SDValue Res = DAG.getNode(X86ISD::PTEST, DL, MVT::i32,
+                            VecIns.back(), VecIns.back());
+  return getSETCC(CC == ISD::SETEQ ? X86::COND_E : X86::COND_NE, Res, DL, DAG);
 }
 
 /// \brief return true if \c Op has a use that doesn't just read flags.
@@ -17345,14 +17355,7 @@ SDValue X86TargetLowering::EmitTest(SDValue Op, unsigned X86CC, const SDLoc &dl,
     case ISD::SUB: Opcode = X86ISD::SUB; break;
     case ISD::XOR: Opcode = X86ISD::XOR; break;
     case ISD::AND: Opcode = X86ISD::AND; break;
-    case ISD::OR: {
-      if (!NeedTruncation && ZeroCheck) {
-        if (SDValue EFLAGS = LowerVectorAllZeroTest(Op, Subtarget, DAG))
-          return EFLAGS;
-      }
-      Opcode = X86ISD::OR;
-      break;
-    }
+    case ISD::OR:  Opcode = X86ISD::OR;  break;
     }
 
     NumOperands = 2;
@@ -17559,13 +17562,6 @@ SDValue X86TargetLowering::getRecipEstimate(SDValue Op, SelectionDAG &DAG,
 /// original divisions.
 unsigned X86TargetLowering::combineRepeatedFPDivisors() const {
   return 2;
-}
-
-/// Helper for creating a X86ISD::SETCC node.
-static SDValue getSETCC(X86::CondCode Cond, SDValue EFLAGS, const SDLoc &dl,
-                        SelectionDAG &DAG) {
-  return DAG.getNode(X86ISD::SETCC, dl, MVT::i8,
-                     DAG.getConstant(Cond, dl, MVT::i8), EFLAGS);
 }
 
 /// Create a BT (Bit Test) node - Test bit \p BitNo in \p Src and set condition
@@ -18177,6 +18173,14 @@ SDValue X86TargetLowering::LowerSETCC(SDValue Op, SelectionDAG &DAG) const {
   if (Op0.getOpcode() == ISD::AND && Op0.hasOneUse() && isNullConstant(Op1) &&
       (CC == ISD::SETEQ || CC == ISD::SETNE)) {
     if (SDValue NewSetCC = LowerAndToBT(Op0, CC, dl, DAG))
+      return NewSetCC;
+  }
+
+  // Try to use PTEST for a tree ORs equality compared with 0.
+  // TODO: We could do AND tree with all 1s as well by using the C flag.
+  if (Op0.getOpcode() == ISD::OR && isNullConstant(Op1) &&
+      (CC == ISD::SETEQ || CC == ISD::SETNE)) {
+    if (SDValue NewSetCC = LowerVectorAllZeroTest(Op0, CC, Subtarget, DAG))
       return NewSetCC;
   }
 
@@ -23598,6 +23602,22 @@ static SDValue LowerBITCAST(SDValue Op, const X86Subtarget &Subtarget,
   MVT SrcVT = Op.getOperand(0).getSimpleValueType();
   MVT DstVT = Op.getSimpleValueType();
 
+  // Legalize (v64i1 (bitcast i64 (X))) by splitting the i64, bitcasting each
+  // half to v32i1 and concatenating the result.
+  if (SrcVT == MVT::i64 && DstVT == MVT::v64i1) {
+    assert(!Subtarget.is64Bit() && "Expected 32-bit mode");
+    assert(Subtarget.hasBWI() && "Expected BWI target");
+    SDValue Op0 = Op->getOperand(0);
+    SDLoc dl(Op);
+    SDValue Lo = DAG.getNode(ISD::EXTRACT_ELEMENT, dl, MVT::i32, Op0,
+                             DAG.getIntPtrConstant(0, dl));
+    Lo = DAG.getBitcast(MVT::v32i1, Lo);
+    SDValue Hi = DAG.getNode(ISD::EXTRACT_ELEMENT, dl, MVT::i32, Op0,
+                             DAG.getIntPtrConstant(1, dl));
+    Hi = DAG.getBitcast(MVT::v32i1, Hi);
+    return DAG.getNode(ISD::CONCAT_VECTORS, dl, MVT::v64i1, Lo, Hi);
+  }
+
   if (SrcVT == MVT::v2i32 || SrcVT == MVT::v4i16 || SrcVT == MVT::v8i8 ||
       SrcVT == MVT::i64) {
     assert(Subtarget.hasSSE2() && "Requires at least SSE2!");
@@ -24948,6 +24968,23 @@ void X86TargetLowering::ReplaceNodeResults(SDNode *N,
     assert(Subtarget.hasSSE2() && "Requires at least SSE2!");
     EVT DstVT = N->getValueType(0);
     EVT SrcVT = N->getOperand(0).getValueType();
+
+    // If this is a bitcast from a v64i1 k-register to a i64 on a 32-bit target
+    // we can split using the k-register rather than memory.
+    if (SrcVT == MVT::v64i1 && DstVT == MVT::i64 && Subtarget.hasBWI()) {
+      assert(!Subtarget.is64Bit() && "Expected 32-bit mode");
+      SDValue Lo = DAG.getNode(ISD::EXTRACT_SUBVECTOR, dl, MVT::v32i1,
+                               N->getOperand(0),
+                               DAG.getIntPtrConstant(0, dl));
+      Lo = DAG.getBitcast(MVT::i32, Lo);
+      SDValue Hi = DAG.getNode(ISD::EXTRACT_SUBVECTOR, dl, MVT::v32i1,
+                               N->getOperand(0),
+                               DAG.getIntPtrConstant(32, dl));
+      Hi = DAG.getBitcast(MVT::i32, Hi);
+      SDValue Res = DAG.getNode(ISD::BUILD_PAIR, dl, MVT::i64, Lo, Hi);
+      Results.push_back(Res);
+      return;
+    }
 
     if (SrcVT != MVT::f64 ||
         (DstVT != MVT::v2i32 && DstVT != MVT::v4i16 && DstVT != MVT::v8i8))

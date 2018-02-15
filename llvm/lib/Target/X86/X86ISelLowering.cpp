@@ -34212,7 +34212,9 @@ static SDValue detectAVX512USatPattern(SDValue In, EVT VT,
 static SDValue combineTruncateWithSat(SDValue In, EVT VT, const SDLoc &DL,
                                       SelectionDAG &DAG,
                                       const X86Subtarget &Subtarget) {
+  EVT SVT = VT.getScalarType();
   EVT InVT = In.getValueType();
+  EVT InSVT = InVT.getScalarType();
   const TargetLowering &TLI = DAG.getTargetLoweringInfo();
   if (TLI.isTypeLegal(InVT) && TLI.isTypeLegal(VT) &&
       isSATValidOnAVX512Subtarget(InVT, VT, Subtarget)) {
@@ -34222,15 +34224,25 @@ static SDValue combineTruncateWithSat(SDValue In, EVT VT, const SDLoc &DL,
       return DAG.getNode(X86ISD::VTRUNCUS, DL, VT, USatVal);
   }
   if (VT.isVector() && isPowerOf2_32(VT.getVectorNumElements()) &&
-      ((VT.getScalarType() == MVT::i8 && InVT.getScalarType() == MVT::i16) ||
-       (VT.getScalarType() == MVT::i16 && InVT.getScalarType() == MVT::i32))) {
+      (SVT == MVT::i8 || SVT == MVT::i16) &&
+      (InSVT == MVT::i16 || InSVT == MVT::i32)) {
     if (auto SSatVal = detectSSatPattern(In, VT))
       return truncateVectorWithPACK(X86ISD::PACKSS, VT, SSatVal, DL, DAG,
                                     Subtarget);
-    if (Subtarget.hasSSE41() || VT.getScalarType() == MVT::i8)
-      if (auto USatVal = detectSSatPattern(In, VT, true))
+    if (auto USatVal = detectSSatPattern(In, VT, true)) {
+      // vXi32 -> vXi8 must be performed as PACKUSWB(PACKSSDW,PACKSSDW).
+      if (SVT == MVT::i8 && InSVT == MVT::i32) {
+        EVT MidVT = EVT::getVectorVT(*DAG.getContext(), MVT::i16,
+                                     VT.getVectorNumElements());
+        SDValue Mid = truncateVectorWithPACK(X86ISD::PACKSS, MidVT, USatVal, DL,
+                                             DAG, Subtarget);
+        if (Mid)
+          return truncateVectorWithPACK(X86ISD::PACKUS, VT, Mid, DL, DAG,
+                                        Subtarget);
+      } else if (SVT == MVT::i8 || Subtarget.hasSSE41())
         return truncateVectorWithPACK(X86ISD::PACKUS, VT, USatVal, DL, DAG,
                                       Subtarget);
+    }
   }
   return SDValue();
 }

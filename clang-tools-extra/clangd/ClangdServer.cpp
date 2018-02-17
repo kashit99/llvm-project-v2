@@ -9,6 +9,7 @@
 
 #include "ClangdServer.h"
 #include "CodeComplete.h"
+#include "Headers.h"
 #include "SourceCode.h"
 #include "XRefs.h"
 #include "index/Merge.h"
@@ -310,6 +311,47 @@ void ClangdServer::rename(
       BindWithForward(Action, File.str(), NewName.str(), std::move(Callback)));
 }
 
+Expected<tooling::Replacements>
+ClangdServer::insertInclude(PathRef File, StringRef Code,
+                            llvm::StringRef Header) {
+  std::string ToInclude;
+  if (Header.startswith("<") || Header.startswith("\"")) {
+    ToInclude = Header;
+  } else {
+    auto U = URI::parse(Header);
+    if (!U)
+      return U.takeError();
+    auto Resolved = URI::resolve(*U, /*HintPath=*/File);
+    if (!Resolved)
+      return Resolved.takeError();
+
+    auto FS = FSProvider.getTaggedFileSystem(File).Value;
+    tooling::CompileCommand CompileCommand =
+        CompileArgs.getCompileCommand(File);
+    FS->setCurrentWorkingDirectory(CompileCommand.Directory);
+
+    auto Include =
+        shortenIncludePath(File, Code, *Resolved, CompileCommand, FS);
+    if (!Include)
+      return Include.takeError();
+    if (Include->empty())
+      return tooling::Replacements();
+    ToInclude = std::move(*Include);
+  }
+
+  auto Style = format::getStyle("file", File, "llvm");
+  if (!Style) {
+    llvm::consumeError(Style.takeError());
+    // FIXME(ioeric): needs more consistent style support in clangd server.
+    Style = format::getLLVMStyle();
+  }
+  // Replacement with offset UINT_MAX and length 0 will be treated as include
+  // insertion.
+  tooling::Replacement R(File, /*Offset=*/UINT_MAX, 0, "#include " + ToInclude);
+  return format::cleanupAroundReplacements(Code, tooling::Replacements(R),
+                                           *Style);
+}
+
 llvm::Optional<std::string> ClangdServer::getDocument(PathRef File) {
   auto Latest = DraftMgr.getDraft(File);
   if (!Latest.Draft)
@@ -443,6 +485,29 @@ void ClangdServer::findDocumentHighlights(
     if (!InpAST)
       return Callback(InpAST.takeError());
     auto Result = clangd::findDocumentHighlights(InpAST->AST, Pos);
+    Callback(make_tagged(std::move(Result), TaggedFS.Tag));
+  };
+
+  WorkScheduler.runWithAST(File, BindWithForward(Action, std::move(Callback)));
+}
+
+void ClangdServer::findHover(
+    PathRef File, Position Pos,
+    UniqueFunction<void(llvm::Expected<Tagged<Hover>>)> Callback) {
+  Hover FinalHover;
+  auto FileContents = DraftMgr.getDraft(File);
+  if (!FileContents.Draft)
+    return Callback(llvm::make_error<llvm::StringError>(
+        "findHover called on non-added file", llvm::errc::invalid_argument));
+
+  auto TaggedFS = FSProvider.getTaggedFileSystem(File);
+
+  auto Action = [Pos, TaggedFS](decltype(Callback) Callback,
+                                llvm::Expected<InputsAndAST> InpAST) {
+    if (!InpAST)
+      return Callback(InpAST.takeError());
+
+    Hover Result = clangd::getHover(InpAST->AST, Pos);
     Callback(make_tagged(std::move(Result), TaggedFS.Tag));
   };
 

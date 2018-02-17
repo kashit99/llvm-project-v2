@@ -212,6 +212,10 @@ public:
           void(llvm::Expected<Tagged<std::vector<DocumentHighlight>>>)>
           Callback);
 
+  /// Get code hover for a given position.
+  void findHover(PathRef File, Position Pos,
+                 UniqueFunction<void(llvm::Expected<Tagged<Hover>>)> Callback);
+
   /// Run formatting for \p Rng inside \p File with content \p Code.
   llvm::Expected<tooling::Replacements> formatRange(StringRef Code,
                                                     PathRef File, Range Rng);
@@ -230,6 +234,13 @@ public:
   void rename(PathRef File, Position Pos, llvm::StringRef NewName,
               UniqueFunction<void(Expected<std::vector<tooling::Replacement>>)>
                   Callback);
+
+  /// Inserts a new #include of \p Header into \p File, if it's not present.
+  /// \p Header is either an URI that can be resolved to an #include path that
+  /// is suitable to be inserted or a literal string quoted with <> or "" that
+  /// can be #included directly.
+  Expected<tooling::Replacements> insertInclude(PathRef File, StringRef Code,
+                                                StringRef Header);
 
   /// Gets current document contents for \p File. Returns None if \p File is not
   /// currently tracked.

@@ -1411,6 +1411,40 @@ bool TargetLowering::SimplifyDemandedVectorElts(
     KnownZero.insertBits(SubZero, SubIdx);
     break;
   }
+  case ISD::INSERT_VECTOR_ELT: {
+    SDValue Vec = Op.getOperand(0);
+    SDValue Scl = Op.getOperand(1);
+    auto *CIdx = dyn_cast<ConstantSDNode>(Op.getOperand(2));
+
+    // For a legal, constant insertion index, if we don't need this insertion
+    // then strip it, else remove it from the demanded elts.
+    if (CIdx && CIdx->getAPIntValue().ult(NumElts)) {
+      unsigned Idx = CIdx->getZExtValue();
+      if (!DemandedElts[Idx])
+        return TLO.CombineTo(Op, Vec);
+      DemandedElts.clearBit(Idx);
+
+      if (SimplifyDemandedVectorElts(Vec, DemandedElts, KnownUndef,
+                                     KnownZero, TLO, Depth + 1))
+        return true;
+
+      KnownUndef.clearBit(Idx);
+      if (Scl.isUndef())
+        KnownUndef.setBit(Idx);
+
+      KnownZero.clearBit(Idx);
+      if (isNullConstant(Scl) || isNullFPConstant(Scl))
+        KnownZero.setBit(Idx);
+      break;
+    }
+
+    APInt VecUndef, VecZero;
+    if (SimplifyDemandedVectorElts(Vec, DemandedElts, VecUndef, VecZero, TLO,
+                                   Depth + 1))
+      return true;
+    // Without knowing the insertion index we can't set KnownUndef/KnownZero.
+    break;
+  }
   case ISD::VSELECT: {
     APInt DemandedLHS(DemandedElts);
     APInt DemandedRHS(DemandedElts);
@@ -1457,6 +1491,31 @@ bool TargetLowering::SimplifyDemandedVectorElts(
     if (SimplifyDemandedVectorElts(Op.getOperand(1), DemandedRHS, UndefRHS,
                                    ZeroRHS, TLO, Depth + 1))
       return true;
+
+    // Simplify mask using undef elements from LHS/RHS.
+    bool Updated = false;
+    bool IdentityLHS = true, IdentityRHS = true;
+    SmallVector<int, 32> NewMask(ShuffleMask.begin(), ShuffleMask.end());
+    for (unsigned i = 0; i != NumElts; ++i) {
+      int &M = NewMask[i];
+      if (M < 0)
+        continue;
+      if (!DemandedElts[i] || (M < (int)NumElts && UndefLHS[M]) ||
+          (M >= (int)NumElts && UndefRHS[M - NumElts])) {
+        Updated = true;
+        M = -1;
+      }
+      IdentityLHS &= (M < 0) || (M == (int)i);
+      IdentityRHS &= (M < 0) || ((M - NumElts) == i);
+    }
+
+    // Update legal shuffle masks based on demanded elements if it won't reduce
+    // to Identity which can cause premature removal of the shuffle mask.
+    if (Updated && !IdentityLHS && !IdentityRHS && !TLO.LegalOps &&
+        isShuffleMaskLegal(NewMask, VT))
+      return TLO.CombineTo(Op,
+                           TLO.DAG.getVectorShuffle(VT, DL, Op.getOperand(0),
+                                                    Op.getOperand(1), NewMask));
 
     // Propagate undef/zero elements from LHS/RHS.
     for (unsigned i = 0; i != NumElts; ++i) {

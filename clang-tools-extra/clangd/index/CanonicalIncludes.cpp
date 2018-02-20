@@ -18,7 +18,8 @@ const char IWYUPragma[] = "// IWYU pragma: private, include ";
 
 void CanonicalIncludes::addMapping(llvm::StringRef Path,
                                    llvm::StringRef CanonicalPath) {
-  addRegexMapping((llvm::Twine("^") + Path + "$").str(), CanonicalPath);
+  addRegexMapping((llvm::Twine("^") + llvm::Regex::escape(Path) + "$").str(),
+                  CanonicalPath);
 }
 
 void CanonicalIncludes::addRegexMapping(llvm::StringRef RE,
@@ -27,6 +28,7 @@ void CanonicalIncludes::addRegexMapping(llvm::StringRef RE,
 }
 
 llvm::StringRef CanonicalIncludes::mapHeader(llvm::StringRef Header) const {
+  std::lock_guard<std::mutex> Lock(RegexMutex);
   for (auto &Entry : RegexHeaderMappingTable) {
 #ifndef NDEBUG
     std::string Dummy;

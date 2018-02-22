@@ -757,48 +757,52 @@ public:
   const_gvsummary_iterator end() const { return GlobalValueMap.end(); }
   size_t size() const { return GlobalValueMap.size(); }
 
+  /// Convenience function for doing a DFS on a ValueInfo. Marks the function in
+  /// the FunctionHasParent map.
+  static void discoverNodes(ValueInfo V,
+                            std::map<ValueInfo, bool> &FunctionHasParent) {
+    if (!V.getSummaryList().size())
+      return; // skip external functions that don't have summaries
+
+    // Mark discovered if we haven't yet
+    auto S = FunctionHasParent.emplace(V, false);
+
+    // Stop if we've already discovered this node
+    if (!S.second)
+      return;
+
+    FunctionSummary *F =
+        dyn_cast<FunctionSummary>(V.getSummaryList().front().get());
+    assert(F != nullptr && "Expected FunctionSummary node");
+
+    for (auto &C : F->calls()) {
+      // Insert node if necessary
+      auto S = FunctionHasParent.emplace(C.first, true);
+
+      // Skip nodes that we're sure have parents
+      if (!S.second && S.first->second)
+        continue;
+
+      if (S.second)
+        discoverNodes(C.first, FunctionHasParent);
+      else
+        S.first->second = true;
+    }
+  }
+
   // Calculate the callgraph root
   FunctionSummary calculateCallGraphRoot() {
     // Functions that have a parent will be marked in FunctionHasParent pair.
     // Once we've marked all functions, the functions in the map that are false
     // have no parent (so they're the roots)
     std::map<ValueInfo, bool> FunctionHasParent;
-    function_ref<void(ValueInfo)> discoverNodes = [&](ValueInfo V) {
-      if (!V.getSummaryList().size())
-        return; // skip external functions that don't have summaries
-
-      // Mark discovered if we haven't yet
-      auto S = FunctionHasParent.emplace(V, false);
-
-      // Stop if we've already discovered this node
-      if (!S.second)
-        return;
-
-      FunctionSummary *F =
-          dyn_cast<FunctionSummary>(V.getSummaryList().front().get());
-      assert(F != nullptr && "Expected FunctionSummary node");
-
-      for (auto &C : F->calls()) {
-        // Insert node if necessary
-        auto S = FunctionHasParent.emplace(C.first, true);
-
-        // Skip nodes that we're sure have parents
-        if (!S.second && S.first->second)
-          continue;
-
-        if (S.second)
-          discoverNodes(C.first);
-        else
-          S.first->second = true;
-      }
-    };
 
     for (auto &S : *this) {
       // Skip external functions
       if (!S.second.SummaryList.size() ||
           !isa<FunctionSummary>(S.second.SummaryList.front().get()))
         continue;
-      discoverNodes(ValueInfo(IsAnalysis, &S));
+      discoverNodes(ValueInfo(IsAnalysis, &S), FunctionHasParent);
     }
 
     std::vector<FunctionSummary::EdgeTy> Edges;

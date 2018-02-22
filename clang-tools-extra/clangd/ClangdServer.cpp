@@ -179,9 +179,10 @@ void ClangdServer::codeComplete(
     Callback(make_tagged(std::move(Result), std::move(TaggedFS.Tag)));
   };
 
-  WorkScheduler.runWithPreamble(File, BindWithForward(Task, std::move(Contents),
-                                                      File.str(),
-                                                      std::move(Callback)));
+  WorkScheduler.runWithPreamble("CodeComplete", File,
+                                BindWithForward(Task, std::move(Contents),
+                                                File.str(),
+                                                std::move(Callback)));
 }
 
 void ClangdServer::signatureHelp(
@@ -222,7 +223,8 @@ void ClangdServer::signatureHelp(
   };
 
   WorkScheduler.runWithPreamble(
-      File, BindWithForward(Action, File.str(), std::move(Callback)));
+      "SignatureHelp", File,
+      BindWithForward(Action, File.str(), std::move(Callback)));
 }
 
 llvm::Expected<tooling::Replacements>
@@ -307,7 +309,7 @@ void ClangdServer::rename(
   };
 
   WorkScheduler.runWithAST(
-      File,
+      "Rename", File,
       BindWithForward(Action, File.str(), NewName.str(), std::move(Callback)));
 }
 
@@ -325,13 +327,11 @@ ClangdServer::insertInclude(PathRef File, StringRef Code,
     if (!Resolved)
       return Resolved.takeError();
 
-    auto FS = FSProvider.getTaggedFileSystem(File).Value;
     tooling::CompileCommand CompileCommand =
         CompileArgs.getCompileCommand(File);
-    FS->setCurrentWorkingDirectory(CompileCommand.Directory);
-
     auto Include =
-        shortenIncludePath(File, Code, *Resolved, CompileCommand, FS);
+        calculateIncludePath(File, Code, *Resolved, CompileCommand,
+                             FSProvider.getTaggedFileSystem(File).Value);
     if (!Include)
       return Include.takeError();
     if (Include->empty())
@@ -376,7 +376,8 @@ void ClangdServer::dumpAST(PathRef File,
     Callback(Result);
   };
 
-  WorkScheduler.runWithAST(File, BindWithForward(Action, std::move(Callback)));
+  WorkScheduler.runWithAST("DumpAST", File,
+                           BindWithForward(Action, std::move(Callback)));
 }
 
 void ClangdServer::findDefinitions(
@@ -392,7 +393,8 @@ void ClangdServer::findDefinitions(
     Callback(make_tagged(std::move(Result), TaggedFS.Tag));
   };
 
-  WorkScheduler.runWithAST(File, BindWithForward(Action, std::move(Callback)));
+  WorkScheduler.runWithAST("Definitions", File,
+                           BindWithForward(Action, std::move(Callback)));
 }
 
 llvm::Optional<Path> ClangdServer::switchSourceHeader(PathRef Path) {
@@ -488,7 +490,8 @@ void ClangdServer::findDocumentHighlights(
     Callback(make_tagged(std::move(Result), TaggedFS.Tag));
   };
 
-  WorkScheduler.runWithAST(File, BindWithForward(Action, std::move(Callback)));
+  WorkScheduler.runWithAST("Highlights", File,
+                           BindWithForward(Action, std::move(Callback)));
 }
 
 void ClangdServer::findHover(
@@ -511,7 +514,8 @@ void ClangdServer::findHover(
     Callback(make_tagged(std::move(Result), TaggedFS.Tag));
   };
 
-  WorkScheduler.runWithAST(File, BindWithForward(Action, std::move(Callback)));
+  WorkScheduler.runWithAST("Hover", File,
+                           BindWithForward(Action, std::move(Callback)));
 }
 
 void ClangdServer::scheduleReparseAndDiags(

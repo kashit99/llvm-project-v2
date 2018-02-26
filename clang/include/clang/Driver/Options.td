@@ -849,6 +849,12 @@ def fno_signaling_math : Flag<["-"], "fno-signaling-math">, Group<f_Group>;
 def fjump_tables : Flag<["-"], "fjump-tables">, Group<f_Group>;
 def fno_jump_tables : Flag<["-"], "fno-jump-tables">, Group<f_Group>, Flags<[CC1Option]>,
   HelpText<"Do not use jump tables for lowering switches">;
+def fforce_enable_int128 : Flag<["-"], "fforce-enable-int128">,
+  Group<f_Group>, Flags<[CC1Option]>,
+  HelpText<"Enable support for int128_t type">;
+def fno_force_enable_int128 : Flag<["-"], "fno-force-enable-int128">,
+  Group<f_Group>, Flags<[CC1Option]>,
+  HelpText<"Disable support for int128_t type">;
 
 // Begin sanitizer flags. These should all be core options exposed in all driver
 // modes.
@@ -1697,6 +1703,11 @@ def gz : Flag<["-"], "gz">, Group<g_flags_Group>,
     HelpText<"DWARF debug sections compression type">;
 def gz_EQ : Joined<["-"], "gz=">, Group<g_flags_Group>,
     HelpText<"DWARF debug sections compression type">;
+def gembed_source : Flag<["-"], "gembed-source">, Group<g_flags_Group>, Flags<[CC1Option]>,
+    HelpText<"Embed source text in DWARF debug sections">;
+def gno_embed_source : Flag<["-"], "gno-embed-source">, Group<g_flags_Group>,
+    Flags<[DriverOption]>,
+    HelpText<"Restore the default behavior of not embedding source text in DWARF debug sections">;
 def headerpad__max__install__names : Joined<["-"], "headerpad_max_install_names">;
 def help : Flag<["-", "--"], "help">, Flags<[CC1Option,CC1AsOption]>,
   HelpText<"Display available options">;

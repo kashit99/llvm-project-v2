@@ -815,7 +815,7 @@ def femit_all_decls : Flag<["-"], "femit-all-decls">, Group<f_Group>, Flags<[CC1
   HelpText<"Emit all declarations, even if unused">;
 def femulated_tls : Flag<["-"], "femulated-tls">, Group<f_Group>, Flags<[CC1Option]>,
   HelpText<"Use emutls functions to access thread_local variables">;
-def fno_emulated_tls : Flag<["-"], "fno-emulated-tls">, Group<f_Group>;
+def fno_emulated_tls : Flag<["-"], "fno-emulated-tls">, Group<f_Group>, Flags<[CC1Option]>;
 def fencoding_EQ : Joined<["-"], "fencoding=">, Group<f_Group>;
 def ferror_limit_EQ : Joined<["-"], "ferror-limit=">, Group<f_Group>, Flags<[CoreOption]>;
 def fexceptions : Flag<["-"], "fexceptions">, Group<f_Group>, Flags<[CC1Option]>,
@@ -1315,6 +1315,8 @@ def fno_operator_names : Flag<["-"], "fno-operator-names">, Group<f_Group>,
 def fno_pascal_strings : Flag<["-"], "fno-pascal-strings">, Group<f_Group>;
 def fno_rtti : Flag<["-"], "fno-rtti">, Group<f_Group>, Flags<[CC1Option]>,
   HelpText<"Disable generation of rtti information">;
+def fno_rtti_data : Flag<["-"], "fno-rtti-data">, Group<f_Group>, Flags<[CC1Option]>,
+  HelpText<"Control emission of RTTI data">;
 def fno_short_enums : Flag<["-"], "fno-short-enums">, Group<f_Group>;
 def fno_show_column : Flag<["-"], "fno-show-column">, Group<f_Group>, Flags<[CC1Option]>,
   HelpText<"Do not include column number on diagnostics">;

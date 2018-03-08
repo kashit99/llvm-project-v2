@@ -1,4 +1,4 @@
-//===----------------------- HWEventListener.cpp ----------------*- C++ -*-===//
+//===----------------------- View.cpp ---------------------------*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -8,15 +8,14 @@
 //===----------------------------------------------------------------------===//
 /// \file
 ///
-/// This file defines a vtable anchor for class HWEventListener.
+/// This file defines the virtual anchor method in View.h to pin the vtable.
 ///
 //===----------------------------------------------------------------------===//
 
-#include "HWEventListener.h"
+#include "View.h"
 
 namespace mca {
 
-// Anchor the vtable here.
-void HWEventListener::anchor() {}
+void View::anchor() {}
 
 } // namespace mca

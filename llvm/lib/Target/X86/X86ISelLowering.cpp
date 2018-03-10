@@ -7914,9 +7914,51 @@ static SDValue materializeVectorConstant(SDValue Op, SelectionDAG &DAG,
 SDValue createVariablePermute(MVT VT, SDValue SrcVec, SDValue IndicesVec,
                               SDLoc &DL, SelectionDAG &DAG,
                               const X86Subtarget &Subtarget) {
-  unsigned Opcode = 0;
   MVT ShuffleVT = VT;
+  EVT IndicesVT = EVT(VT).changeVectorElementTypeToInteger();
+  unsigned NumElts = VT.getVectorNumElements();
 
+  // Adjust IndicesVec to match VT size.
+  assert(IndicesVec.getValueType().getVectorNumElements() >= NumElts &&
+         "Illegal variable permute mask size");
+  if (IndicesVec.getValueType().getVectorNumElements() > NumElts)
+    IndicesVec = extractSubVector(IndicesVec, 0, DAG, SDLoc(IndicesVec),
+                                  NumElts * VT.getScalarSizeInBits());
+  IndicesVec = DAG.getZExtOrTrunc(IndicesVec, SDLoc(IndicesVec), IndicesVT);
+
+  // Adjust SrcVec to match VT type.
+  if (SrcVec.getValueSizeInBits() > VT.getSizeInBits())
+    return SDValue();
+  else if (SrcVec.getValueSizeInBits() < VT.getSizeInBits())
+    SrcVec =
+        DAG.getNode(ISD::INSERT_SUBVECTOR, SDLoc(SrcVec), VT, DAG.getUNDEF(VT),
+                    SrcVec, DAG.getIntPtrConstant(0, SDLoc(SrcVec)));
+
+  auto ScaleIndices = [&DAG](SDValue Idx, uint64_t Scale) {
+    assert(isPowerOf2_64(Scale) && "Illegal variable permute shuffle scale");
+    EVT SrcVT = Idx.getValueType();
+    unsigned NumDstBits = SrcVT.getScalarSizeInBits() / Scale;
+    uint64_t IndexScale = 0;
+    uint64_t IndexOffset = 0;
+
+    // If we're scaling a smaller permute op, then we need to repeat the
+    // indices, scaling and offsetting them as well.
+    // e.g. v4i32 -> v16i8 (Scale = 4)
+    // IndexScale = v4i32 Splat(4 << 24 | 4 << 16 | 4 << 8 | 4)
+    // IndexOffset = v4i32 Splat(3 << 24 | 2 << 16 | 1 << 8 | 0)
+    for (uint64_t i = 0; i != Scale; ++i) {
+      IndexScale |= Scale << (i * NumDstBits);
+      IndexOffset |= i << (i * NumDstBits);
+    }
+
+    Idx = DAG.getNode(ISD::MUL, SDLoc(Idx), SrcVT, Idx,
+                      DAG.getConstant(IndexScale, SDLoc(Idx), SrcVT));
+    Idx = DAG.getNode(ISD::ADD, SDLoc(Idx), SrcVT, Idx,
+                      DAG.getConstant(IndexOffset, SDLoc(Idx), SrcVT));
+    return Idx;
+  };
+
+  unsigned Opcode = 0;
   switch (VT.SimpleTy) {
   default:
     break;
@@ -7945,6 +7987,8 @@ SDValue createVariablePermute(MVT VT, SDValue SrcVec, SDValue IndicesVec,
   case MVT::v2f64:
   case MVT::v2i64:
     if (Subtarget.hasAVX()) {
+      // VPERMILPD selects using bit#1 of the index vector, so scale IndicesVec.
+      IndicesVec = DAG.getNode(ISD::ADD, DL, IndicesVT, IndicesVec, IndicesVec);
       Opcode = X86ISD::VPERMILPV;
       ShuffleVT = MVT::v2f64;
     }
@@ -7952,21 +7996,60 @@ SDValue createVariablePermute(MVT VT, SDValue SrcVec, SDValue IndicesVec,
   case MVT::v32i8:
     if (Subtarget.hasVLX() && Subtarget.hasVBMI())
       Opcode = X86ISD::VPERMV;
+    else if (Subtarget.hasXOP()) {
+      SDValue LoSrc = extract128BitVector(SrcVec, 0, DAG, DL);
+      SDValue HiSrc = extract128BitVector(SrcVec, 16, DAG, DL);
+      SDValue LoIdx = extract128BitVector(IndicesVec, 0, DAG, DL);
+      SDValue HiIdx = extract128BitVector(IndicesVec, 16, DAG, DL);
+      return DAG.getNode(
+          ISD::CONCAT_VECTORS, DL, VT,
+          DAG.getNode(X86ISD::VPPERM, DL, MVT::v16i8, LoSrc, HiSrc, LoIdx),
+          DAG.getNode(X86ISD::VPPERM, DL, MVT::v16i8, LoSrc, HiSrc, HiIdx));
+    }
     break;
   case MVT::v16i16:
     if (Subtarget.hasVLX() && Subtarget.hasBWI())
       Opcode = X86ISD::VPERMV;
+    else if (Subtarget.hasXOP()) {
+      // Scale to v32i8 and perform as v32i8.
+      IndicesVec = ScaleIndices(IndicesVec, 2);
+      return DAG.getBitcast(
+          VT, createVariablePermute(
+                  MVT::v32i8, DAG.getBitcast(MVT::v32i8, SrcVec),
+                  DAG.getBitcast(MVT::v32i8, IndicesVec), DL, DAG, Subtarget));
+    }
     break;
   case MVT::v8f32:
   case MVT::v8i32:
     if (Subtarget.hasAVX2())
       Opcode = X86ISD::VPERMV;
+    else if (Subtarget.hasXOP()) {
+      SrcVec = DAG.getBitcast(MVT::v8f32, SrcVec);
+      SDValue LoLo = DAG.getVectorShuffle(MVT::v8f32, DL, SrcVec, SrcVec,
+                                          {0, 1, 2, 3, 0, 1, 2, 3});
+      SDValue HiHi = DAG.getVectorShuffle(MVT::v8f32, DL, SrcVec, SrcVec,
+                                          {4, 5, 6, 7, 4, 5, 6, 7});
+      return DAG.getBitcast(VT, DAG.getNode(X86ISD::VPERMIL2, DL, MVT::v8f32,
+                                            LoLo, HiHi, IndicesVec,
+                                            DAG.getConstant(0, DL, MVT::i8)));
+    }
     break;
   case MVT::v4i64:
   case MVT::v4f64:
     if (Subtarget.hasVLX())
       Opcode = X86ISD::VPERMV;
-    else if (Subtarget.hasAVX2()) {
+    else if (Subtarget.hasXOP()) {
+      SrcVec = DAG.getBitcast(MVT::v4f64, SrcVec);
+      SDValue LoLo =
+          DAG.getVectorShuffle(MVT::v4f64, DL, SrcVec, SrcVec, {0, 1, 0, 1});
+      SDValue HiHi =
+          DAG.getVectorShuffle(MVT::v4f64, DL, SrcVec, SrcVec, {2, 3, 2, 3});
+      // VPERMIL2PD selects with bit#1 of the index vector, so scale IndicesVec.
+      IndicesVec = DAG.getNode(ISD::ADD, DL, IndicesVT, IndicesVec, IndicesVec);
+      return DAG.getBitcast(VT, DAG.getNode(X86ISD::VPERMIL2, DL, MVT::v4f64,
+                                            LoLo, HiHi, IndicesVec,
+                                            DAG.getConstant(0, DL, MVT::i8)));
+    } else if (Subtarget.hasAVX2()) {
       Opcode = X86ISD::VPERMV;
       ShuffleVT = MVT::v8f32;
     }
@@ -7994,47 +8077,9 @@ SDValue createVariablePermute(MVT VT, SDValue SrcVec, SDValue IndicesVec,
          (VT.getScalarSizeInBits() % ShuffleVT.getScalarSizeInBits()) == 0 &&
          "Illegal variable permute shuffle type");
 
-  unsigned NumElts = VT.getVectorNumElements();
-  if (IndicesVec.getValueType().getVectorNumElements() < NumElts)
-    return SDValue();
-  else if (IndicesVec.getValueType().getVectorNumElements() > NumElts)
-    IndicesVec = extractSubVector(IndicesVec, 0, DAG, SDLoc(IndicesVec),
-                                  NumElts * VT.getScalarSizeInBits());
-
-  MVT IndicesVT = EVT(VT).changeVectorElementTypeToInteger().getSimpleVT();
-  IndicesVec = DAG.getZExtOrTrunc(IndicesVec, SDLoc(IndicesVec), IndicesVT);
-
-  if (SrcVec.getValueSizeInBits() > VT.getSizeInBits())
-    return SDValue();
-  else if (SrcVec.getValueSizeInBits() < VT.getSizeInBits()) {
-    SrcVec =
-        DAG.getNode(ISD::INSERT_SUBVECTOR, SDLoc(SrcVec), VT, DAG.getUNDEF(VT),
-                    SrcVec, DAG.getIntPtrConstant(0, SDLoc(SrcVec)));
-  }
-
   uint64_t Scale = VT.getScalarSizeInBits() / ShuffleVT.getScalarSizeInBits();
-  if (Scale > 1) {
-    assert(isPowerOf2_64(Scale) && "Illegal variable permute shuffle scale");
-    unsigned ShuffleBits = ShuffleVT.getScalarSizeInBits();
-    uint64_t IndexScale = 0;
-    uint64_t IndexOffset = 0;
-
-    // If we're scaling a smaller permute op, then we need to repeat the
-    // indices, scaling and offsetting them as well. e.g. v4i32 -> v16i8 (Scale
-    // = 4) IndexScale = v4i32 Splat(4 << 24 | 4 << 16 | 4 << 8 | 4) indexOffset
-    // = v4i32 Splat(3 << 24 | 2 << 16 | 1 << 8 | 0)
-    for (uint64_t i = 0; i != Scale; ++i) {
-      IndexScale |= Scale << (i * ShuffleBits);
-      IndexOffset |= i << (i * ShuffleBits);
-    }
-
-    IndicesVec =
-        DAG.getNode(ISD::MUL, SDLoc(IndicesVec), IndicesVT, IndicesVec,
-                    DAG.getConstant(IndexScale, SDLoc(IndicesVec), IndicesVT));
-    IndicesVec =
-        DAG.getNode(ISD::ADD, SDLoc(IndicesVec), IndicesVT, IndicesVec,
-                    DAG.getConstant(IndexOffset, SDLoc(IndicesVec), IndicesVT));
-  }
+  if (Scale > 1)
+    IndicesVec = ScaleIndices(IndicesVec, Scale);
 
   EVT ShuffleIdxVT = EVT(ShuffleVT).changeVectorElementTypeToInteger();
   IndicesVec = DAG.getBitcast(ShuffleIdxVT, IndicesVec);

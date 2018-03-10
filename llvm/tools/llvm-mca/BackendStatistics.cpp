@@ -7,7 +7,7 @@
 //
 //===----------------------------------------------------------------------===//
 /// \file
-/// 
+///
 /// Functionalities used by the BackendPrinter to print out histograms
 /// related to number of {dispatch/issue/retire} per number of cycles.
 ///
@@ -42,7 +42,8 @@ void BackendStatistics::printRetireUnitStatistics(llvm::raw_ostream &OS) const {
   OS << Buffer;
 }
 
-void BackendStatistics::printDispatchUnitStatistics(llvm::raw_ostream &OS) const {
+void BackendStatistics::printDispatchUnitStatistics(
+    llvm::raw_ostream &OS) const {
   std::string Buffer;
   raw_string_ostream TempStream(Buffer);
   TempStream << "\n\nDispatch Logic - "
@@ -76,8 +77,8 @@ void BackendStatistics::printSchedulerStatistics(llvm::raw_ostream &OS) const {
 }
 
 void BackendStatistics::printRATStatistics(raw_ostream &OS,
-                                        unsigned TotalMappings,
-                                        unsigned MaxUsedMappings) const {
+                                           unsigned TotalMappings,
+                                           unsigned MaxUsedMappings) const {
   std::string Buffer;
   raw_string_ostream TempStream(Buffer);
   TempStream << "\n\nRegister Alias Table:";
@@ -88,11 +89,12 @@ void BackendStatistics::printRATStatistics(raw_ostream &OS,
   OS << Buffer;
 }
 
-void BackendStatistics::printDispatchStalls(raw_ostream &OS,
-                                         unsigned RATStalls, unsigned RCUStalls,
-                                         unsigned SCHEDQStalls,
-                                         unsigned LDQStalls, unsigned STQStalls,
-                                         unsigned DGStalls) const {
+void BackendStatistics::printDispatchStalls(raw_ostream &OS, unsigned RATStalls,
+                                            unsigned RCUStalls,
+                                            unsigned SCHEDQStalls,
+                                            unsigned LDQStalls,
+                                            unsigned STQStalls,
+                                            unsigned DGStalls) const {
   std::string Buffer;
   raw_string_ostream TempStream(Buffer);
   TempStream << "\n\nDynamic Dispatch Stall Cycles:\n";
@@ -113,19 +115,28 @@ void BackendStatistics::printDispatchStalls(raw_ostream &OS,
   OS << Buffer;
 }
 
-void BackendStatistics::printSchedulerUsage(raw_ostream &OS,
-    const MCSchedModel &SM, const ArrayRef<BufferUsageEntry> &Usage) const {
+void BackendStatistics::printSchedulerUsage(
+    raw_ostream &OS, const MCSchedModel &SM,
+    const ArrayRef<BufferUsageEntry> &Usage) const {
+ 
   std::string Buffer;
   raw_string_ostream TempStream(Buffer);
   TempStream << "\n\nScheduler's queue usage:\n";
-  const ArrayRef<uint64_t> ResourceMasks = B.getProcResourceMasks();
+  // Early exit if no buffered resources were consumed.
+  if (Usage.empty()) {
+    TempStream << "No scheduler resources used.\n";
+    TempStream.flush();
+    OS << Buffer;
+    return;
+  }
+
   for (unsigned I = 0, E = SM.getNumProcResourceKinds(); I < E; ++I) {
     const MCProcResourceDesc &ProcResource = *SM.getProcResource(I);
     if (!ProcResource.BufferSize)
       continue;
 
     for (const BufferUsageEntry &Entry : Usage)
-      if (ResourceMasks[I] == Entry.first)
+      if (I == Entry.first)
         TempStream << ProcResource.Name << ",  " << Entry.second << '/'
                    << ProcResource.BufferSize << '\n';
   }
@@ -135,4 +146,3 @@ void BackendStatistics::printSchedulerUsage(raw_ostream &OS,
 }
 
 } // namespace mca
-

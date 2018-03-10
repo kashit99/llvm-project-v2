@@ -3548,6 +3548,8 @@ public:
   llvm::Value *EmitARCLoadWeak(Address addr);
   llvm::Value *EmitARCLoadWeakRetained(Address addr);
   llvm::Value *EmitARCStoreWeak(Address addr, llvm::Value *value, bool ignored);
+  void emitARCCopyAssignWeak(QualType Ty, Address DstAddr, Address SrcAddr);
+  void emitARCMoveAssignWeak(QualType Ty, Address DstAddr, Address SrcAddr);
   void EmitARCCopyWeak(Address dst, Address src);
   void EmitARCMoveWeak(Address dst, Address src);
   llvm::Value *EmitARCRetainAutorelease(QualType type, llvm::Value *value);
@@ -3896,10 +3898,10 @@ private:
   void ExpandTypeFromArgs(QualType Ty, LValue Dst,
                           SmallVectorImpl<llvm::Value *>::iterator &AI);
 
-  /// ExpandTypeToArgs - Expand an CallArg \arg Arg, with the LLVM type for \arg
+  /// ExpandTypeToArgs - Expand an RValue \arg RV, with the LLVM type for \arg
   /// Ty, into individual arguments on the provided vector \arg IRCallArgs,
   /// starting at index \arg IRCallArgPos. See ABIArgInfo::Expand.
-  void ExpandTypeToArgs(QualType Ty, CallArg Arg, llvm::FunctionType *IRFuncTy,
+  void ExpandTypeToArgs(QualType Ty, RValue RV, llvm::FunctionType *IRFuncTy,
                         SmallVectorImpl<llvm::Value *> &IRCallArgs,
                         unsigned &IRCallArgPos);
 

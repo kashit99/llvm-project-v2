@@ -427,13 +427,14 @@ template <class ELFT> void Writer<ELFT>::run() {
   if (errorCount())
     return;
 
+  Script->assignAddresses();
+
   // If -compressed-debug-sections is specified, we need to compress
   // .debug_* sections. Do it right now because it changes the size of
   // output sections.
-  parallelForEach(OutputSections,
-                  [](OutputSection *Sec) { Sec->maybeCompress<ELFT>(); });
+  for (OutputSection *Sec : OutputSections)
+    Sec->maybeCompress<ELFT>();
 
-  Script->assignAddresses();
   Script->allocateHeaders(Phdrs);
 
   // Remove empty PT_LOAD to avoid causing the dynamic linker to try to mmap a
@@ -821,6 +822,8 @@ void PhdrEntry::add(OutputSection *Sec) {
   p_align = std::max(p_align, Sec->Alignment);
   if (p_type == PT_LOAD)
     Sec->PtLoad = this;
+  if (Sec->LMAExpr)
+    ASectionHasLMA = true;
 }
 
 // The beginning and the ending of .rel[a].plt section are marked
@@ -1625,7 +1628,9 @@ template <class ELFT> std::vector<PhdrEntry *> Writer<ELFT>::createPhdrs() {
     // different flags or is loaded at a discontiguous address using AT linker
     // script command.
     uint64_t NewFlags = computeFlags(Sec->getPhdrFlags());
-    if (Sec->LMAExpr || Flags != NewFlags) {
+    if ((Sec->LMAExpr && Load->ASectionHasLMA) ||
+        Sec->MemRegion != Load->FirstSec->MemRegion || Flags != NewFlags) {
+
       Load = AddHdr(PT_LOAD, NewFlags);
       Flags = NewFlags;
     }

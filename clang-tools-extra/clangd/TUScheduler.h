@@ -63,7 +63,7 @@ public:
   /// \p File was not part of it before.
   /// FIXME(ibiryukov): remove the callback from this function.
   void update(PathRef File, ParseInputs Inputs, WantDiagnostics WD,
-              UniqueFunction<void(std::vector<DiagWithFixIts>)> OnUpdated);
+              UniqueFunction<void(std::vector<Diag>)> OnUpdated);
 
   /// Remove \p File from the list of tracked files and schedule removal of its
   /// resources.
@@ -76,16 +76,15 @@ public:
   /// If an error occurs during processing, it is forwarded to the \p Action
   /// callback.
   void runWithAST(llvm::StringRef Name, PathRef File,
-                  UniqueFunction<void(llvm::Expected<InputsAndAST>)> Action);
+                  Callback<InputsAndAST> Action);
 
   /// Schedule an async read of the Preamble. Preamble passed to \p Action may
   /// be built for any version of the file, callers must not rely on it being
   /// consistent with the current version of the file.
   /// If an error occurs during processing, it is forwarded to the \p Action
   /// callback.
-  void runWithPreamble(
-      llvm::StringRef Name, PathRef File,
-      UniqueFunction<void(llvm::Expected<InputsAndPreamble>)> Action);
+  void runWithPreamble(llvm::StringRef Name, PathRef File,
+                       Callback<InputsAndPreamble> Action);
 
   /// Wait until there are no scheduled or running tasks.
   /// Mostly useful for synchronizing tests.

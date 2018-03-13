@@ -8,6 +8,7 @@
 //===---------------------------------------------------------------------===//
 
 #include "ClangdLSPServer.h"
+#include "Diagnostics.h"
 #include "JSONRPCDispatcher.h"
 #include "SourceCode.h"
 #include "URI.h"
@@ -313,12 +314,12 @@ void ClangdLSPServer::onCodeAction(CodeActionParams &Params) {
 
   json::ary Commands;
   for (Diagnostic &D : Params.context.diagnostics) {
-    auto Edits = getFixIts(Params.textDocument.uri.file(), D);
-    if (!Edits.empty()) {
+    for (auto &F : getFixes(Params.textDocument.uri.file(), D)) {
       WorkspaceEdit WE;
+      std::vector<TextEdit> Edits(F.Edits.begin(), F.Edits.end());
       WE.changes = {{Params.textDocument.uri.uri(), std::move(Edits)}};
       Commands.push_back(json::obj{
-          {"title", llvm::formatv("Apply FixIt {0}", D.message)},
+          {"title", llvm::formatv("Apply fix: {0}", F.Message)},
           {"command", ExecuteCommandParams::CLANGD_APPLY_FIX_COMMAND},
           {"arguments", {WE}},
       });
@@ -329,28 +330,33 @@ void ClangdLSPServer::onCodeAction(CodeActionParams &Params) {
 
 void ClangdLSPServer::onCompletion(TextDocumentPositionParams &Params) {
   Server.codeComplete(Params.textDocument.uri.file(), Params.position, CCOpts,
-                      [](Tagged<CompletionList> List) { reply(List.Value); });
+                      [](llvm::Expected<CompletionList> List) {
+                        if (!List)
+                          return replyError(ErrorCode::InvalidParams,
+                                            llvm::toString(List.takeError()));
+                        reply(*List);
+                      });
 }
 
 void ClangdLSPServer::onSignatureHelp(TextDocumentPositionParams &Params) {
   Server.signatureHelp(Params.textDocument.uri.file(), Params.position,
-                       [](llvm::Expected<Tagged<SignatureHelp>> SignatureHelp) {
+                       [](llvm::Expected<SignatureHelp> SignatureHelp) {
                          if (!SignatureHelp)
                            return replyError(
                                ErrorCode::InvalidParams,
                                llvm::toString(SignatureHelp.takeError()));
-                         reply(SignatureHelp->Value);
+                         reply(*SignatureHelp);
                        });
 }
 
 void ClangdLSPServer::onGoToDefinition(TextDocumentPositionParams &Params) {
   Server.findDefinitions(
       Params.textDocument.uri.file(), Params.position,
-      [](llvm::Expected<Tagged<std::vector<Location>>> Items) {
+      [](llvm::Expected<std::vector<Location>> Items) {
         if (!Items)
           return replyError(ErrorCode::InvalidParams,
                             llvm::toString(Items.takeError()));
-        reply(json::ary(Items->Value));
+        reply(json::ary(*Items));
       });
 }
 
@@ -362,24 +368,24 @@ void ClangdLSPServer::onSwitchSourceHeader(TextDocumentIdentifier &Params) {
 void ClangdLSPServer::onDocumentHighlight(TextDocumentPositionParams &Params) {
   Server.findDocumentHighlights(
       Params.textDocument.uri.file(), Params.position,
-      [](llvm::Expected<Tagged<std::vector<DocumentHighlight>>> Highlights) {
+      [](llvm::Expected<std::vector<DocumentHighlight>> Highlights) {
         if (!Highlights)
           return replyError(ErrorCode::InternalError,
                             llvm::toString(Highlights.takeError()));
-        reply(json::ary(Highlights->Value));
+        reply(json::ary(*Highlights));
       });
 }
 
 void ClangdLSPServer::onHover(TextDocumentPositionParams &Params) {
   Server.findHover(Params.textDocument.uri.file(), Params.position,
-                   [](llvm::Expected<Tagged<Hover>> H) {
+                   [](llvm::Expected<Hover> H) {
                      if (!H) {
                        replyError(ErrorCode::InternalError,
                                   llvm::toString(H.takeError()));
                        return;
                      }
 
-                     reply(H->Value);
+                     reply(*H);
                    });
 }
 
@@ -421,8 +427,8 @@ bool ClangdLSPServer::run(std::istream &In, JSONStreamStyle InputStyle) {
   return ShutdownRequestReceived;
 }
 
-std::vector<TextEdit> ClangdLSPServer::getFixIts(StringRef File,
-                                                 const clangd::Diagnostic &D) {
+std::vector<Fix> ClangdLSPServer::getFixes(StringRef File,
+                                           const clangd::Diagnostic &D) {
   std::lock_guard<std::mutex> Lock(FixItsMutex);
   auto DiagToFixItsIter = FixItsMap.find(File);
   if (DiagToFixItsIter == FixItsMap.end())
@@ -436,22 +442,23 @@ std::vector<TextEdit> ClangdLSPServer::getFixIts(StringRef File,
   return FixItsIter->second;
 }
 
-void ClangdLSPServer::onDiagnosticsReady(
-    PathRef File, Tagged<std::vector<DiagWithFixIts>> Diagnostics) {
+void ClangdLSPServer::onDiagnosticsReady(PathRef File,
+                                         std::vector<Diag> Diagnostics) {
   json::ary DiagnosticsJSON;
 
   DiagnosticToReplacementMap LocalFixIts; // Temporary storage
-  for (auto &DiagWithFixes : Diagnostics.Value) {
-    auto Diag = DiagWithFixes.Diag;
-    DiagnosticsJSON.push_back(json::obj{
-        {"range", Diag.range},
-        {"severity", Diag.severity},
-        {"message", Diag.message},
+  for (auto &Diag : Diagnostics) {
+    toLSPDiags(Diag, [&](clangd::Diagnostic Diag, llvm::ArrayRef<Fix> Fixes) {
+      DiagnosticsJSON.push_back(json::obj{
+          {"range", Diag.range},
+          {"severity", Diag.severity},
+          {"message", Diag.message},
+      });
+
+      auto &FixItsForDiagnostic = LocalFixIts[Diag];
+      std::copy(Fixes.begin(), Fixes.end(),
+                std::back_inserter(FixItsForDiagnostic));
     });
-    // We convert to Replacements to become independent of the SourceManager.
-    auto &FixItsForDiagnostic = LocalFixIts[Diag];
-    std::copy(DiagWithFixes.FixIts.begin(), DiagWithFixes.FixIts.end(),
-              std::back_inserter(FixItsForDiagnostic));
   }
 
   // Cache FixIts

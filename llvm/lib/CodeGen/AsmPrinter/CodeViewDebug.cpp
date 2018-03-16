@@ -470,7 +470,7 @@ void CodeViewDebug::endModule() {
   // Emit per-function debug information.
   for (auto &P : FnDebugInfo)
     if (!P.first->isDeclarationForLinker())
-      emitDebugInfoForFunction(P.first, P.second);
+      emitDebugInfoForFunction(P.first, *P.second);
 
   // Emit global variable debug information.
   setCurrentSubprogram(nullptr);
@@ -1163,8 +1163,9 @@ void CodeViewDebug::collectVariableInfo(const DISubprogram *SP) {
 
 void CodeViewDebug::beginFunctionImpl(const MachineFunction *MF) {
   const Function &GV = MF->getFunction();
-  assert(FnDebugInfo.count(&GV) == false);
-  CurFn = &FnDebugInfo[&GV];
+  auto Insertion = FnDebugInfo.insert({&GV, llvm::make_unique<FunctionInfo>()});
+  assert(Insertion.second && "function already has info");
+  CurFn = Insertion.first->second.get();
   CurFn->FuncId = NextFuncId++;
   CurFn->Begin = Asm->getFunctionBegin();
 
@@ -2363,61 +2364,61 @@ void CodeViewDebug::emitLocalVariable(const LocalVariable &Var) {
   }
 }
 
-void CodeViewDebug::emitLexicalBlockList(ArrayRef<LexicalBlock *> Blocks, 
-                                         const FunctionInfo& FI) { 
-  for (LexicalBlock *Block : Blocks) 
-    emitLexicalBlock(*Block, FI); 
-} 
- 
-/// Emit an S_BLOCK32 and S_END record pair delimiting the contents of a 
-/// lexical block scope. 
-void CodeViewDebug::emitLexicalBlock(const LexicalBlock &Block, 
-                                     const FunctionInfo& FI) { 
-  MCSymbol *RecordBegin = MMI->getContext().createTempSymbol(), 
-           *RecordEnd   = MMI->getContext().createTempSymbol(); 
- 
-  // Lexical block symbol record. 
-  OS.AddComment("Record length"); 
-  OS.emitAbsoluteSymbolDiff(RecordEnd, RecordBegin, 2);   // Record Length 
-  OS.EmitLabel(RecordBegin); 
-  OS.AddComment("Record kind: S_BLOCK32"); 
-  OS.EmitIntValue(SymbolKind::S_BLOCK32, 2);              // Record Kind 
-  OS.AddComment("PtrParent"); 
-  OS.EmitIntValue(0, 4);                                  // PtrParent 
-  OS.AddComment("PtrEnd"); 
-  OS.EmitIntValue(0, 4);                                  // PtrEnd 
-  OS.AddComment("Code size"); 
-  OS.emitAbsoluteSymbolDiff(Block.End, Block.Begin, 4);   // Code Size 
-  OS.AddComment("Function section relative address"); 
-  OS.EmitCOFFSecRel32(Block.Begin, /*Offset=*/0);         // Func Offset 
-  OS.AddComment("Function section index"); 
-  OS.EmitCOFFSectionIndex(FI.Begin);                      // Func Symbol 
-  OS.AddComment("Lexical block name"); 
-  emitNullTerminatedSymbolName(OS, Block.Name);           // Name 
-  OS.EmitLabel(RecordEnd); 
- 
+void CodeViewDebug::emitLexicalBlockList(ArrayRef<LexicalBlock *> Blocks,
+                                         const FunctionInfo& FI) {
+  for (LexicalBlock *Block : Blocks)
+    emitLexicalBlock(*Block, FI);
+}
+
+/// Emit an S_BLOCK32 and S_END record pair delimiting the contents of a
+/// lexical block scope.
+void CodeViewDebug::emitLexicalBlock(const LexicalBlock &Block,
+                                     const FunctionInfo& FI) {
+  MCSymbol *RecordBegin = MMI->getContext().createTempSymbol(),
+           *RecordEnd   = MMI->getContext().createTempSymbol();
+
+  // Lexical block symbol record.
+  OS.AddComment("Record length");
+  OS.emitAbsoluteSymbolDiff(RecordEnd, RecordBegin, 2);   // Record Length
+  OS.EmitLabel(RecordBegin);
+  OS.AddComment("Record kind: S_BLOCK32");
+  OS.EmitIntValue(SymbolKind::S_BLOCK32, 2);              // Record Kind
+  OS.AddComment("PtrParent");
+  OS.EmitIntValue(0, 4);                                  // PtrParent
+  OS.AddComment("PtrEnd");
+  OS.EmitIntValue(0, 4);                                  // PtrEnd
+  OS.AddComment("Code size");
+  OS.emitAbsoluteSymbolDiff(Block.End, Block.Begin, 4);   // Code Size
+  OS.AddComment("Function section relative address");
+  OS.EmitCOFFSecRel32(Block.Begin, /*Offset=*/0);         // Func Offset
+  OS.AddComment("Function section index");
+  OS.EmitCOFFSectionIndex(FI.Begin);                      // Func Symbol
+  OS.AddComment("Lexical block name");
+  emitNullTerminatedSymbolName(OS, Block.Name);           // Name
+  OS.EmitLabel(RecordEnd);
+
   // Emit variables local to this lexical block.
   emitLocalVariableList(Block.Locals);
 
   // Emit lexical blocks contained within this block.
-  emitLexicalBlockList(Block.Children, FI); 
- 
-  // Close the lexical block scope. 
-  OS.AddComment("Record length"); 
-  OS.EmitIntValue(2, 2);                                  // Record Length 
-  OS.AddComment("Record kind: S_END"); 
-  OS.EmitIntValue(SymbolKind::S_END, 2);                  // Record Kind 
-} 
- 
-/// Convenience routine for collecting lexical block information for a list 
-/// of lexical scopes. 
-void CodeViewDebug::collectLexicalBlockInfo( 
-        SmallVectorImpl<LexicalScope *> &Scopes, 
-        SmallVectorImpl<LexicalBlock *> &Blocks, 
-        SmallVectorImpl<LocalVariable> &Locals) { 
-  for (LexicalScope *Scope : Scopes) 
-    collectLexicalBlockInfo(*Scope, Blocks, Locals); 
-} 
+  emitLexicalBlockList(Block.Children, FI);
+
+  // Close the lexical block scope.
+  OS.AddComment("Record length");
+  OS.EmitIntValue(2, 2);                                  // Record Length
+  OS.AddComment("Record kind: S_END");
+  OS.EmitIntValue(SymbolKind::S_END, 2);                  // Record Kind
+}
+
+/// Convenience routine for collecting lexical block information for a list
+/// of lexical scopes.
+void CodeViewDebug::collectLexicalBlockInfo(
+        SmallVectorImpl<LexicalScope *> &Scopes,
+        SmallVectorImpl<LexicalBlock *> &Blocks,
+        SmallVectorImpl<LocalVariable> &Locals) {
+  for (LexicalScope *Scope : Scopes)
+    collectLexicalBlockInfo(*Scope, Blocks, Locals);
+}
 
 /// Populate the lexical blocks and local variable lists of the parent with
 /// information about the specified lexical scope.
@@ -2476,9 +2477,12 @@ void CodeViewDebug::collectLexicalBlockInfo(
   // Create a lexical block containing the local variables and collect the
   // the lexical block information for the children.
   const InsnRange &Range = Ranges.front();
+  assert(Range.first && Range.second);
   LexicalBlock &Block = BlockInsertion.first->second;
   Block.Begin = getLabelBeforeInsn(Range.first);
   Block.End = getLabelAfterInsn(Range.second);
+  assert(Block.Begin && "missing label for scope begin");
+  assert(Block.End && "missing label for scope end");
   Block.Name = DILB->getName();
   Block.Locals = std::move(Locals);
   ParentBlocks.push_back(&Block);
@@ -2488,7 +2492,7 @@ void CodeViewDebug::collectLexicalBlockInfo(
 void CodeViewDebug::endFunctionImpl(const MachineFunction *MF) {
   const Function &GV = MF->getFunction();
   assert(FnDebugInfo.count(&GV));
-  assert(CurFn == &FnDebugInfo[&GV]);
+  assert(CurFn == FnDebugInfo[&GV].get());
 
   collectVariableInfo(GV.getSubprogram());
 

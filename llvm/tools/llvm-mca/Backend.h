@@ -24,6 +24,7 @@ namespace mca {
 
 class HWEventListener;
 class HWInstructionEvent;
+class HWStallEvent;
 
 /// \brief An out of order backend for a specific subtarget.
 ///
@@ -93,25 +94,14 @@ public:
   unsigned getMaxUsedRegisterMappings() const {
     return DU->getMaxUsedRegisterMappings();
   }
-  const llvm::MCSchedModel &getSchedModel() const {
-    return STI.getSchedModel();
-  }
   void getBuffersUsage(std::vector<BufferUsageEntry> &Usage) const {
     return HWS->getBuffersUsage(Usage);
-  }
-
-  unsigned getNumRATStalls() const { return DU->getNumRATStalls(); }
-  unsigned getNumRCUStalls() const { return DU->getNumRCUStalls(); }
-  unsigned getNumSQStalls() const { return DU->getNumSQStalls(); }
-  unsigned getNumLDQStalls() const { return DU->getNumLDQStalls(); }
-  unsigned getNumSTQStalls() const { return DU->getNumSTQStalls(); }
-  unsigned getNumDispatchGroupStalls() const {
-    return DU->getNumDispatchGroupStalls();
   }
 
   void addEventListener(HWEventListener *Listener);
   void notifyCycleBegin(unsigned Cycle);
   void notifyInstructionEvent(const HWInstructionEvent &Event);
+  void notifyStallEvent(const HWStallEvent &Event);
   void notifyResourceAvailable(const ResourceRef &RR);
   void notifyCycleEnd(unsigned Cycle);
 };

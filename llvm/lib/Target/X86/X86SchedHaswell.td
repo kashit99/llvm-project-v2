@@ -437,7 +437,7 @@ def : InstRW<[WriteP01], (instregex "ST_(F|FP)rr")>;
 def : InstRW<[WriteP01], (instregex "LD_F0")>;
 
 // FLDPI FLDL2E etc.
-def : InstRW<[Write2P01], (instregex "FLDPI", "FLDL2(T|E)" "FLDL(G|N)2")>;
+def : InstRW<[Write2P01], (instregex "FLDPI", "FLDL2(T|E)", "FLDL(G|N)2")>;
 
 // FFREE.
 def : InstRW<[WriteP01], (instregex "FFREE")>;
@@ -1806,7 +1806,7 @@ def: InstRW<[HWWriteResGroup18], (instrs POP16r, POP32r, POP64r)>;
 def: InstRW<[HWWriteResGroup18], (instregex "POP(16|32|64)rmr")>;
 def: InstRW<[HWWriteResGroup18], (instregex "SUB(8|16|32|64)rm")>;
 def: InstRW<[HWWriteResGroup18], (instregex "TEST(8|16|32|64)mr")>;
-def: InstRW<[HWWriteResGroup18], (instregex "TEST8mi")>;
+def: InstRW<[HWWriteResGroup18], (instregex "TEST(8|16|32|64)mi")>;
 def: InstRW<[HWWriteResGroup18], (instregex "XOR(8|16|32|64)rm")>;
 
 def HWWriteResGroup19 : SchedWriteRes<[HWPort237,HWPort0156]> {

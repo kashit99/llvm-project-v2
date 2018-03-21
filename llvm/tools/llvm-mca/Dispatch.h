@@ -134,7 +134,7 @@ public:
   // For example: if all register files are available, then the response mask
   // is a bitmask of all zeroes. If Instead register file #1 is not available,
   // then the response mask is 0b10.
-  unsigned isAvailable(const llvm::ArrayRef<unsigned> Regs) const;
+  unsigned isAvailable(llvm::ArrayRef<unsigned> Regs) const;
   void collectWrites(llvm::SmallVectorImpl<WriteState *> &Writes,
                      unsigned RegID) const;
   void updateOnRead(ReadState &RS, unsigned RegID);
@@ -302,7 +302,6 @@ public:
   unsigned getTotalRegisterMappingsCreated(unsigned RegFileIndex = 0) const {
     return RAT->getTotalRegisterMappingsCreated(RegFileIndex);
   }
-  void addNewRegisterMapping(WriteState &WS) { RAT->addRegisterMapping(WS); }
 
   void cycleEvent(unsigned Cycle) {
     RCU->cycleEvent();
@@ -319,7 +318,6 @@ public:
     RCU->onInstructionExecuted(TokenID);
   }
 
-  void invalidateRegisterMappings(const Instruction &Inst);
 #ifndef NDEBUG
   void dump() const;
 #endif

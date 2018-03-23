@@ -302,11 +302,9 @@ CompilerInstance::createDiagnostics(DiagnosticOptions *Opts,
 
 FileManager *CompilerInstance::createFileManager() {
   if (!hasVirtualFileSystem()) {
-    if (IntrusiveRefCntPtr<vfs::FileSystem> VFS =
-            createVFSFromCompilerInvocation(getInvocation(), getDiagnostics()))
-      setVirtualFileSystem(VFS);
-    else
-      return nullptr;
+    IntrusiveRefCntPtr<vfs::FileSystem> VFS =
+        createVFSFromCompilerInvocation(getInvocation(), getDiagnostics());
+    setVirtualFileSystem(VFS);
   }
   FileMgr = new FileManager(getFileSystemOpts(), VirtualFileSystem);
   return FileMgr.get();
@@ -1170,11 +1168,6 @@ compileModuleImpl(CompilerInstance &ImportingInstance, SourceLocation ImportLoc,
   llvm::CrashRecoveryContext CRC;
   CRC.RunSafelyOnThread(
       [&]() {
-        SmallString<64> CrashInfoMessage("While building module for '");
-        CrashInfoMessage += ModuleName;
-        CrashInfoMessage += "'";
-        llvm::PrettyStackTraceString CrashInfo(CrashInfoMessage.c_str());
-
         GenerateModuleFromModuleMapAction Action;
         Instance.ExecuteAction(Action);
       },

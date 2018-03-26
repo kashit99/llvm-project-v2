@@ -34,7 +34,6 @@
 #include "llvm/CodeGen/MachineMemOperand.h"
 #include "llvm/CodeGen/MachineOperand.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
-#include "llvm/CodeGen/MachineValueType.h"
 #include "llvm/CodeGen/ScheduleDAG.h"
 #include "llvm/CodeGen/TargetInstrInfo.h"
 #include "llvm/CodeGen/TargetOpcodes.h"
@@ -49,6 +48,7 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/MachineValueType.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
@@ -3952,9 +3952,9 @@ int HexagonInstrInfo::getOperandLatency(const InstrItineraryData *ItinData,
   const HexagonRegisterInfo &HRI = *Subtarget.getRegisterInfo();
 
   // Get DefIdx and UseIdx for super registers.
-  MachineOperand DefMO = DefMI.getOperand(DefIdx);
+  const MachineOperand &DefMO = DefMI.getOperand(DefIdx);
 
-  if (HRI.isPhysicalRegister(DefMO.getReg())) {
+  if (DefMO.isReg() && HRI.isPhysicalRegister(DefMO.getReg())) {
     if (DefMO.isImplicit()) {
       for (MCSuperRegIterator SR(DefMO.getReg(), &HRI); SR.isValid(); ++SR) {
         int Idx = DefMI.findRegisterDefOperandIdx(*SR, false, false, &HRI);
@@ -3965,7 +3965,7 @@ int HexagonInstrInfo::getOperandLatency(const InstrItineraryData *ItinData,
       }
     }
 
-    MachineOperand UseMO = UseMI.getOperand(UseIdx);
+    const MachineOperand &UseMO = UseMI.getOperand(UseIdx);
     if (UseMO.isImplicit()) {
       for (MCSuperRegIterator SR(UseMO.getReg(), &HRI); SR.isValid(); ++SR) {
         int Idx = UseMI.findRegisterUseOperandIdx(*SR, false, &HRI);

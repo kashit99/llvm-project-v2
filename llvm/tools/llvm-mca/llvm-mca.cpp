@@ -131,6 +131,11 @@ static cl::opt<bool>
                            cl::desc("Print instruction tables"),
                            cl::init(false));
 
+static cl::opt<bool>
+    PrintInstructionInfoView("instruction-info",
+                             cl::desc("Print the instruction info view"),
+                             cl::init(true));
+
 static const Target *getTarget(const char *ProgName) {
   TripleName = Triple::normalize(TripleName);
   if (TripleName.empty())
@@ -268,8 +273,8 @@ int main(int argc, char **argv) {
 
   std::unique_ptr<buffer_ostream> BOS;
 
-  std::unique_ptr<mca::SourceMgr> S =
-      llvm::make_unique<mca::SourceMgr>(PrintInstructionTables ? 1 : Iterations);
+  std::unique_ptr<mca::SourceMgr> S = llvm::make_unique<mca::SourceMgr>(
+      PrintInstructionTables ? 1 : Iterations);
   MCStreamerWrapper Str(Ctx, S->getSequence());
 
   std::unique_ptr<MCInstrInfo> MCII(TheTarget->createMCInstrInfo());
@@ -336,12 +341,15 @@ int main(int argc, char **argv) {
 
   if (PrintInstructionTables) {
     mca::InstructionTables IT(STI->getSchedModel(), *IB, *S);
-    mca::ResourcePressureView RPV(*STI, *IP, *S);
-    mca::InstructionInfoView IIV(*STI, *MCII, *S, *IP);
-    IT.addEventListener(&IIV);
-    IT.addEventListener(&RPV);
+
+    if (PrintInstructionInfoView) {
+      IT.addView(
+          llvm::make_unique<mca::InstructionInfoView>(*STI, *MCII, *S, *IP));
+    }
+
+    IT.addView(llvm::make_unique<mca::ResourcePressureView>(*STI, *IP, *S));
     IT.run();
-    RPV.printView(TOF->os());
+    IT.printReport(TOF->os());
     TOF->keep();
     return 0;
   }
@@ -355,8 +363,9 @@ int main(int argc, char **argv) {
 
   Printer->addView(llvm::make_unique<mca::SummaryView>(*S, Width));
 
-  Printer->addView(
-      llvm::make_unique<mca::InstructionInfoView>(*STI, *MCII, *S, *IP));
+  if (PrintInstructionInfoView)
+    Printer->addView(
+        llvm::make_unique<mca::InstructionInfoView>(*STI, *MCII, *S, *IP));
 
   if (PrintModeVerbose)
     Printer->addView(llvm::make_unique<mca::BackendStatistics>(*STI));

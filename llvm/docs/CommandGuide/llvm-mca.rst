@@ -68,11 +68,6 @@ option specifies "``-``", then the output will also be sent to standard output.
  defaults to the 'IssueWidth' specified by the processor scheduling model.
  If width is zero, then the default dispatch width is used.
 
-.. option:: -max-retire-per-cycle=<retire throughput>
-
- Specify the retire throughput (i.e. how many instructions can be retired by the
- retire control unit every cycle).
-
 .. option:: -register-file-size=<size>
 
  Specify the size of the register file. When specified, this flag limits
@@ -127,6 +122,10 @@ option specifies "``-``", then the output will also be sent to standard output.
 .. option:: -resource-pressure
 
   Enable the resource pressure view. This is enabled by default.
+
+.. option:: -register-file-stats
+
+  Enable register file usage statistics.
 
 .. option:: -instruction-info
 

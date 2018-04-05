@@ -386,7 +386,7 @@ private:
     bool StartsObjCMethodExpr =
         !CppArrayTemplates && Style.isCpp() && !IsCpp11AttributeSpecifier &&
         Contexts.back().CanBeExpression && Left->isNot(TT_LambdaLSquare) &&
-        CurrentToken->isNot(tok::l_brace) &&
+        !CurrentToken->isOneOf(tok::l_brace, tok::r_square) &&
         (!Parent ||
          Parent->isOneOf(tok::colon, tok::l_square, tok::l_paren,
                          tok::kw_return, tok::kw_throw) ||
@@ -2480,6 +2480,9 @@ bool TokenAnnotator::spaceRequiredBetween(const AnnotatedLine &Line,
     return false;
   if (Left.is(TT_TemplateCloser) && Right.is(tok::l_square))
     return false;
+  if (Left.is(tok::l_brace) && Left.endsSequence(TT_DictLiteral, tok::at))
+    // Objective-C dictionary literal -> no space after opening brace.
+    return false;
   if (Right.is(tok::r_brace) && Right.MatchingParen &&
       Right.MatchingParen->endsSequence(TT_DictLiteral, tok::at))
     // Objective-C dictionary literal -> no space before closing brace.
@@ -2515,6 +2518,10 @@ bool TokenAnnotator::spaceRequiredBefore(const AnnotatedLine &Line,
     // A percent is probably part of a formatting specification, such as %lld.
     if (Left.is(tok::percent))
       return false;
+    // Preserve the existence of a space before a percent for cases like 0x%04x
+    // and "%d %d"
+    if (Left.is(tok::numeric_constant) && Right.is(tok::percent))
+      return Right.WhitespaceRange.getEnd() != Right.WhitespaceRange.getBegin();
   } else if (Style.Language == FormatStyle::LK_JavaScript) {
     if (Left.is(TT_JsFatArrow))
       return true;

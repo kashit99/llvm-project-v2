@@ -211,7 +211,34 @@ CodeGenSchedModels::CodeGenSchedModels(RecordKeeper &RK,
   DEBUG(dbgs() << "\n+++ RESOURCE DEFINITIONS (collectProcResources) +++\n");
   collectProcResources();
 
+  // Collect optional processor description.
+  collectOptionalProcessorInfo();
+
   checkCompleteness();
+}
+
+void CodeGenSchedModels::collectRetireControlUnits() {
+  RecVec Units = Records.getAllDerivedDefinitions("RetireControlUnit");
+
+  for (Record *RCU : Units) {
+    CodeGenProcModel &PM = getProcModel(RCU->getValueAsDef("SchedModel"));
+    if (PM.RetireControlUnit) {
+      PrintError(RCU->getLoc(),
+                 "Expected a single RetireControlUnit definition");
+      PrintNote(PM.RetireControlUnit->getLoc(),
+                "Previous definition of RetireControlUnit was here");
+    }
+    PM.RetireControlUnit = RCU;
+  }
+}
+
+/// Collect optional processor information.
+void CodeGenSchedModels::collectOptionalProcessorInfo() {
+  // Find register file definitions for each processor.
+  collectRegisterFiles();
+
+  // Collect processor RetireControlUnit descriptors if available.
+  collectRetireControlUnits();
 }
 
 /// Gather all processor models.
@@ -1486,6 +1513,30 @@ void CodeGenSchedModels::verifyProcResourceGroups(CodeGenProcModel &PM) {
   }
 }
 
+// Collect all the RegisterFile definitions available in this target.
+void CodeGenSchedModels::collectRegisterFiles() {
+  RecVec RegisterFileDefs = Records.getAllDerivedDefinitions("RegisterFile");
+
+  // RegisterFiles is the vector of CodeGenRegisterFile.
+  for (Record *RF : RegisterFileDefs) {
+    // For each register file definition, construct a CodeGenRegisterFile object
+    // and add it to the appropriate scheduling model.
+    CodeGenProcModel &PM = getProcModel(RF->getValueAsDef("SchedModel"));
+    PM.RegisterFiles.emplace_back(CodeGenRegisterFile(RF->getName(),RF));
+    CodeGenRegisterFile &CGRF = PM.RegisterFiles.back();
+
+    // Now set the number of physical registers as well as the cost of registers
+    // in each register class.
+    CGRF.NumPhysRegs = RF->getValueAsInt("NumPhysRegs");
+    RecVec RegisterClasses = RF->getValueAsListOfDefs("RegClasses");
+    std::vector<int64_t> RegisterCosts = RF->getValueAsListOfInts("RegCosts");
+    for (unsigned I = 0, E = RegisterClasses.size(); I < E; ++I) {
+      int Cost = RegisterCosts.size() > I ? RegisterCosts[I] : 1;
+      CGRF.Costs.emplace_back(RegisterClasses[I], Cost);
+    }
+  }
+}
+
 // Collect and sort WriteRes, ReadAdvance, and ProcResources.
 void CodeGenSchedModels::collectProcResources() {
   ProcResourceDefs = Records.getAllDerivedDefinitions("ProcResourceUnits");
@@ -1599,6 +1650,7 @@ void CodeGenSchedModels::checkCompleteness() {
   bool Complete = true;
   bool HadCompleteModel = false;
   for (const CodeGenProcModel &ProcModel : procModels()) {
+    const bool HasItineraries = ProcModel.hasItineraries();
     if (!ProcModel.ModelDef->getValueAsBit("CompleteModel"))
       continue;
     for (const CodeGenInstruction *Inst : Target.getInstructionsByEnumValue()) {
@@ -1619,7 +1671,7 @@ void CodeGenSchedModels::checkCompleteness() {
       const CodeGenSchedClass &SC = getSchedClass(SCIdx);
       if (!SC.Writes.empty())
         continue;
-      if (SC.ItinClassDef != nullptr &&
+      if (HasItineraries && SC.ItinClassDef != nullptr &&
           SC.ItinClassDef->getName() != "NoItinerary")
         continue;
 

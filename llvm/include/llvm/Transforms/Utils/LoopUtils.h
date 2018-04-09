@@ -509,11 +509,18 @@ bool canSinkOrHoistInst(Instruction &I, AAResults *AA, DominatorTree *DT,
                         LoopSafetyInfo *SafetyInfo,
                         OptimizationRemarkEmitter *ORE = nullptr);
 
+/// Generates an ordered vector reduction using extracts to reduce the value.
+Value *
+getOrderedReduction(IRBuilder<> &Builder, Value *Acc, Value *Src, unsigned Op,
+                    RecurrenceDescriptor::MinMaxRecurrenceKind MinMaxKind =
+                        RecurrenceDescriptor::MRK_Invalid,
+                    ArrayRef<Value *> RedOps = None);
+
 /// Generates a vector reduction using shufflevectors to reduce the value.
 Value *getShuffleReduction(IRBuilder<> &Builder, Value *Src, unsigned Op,
                            RecurrenceDescriptor::MinMaxRecurrenceKind
                                MinMaxKind = RecurrenceDescriptor::MRK_Invalid,
-                           ArrayRef<Value *> RedOps = ArrayRef<Value *>());
+                           ArrayRef<Value *> RedOps = None);
 
 /// Create a target reduction of the given vector. The reduction operation
 /// is described by the \p Opcode parameter. min/max reductions require
@@ -525,7 +532,7 @@ createSimpleTargetReduction(IRBuilder<> &B, const TargetTransformInfo *TTI,
                             unsigned Opcode, Value *Src,
                             TargetTransformInfo::ReductionFlags Flags =
                                 TargetTransformInfo::ReductionFlags(),
-                            ArrayRef<Value *> RedOps = ArrayRef<Value *>());
+                            ArrayRef<Value *> RedOps = None);
 
 /// Create a generic target reduction using a recurrence descriptor \p Desc
 /// The target is queried to determine if intrinsics or shuffle sequences are

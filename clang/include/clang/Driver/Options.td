@@ -1108,6 +1108,10 @@ def fxray_attr_list :
   JoinedOrSeparate<["-"], "fxray-attr-list=">,
   Group<f_Group>, Flags<[CC1Option]>,
   HelpText<"Filename defining the list of functions/types for imbuing XRay attributes.">;
+def fxray_modes :
+  JoinedOrSeparate<["-"], "fxray-modes=">,
+  Group<f_Group>, Flags<[CC1Option]>,
+  HelpText<"List of modes to link in by default into XRay instrumented binaries.">;
 
 def fxray_always_emit_customevents : Flag<["-"], "fxray-always-emit-customevents">, Group<f_Group>,
   Flags<[CC1Option]>,
@@ -1953,6 +1957,7 @@ def maltivec : Flag<["-"], "maltivec">, Group<m_ppc_Features_Group>;
 def mno_altivec : Flag<["-"], "mno-altivec">, Group<m_ppc_Features_Group>;
 def mvsx : Flag<["-"], "mvsx">, Group<m_ppc_Features_Group>;
 def mno_vsx : Flag<["-"], "mno-vsx">, Group<m_ppc_Features_Group>;
+def msecure_plt : Flag<["-"], "msecure-plt">, Group<m_ppc_Features_Group>;
 def mpower8_vector : Flag<["-"], "mpower8-vector">,
     Group<m_ppc_Features_Group>;
 def mno_power8_vector : Flag<["-"], "mno-power8-vector">,

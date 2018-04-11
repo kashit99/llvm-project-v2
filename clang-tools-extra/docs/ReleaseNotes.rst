@@ -69,6 +69,12 @@ Improvements to clang-tidy
 
 - New module ``zircon`` for checks related to Fuchsia's Zircon kernel.
 
+- New :doc:`android-comparison-in-temp-failure-retry
+  <clang-tidy/checks/android-comparison-in-temp-failure-retry>` check
+
+  Diagnoses comparisons that appear to be incorrectly placed in the argument to
+  the ``TEMP_FAILURE_RETRY`` macro.
+
 - New :doc:`bugprone-parent-virtual-call
   <clang-tidy/checks/bugprone-parent-virtual-call>` check
 
@@ -149,6 +155,9 @@ Improvements to clang-tidy
   <clang-tidy/checks/hicpp-avoid-goto>` to :doc:`cppcoreguidelines-avoid-goto
   <clang-tidy/checks/cppcoreguidelines-avoid-goto>`
   added.
+
+- Adding the missing bitwise assignment operations to 
+  :doc:`hicpp-signed-bitwise <clang-tidy/checks/hicpp-signed-bitwise>`.
 
 - The 'misc-forwarding-reference-overload' check was renamed to :doc:`bugprone-forwarding-reference-overload
   <clang-tidy/checks/bugprone-forwarding-reference-overload>`

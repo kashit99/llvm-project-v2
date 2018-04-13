@@ -26,7 +26,6 @@
 #include "llvm/CodeGen/GlobalISel/RegisterBankInfo.h"
 #include "llvm/CodeGen/TargetSubtargetInfo.h"
 #include "llvm/IR/CallingConv.h"
-#include "llvm/MC/MCInstrItineraries.h"
 #include "llvm/Target/TargetMachine.h"
 #include <memory>
 
@@ -204,6 +203,9 @@ protected:
 
   /// Processor has Cache Line Zero instruction
   bool HasCLZERO;
+
+  /// Processor has Cache Line Demote instruction
+  bool HasCLDEMOTE;
 
   /// Processor has Prefetch with intent to Write instruction
   bool HasPREFETCHWT1;
@@ -391,9 +393,6 @@ protected:
   /// What processor and OS we're targeting.
   Triple TargetTriple;
 
-  /// Instruction itineraries for scheduling
-  InstrItineraryData InstrItins;
-
   /// GlobalISel related APIs.
   std::unique_ptr<CallLowering> CallLoweringInfo;
   std::unique_ptr<LegalizerInfo> Legalizer;
@@ -577,6 +576,7 @@ public:
   bool hasLAHFSAHF() const { return HasLAHFSAHF; }
   bool hasMWAITX() const { return HasMWAITX; }
   bool hasCLZERO() const { return HasCLZERO; }
+  bool hasCLDEMOTE() const { return HasCLDEMOTE; }
   bool isSHLDSlow() const { return IsSHLDSlow; }
   bool isPMULLDSlow() const { return IsPMULLDSlow; }
   bool isUnalignedMem16Slow() const { return IsUAMem16Slow; }
@@ -786,11 +786,6 @@ public:
   bool supportPrintSchedInfo() const override { return false; }
 
   bool enableEarlyIfConversion() const override;
-
-  /// Return the instruction itineraries based on the subtarget selection.
-  const InstrItineraryData *getInstrItineraryData() const override {
-    return &InstrItins;
-  }
 
   AntiDepBreakMode getAntiDepBreakMode() const override {
     return TargetSubtargetInfo::ANTIDEP_CRITICAL;

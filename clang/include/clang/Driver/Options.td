@@ -1119,6 +1119,12 @@ def fxray_always_emit_customevents : Flag<["-"], "fxray-always-emit-customevents
 def fnoxray_always_emit_customevents : Flag<["-"], "fno-xray-always-emit-customevents">, Group<f_Group>,
   Flags<[CC1Option]>;
 
+def fxray_always_emit_typedevents : Flag<["-"], "fxray-always-emit-typedevents">, Group<f_Group>,
+  Flags<[CC1Option]>,
+  HelpText<"Determine whether to always emit __xray_typedevent(...) calls even if the function it appears in is not always instrumented.">;
+def fnoxray_always_emit_typedevents : Flag<["-"], "fno-xray-always-emit-typedevents">, Group<f_Group>,
+  Flags<[CC1Option]>;
+
 def fxray_link_deps : Flag<["-"], "fxray-link-deps">, Group<f_Group>,
   Flags<[CC1Option]>,
   HelpText<"Tells clang to add the link dependencies for XRay.">;
@@ -1211,6 +1217,8 @@ def fmodules_disable_diagnostic_validation : Flag<["-"], "fmodules-disable-diagn
 def fmodules_validate_system_headers : Flag<["-"], "fmodules-validate-system-headers">,
   Group<i_Group>, Flags<[CC1Option]>,
   HelpText<"Validate the system headers that a module depends on when loading the module">;
+def fno_modules_validate_system_headers : Flag<["-"], "fno-modules-validate-system-headers">,
+  Group<i_Group>, Flags<[DriverOption]>;
 def fmodules : Flag <["-"], "fmodules">, Group<f_Group>,
   Flags<[DriverOption, CC1Option]>,
   HelpText<"Enable the 'modules' language feature">;

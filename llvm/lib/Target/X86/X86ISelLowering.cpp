@@ -15502,7 +15502,8 @@ static SDValue LowerEXTRACT_SUBVECTOR(SDValue Op, const X86Subtarget &Subtarget,
 }
 
 // Returns the appropriate wrapper opcode for a global reference.
-unsigned X86TargetLowering::getGlobalWrapperKind(const GlobalValue *GV) const {
+unsigned X86TargetLowering::getGlobalWrapperKind(
+    const GlobalValue *GV, const unsigned char OpFlags) const {
   // References to absolute symbols are never PC-relative.
   if (GV && GV->isAbsoluteSymbolRef())
     return X86ISD::Wrapper;
@@ -15510,6 +15511,10 @@ unsigned X86TargetLowering::getGlobalWrapperKind(const GlobalValue *GV) const {
   CodeModel::Model M = getTargetMachine().getCodeModel();
   if (Subtarget.isPICStyleRIPRel() &&
       (M == CodeModel::Small || M == CodeModel::Kernel))
+    return X86ISD::WrapperRIP;
+
+  // GOTPCREL references must always use RIP.
+  if (OpFlags == X86II::MO_GOTPCREL)
     return X86ISD::WrapperRIP;
 
   return X86ISD::Wrapper;
@@ -15635,7 +15640,7 @@ SDValue X86TargetLowering::LowerGlobalAddress(const GlobalValue *GV,
     Result = DAG.getTargetGlobalAddress(GV, dl, PtrVT, 0, OpFlags);
   }
 
-  Result = DAG.getNode(getGlobalWrapperKind(GV), dl, PtrVT, Result);
+  Result = DAG.getNode(getGlobalWrapperKind(GV, OpFlags), dl, PtrVT, Result);
 
   // With PIC, the address is actually $g + Offset.
   if (isGlobalRelativeToPICBase(OpFlags)) {
@@ -20850,24 +20855,6 @@ SDValue X86TargetLowering::LowerINTRINSIC_WO_CHAIN(SDValue Op,
   switch (IntNo) {
   default: return SDValue();    // Don't custom lower most intrinsics.
 
-  case Intrinsic::x86_sse41_pmuldq:
-  case Intrinsic::x86_avx2_pmul_dq:
-  case Intrinsic::x86_avx512_pmul_dq_512: {
-    MVT OpVT = Op.getSimpleValueType();
-    return DAG.getNode(X86ISD::PMULDQ, dl, OpVT,
-                       DAG.getBitcast(OpVT, Op.getOperand(1)),
-                       DAG.getBitcast(OpVT, Op.getOperand(2)));
-  }
-
-  case Intrinsic::x86_sse2_pmulu_dq:
-  case Intrinsic::x86_avx2_pmulu_dq:
-  case Intrinsic::x86_avx512_pmulu_dq_512: {
-    MVT OpVT = Op.getSimpleValueType();
-    return DAG.getNode(X86ISD::PMULUDQ, dl, OpVT,
-                       DAG.getBitcast(OpVT, Op.getOperand(1)),
-                       DAG.getBitcast(OpVT, Op.getOperand(2)));
-  }
-
   case Intrinsic::x86_avx2_permd:
   case Intrinsic::x86_avx2_permps:
     // Operands intentionally swapped. Mask is last operand to intrinsic,
@@ -22034,15 +22021,16 @@ static SDValue LowerVectorIntUnary(SDValue Op, SelectionDAG &DAG) {
   MVT VT = Op.getSimpleValueType();
   unsigned NumElems = VT.getVectorNumElements();
   unsigned SizeInBits = VT.getSizeInBits();
+  MVT EltVT = VT.getVectorElementType();
+  SDValue Src = Op.getOperand(0);
+  assert(EltVT == Src.getSimpleValueType().getVectorElementType() &&
+         "Src and Op should have the same element type!");
 
   // Extract the Lo/Hi vectors
   SDLoc dl(Op);
-  SDValue Src = Op.getOperand(0);
-  unsigned SrcNumElems = Src.getSimpleValueType().getVectorNumElements();
   SDValue Lo = extractSubVector(Src, 0, DAG, dl, SizeInBits / 2);
-  SDValue Hi = extractSubVector(Src, SrcNumElems / 2, DAG, dl, SizeInBits / 2);
+  SDValue Hi = extractSubVector(Src, NumElems / 2, DAG, dl, SizeInBits / 2);
 
-  MVT EltVT = VT.getVectorElementType();
   MVT NewVT = MVT::getVectorVT(EltVT, NumElems / 2);
   return DAG.getNode(ISD::CONCAT_VECTORS, dl, VT,
                      DAG.getNode(Op.getOpcode(), dl, NewVT, Lo),
@@ -22383,7 +22371,7 @@ static SDValue LowerABS(SDValue Op, SelectionDAG &DAG) {
 static SDValue LowerMINMAX(SDValue Op, SelectionDAG &DAG) {
   MVT VT = Op.getSimpleValueType();
 
-  // For AVX1 cases, split to use use legal ops (everything but v4i64).
+  // For AVX1 cases, split to use legal ops (everything but v4i64).
   if (VT.getScalarType() != MVT::i64 && VT.is256BitVector())
     return Lower256IntArith(Op, DAG);
 
@@ -23996,8 +23984,17 @@ static SDValue LowerBITCAST(SDValue Op, const X86Subtarget &Subtarget,
   }
 
   // Custom splitting for BWI types when AVX512F is available but BWI isn't.
-  if ((SrcVT == MVT::v32i16 || SrcVT == MVT::v64i8) && DstVT.isVector())
-    return Lower512IntUnary(Op, DAG);
+  if ((SrcVT == MVT::v32i16 || SrcVT == MVT::v64i8) && DstVT.isVector() &&
+    DAG.getTargetLoweringInfo().isTypeLegal(DstVT)) {
+    SDLoc dl(Op);
+    SDValue Lo, Hi;
+    std::tie(Lo, Hi) = DAG.SplitVector(Op.getOperand(0), dl);
+    EVT CastVT = MVT::getVectorVT(DstVT.getVectorElementType(),
+                                  DstVT.getVectorNumElements() / 2);
+    Lo = DAG.getBitcast(CastVT, Lo);
+    Hi = DAG.getBitcast(CastVT, Hi);
+    return DAG.getNode(ISD::CONCAT_VECTORS, dl, DstVT, Lo, Hi);
+  }
 
   // Use MOVMSK for vector to scalar conversion to prevent scalarization.
   if ((SrcVT == MVT::v16i1 || SrcVT == MVT::v32i1) && DstVT.isScalarInteger()) {
@@ -25391,7 +25388,12 @@ void X86TargetLowering::ReplaceNodeResults(SDNode *N,
     // Custom splitting for BWI types when AVX512F is available but BWI isn't.
     if ((DstVT == MVT::v32i16 || DstVT == MVT::v64i8) &&
         SrcVT.isVector() && isTypeLegal(SrcVT)) {
-      SDValue Res = Lower512IntUnary(SDValue(N, 0), DAG);
+      SDValue Lo, Hi;
+      std::tie(Lo, Hi) = DAG.SplitVectorOperand(N, 0);
+      MVT CastVT = (DstVT == MVT::v32i16) ? MVT::v16i16 : MVT::v32i8;
+      Lo = DAG.getBitcast(CastVT, Lo);
+      Hi = DAG.getBitcast(CastVT, Hi);
+      SDValue Res = DAG.getNode(ISD::CONCAT_VECTORS, dl, DstVT, Lo, Hi);
       Results.push_back(Res);
       return;
     }
@@ -28051,11 +28053,16 @@ X86TargetLowering::EmitInstrWithCustomInserter(MachineInstr &MI,
         MI.getOpcode() == X86::RDFLAGS32 ? X86::PUSHF32 : X86::PUSHF64;
     unsigned Pop = MI.getOpcode() == X86::RDFLAGS32 ? X86::POP32r : X86::POP64r;
     MachineInstr *Push = BuildMI(*BB, MI, DL, TII->get(PushF));
-    // Permit reads of the FLAGS register without it being defined.
+    // Permit reads of the EFLAGS and DF registers without them being defined.
     // This intrinsic exists to read external processor state in flags, such as
     // the trap flag, interrupt flag, and direction flag, none of which are
     // modeled by the backend.
+    assert(Push->getOperand(2).getReg() == X86::EFLAGS &&
+           "Unexpected register in operand!");
     Push->getOperand(2).setIsUndef();
+    assert(Push->getOperand(3).getReg() == X86::DF &&
+           "Unexpected register in operand!");
+    Push->getOperand(3).setIsUndef();
     BuildMI(*BB, MI, DL, TII->get(Pop), MI.getOperand(0).getReg());
 
     MI.eraseFromParent(); // The pseudo is gone now.
@@ -28211,6 +28218,9 @@ X86TargetLowering::EmitInstrWithCustomInserter(MachineInstr &MI,
 
   case TargetOpcode::PATCHABLE_EVENT_CALL:
     return emitXRayCustomEvent(MI, BB);
+
+  case TargetOpcode::PATCHABLE_TYPED_EVENT_CALL:
+    return emitXRayTypedEvent(MI, BB);
 
   case X86::LCMPXCHG8B: {
     const X86RegisterInfo *TRI = Subtarget.getRegisterInfo();
@@ -35987,6 +35997,91 @@ static SDValue combineVectorSignBitsTruncation(SDNode *N, const SDLoc &DL,
   return SDValue();
 }
 
+/// This function detects the addition or substraction with saturation pattern
+/// between 2 unsigned i8/i16 vectors and replace this operation with the
+/// efficient X86ISD::ADDUS/X86ISD::ADDS/X86ISD::SUBUS/x86ISD::SUBS instruction.
+static SDValue detectAddSubSatPattern(SDValue In, EVT VT, SelectionDAG &DAG,
+                                      const X86Subtarget &Subtarget,
+                                      const SDLoc &DL) {
+  if (!VT.isVector() || !VT.isSimple())
+    return SDValue();
+  EVT InVT = In.getValueType();
+  unsigned NumElems = VT.getVectorNumElements();
+
+  EVT ScalarVT = VT.getVectorElementType();
+  if ((ScalarVT != MVT::i8 && ScalarVT != MVT::i16) ||
+      InVT.getSizeInBits() % 128 != 0 || !isPowerOf2_32(NumElems))
+    return SDValue();
+
+  // InScalarVT is the intermediate type in AddSubSat pattern
+  // and it should be greater than the original input type (i8/i16).
+  EVT InScalarVT = InVT.getVectorElementType();
+  if (InScalarVT.getSizeInBits() <= ScalarVT.getSizeInBits())
+    return SDValue();
+
+  if (!Subtarget.hasSSE2())
+    return SDValue();
+
+  // Detect the following pattern:
+  // %2 = zext <16 x i8> %0 to <16 x i16>
+  // %3 = zext <16 x i8> %1 to <16 x i16>
+  // %4 = add nuw nsw <16 x i16> %3, %2
+  // %5 = icmp ult <16 x i16> %4, <16 x i16> (vector of max InScalarVT values)
+  // %6 = select <16 x i1> %5, <16 x i16> (vector of max InScalarVT values)
+  // %7 = trunc <16 x i16> %6 to <16 x i8>
+
+  // Detect a Sat Pattern
+  bool Signed = true;
+  SDValue Sat = detectSSatPattern(In, VT, false);
+  if (!Sat) {
+    Sat = detectUSatPattern(In, VT);
+    Signed = false;
+  }
+  if (!Sat)
+    return SDValue();
+  if (Sat.getOpcode() != ISD::ADD && Sat.getOpcode() != ISD::SUB)
+    return SDValue();
+
+  unsigned Opcode = Sat.getOpcode() == ISD::ADD ? Signed ? X86ISD::ADDS
+                                                         : X86ISD::ADDUS
+                                                : Signed ? X86ISD::SUBS
+                                                         : X86ISD::SUBUS;
+
+  // Get addition elements.
+  SDValue LHS = Sat.getOperand(0);
+  SDValue RHS = Sat.getOperand(1);
+
+  // Check if LHS and RHS are results of type promotion or
+  // one of them is and the other one is constant.
+  unsigned ExtendOpcode = Signed ? ISD::SIGN_EXTEND :
+                                   ISD::ZERO_EXTEND;
+  unsigned LHSOpcode = LHS.getOpcode();
+  unsigned RHSOpcode = RHS.getOpcode();
+
+  if (LHSOpcode == ExtendOpcode && RHSOpcode == ExtendOpcode) {
+    LHS = LHS.getOperand(0);
+    RHS = RHS.getOperand(0);
+  } else if (LHSOpcode == ExtendOpcode &&
+             ISD::isBuildVectorOfConstantSDNodes(RHS.getNode())) {
+    LHS = LHS.getOperand(0);
+    RHS = DAG.getNode(ISD::TRUNCATE, DL, VT, RHS);
+  } else if (RHSOpcode == ExtendOpcode &&
+           ISD::isBuildVectorOfConstantSDNodes(LHS.getNode())) {
+    RHS = RHS.getOperand(0);
+    LHS = DAG.getNode(ISD::TRUNCATE, DL, VT, LHS);
+  } else
+    return SDValue();
+  
+  // The pattern is detected, emit ADDS/ADDUS/SUBS/SUBUS instruction.
+  auto AddSubSatBuilder = [Opcode](SelectionDAG &DAG, const SDLoc &DL,
+                                   ArrayRef<SDValue> Ops) {
+    EVT VT = Ops[0].getValueType();
+    return DAG.getNode(Opcode, DL, VT, Ops);
+  };
+  return SplitOpsAndApply(DAG, Subtarget, DL, VT, { LHS, RHS },
+                          AddSubSatBuilder);
+}
+
 static SDValue combineTruncate(SDNode *N, SelectionDAG &DAG,
                                const X86Subtarget &Subtarget) {
   EVT VT = N->getValueType(0);
@@ -36000,6 +36095,10 @@ static SDValue combineTruncate(SDNode *N, SelectionDAG &DAG,
   // Try to detect AVG pattern first.
   if (SDValue Avg = detectAVGPattern(Src, VT, DAG, Subtarget, DL))
     return Avg;
+
+  // Try to detect addition or substraction with saturation.
+  if (SDValue AddSubSat = detectAddSubSatPattern(Src, VT, DAG, Subtarget, DL))
+    return AddSubSat;
 
   // Try to combine truncation with signed/unsigned saturation.
   if (SDValue Val = combineTruncateWithSat(Src, VT, DL, DAG, Subtarget))
@@ -38704,25 +38803,6 @@ bool X86TargetLowering::isTypeDesirableForOp(unsigned Opc, EVT VT) const {
   case ISD::XOR:
     return false;
   }
-}
-
-/// This function checks if any of the users of EFLAGS copies the EFLAGS. We
-/// know that the code that lowers COPY of EFLAGS has to use the stack, and if
-/// we don't adjust the stack we clobber the first frame index.
-/// See X86InstrInfo::copyPhysReg.
-static bool hasCopyImplyingStackAdjustment(const MachineFunction &MF) {
-  const MachineRegisterInfo &MRI = MF.getRegInfo();
-  return any_of(MRI.reg_instructions(X86::EFLAGS),
-                [](const MachineInstr &RI) { return RI.isCopy(); });
-}
-
-void X86TargetLowering::finalizeLowering(MachineFunction &MF) const {
-  if (hasCopyImplyingStackAdjustment(MF)) {
-    MachineFrameInfo &MFI = MF.getFrameInfo();
-    MFI.setHasCopyImplyingStackAdjustment(true);
-  }
-
-  TargetLoweringBase::finalizeLowering(MF);
 }
 
 SDValue X86TargetLowering::expandIndirectJTBranch(const SDLoc& dl,

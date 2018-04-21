@@ -180,6 +180,7 @@ add_lldb_library(lldbHost
   
   LINK_LIBS
     lldbCore
+    lldbInterpreter
     lldbSymbol
     lldbTarget
     lldbUtility
@@ -187,6 +188,5 @@ add_lldb_library(lldbHost
     ${EXTRA_LIBS}
   
   LINK_COMPONENTS
-    Object
     Support
   )

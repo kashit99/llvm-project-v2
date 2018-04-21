@@ -17,13 +17,11 @@
 #include <sstream>
 #include <cassert>
 
-#include "test_macros.h"
-
-#if defined(TEST_COMPILER_CLANG)
+#if defined(__clang__)
 #pragma clang diagnostic ignored "-Wliteral-conversion"
 #endif
 
-#ifdef TEST_COMPILER_C1XX
+#ifdef _MSC_VER
 #pragma warning(disable: 4244) // conversion from 'X' to 'Y', possible loss of data
 #endif
 

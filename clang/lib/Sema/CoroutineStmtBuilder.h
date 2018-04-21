@@ -51,6 +51,9 @@ public:
   /// name lookup.
   bool buildDependentStatements();
 
+  /// \brief Build just parameter moves. To use for rebuilding in TreeTransform.
+  bool buildParameterMoves();
+
   bool isInvalid() const { return !this->IsValid; }
 
 private:
@@ -62,6 +65,7 @@ private:
   bool makeReturnObject();
   bool makeGroDeclAndReturnStmt();
   bool makeReturnOnAllocFailure();
+  bool makeParamMoves();
 };
 
 } // end namespace clang

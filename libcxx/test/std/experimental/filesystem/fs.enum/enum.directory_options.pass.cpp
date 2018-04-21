@@ -13,7 +13,7 @@
 
 // enum class directory_options;
 
-#include "filesystem_include.hpp"
+#include <experimental/filesystem>
 #include <type_traits>
 #include <cassert>
 #include <sys/stat.h>
@@ -21,6 +21,7 @@
 #include "test_macros.h"
 #include "check_bitmask_types.hpp"
 
+namespace fs = std::experimental::filesystem;
 
 constexpr fs::directory_options ME(int val) { return static_cast<fs::directory_options>(val); }
 

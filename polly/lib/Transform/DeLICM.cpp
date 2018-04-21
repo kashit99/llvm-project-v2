@@ -484,7 +484,8 @@ public:
 
     // Does Proposed write at the same time as Existing already does (order of
     // writes is undefined)? Writing the same value is permitted.
-    auto ExistingWrittenDomain = Existing.Written.domain();
+    auto ExistingWrittenDomain =
+        isl::manage(isl_union_map_domain(Existing.Written.copy()));
     auto BothWritten =
         Existing.Written.domain().intersect(Proposed.Written.domain());
     auto ExistingKnownWritten = filterKnownValInst(Existing.Written);

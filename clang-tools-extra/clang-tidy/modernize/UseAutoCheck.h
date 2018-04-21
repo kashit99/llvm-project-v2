@@ -29,7 +29,6 @@ private:
                    llvm::function_ref<QualType(const Expr *)> GetType,
                    StringRef Message);
 
-  const unsigned int MinTypeNameLength;
   const bool RemoveStars;
 };
 

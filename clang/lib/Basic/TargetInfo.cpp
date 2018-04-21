@@ -32,7 +32,6 @@ TargetInfo::TargetInfo(const llvm::Triple &T) : TargetOpts(), Triple(T) {
   TLSSupported = true;
   VLASupported = true;
   NoAsmVariants = false;
-  HasLegalHalfType = false;
   HasFloat128 = false;
   PointerWidth = PointerAlign = 32;
   BoolWidth = BoolAlign = 8;
@@ -355,14 +354,6 @@ bool TargetInfo::initFeatureMap(
     setFeatureEnabled(Features, Name.substr(1), Enabled);
   }
   return true;
-}
-
-TargetInfo::CallingConvKind
-TargetInfo::getCallingConvKind(bool ClangABICompat4) const {
-  if (getCXXABI() != TargetCXXABI::Microsoft &&
-      (ClangABICompat4 || getTriple().getOS() == llvm::Triple::PS4))
-    return CCK_ClangABI4OrPS4;
-  return CCK_Default;
 }
 
 LangAS TargetInfo::getOpenCLTypeAddrSpace(OpenCLTypeKind TK) const {

@@ -17,23 +17,11 @@ namespace {
 
 /// Retrieves namespace and class level symbols in \p Decls.
 std::unique_ptr<SymbolSlab> indexAST(ASTContext &Ctx,
-                                     std::shared_ptr<Preprocessor> PP,
                                      llvm::ArrayRef<const Decl *> Decls) {
-  SymbolCollector::Options CollectorOpts;
-  // FIXME(ioeric): we might also want to collect include headers. We would need
-  // to make sure all includes are canonicalized (with CanonicalIncludes), which
-  // is not trivial given the current way of collecting symbols: we only have
-  // AST at this point, but we also need preprocessor callbacks (e.g.
-  // CommentHandler for IWYU pragma) to canonicalize includes.
-  CollectorOpts.CollectIncludePath = false;
-  CollectorOpts.CountReferences = false;
-
-  auto Collector = std::make_shared<SymbolCollector>(std::move(CollectorOpts));
-  Collector->setPreprocessor(std::move(PP));
+  auto Collector = std::make_shared<SymbolCollector>();
   index::IndexingOptions IndexOpts;
-  // We only need declarations, because we don't count references.
   IndexOpts.SystemSymbolFilter =
-      index::IndexingOptions::SystemSymbolFilterKind::DeclarationsOnly;
+      index::IndexingOptions::SystemSymbolFilterKind::All;
   IndexOpts.IndexFunctionLocals = false;
 
   index::indexTopLevelDecls(Ctx, Decls, Collector, IndexOpts);
@@ -75,12 +63,11 @@ std::shared_ptr<std::vector<const Symbol *>> FileSymbols::allSymbols() {
   return {std::move(Snap), Pointers};
 }
 
-void FileIndex::update(PathRef Path, ParsedAST *AST) {
+void FileIndex::update(const Context &Ctx, PathRef Path, ParsedAST *AST) {
   if (!AST) {
     FSymbols.update(Path, nullptr);
   } else {
-    auto Slab = indexAST(AST->getASTContext(), AST->getPreprocessorPtr(),
-                         AST->getTopLevelDecls());
+    auto Slab = indexAST(AST->getASTContext(), AST->getTopLevelDecls());
     FSymbols.update(Path, std::move(Slab));
   }
   auto Symbols = FSymbols.allSymbols();
@@ -88,15 +75,9 @@ void FileIndex::update(PathRef Path, ParsedAST *AST) {
 }
 
 bool FileIndex::fuzzyFind(
-    const FuzzyFindRequest &Req,
+    const Context &Ctx, const FuzzyFindRequest &Req,
     llvm::function_ref<void(const Symbol &)> Callback) const {
-  return Index.fuzzyFind(Req, Callback);
-}
-
-void FileIndex::lookup(
-    const LookupRequest &Req,
-    llvm::function_ref<void(const Symbol &)> Callback) const {
-  Index.lookup(Req, Callback);
+  return Index.fuzzyFind(Ctx, Req, Callback);
 }
 
 } // namespace clangd

@@ -14,6 +14,10 @@
 #include "llvm/ADT/StringSet.h"
 #include "llvm/BinaryFormat/Wasm.h"
 
+#include "Symbols.h"
+
+using llvm::wasm::WasmGlobal;
+
 namespace lld {
 namespace wasm {
 
@@ -21,11 +25,8 @@ struct Configuration {
   bool AllowUndefined;
   bool CheckSignatures;
   bool Demangle;
-  bool ExportTable;
-  bool GcSections;
+  bool EmitRelocs;
   bool ImportMemory;
-  bool ImportTable;
-  bool PrintGcSections;
   bool Relocatable;
   bool StripAll;
   bool StripDebug;
@@ -38,6 +39,7 @@ struct Configuration {
 
   llvm::StringSet<> AllowUndefinedSymbols;
   std::vector<llvm::StringRef> SearchPaths;
+  Symbol *StackPointerSymbol = nullptr;
 };
 
 // The only instance of Configuration struct.

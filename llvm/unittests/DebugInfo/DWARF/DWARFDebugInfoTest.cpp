@@ -1,4 +1,4 @@
-//===- llvm/unittest/DebugInfo/DWARFDebugInfoTest.cpp ---------------------===//
+//===- llvm/unittest/DebugInfo/DWARFFormValueTest.cpp ---------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -8,7 +8,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "DwarfGenerator.h"
-#include "DwarfUtils.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SmallString.h"
@@ -37,9 +36,35 @@
 
 using namespace llvm;
 using namespace dwarf;
-using namespace utils;
 
 namespace {
+
+void initLLVMIfNeeded() {
+  static bool gInitialized = false;
+  if (!gInitialized) {
+    gInitialized = true;
+    InitializeAllTargets();
+    InitializeAllTargetMCs();
+    InitializeAllAsmPrinters();
+    InitializeAllAsmParsers();
+  }
+}
+
+Triple getHostTripleForAddrSize(uint8_t AddrSize) {
+  Triple PT(Triple::normalize(LLVM_HOST_TRIPLE));
+
+  if (AddrSize == 8 && PT.isArch32Bit())
+    return PT.get64BitArchVariant();
+  if (AddrSize == 4 && PT.isArch64Bit())
+    return PT.get32BitArchVariant();
+  return PT;
+}
+
+static bool isConfigurationSupported(Triple &T) {
+  initLLVMIfNeeded();
+  std::string Err;
+  return TargetRegistry::lookupTarget(T.getTriple(), Err);
+}
 
 template <uint16_t Version, class AddrType, class RefAddrType>
 void TestAllForms() {
@@ -1166,7 +1191,7 @@ TEST(DWARFDebugInfo, TestEmptyChildren) {
                          "    Attributes:\n"
                          "debug_info:\n"
                          "  - Length:\n"
-                         "      TotalLength:          0\n"
+                         "      TotalLength:          9\n"
                          "    Version:         4\n"
                          "    AbbrOffset:      0\n"
                          "    AddrSize:        8\n"
@@ -1176,7 +1201,7 @@ TEST(DWARFDebugInfo, TestEmptyChildren) {
                          "      - AbbrCode:        0x00000000\n"
                          "        Values:\n";
 
-  auto ErrOrSections = DWARFYAML::EmitDebugSections(StringRef(yamldata), true);
+  auto ErrOrSections = DWARFYAML::EmitDebugSections(StringRef(yamldata));
   ASSERT_TRUE((bool)ErrOrSections);
   std::unique_ptr<DWARFContext> DwarfContext =
       DWARFContext::create(*ErrOrSections, 8);

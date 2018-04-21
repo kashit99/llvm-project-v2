@@ -19,7 +19,7 @@
 //      path(InputIterator first, InputIterator last);
 
 
-#include "filesystem_include.hpp"
+#include <experimental/filesystem>
 #include <iterator>
 #include <type_traits>
 #include <cassert>
@@ -27,6 +27,7 @@
 #include "test_macros.h"
 #include "filesystem_test_helper.hpp"
 
+namespace fs = std::experimental::filesystem;
 
 
 template <class It>
@@ -83,14 +84,14 @@ void checkBeginEndBasic() {
   }
   {
     path p("//root_name//first_dir////second_dir");
-    const path expect[] = {"/", "root_name", "first_dir", "second_dir"};
+    const path expect[] = {"//root_name", "/", "first_dir", "second_dir"};
     assert(checkCollectionsEqual(p.begin(), p.end(), std::begin(expect), std::end(expect)));
     assert(checkCollectionsEqualBackwards(p.begin(), p.end(), std::begin(expect), std::end(expect)));
 
   }
   {
     path p("////foo/bar/baz///");
-    const path expect[] = {"/", "foo", "bar", "baz", ""};
+    const path expect[] = {"/", "foo", "bar", "baz", "."};
     assert(checkCollectionsEqual(p.begin(), p.end(), std::begin(expect), std::end(expect)));
     assert(checkCollectionsEqualBackwards(p.begin(), p.end(), std::begin(expect), std::end(expect)));
 

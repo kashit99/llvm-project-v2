@@ -21,7 +21,6 @@
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/Support/DataExtractor.h"
 #include "llvm/Support/Format.h"
-#include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/WithColor.h"
 #include "llvm/Support/raw_ostream.h"
@@ -189,10 +188,20 @@ static void dumpAttribute(raw_ostream &OS, const DWARFDie &Die,
   const char BaseIndent[] = "            ";
   OS << BaseIndent;
   OS.indent(Indent + 2);
-  WithColor(OS, HighlightColor::Attribute) << formatv("{0}", Attr);
+  auto attrString = AttributeString(Attr);
+  if (!attrString.empty())
+    WithColor(OS, HighlightColor::Attribute) << attrString;
+  else
+    WithColor(OS, HighlightColor::Attribute).get()
+        << format("DW_AT_Unknown_%x", Attr);
 
-  if (DumpOpts.Verbose || DumpOpts.ShowForm)
-    OS << formatv(" [{0}]", Form);
+  if (DumpOpts.Verbose || DumpOpts.ShowForm) {
+    auto formString = FormEncodingString(Form);
+    if (!formString.empty())
+      OS << " [" << formString << ']';
+    else
+      OS << format(" [DW_FORM_Unknown_%x]", Form);
+  }
 
   DWARFUnit *U = Die.getDwarfUnit();
   DWARFFormValue formValue(Form);
@@ -456,8 +465,13 @@ void DWARFDie::dump(raw_ostream &OS, unsigned Indent,
     if (abbrCode) {
       auto AbbrevDecl = getAbbreviationDeclarationPtr();
       if (AbbrevDecl) {
-        WithColor(OS, HighlightColor::Tag).get().indent(Indent)
-            << formatv("{0}", getTag());
+        auto tagString = TagString(getTag());
+        if (!tagString.empty())
+          WithColor(OS, HighlightColor::Tag).get().indent(Indent) << tagString;
+        else
+          WithColor(OS, HighlightColor::Tag).get().indent(Indent)
+              << format("DW_TAG_Unknown_%x", getTag());
+
         if (DumpOpts.Verbose)
           OS << format(" [%u] %c", abbrCode,
                        AbbrevDecl->hasChildren() ? '*' : ' ');

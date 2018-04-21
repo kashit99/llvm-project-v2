@@ -567,7 +567,7 @@ int FuzzerDriver(int *argc, char ***argv, UserCallback Callback) {
   FuzzingOptions Options;
   Options.Verbosity = Flags.verbosity;
   Options.MaxLen = Flags.max_len;
-  Options.LenControl = Flags.len_control;
+  Options.ExperimentalLenControl = Flags.experimental_len_control;
   Options.UnitTimeoutSec = Flags.timeout;
   Options.ErrorExitCode = Flags.error_exitcode;
   Options.TimeoutExitCode = Flags.timeout_exitcode;
@@ -747,7 +747,7 @@ int FuzzerDriver(int *argc, char ***argv, UserCallback Callback) {
       Printf("Dictionary analysis failed\n");
       exit(1);
     }
-    Printf("Dictionary analysis succeeded\n");
+    Printf("Dictionary analysis suceeded\n");
     exit(0);
   }
 

@@ -45,15 +45,10 @@ class map {
   value_type& operator[](Key&& key);
 };
 
-class basic_string_view;
-
 class basic_string {
  public:
   basic_string();
   basic_string(const char*);
-
-  operator basic_string_view() const noexcept;
-
   ~basic_string();
 };
 
@@ -62,6 +57,7 @@ typedef basic_string string;
 class basic_string_view {
  public:
   basic_string_view(const char*);
+  basic_string_view(const basic_string&);
 };
 
 typedef basic_string_view string_view;

@@ -36,6 +36,7 @@ private:
   using BlkT = typename Traits::BlkT;
   using ValT = typename Traits::ValT;
   using PhiT = typename Traits::PhiT;
+  using PhiItT = typename Traits::PhiItT;
 
   /// BBInfo - Per-basic block information used internally by SSAUpdaterImpl.
   /// The predecessors of each block are cached here since pred_iterator is
@@ -389,8 +390,12 @@ public:
   /// FindExistingPHI - Look through the PHI nodes in a block to see if any of
   /// them match what is needed.
   void FindExistingPHI(BlkT *BB, BlockListTy *BlockList) {
-    for (auto &SomePHI : BB->phis()) {
-      if (CheckIfPHIMatches(&SomePHI)) {
+    for (PhiItT BBI = Traits::PhiItT_begin(BB), BBE = Traits::PhiItT_end(BB);
+         BBI != BBE; ++BBI) {
+      PhiT *SomePHI = Traits::InstrIsPHI(&*BBI);
+      if (!SomePHI)
+        break;
+      if (CheckIfPHIMatches(SomePHI)) {
         RecordMatchingPHIs(BlockList);
         break;
       }

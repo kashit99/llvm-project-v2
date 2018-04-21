@@ -784,7 +784,7 @@ public:
   void addComment(const RawComment &RC) {
     assert(LangOpts.RetainCommentsFromSystemHeaders ||
            !SourceMgr.isInSystemHeader(RC.getSourceRange().getBegin()));
-    Comments.addComment(RC, LangOpts.CommentOpts, BumpAlloc);
+    Comments.addComment(RC, BumpAlloc);
   }
 
   /// \brief Return the documentation comment attached to a given declaration.
@@ -1113,7 +1113,7 @@ public:
   /// \brief Apply Objective-C protocol qualifiers to the given type.
   /// \param allowOnPointerType specifies if we can apply protocol
   /// qualifiers on ObjCObjectPointerType. It can be set to true when
-  /// constructing the canonical type of a Objective-C type parameter.
+  /// contructing the canonical type of a Objective-C type parameter.
   QualType applyObjCProtocolQualifiers(QualType type,
       ArrayRef<ObjCProtocolDecl *> protocols, bool &hasError,
       bool allowOnPointerType = false) const;
@@ -1161,13 +1161,6 @@ public:
 
   /// \brief Change the result type of a function type once it is deduced.
   void adjustDeducedFunctionResultType(FunctionDecl *FD, QualType ResultType);
-
-  /// Get a function type and produce the equivalent function type with the
-  /// specified exception specification. Type sugar that can be present on a
-  /// declaration of a function with an exception specification is permitted
-  /// and preserved. Other type sugar (for instance, typedefs) is not.
-  QualType getFunctionTypeWithExceptionSpec(
-      QualType Orig, const FunctionProtoType::ExceptionSpecInfo &ESI);
 
   /// \brief Determine whether two function types are the same, ignoring
   /// exception specifications in cases where they're part of the type.
@@ -1880,10 +1873,6 @@ public:
   QualType getBuiltinMSVaListType() const {
     return getTypeDeclType(getBuiltinMSVaListDecl());
   }
-
-  /// Return whether a declaration to a builtin is allowed to be
-  /// overloaded/redeclared.
-  bool canBuiltinBeRedeclared(const FunctionDecl *) const;
 
   /// \brief Return a type with additional \c const, \c volatile, or
   /// \c restrict qualifiers.
@@ -2647,12 +2636,6 @@ public:
   /// \returns true if the function/var must be CodeGen'ed/deserialized even if
   /// it is not used.
   bool DeclMustBeEmitted(const Decl *D);
-
-  /// \brief Visits all versions of a multiversioned function with the passed
-  /// predicate.
-  void forEachMultiversionedFunctionVersion(
-      const FunctionDecl *FD,
-      llvm::function_ref<void(const FunctionDecl *)> Pred) const;
 
   const CXXConstructorDecl *
   getCopyConstructorForExceptionObject(CXXRecordDecl *RD);

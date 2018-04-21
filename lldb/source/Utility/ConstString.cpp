@@ -11,10 +11,10 @@
 
 #include "lldb/Utility/Stream.h"
 
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/iterator.h"            // for iterator_facade_base
 #include "llvm/Support/Allocator.h"       // for BumpPtrAllocator
-#include "llvm/Support/DJB.h"             // for djbHash
 #include "llvm/Support/FormatProviders.h" // for format_provider
 #include "llvm/Support/RWMutex.h"
 #include "llvm/Support/Threading.h"
@@ -171,7 +171,7 @@ public:
 
 protected:
   uint8_t hash(const llvm::StringRef &s) const {
-    uint32_t h = llvm::djbHash(s);
+    uint32_t h = llvm::HashString(s);
     return ((h >> 24) ^ (h >> 16) ^ (h >> 8) ^ h) & 0xff;
   }
 
@@ -195,7 +195,7 @@ protected:
 // touch ConstStrings is difficult.  So we leak the pool instead.
 //----------------------------------------------------------------------
 static Pool &StringPool() {
-  static llvm::once_flag g_pool_initialization_flag;
+  static std::once_flag g_pool_initialization_flag;
   static Pool *g_string_pool = nullptr;
 
   llvm::call_once(g_pool_initialization_flag,

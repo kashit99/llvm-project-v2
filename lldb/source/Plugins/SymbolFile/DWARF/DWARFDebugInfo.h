@@ -13,7 +13,6 @@
 #include <map>
 #include <vector>
 
-#include "DWARFUnit.h"
 #include "DWARFDIE.h"
 #include "SymbolFileDWARF.h"
 #include "lldb/Core/STLUtils.h"
@@ -27,7 +26,7 @@ typedef CStringToDIEMap::const_iterator CStringToDIEMapConstIter;
 class DWARFDebugInfo {
 public:
   typedef dw_offset_t (*Callback)(SymbolFileDWARF *dwarf2Data,
-                                  DWARFUnit *cu,
+                                  DWARFCompileUnit *cu,
                                   DWARFDebugInfoEntry *die,
                                   const dw_offset_t next_offset,
                                   const uint32_t depth, void *userData);
@@ -36,11 +35,12 @@ public:
   void SetDwarfData(SymbolFileDWARF *dwarf2Data);
 
   size_t GetNumCompileUnits();
-  bool ContainsCompileUnit(const DWARFUnit *cu) const;
-  DWARFUnit *GetCompileUnitAtIndex(uint32_t idx);
-  DWARFUnit *GetCompileUnit(dw_offset_t cu_offset, uint32_t *idx_ptr = NULL);
-  DWARFUnit *GetCompileUnitContainingDIEOffset(dw_offset_t die_offset);
-  DWARFUnit *GetCompileUnit(const DIERef &die_ref);
+  bool ContainsCompileUnit(const DWARFCompileUnit *cu) const;
+  DWARFCompileUnit *GetCompileUnitAtIndex(uint32_t idx);
+  DWARFCompileUnit *GetCompileUnit(dw_offset_t cu_offset,
+                                   uint32_t *idx_ptr = NULL);
+  DWARFCompileUnit *GetCompileUnitContainingDIEOffset(dw_offset_t die_offset);
+  DWARFCompileUnit *GetCompileUnit(const DIERef &die_ref);
   DWARFDIE GetDIEForDIEOffset(dw_offset_t die_offset);
   DWARFDIE GetDIE(const DIERef &die_ref);
 
@@ -62,9 +62,9 @@ public:
 
 protected:
   static bool OffsetLessThanCompileUnitOffset(dw_offset_t offset,
-                                              const DWARFUnitSP &cu_sp);
+                                              const DWARFCompileUnitSP &cu_sp);
 
-  typedef std::vector<DWARFUnitSP> CompileUnitColl;
+  typedef std::vector<DWARFCompileUnitSP> CompileUnitColl;
 
   //----------------------------------------------------------------------
   // Member variables

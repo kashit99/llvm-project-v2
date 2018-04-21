@@ -1,4 +1,4 @@
-#include "benchmark/benchmark.h"
+#include "benchmark/benchmark_api.h"
 #include <chrono>
 #include <thread>
 
@@ -8,13 +8,13 @@
 #include <cassert>
 
 void BM_basic(benchmark::State& state) {
-  for (auto _ : state) {
+  while (state.KeepRunning()) {
   }
 }
 
 void BM_basic_slow(benchmark::State& state) {
   std::chrono::milliseconds sleep_duration(state.range(0));
-  for (auto _ : state) {
+  while (state.KeepRunning()) {
     std::this_thread::sleep_for(
         std::chrono::duration_cast<std::chrono::nanoseconds>(sleep_duration));
   }
@@ -44,7 +44,7 @@ void CustomArgs(benchmark::internal::Benchmark* b) {
 
 BENCHMARK(BM_basic)->Apply(CustomArgs);
 
-void BM_explicit_iteration_count(benchmark::State& state) {
+void BM_explicit_iteration_count(benchmark::State& st) {
   // Test that benchmarks specified with an explicit iteration count are
   // only run once.
   static bool invoked_before = false;
@@ -52,14 +52,14 @@ void BM_explicit_iteration_count(benchmark::State& state) {
   invoked_before = true;
 
   // Test that the requested iteration count is respected.
-  assert(state.max_iterations == 42);
+  assert(st.max_iterations == 42);
   size_t actual_iterations = 0;
-  for (auto _ : state)
+  while (st.KeepRunning())
     ++actual_iterations;
-  assert(state.iterations() == state.max_iterations);
-  assert(state.iterations() == 42);
+  assert(st.iterations() == st.max_iterations);
+  assert(st.iterations() == 42);
 
 }
 BENCHMARK(BM_explicit_iteration_count)->Iterations(42);
 
-BENCHMARK_MAIN();
+BENCHMARK_MAIN()

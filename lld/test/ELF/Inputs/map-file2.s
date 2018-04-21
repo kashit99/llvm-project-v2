@@ -1,7 +1,5 @@
 foo:
-.cfi_startproc
 nop
-.cfi_endproc
 .global bar
 bar:
 nop

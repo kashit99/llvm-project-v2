@@ -60,7 +60,7 @@ struct alignas(64) ThreadLocalData {
   size_t StackSize = 0;
   size_t StackEntries = 0;
   int Fd = -1;
-  tid_t TID = 0;
+  pid_t TID = 0;
 };
 
 static pthread_key_t PThreadKey;
@@ -157,6 +157,7 @@ template <class RDTSC>
 void InMemoryRawLog(int32_t FuncId, XRayEntryType Type,
                     RDTSC ReadTSC) XRAY_NEVER_INSTRUMENT {
   auto &TLD = getThreadLocalData();
+  auto &InMemoryBuffer = TLD.InMemoryBuffer;
   int Fd = getGlobalFd();
   if (Fd == -1)
     return;
@@ -239,12 +240,14 @@ void InMemoryRawLog(int32_t FuncId, XRayEntryType Type,
   R.TId = TLD.TID;
   R.Type = Type;
   R.FuncId = FuncId;
-  auto FirstEntry = reinterpret_cast<__xray::XRayRecord *>(TLD.InMemoryBuffer);
-  __sanitizer::internal_memcpy(FirstEntry + TLD.BufferOffset, &R, sizeof(R));
+  auto EntryPtr = static_cast<char *>(InMemoryBuffer) +
+                  (sizeof(__xray::XRayRecord) * TLD.BufferOffset);
+  __sanitizer::internal_memcpy(EntryPtr, &R, sizeof(R));
   if (++TLD.BufferOffset == TLD.BufferSize) {
     __sanitizer::SpinMutexLock L(&LogMutex);
-    retryingWriteAll(Fd, reinterpret_cast<char *>(FirstEntry),
-                     reinterpret_cast<char *>(FirstEntry + TLD.BufferOffset));
+    auto RecordBuffer = reinterpret_cast<__xray::XRayRecord *>(InMemoryBuffer);
+    retryingWriteAll(Fd, reinterpret_cast<char *>(RecordBuffer),
+                     reinterpret_cast<char *>(RecordBuffer + TLD.BufferOffset));
     TLD.BufferOffset = 0;
     TLD.StackEntries = 0;
   }
@@ -254,8 +257,8 @@ template <class RDTSC>
 void InMemoryRawLogWithArg(int32_t FuncId, XRayEntryType Type, uint64_t Arg1,
                            RDTSC ReadTSC) XRAY_NEVER_INSTRUMENT {
   auto &TLD = getThreadLocalData();
-  auto FirstEntry =
-      reinterpret_cast<__xray::XRayArgPayload *>(TLD.InMemoryBuffer);
+  auto &InMemoryBuffer = TLD.InMemoryBuffer;
+  auto &Offset = TLD.BufferOffset;
   const auto &BuffLen = TLD.BufferSize;
   int Fd = getGlobalFd();
   if (Fd == -1)
@@ -264,11 +267,12 @@ void InMemoryRawLogWithArg(int32_t FuncId, XRayEntryType Type, uint64_t Arg1,
   // First we check whether there's enough space to write the data consecutively
   // in the thread-local buffer. If not, we first flush the buffer before
   // attempting to write the two records that must be consecutive.
-  if (TLD.BufferOffset + 2 > BuffLen) {
+  if (Offset + 2 > BuffLen) {
     __sanitizer::SpinMutexLock L(&LogMutex);
-    retryingWriteAll(Fd, reinterpret_cast<char *>(FirstEntry),
-                     reinterpret_cast<char *>(FirstEntry + TLD.BufferOffset));
-    TLD.BufferOffset = 0;
+    auto RecordBuffer = reinterpret_cast<__xray::XRayRecord *>(InMemoryBuffer);
+    retryingWriteAll(Fd, reinterpret_cast<char *>(RecordBuffer),
+                     reinterpret_cast<char *>(RecordBuffer + Offset));
+    Offset = 0;
     TLD.StackEntries = 0;
   }
 
@@ -286,12 +290,15 @@ void InMemoryRawLogWithArg(int32_t FuncId, XRayEntryType Type, uint64_t Arg1,
   R.FuncId = FuncId;
   R.TId = TLD.TID;
   R.Arg = Arg1;
-  __sanitizer::internal_memcpy(FirstEntry + TLD.BufferOffset, &R, sizeof(R));
-  if (++TLD.BufferOffset == BuffLen) {
+  auto EntryPtr =
+      &reinterpret_cast<__xray::XRayArgPayload *>(&InMemoryBuffer)[Offset];
+  std::memcpy(EntryPtr, &R, sizeof(R));
+  if (++Offset == BuffLen) {
     __sanitizer::SpinMutexLock L(&LogMutex);
-    retryingWriteAll(Fd, reinterpret_cast<char *>(FirstEntry),
-                     reinterpret_cast<char *>(FirstEntry + TLD.BufferOffset));
-    TLD.BufferOffset = 0;
+    auto RecordBuffer = reinterpret_cast<__xray::XRayRecord *>(InMemoryBuffer);
+    retryingWriteAll(Fd, reinterpret_cast<char *>(RecordBuffer),
+                     reinterpret_cast<char *>(RecordBuffer + Offset));
+    Offset = 0;
     TLD.StackEntries = 0;
   }
 }
@@ -401,7 +408,6 @@ XRayLogInitStatus basicLoggingInit(size_t BufferSize, size_t BufferMax,
   __xray_set_handler(UseRealTSC ? basicLoggingHandleArg0RealTSC
                                 : basicLoggingHandleArg0EmulateTSC);
   __xray_remove_customevent_handler();
-  __xray_remove_typedevent_handler();
 
   return XRayLogInitStatus::XRAY_LOG_INITIALIZED;
 }

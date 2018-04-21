@@ -14,6 +14,7 @@
 #include <cassert>
 #include <cstddef>
 #include <cuda.h>
+#include <cuda_runtime_api.h>
 #include <list>
 #include <string>
 #include <vector>
@@ -279,9 +280,9 @@ int32_t __tgt_rtl_init_device(int32_t device_id) {
   }
 
   // scan properties to determine number of threads/block and blocks/grid.
-  CUdevprop Properties;
-  err = cuDeviceGetProperties(&Properties, cuDevice);
-  if (err != CUDA_SUCCESS) {
+  struct cudaDeviceProp Properties;
+  cudaError_t error = cudaGetDeviceProperties(&Properties, device_id);
+  if (error != cudaSuccess) {
     DP("Error getting device Properties, use defaults\n");
     DeviceInfo.BlocksPerGrid[device_id] = RTLDeviceInfoTy::DefaultNumTeams;
     DeviceInfo.ThreadsPerBlock[device_id] = RTLDeviceInfoTy::DefaultNumThreads;
@@ -313,8 +314,8 @@ int32_t __tgt_rtl_init_device(int32_t device_id) {
           RTLDeviceInfoTy::HardThreadLimit);
     }
 
-    // According to the documentation, SIMDWidth is "Warp size in threads".
-    DeviceInfo.WarpSize[device_id] = Properties.SIMDWidth;
+    // Get warp size
+    DeviceInfo.WarpSize[device_id] = Properties.warpSize;
   }
 
   // Adjust teams to the env variables
@@ -677,16 +678,17 @@ int32_t __tgt_rtl_run_target_team_region(int32_t device_id, void *tgt_entry_ptr,
   if (err != CUDA_SUCCESS) {
     DP("Device kernel launch failed!\n");
     CUDA_ERR_STRING(err);
+    assert(err == CUDA_SUCCESS && "Unable to launch target execution!");
     return OFFLOAD_FAIL;
   }
 
   DP("Launch of entry point at " DPxMOD " successful!\n",
       DPxPTR(tgt_entry_ptr));
 
-  CUresult sync_err = cuCtxSynchronize();
-  if (sync_err != CUDA_SUCCESS) {
-    DP("Kernel execution error at " DPxMOD "!\n", DPxPTR(tgt_entry_ptr));
-    CUDA_ERR_STRING(sync_err);
+  cudaError_t sync_error = cudaDeviceSynchronize();
+  if (sync_error != cudaSuccess) {
+  DP("Kernel execution error at " DPxMOD ", %s.\n", DPxPTR(tgt_entry_ptr),
+      cudaGetErrorString(sync_error));
     return OFFLOAD_FAIL;
   } else {
     DP("Kernel execution at " DPxMOD " successful!\n", DPxPTR(tgt_entry_ptr));

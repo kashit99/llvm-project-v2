@@ -10,7 +10,8 @@
 // <algorithm>
 
 // template<ForwardIterator Iter, class T>
-//   constexpr Iter    // constexpr after c++17
+//   requires HasLess<T, Iter::value_type>
+//   Iter
 //   upper_bound(Iter first, Iter last, const T& value);
 
 #include <algorithm>
@@ -18,19 +19,7 @@
 #include <cassert>
 #include <cstddef>
 
-#include "test_macros.h"
 #include "test_iterators.h"
-
-#if TEST_STD_VER > 17
-TEST_CONSTEXPR bool test_constexpr() {
-    int ia[] = {1, 3, 6, 7};
-
-    return (std::upper_bound(std::begin(ia), std::end(ia), 2) == ia+1)
-        && (std::upper_bound(std::begin(ia), std::end(ia), 3) == ia+2)
-        && (std::upper_bound(std::begin(ia), std::end(ia), 9) == std::end(ia))
-        ;
-    }
-#endif
 
 template <class Iter, class T>
 void
@@ -73,8 +62,4 @@ int main()
     test<bidirectional_iterator<const int*> >();
     test<random_access_iterator<const int*> >();
     test<const int*>();
-
-#if TEST_STD_VER > 17
-    static_assert(test_constexpr());
-#endif
 }

@@ -1,4 +1,4 @@
-//===- Overload.h - C++ Overloading -----------------------------*- C++ -*-===//
+//===--- Overload.h - C++ Overloading ---------------------------*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -16,51 +16,32 @@
 #define LLVM_CLANG_SEMA_OVERLOAD_H
 
 #include "clang/AST/Decl.h"
-#include "clang/AST/DeclAccessPair.h"
-#include "clang/AST/DeclBase.h"
-#include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/Expr.h"
+#include "clang/AST/TemplateBase.h"
 #include "clang/AST/Type.h"
-#include "clang/Basic/LLVM.h"
-#include "clang/Basic/SourceLocation.h"
+#include "clang/AST/UnresolvedSet.h"
 #include "clang/Sema/SemaFixItUtils.h"
 #include "clang/Sema/TemplateDeduction.h"
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/None.h"
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/AlignOf.h"
 #include "llvm/Support/Allocator.h"
-#include "llvm/Support/Casting.h"
-#include "llvm/Support/ErrorHandling.h"
-#include <cassert>
-#include <cstddef>
-#include <cstdint>
-#include <utility>
 
 namespace clang {
-
-class APValue;
-class ASTContext;
-class Sema;
+  class ASTContext;
+  class CXXConstructorDecl;
+  class CXXConversionDecl;
+  class FunctionDecl;
+  class Sema;
 
   /// OverloadingResult - Capture the result of performing overload
   /// resolution.
   enum OverloadingResult {
-    /// Overload resolution succeeded.
-    OR_Success,
-
-    /// No viable function found.
-    OR_No_Viable_Function,
-
-    /// Ambiguous candidates found.
-    OR_Ambiguous,
-
-    /// Succeeded, but refers to a deleted function.
-    OR_Deleted
+    OR_Success,             ///< Overload resolution succeeded.
+    OR_No_Viable_Function,  ///< No viable function found.
+    OR_Ambiguous,           ///< Ambiguous candidates found.
+    OR_Deleted              ///< Succeeded, but refers to a deleted function.
   };
   
   enum OverloadCandidateDisplayKind {
@@ -74,95 +55,39 @@ class Sema;
 
   /// ImplicitConversionKind - The kind of implicit conversion used to
   /// convert an argument to a parameter's type. The enumerator values
-  /// match with the table titled 'Conversions' in [over.ics.scs] and are listed
-  /// such that better conversion kinds have smaller values.
+  /// match with Table 9 of (C++ 13.3.3.1.1) and are listed such that
+  /// better conversion kinds have smaller values.
   enum ImplicitConversionKind {
-    /// Identity conversion (no conversion)
-    ICK_Identity = 0,
-
-    /// Lvalue-to-rvalue conversion (C++ [conv.lval])
-    ICK_Lvalue_To_Rvalue,
-
-    /// Array-to-pointer conversion (C++ [conv.array])
-    ICK_Array_To_Pointer,
-
-    /// Function-to-pointer (C++ [conv.array])
-    ICK_Function_To_Pointer,
-
-    /// Function pointer conversion (C++17 [conv.fctptr])
-    ICK_Function_Conversion,
-
-    /// Qualification conversions (C++ [conv.qual])
-    ICK_Qualification,
-
-    /// Integral promotions (C++ [conv.prom])
-    ICK_Integral_Promotion,
-
-    /// Floating point promotions (C++ [conv.fpprom])
-    ICK_Floating_Promotion,
-
-    /// Complex promotions (Clang extension)
-    ICK_Complex_Promotion,
-
-    /// Integral conversions (C++ [conv.integral])
-    ICK_Integral_Conversion,
-
-    /// Floating point conversions (C++ [conv.double] 
-    ICK_Floating_Conversion,
-
-    /// Complex conversions (C99 6.3.1.6)
-    ICK_Complex_Conversion,
-
-    /// Floating-integral conversions (C++ [conv.fpint])
-    ICK_Floating_Integral,
-
-    /// Pointer conversions (C++ [conv.ptr])
-    ICK_Pointer_Conversion,
-
-    /// Pointer-to-member conversions (C++ [conv.mem])
-    ICK_Pointer_Member,
-
-    /// Boolean conversions (C++ [conv.bool])
-    ICK_Boolean_Conversion,
-
-    /// Conversions between compatible types in C99
-    ICK_Compatible_Conversion,
-
-    /// Derived-to-base (C++ [over.best.ics])
-    ICK_Derived_To_Base,
-
-    /// Vector conversions
-    ICK_Vector_Conversion,
-
-    /// A vector splat from an arithmetic type
-    ICK_Vector_Splat,
-
-    /// Complex-real conversions (C99 6.3.1.7)
-    ICK_Complex_Real,
-
-    /// Block Pointer conversions
-    ICK_Block_Pointer_Conversion,
-
-    /// Transparent Union Conversions
-    ICK_TransparentUnionConversion,
-
-    /// Objective-C ARC writeback conversion
-    ICK_Writeback_Conversion,
-
-    /// Zero constant to event (OpenCL1.2 6.12.10)
-    ICK_Zero_Event_Conversion,
-
-    /// Zero constant to queue
-    ICK_Zero_Queue_Conversion,
-
-    /// Conversions allowed in C, but not C++
-    ICK_C_Only_Conversion,
-
-    /// C-only conversion between pointers with incompatible types
-    ICK_Incompatible_Pointer_Conversion,
-
-    /// The number of conversion kinds
-    ICK_Num_Conversion_Kinds,
+    ICK_Identity = 0,          ///< Identity conversion (no conversion)
+    ICK_Lvalue_To_Rvalue,      ///< Lvalue-to-rvalue conversion (C++ 4.1)
+    ICK_Array_To_Pointer,      ///< Array-to-pointer conversion (C++ 4.2)
+    ICK_Function_To_Pointer,   ///< Function-to-pointer (C++ 4.3)
+    ICK_Function_Conversion,   ///< Function pointer conversion (C++17 4.13)
+    ICK_Qualification,         ///< Qualification conversions (C++ 4.4)
+    ICK_Integral_Promotion,    ///< Integral promotions (C++ 4.5)
+    ICK_Floating_Promotion,    ///< Floating point promotions (C++ 4.6)
+    ICK_Complex_Promotion,     ///< Complex promotions (Clang extension)
+    ICK_Integral_Conversion,   ///< Integral conversions (C++ 4.7)
+    ICK_Floating_Conversion,   ///< Floating point conversions (C++ 4.8)
+    ICK_Complex_Conversion,    ///< Complex conversions (C99 6.3.1.6)
+    ICK_Floating_Integral,     ///< Floating-integral conversions (C++ 4.9)
+    ICK_Pointer_Conversion,    ///< Pointer conversions (C++ 4.10)
+    ICK_Pointer_Member,        ///< Pointer-to-member conversions (C++ 4.11)
+    ICK_Boolean_Conversion,    ///< Boolean conversions (C++ 4.12)
+    ICK_Compatible_Conversion, ///< Conversions between compatible types in C99
+    ICK_Derived_To_Base,       ///< Derived-to-base (C++ [over.best.ics])
+    ICK_Vector_Conversion,     ///< Vector conversions
+    ICK_Vector_Splat,          ///< A vector splat from an arithmetic type
+    ICK_Complex_Real,          ///< Complex-real conversions (C99 6.3.1.7)
+    ICK_Block_Pointer_Conversion,    ///< Block Pointer conversions 
+    ICK_TransparentUnionConversion, ///< Transparent Union Conversions
+    ICK_Writeback_Conversion,  ///< Objective-C ARC writeback conversion
+    ICK_Zero_Event_Conversion, ///< Zero constant to event (OpenCL1.2 6.12.10)
+    ICK_Zero_Queue_Conversion, ///< Zero constant to queue
+    ICK_C_Only_Conversion,     ///< Conversions allowed in C, but not C++
+    ICK_Incompatible_Pointer_Conversion, ///< C-only conversion between pointers
+                                         ///  with incompatible types
+    ICK_Num_Conversion_Kinds,  ///< The number of conversion kinds
   };
 
   /// ImplicitConversionRank - The rank of an implicit conversion
@@ -170,30 +95,16 @@ class Sema;
   /// 13.3.3.1.1) and are listed such that better conversion ranks
   /// have smaller values.
   enum ImplicitConversionRank {
-    /// Exact Match
-    ICR_Exact_Match = 0,
-
-    /// Promotion
-    ICR_Promotion,
-
-    /// Conversion
-    ICR_Conversion,
-
-    /// OpenCL Scalar Widening
-    ICR_OCL_Scalar_Widening,
-
-    /// Complex <-> Real conversion
-    ICR_Complex_Real_Conversion,
-
-    /// ObjC ARC writeback conversion
-    ICR_Writeback_Conversion,
-
-    /// Conversion only allowed in the C standard (e.g. void* to char*).
-    ICR_C_Conversion,
-
-    /// Conversion not allowed by the C standard, but that we accept as an
-    /// extension anyway.
-    ICR_C_Conversion_Extension
+    ICR_Exact_Match = 0,         ///< Exact Match
+    ICR_Promotion,               ///< Promotion
+    ICR_Conversion,              ///< Conversion
+    ICR_OCL_Scalar_Widening,     ///< OpenCL Scalar Widening
+    ICR_Complex_Real_Conversion, ///< Complex <-> Real conversion
+    ICR_Writeback_Conversion,    ///< ObjC ARC writeback conversion
+    ICR_C_Conversion,            ///< Conversion only allowed in the C standard.
+                                 ///  (e.g. void* to char*)
+    ICR_C_Conversion_Extension   ///< Conversion not allowed by the C standard,
+                                 ///  but that we accept as an extension anyway.
   };
 
   ImplicitConversionRank GetConversionRank(ImplicitConversionKind Kind);
@@ -302,12 +213,10 @@ class Sema;
     DeclAccessPair FoundCopyConstructor;
 
     void setFromType(QualType T) { FromTypePtr = T.getAsOpaquePtr(); }
-
     void setToType(unsigned Idx, QualType T) { 
       assert(Idx < 3 && "To type index is out of range");
       ToTypePtrs[Idx] = T.getAsOpaquePtr(); 
     }
-
     void setAllToTypes(QualType T) {
       ToTypePtrs[0] = T.getAsOpaquePtr(); 
       ToTypePtrs[1] = ToTypePtrs[0];
@@ -317,7 +226,6 @@ class Sema;
     QualType getFromType() const {
       return QualType::getFromOpaquePtr(FromTypePtr);
     }
-
     QualType getToType(unsigned Idx) const {
       assert(Idx < 3 && "To type index is out of range");
       return QualType::getFromOpaquePtr(ToTypePtrs[Idx]);
@@ -386,8 +294,7 @@ class Sema;
 
   /// Represents an ambiguous user-defined conversion sequence.
   struct AmbiguousConversionSequence {
-    using ConversionSet =
-        SmallVector<std::pair<NamedDecl *, FunctionDecl *>, 4>;
+    typedef SmallVector<std::pair<NamedDecl*, FunctionDecl*>, 4> ConversionSet;
 
     void *FromTypePtr;
     void *ToTypePtr;
@@ -396,11 +303,9 @@ class Sema;
     QualType getFromType() const {
       return QualType::getFromOpaquePtr(FromTypePtr);
     }
-
     QualType getToType() const {
       return QualType::getFromOpaquePtr(ToTypePtr);
     }
-
     void setFromType(QualType T) { FromTypePtr = T.getAsOpaquePtr(); }
     void setToType(QualType T) { ToTypePtr = T.getAsOpaquePtr(); }
 
@@ -416,13 +321,11 @@ class Sema;
       conversions().push_back(std::make_pair(Found, D));
     }
 
-    using iterator = ConversionSet::iterator;
-
+    typedef ConversionSet::iterator iterator;
     iterator begin() { return conversions().begin(); }
     iterator end() { return conversions().end(); }
 
-    using const_iterator = ConversionSet::const_iterator;
-
+    typedef ConversionSet::const_iterator const_iterator;
     const_iterator begin() const { return conversions().begin(); }
     const_iterator end() const { return conversions().end(); }
 
@@ -459,7 +362,6 @@ class Sema;
       init(K, From->getType(), To);
       FromExpr = From;
     }
-
     void init(FailureKind K, QualType From, QualType To) {
       Kind = K;
       FromExpr = nullptr;
@@ -474,7 +376,6 @@ class Sema;
       FromExpr = E;
       setFromType(E->getType());
     }
-
     void setFromType(QualType T) { FromTy = T.getAsOpaquePtr(); }
     void setToType(QualType T) { ToTy = T.getAsOpaquePtr(); }
   };
@@ -541,10 +442,13 @@ class Sema;
         : ConversionKind(Uninitialized), StdInitializerListElement(false) {
       Standard.setAsIdentityConversion();
     }
-
+    ~ImplicitConversionSequence() {
+      destruct();
+    }
     ImplicitConversionSequence(const ImplicitConversionSequence &Other)
-        : ConversionKind(Other.ConversionKind),
-          StdInitializerListElement(Other.StdInitializerListElement) {
+      : ConversionKind(Other.ConversionKind),
+        StdInitializerListElement(Other.StdInitializerListElement)
+    {
       switch (ConversionKind) {
       case Uninitialized: break;
       case StandardConversion: Standard = Other.Standard; break;
@@ -556,16 +460,12 @@ class Sema;
     }
 
     ImplicitConversionSequence &
-    operator=(const ImplicitConversionSequence &Other) {
+        operator=(const ImplicitConversionSequence &Other) {
       destruct();
       new (this) ImplicitConversionSequence(Other);
       return *this;
     }
     
-    ~ImplicitConversionSequence() {
-      destruct();
-    }
-
     Kind getKind() const {
       assert(isInitialized() && "querying uninitialized conversion");
       return Kind(ConversionKind);
@@ -626,7 +526,6 @@ class Sema;
     void setStandard() { setKind(StandardConversion); }
     void setEllipsis() { setKind(EllipsisConversion); }
     void setUserDefined() { setKind(UserDefinedConversion); }
-
     void setAmbiguous() {
       if (ConversionKind == AmbiguousConversion) return;
       ConversionKind = AmbiguousConversion;
@@ -714,16 +613,12 @@ class Sema;
     /// This inherited constructor is not viable because it would slice the
     /// argument.
     ovl_fail_inhctor_slice,
-
-    /// This candidate was not viable because it is a non-default multiversioned
-    /// function.
-    ovl_non_default_multiversion_function,
   };
 
   /// A list of implicit conversion sequences for the arguments of an
   /// OverloadCandidate.
-  using ConversionSequenceList =
-      llvm::MutableArrayRef<ImplicitConversionSequence>;
+  typedef llvm::MutableArrayRef<ImplicitConversionSequence>
+      ConversionSequenceList;
 
   /// OverloadCandidate - A single candidate in an overload set (C++ 13.3).
   struct OverloadCandidate {
@@ -831,19 +726,16 @@ class Sema;
     enum CandidateSetKind {
       /// Normal lookup.
       CSK_Normal,
-
       /// C++ [over.match.oper]:
       /// Lookup of operator function candidates in a call using operator
       /// syntax. Candidates that have no parameters of class type will be
       /// skipped unless there is a parameter of (reference to) enum type and
       /// the corresponding argument is of the same enum type.
       CSK_Operator,
-
       /// C++ [over.match.copy]:
       /// Copy-initialization of an object of class type by user-defined
       /// conversion.
       CSK_InitByUserDefinedConversion,
-
       /// C++ [over.match.ctor], [over.match.list]
       /// Initialization of an object of class type by constructor,
       /// using either a parenthesized or braced list of arguments.
@@ -863,7 +755,7 @@ class Sema;
 
     constexpr static unsigned NumInlineBytes =
         24 * sizeof(ImplicitConversionSequence);
-    unsigned NumInlineBytesUsed = 0;
+    unsigned NumInlineBytesUsed;
     llvm::AlignedCharArray<alignof(void *), NumInlineBytes> InlineSpace;
 
     /// If we have space, allocates from inline storage. Otherwise, allocates
@@ -892,13 +784,14 @@ class Sema;
       return reinterpret_cast<T *>(FreeSpaceStart);
     }
 
+    OverloadCandidateSet(const OverloadCandidateSet &) = delete;
+    void operator=(const OverloadCandidateSet &) = delete;
+
     void destroyCandidates();
 
   public:
     OverloadCandidateSet(SourceLocation Loc, CandidateSetKind CSK)
-        : Loc(Loc), Kind(CSK) {}
-    OverloadCandidateSet(const OverloadCandidateSet &) = delete;
-    OverloadCandidateSet &operator=(const OverloadCandidateSet &) = delete;
+        : Loc(Loc), Kind(CSK), NumInlineBytesUsed(0) {}
     ~OverloadCandidateSet() { destroyCandidates(); }
 
     SourceLocation getLocation() const { return Loc; }
@@ -913,8 +806,7 @@ class Sema;
     /// \brief Clear out all of the candidates.
     void clear(CandidateSetKind CSK);
 
-    using iterator = SmallVectorImpl<OverloadCandidate>::iterator;
-
+    typedef SmallVectorImpl<OverloadCandidate>::iterator iterator;
     iterator begin() { return Candidates.begin(); }
     iterator end() { return Candidates.end(); }
 
@@ -973,10 +865,8 @@ class Sema;
     DeclAccessPair FoundDecl;
     CXXConstructorDecl *Constructor;
     FunctionTemplateDecl *ConstructorTmpl;
-
     explicit operator bool() const { return Constructor; }
   };
-
   // FIXME: Add an AddOverloadCandidate / AddTemplateOverloadCandidate overload
   // that takes one of these.
   inline ConstructorInfo getConstructorInfo(NamedDecl *ND) {
@@ -994,7 +884,6 @@ class Sema;
     Info.Constructor = dyn_cast<CXXConstructorDecl>(D);
     return Info;
   }
-
-} // namespace clang
+} // end namespace clang
 
 #endif // LLVM_CLANG_SEMA_OVERLOAD_H

@@ -56,7 +56,6 @@
 #include "llvm/Analysis/OptimizationRemarkEmitter.h"
 #include "llvm/Analysis/TargetFolder.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
-#include "llvm/Analysis/Utils/Local.h"
 #include "llvm/Analysis/ValueTracking.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/CFG.h"
@@ -96,6 +95,7 @@
 #include "llvm/Transforms/InstCombine/InstCombine.h"
 #include "llvm/Transforms/InstCombine/InstCombineWorklist.h"
 #include "llvm/Transforms/Scalar.h"
+#include "llvm/Transforms/Utils/Local.h"
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
@@ -145,19 +145,11 @@ Value *InstCombiner::EmitGEPOffset(User *GEP) {
 /// We don't want to convert from a legal to an illegal type or from a smaller
 /// to a larger illegal type. A width of '1' is always treated as a legal type
 /// because i1 is a fundamental type in IR, and there are many specialized
-/// optimizations for i1 types. Widths of 8, 16 or 32 are equally treated as
-/// legal to convert to, in order to open up more combining opportunities.
-/// NOTE: this treats i8, i16 and i32 specially, due to them being so common
-/// from frontend languages.
+/// optimizations for i1 types.
 bool InstCombiner::shouldChangeType(unsigned FromWidth,
                                     unsigned ToWidth) const {
   bool FromLegal = FromWidth == 1 || DL.isLegalInteger(FromWidth);
   bool ToLegal = ToWidth == 1 || DL.isLegalInteger(ToWidth);
-
-  // Convert to widths of 8, 16 or 32 even if they are not legal types. Only
-  // shrink types, to prevent infinite loops.
-  if (ToWidth < FromWidth && (ToWidth == 8 || ToWidth == 16 || ToWidth == 32))
-    return true;
 
   // If this is a legal integer from type, and the result would be an illegal
   // type, don't do the transformation.
@@ -405,23 +397,28 @@ bool InstCombiner::SimplifyAssociativeOrCommutative(BinaryOperator &I) {
 
       // Transform: "(A op C1) op (B op C2)" ==> "(A op B) op (C1 op C2)"
       // if C1 and C2 are constants.
-      Value *A, *B;
-      Constant *C1, *C2;
       if (Op0 && Op1 &&
           Op0->getOpcode() == Opcode && Op1->getOpcode() == Opcode &&
-          match(Op0, m_OneUse(m_BinOp(m_Value(A), m_Constant(C1)))) &&
-          match(Op1, m_OneUse(m_BinOp(m_Value(B), m_Constant(C2))))) {
-        BinaryOperator *NewBO = BinaryOperator::Create(Opcode, A, B);
-        if (isa<FPMathOperator>(NewBO)) {
+          isa<Constant>(Op0->getOperand(1)) &&
+          isa<Constant>(Op1->getOperand(1)) &&
+          Op0->hasOneUse() && Op1->hasOneUse()) {
+        Value *A = Op0->getOperand(0);
+        Constant *C1 = cast<Constant>(Op0->getOperand(1));
+        Value *B = Op1->getOperand(0);
+        Constant *C2 = cast<Constant>(Op1->getOperand(1));
+
+        Constant *Folded = ConstantExpr::get(Opcode, C1, C2);
+        BinaryOperator *New = BinaryOperator::Create(Opcode, A, B);
+        if (isa<FPMathOperator>(New)) {
           FastMathFlags Flags = I.getFastMathFlags();
           Flags &= Op0->getFastMathFlags();
           Flags &= Op1->getFastMathFlags();
-          NewBO->setFastMathFlags(Flags);
+          New->setFastMathFlags(Flags);
         }
-        InsertNewInstWith(NewBO, I);
-        NewBO->takeName(Op1);
-        I.setOperand(0, NewBO);
-        I.setOperand(1, ConstantExpr::get(Opcode, C1, C2));
+        InsertNewInstWith(New, I);
+        New->takeName(Op1);
+        I.setOperand(0, New);
+        I.setOperand(1, Folded);
         // Conservatively clear the optional flags, since they may not be
         // preserved by the reassociation.
         ClearSubclassDataAfterReassociation(I);
@@ -438,38 +435,72 @@ bool InstCombiner::SimplifyAssociativeOrCommutative(BinaryOperator &I) {
 
 /// Return whether "X LOp (Y ROp Z)" is always equal to
 /// "(X LOp Y) ROp (X LOp Z)".
-static bool leftDistributesOverRight(Instruction::BinaryOps LOp,
+static bool LeftDistributesOverRight(Instruction::BinaryOps LOp,
                                      Instruction::BinaryOps ROp) {
-  // X & (Y | Z) <--> (X & Y) | (X & Z)
-  // X & (Y ^ Z) <--> (X & Y) ^ (X & Z)
-  if (LOp == Instruction::And)
-    return ROp == Instruction::Or || ROp == Instruction::Xor;
+  switch (LOp) {
+  default:
+    return false;
 
-  // X | (Y & Z) <--> (X | Y) & (X | Z)
-  if (LOp == Instruction::Or)
-    return ROp == Instruction::And;
+  case Instruction::And:
+    // And distributes over Or and Xor.
+    switch (ROp) {
+    default:
+      return false;
+    case Instruction::Or:
+    case Instruction::Xor:
+      return true;
+    }
 
-  // X * (Y + Z) <--> (X * Y) + (X * Z)
-  // X * (Y - Z) <--> (X * Y) - (X * Z)
-  if (LOp == Instruction::Mul)
-    return ROp == Instruction::Add || ROp == Instruction::Sub;
+  case Instruction::Mul:
+    // Multiplication distributes over addition and subtraction.
+    switch (ROp) {
+    default:
+      return false;
+    case Instruction::Add:
+    case Instruction::Sub:
+      return true;
+    }
 
-  return false;
+  case Instruction::Or:
+    // Or distributes over And.
+    switch (ROp) {
+    default:
+      return false;
+    case Instruction::And:
+      return true;
+    }
+  }
 }
 
 /// Return whether "(X LOp Y) ROp Z" is always equal to
 /// "(X ROp Z) LOp (Y ROp Z)".
-static bool rightDistributesOverLeft(Instruction::BinaryOps LOp,
+static bool RightDistributesOverLeft(Instruction::BinaryOps LOp,
                                      Instruction::BinaryOps ROp) {
   if (Instruction::isCommutative(ROp))
-    return leftDistributesOverRight(ROp, LOp);
+    return LeftDistributesOverRight(ROp, LOp);
 
-  // (X {&|^} Y) >> Z <--> (X >> Z) {&|^} (Y >> Z) for all shifts.
-  return Instruction::isBitwiseLogicOp(LOp) && Instruction::isShift(ROp);
-
+  switch (LOp) {
+  default:
+    return false;
+  // (X >> Z) & (Y >> Z)  -> (X&Y) >> Z  for all shifts.
+  // (X >> Z) | (Y >> Z)  -> (X|Y) >> Z  for all shifts.
+  // (X >> Z) ^ (Y >> Z)  -> (X^Y) >> Z  for all shifts.
+  case Instruction::And:
+  case Instruction::Or:
+  case Instruction::Xor:
+    switch (ROp) {
+    default:
+      return false;
+    case Instruction::Shl:
+    case Instruction::LShr:
+    case Instruction::AShr:
+      return true;
+    }
+  }
   // TODO: It would be nice to handle division, aka "(X + Y)/Z = X/Z + Y/Z",
   // but this requires knowing that the addition does not overflow and other
   // such subtleties.
+  return false;
 }
 
 /// This function returns identity value for given opcode, which can be used to
@@ -481,27 +512,37 @@ static Value *getIdentityValue(Instruction::BinaryOps Opcode, Value *V) {
   return ConstantExpr::getBinOpIdentity(Opcode, V->getType());
 }
 
-/// This function predicates factorization using distributive laws. By default,
-/// it just returns the 'Op' inputs. But for special-cases like
-/// 'add(shl(X, 5), ...)', this function will have TopOpcode == Instruction::Add
-/// and Op = shl(X, 5). The 'shl' is treated as the more general 'mul X, 32' to
-/// allow more factorization opportunities.
+/// This function factors binary ops which can be combined using distributive
+/// laws. This function tries to transform 'Op' based TopLevelOpcode to enable
+/// factorization e.g for ADD(SHL(X , 2), MUL(X, 5)), When this function called
+/// with TopLevelOpcode == Instruction::Add and Op = SHL(X, 2), transforms
+/// SHL(X, 2) to MUL(X, 4) i.e. returns Instruction::Mul with LHS set to 'X' and
+/// RHS to 4.
 static Instruction::BinaryOps
-getBinOpsForFactorization(Instruction::BinaryOps TopOpcode, BinaryOperator *Op,
-                          Value *&LHS, Value *&RHS) {
+getBinOpsForFactorization(Instruction::BinaryOps TopLevelOpcode,
+                          BinaryOperator *Op, Value *&LHS, Value *&RHS) {
   assert(Op && "Expected a binary operator");
+
   LHS = Op->getOperand(0);
   RHS = Op->getOperand(1);
-  if (TopOpcode == Instruction::Add || TopOpcode == Instruction::Sub) {
-    Constant *C;
-    if (match(Op, m_Shl(m_Value(), m_Constant(C)))) {
-      // X << C --> X * (1 << C)
-      RHS = ConstantExpr::getShl(ConstantInt::get(Op->getType(), 1), C);
-      return Instruction::Mul;
+
+  switch (TopLevelOpcode) {
+  default:
+    return Op->getOpcode();
+
+  case Instruction::Add:
+  case Instruction::Sub:
+    if (Op->getOpcode() == Instruction::Shl) {
+      if (Constant *CST = dyn_cast<Constant>(Op->getOperand(1))) {
+        // The multiplier is really 1 << CST.
+        RHS = ConstantExpr::getShl(ConstantInt::get(Op->getType(), 1), CST);
+        return Instruction::Mul;
+      }
     }
-    // TODO: We can add other conversions e.g. shr => div etc.
+    return Op->getOpcode();
   }
-  return Op->getOpcode();
+
+  // TODO: We can add other conversions e.g. shr => div etc.
 }
 
 /// This tries to simplify binary operations by factorizing out common terms
@@ -520,7 +561,7 @@ Value *InstCombiner::tryFactorization(BinaryOperator &I,
   bool InnerCommutative = Instruction::isCommutative(InnerOpcode);
 
   // Does "X op' (Y op Z)" always equal "(X op' Y) op (X op' Z)"?
-  if (leftDistributesOverRight(InnerOpcode, TopLevelOpcode))
+  if (LeftDistributesOverRight(InnerOpcode, TopLevelOpcode))
     // Does the instruction have the form "(A op' B) op (A op' D)" or, in the
     // commutative case, "(A op' B) op (C op' A)"?
     if (A == C || (InnerCommutative && A == D)) {
@@ -539,7 +580,7 @@ Value *InstCombiner::tryFactorization(BinaryOperator &I,
     }
 
   // Does "(X op Y) op' Z" always equal "(X op' Z) op (Y op' Z)"?
-  if (!SimplifiedInst && rightDistributesOverLeft(TopLevelOpcode, InnerOpcode))
+  if (!SimplifiedInst && RightDistributesOverLeft(TopLevelOpcode, InnerOpcode))
     // Does the instruction have the form "(A op' B) op (C op' B)" or, in the
     // commutative case, "(A op' B) op (B op' D)"?
     if (B == D || (InnerCommutative && B == C)) {
@@ -624,19 +665,21 @@ Value *InstCombiner::SimplifyUsingDistributiveLaws(BinaryOperator &I) {
     // term.
     if (Op0)
       if (Value *Ident = getIdentityValue(LHSOpcode, RHS))
-        if (Value *V = tryFactorization(I, LHSOpcode, A, B, RHS, Ident))
+        if (Value *V =
+                tryFactorization(I, LHSOpcode, A, B, RHS, Ident))
           return V;
 
     // The instruction has the form "(B) op (C op' D)".  Try to factorize common
     // term.
     if (Op1)
       if (Value *Ident = getIdentityValue(RHSOpcode, LHS))
-        if (Value *V = tryFactorization(I, RHSOpcode, LHS, Ident, C, D))
+        if (Value *V =
+                tryFactorization(I, RHSOpcode, LHS, Ident, C, D))
           return V;
   }
 
   // Expansion.
-  if (Op0 && rightDistributesOverLeft(Op0->getOpcode(), TopLevelOpcode)) {
+  if (Op0 && RightDistributesOverLeft(Op0->getOpcode(), TopLevelOpcode)) {
     // The instruction has the form "(A op' B) op C".  See if expanding it out
     // to "(A op C) op' (B op C)" results in simplifications.
     Value *A = Op0->getOperand(0), *B = Op0->getOperand(1), *C = RHS;
@@ -673,7 +716,7 @@ Value *InstCombiner::SimplifyUsingDistributiveLaws(BinaryOperator &I) {
     }
   }
 
-  if (Op1 && leftDistributesOverRight(TopLevelOpcode, Op1->getOpcode())) {
+  if (Op1 && LeftDistributesOverRight(TopLevelOpcode, Op1->getOpcode())) {
     // The instruction has the form "A op (B op' C)".  See if expanding it out
     // to "(A op B) op' (A op C)" results in simplifications.
     Value *A = LHS, *B = Op1->getOperand(0), *C = Op1->getOperand(1);
@@ -771,6 +814,23 @@ Value *InstCombiner::dyn_castNegVal(Value *V) const {
     }
     return ConstantExpr::getNeg(CV);
   }
+
+  return nullptr;
+}
+
+/// Given a 'fsub' instruction, return the RHS of the instruction if the LHS is
+/// a constant negative zero (which is the 'negate' form).
+Value *InstCombiner::dyn_castFNegVal(Value *V, bool IgnoreZeroSign) const {
+  if (BinaryOperator::isFNeg(V, IgnoreZeroSign))
+    return BinaryOperator::getFNegArgument(V);
+
+  // Constants can be considered to be negated values if they can be folded.
+  if (ConstantFP *C = dyn_cast<ConstantFP>(V))
+    return ConstantExpr::getFNeg(C);
+
+  if (ConstantDataVector *C = dyn_cast<ConstantDataVector>(V))
+    if (C->getType()->getElementType()->isFloatingPointTy())
+      return ConstantExpr::getFNeg(C);
 
   return nullptr;
 }
@@ -1022,9 +1082,8 @@ Instruction *InstCombiner::foldOpIntoPhi(Instruction &I, PHINode *PN) {
   return replaceInstUsesWith(I, NewPN);
 }
 
-Instruction *InstCombiner::foldBinOpIntoSelectOrPhi(BinaryOperator &I) {
-  if (!isa<Constant>(I.getOperand(1)))
-    return nullptr;
+Instruction *InstCombiner::foldOpWithConstantIntoOperand(BinaryOperator &I) {
+  assert(isa<Constant>(I.getOperand(1)) && "Unexpected operand type");
 
   if (auto *Sel = dyn_cast<SelectInst>(I.getOperand(0))) {
     if (Instruction *NewSel = FoldOpIntoSelect(I, Sel))
@@ -1049,7 +1108,7 @@ Type *InstCombiner::FindElementAtOffset(PointerType *PtrTy, int64_t Offset,
   // Start with the index over the outer type.  Note that the type size
   // might be zero (even if the offset isn't zero) if the indexed type
   // is something like [0 x {int, int}]
-  Type *IndexTy = DL.getIndexType(PtrTy);
+  Type *IntPtrTy = DL.getIntPtrType(PtrTy);
   int64_t FirstIdx = 0;
   if (int64_t TySize = DL.getTypeAllocSize(Ty)) {
     FirstIdx = Offset/TySize;
@@ -1064,7 +1123,7 @@ Type *InstCombiner::FindElementAtOffset(PointerType *PtrTy, int64_t Offset,
     assert((uint64_t)Offset < (uint64_t)TySize && "Out of range offset");
   }
 
-  NewIndices.push_back(ConstantInt::get(IndexTy, FirstIdx));
+  NewIndices.push_back(ConstantInt::get(IntPtrTy, FirstIdx));
 
   // Index into the types.  If we fail, set OrigBase to null.
   while (Offset) {
@@ -1086,7 +1145,7 @@ Type *InstCombiner::FindElementAtOffset(PointerType *PtrTy, int64_t Offset,
     } else if (ArrayType *AT = dyn_cast<ArrayType>(Ty)) {
       uint64_t EltSize = DL.getTypeAllocSize(AT->getElementType());
       assert(EltSize && "Cannot index into a zero-sized array");
-      NewIndices.push_back(ConstantInt::get(IndexTy,Offset/EltSize));
+      NewIndices.push_back(ConstantInt::get(IntPtrTy,Offset/EltSize));
       Offset %= EltSize;
       Ty = AT->getElementType();
     } else {
@@ -1439,9 +1498,9 @@ Value *InstCombiner::SimplifyVectorOp(BinaryOperator &Inst) {
 
 Instruction *InstCombiner::visitGetElementPtrInst(GetElementPtrInst &GEP) {
   SmallVector<Value*, 8> Ops(GEP.op_begin(), GEP.op_end());
-  Type *GEPType = GEP.getType();
-  Type *GEPEltType = GEP.getSourceElementType();
-  if (Value *V = SimplifyGEPInst(GEPEltType, Ops, SQ.getWithInstruction(&GEP)))
+
+  if (Value *V = SimplifyGEPInst(GEP.getSourceElementType(), Ops,
+                                 SQ.getWithInstruction(&GEP)))
     return replaceInstUsesWith(GEP, V);
 
   Value *PtrOp = GEP.getOperand(0);
@@ -1449,11 +1508,8 @@ Instruction *InstCombiner::visitGetElementPtrInst(GetElementPtrInst &GEP) {
   // Eliminate unneeded casts for indices, and replace indices which displace
   // by multiples of a zero size type with zero.
   bool MadeChange = false;
-
-  // Index width may not be the same width as pointer width.
-  // Data layout chooses the right type based on supported integer types.
-  Type *NewScalarIndexTy =
-      DL.getIndexType(GEP.getPointerOperandType()->getScalarType());
+  Type *IntPtrTy =
+    DL.getIntPtrType(GEP.getPointerOperandType()->getScalarType());
 
   gep_type_iterator GTI = gep_type_begin(GEP);
   for (User::op_iterator I = GEP.op_begin() + 1, E = GEP.op_end(); I != E;
@@ -1462,11 +1518,10 @@ Instruction *InstCombiner::visitGetElementPtrInst(GetElementPtrInst &GEP) {
     if (GTI.isStruct())
       continue;
 
+    // Index type should have the same width as IntPtr
     Type *IndexTy = (*I)->getType();
-    Type *NewIndexType =
-        IndexTy->isVectorTy()
-            ? VectorType::get(NewScalarIndexTy, IndexTy->getVectorNumElements())
-            : NewScalarIndexTy;
+    Type *NewIndexType = IndexTy->isVectorTy() ?
+      VectorType::get(IntPtrTy, IndexTy->getVectorNumElements()) : IntPtrTy;
 
     // If the element type has zero size then any index over it is equivalent
     // to an index of zero, so replace it with zero if it is not zero already.
@@ -1489,8 +1544,8 @@ Instruction *InstCombiner::visitGetElementPtrInst(GetElementPtrInst &GEP) {
     return &GEP;
 
   // Check to see if the inputs to the PHI node are getelementptr instructions.
-  if (auto *PN = dyn_cast<PHINode>(PtrOp)) {
-    auto *Op1 = dyn_cast<GetElementPtrInst>(PN->getOperand(0));
+  if (PHINode *PN = dyn_cast<PHINode>(PtrOp)) {
+    GetElementPtrInst *Op1 = dyn_cast<GetElementPtrInst>(PN->getOperand(0));
     if (!Op1)
       return nullptr;
 
@@ -1506,7 +1561,7 @@ Instruction *InstCombiner::visitGetElementPtrInst(GetElementPtrInst &GEP) {
     int DI = -1;
 
     for (auto I = PN->op_begin()+1, E = PN->op_end(); I !=E; ++I) {
-      auto *Op2 = dyn_cast<GetElementPtrInst>(*I);
+      GetElementPtrInst *Op2 = dyn_cast<GetElementPtrInst>(*I);
       if (!Op2 || Op1->getNumOperands() != Op2->getNumOperands())
         return nullptr;
 
@@ -1548,7 +1603,7 @@ Instruction *InstCombiner::visitGetElementPtrInst(GetElementPtrInst &GEP) {
         if (J > 0) {
           if (J == 1) {
             CurTy = Op1->getSourceElementType();
-          } else if (auto *CT = dyn_cast<CompositeType>(CurTy)) {
+          } else if (CompositeType *CT = dyn_cast<CompositeType>(CurTy)) {
             CurTy = CT->getTypeAtIndex(Op1->getOperand(J));
           } else {
             CurTy = nullptr;
@@ -1563,7 +1618,7 @@ Instruction *InstCombiner::visitGetElementPtrInst(GetElementPtrInst &GEP) {
     if (DI != -1 && !PN->hasOneUse())
       return nullptr;
 
-    auto *NewGEP = cast<GetElementPtrInst>(Op1->clone());
+    GetElementPtrInst *NewGEP = cast<GetElementPtrInst>(Op1->clone());
     if (DI == -1) {
       // All the GEPs feeding the PHI are identical. Clone one down into our
       // BB so that it can be merged with the current GEP.
@@ -1598,64 +1653,15 @@ Instruction *InstCombiner::visitGetElementPtrInst(GetElementPtrInst &GEP) {
   // Combine Indices - If the source pointer to this getelementptr instruction
   // is a getelementptr instruction, combine the indices of the two
   // getelementptr instructions into a single instruction.
-  if (auto *Src = dyn_cast<GEPOperator>(PtrOp)) {
+  if (GEPOperator *Src = dyn_cast<GEPOperator>(PtrOp)) {
     if (!shouldMergeGEPs(*cast<GEPOperator>(&GEP), *Src))
       return nullptr;
-
-    // Try to reassociate loop invariant GEP chains to enable LICM.
-    if (LI && Src->getNumOperands() == 2 && GEP.getNumOperands() == 2 &&
-        Src->hasOneUse()) {
-      if (Loop *L = LI->getLoopFor(GEP.getParent())) {
-        Value *GO1 = GEP.getOperand(1);
-        Value *SO1 = Src->getOperand(1);
-        // Reassociate the two GEPs if SO1 is variant in the loop and GO1 is
-        // invariant: this breaks the dependence between GEPs and allows LICM
-        // to hoist the invariant part out of the loop.
-        if (L->isLoopInvariant(GO1) && !L->isLoopInvariant(SO1)) {
-          // We have to be careful here.
-          // We have something like:
-          //  %src = getelementptr <ty>, <ty>* %base, <ty> %idx
-          //  %gep = getelementptr <ty>, <ty>* %src, <ty> %idx2
-          // If we just swap idx & idx2 then we could inadvertantly
-          // change %src from a vector to a scalar, or vice versa.
-          // Cases:
-          //  1) %base a scalar & idx a scalar & idx2 a vector
-          //      => Swapping idx & idx2 turns %src into a vector type.
-          //  2) %base a scalar & idx a vector & idx2 a scalar
-          //      => Swapping idx & idx2 turns %src in a scalar type
-          //  3) %base, %idx, and %idx2 are scalars
-          //      => %src & %gep are scalars
-          //      => swapping idx & idx2 is safe
-          //  4) %base a vector
-          //      => %src is a vector
-          //      => swapping idx & idx2 is safe.
-          auto *SO0 = Src->getOperand(0);
-          auto *SO0Ty = SO0->getType();
-          if (!isa<VectorType>(GEPType) || // case 3
-              isa<VectorType>(SO0Ty)) {    // case 4
-            Src->setOperand(1, GO1);
-            GEP.setOperand(1, SO1);
-            return &GEP;
-          } else {
-            // Case 1 or 2
-            // -- have to recreate %src & %gep
-            // put NewSrc at same location as %src
-            Builder.SetInsertPoint(cast<Instruction>(PtrOp));
-            auto *NewSrc = cast<GetElementPtrInst>(
-                Builder.CreateGEP(SO0, GO1, Src->getName()));
-            NewSrc->setIsInBounds(Src->isInBounds());
-            auto *NewGEP = GetElementPtrInst::Create(nullptr, NewSrc, {SO1});
-            NewGEP->setIsInBounds(GEP.isInBounds());
-            return NewGEP;
-          }
-        }
-      }
-    }
 
     // Note that if our source is a gep chain itself then we wait for that
     // chain to be resolved before we perform this transformation.  This
     // avoids us creating a TON of code in some cases.
-    if (auto *SrcGEP = dyn_cast<GEPOperator>(Src->getOperand(0)))
+    if (GEPOperator *SrcGEP =
+          dyn_cast<GEPOperator>(Src->getOperand(0)))
       if (SrcGEP->getNumOperands() == 2 && shouldMergeGEPs(*Src, *SrcGEP))
         return nullptr;   // Wait until our source is folded to completion.
 
@@ -1718,8 +1724,9 @@ Instruction *InstCombiner::visitGetElementPtrInst(GetElementPtrInst &GEP) {
   if (GEP.getNumIndices() == 1) {
     unsigned AS = GEP.getPointerAddressSpace();
     if (GEP.getOperand(1)->getType()->getScalarSizeInBits() ==
-        DL.getIndexSizeInBits(AS)) {
-      uint64_t TyAllocSize = DL.getTypeAllocSize(GEPEltType);
+        DL.getPointerSizeInBits(AS)) {
+      Type *Ty = GEP.getSourceElementType();
+      uint64_t TyAllocSize = DL.getTypeAllocSize(Ty);
 
       bool Matched = false;
       uint64_t C;
@@ -1746,20 +1753,22 @@ Instruction *InstCombiner::visitGetElementPtrInst(GetElementPtrInst &GEP) {
           Operator *Index = cast<Operator>(V);
           Value *PtrToInt = Builder.CreatePtrToInt(PtrOp, Index->getType());
           Value *NewSub = Builder.CreateSub(PtrToInt, Index->getOperand(1));
-          return CastInst::Create(Instruction::IntToPtr, NewSub, GEPType);
+          return CastInst::Create(Instruction::IntToPtr, NewSub, GEP.getType());
         }
         // Canonicalize (gep i8* X, (ptrtoint Y)-(ptrtoint X))
         // to (bitcast Y)
         Value *Y;
         if (match(V, m_Sub(m_PtrToInt(m_Value(Y)),
-                           m_PtrToInt(m_Specific(GEP.getOperand(0))))))
-          return CastInst::CreatePointerBitCastOrAddrSpaceCast(Y, GEPType);
+                           m_PtrToInt(m_Specific(GEP.getOperand(0)))))) {
+          return CastInst::CreatePointerBitCastOrAddrSpaceCast(Y,
+                                                               GEP.getType());
+        }
       }
     }
   }
 
   // We do not handle pointer-vector geps here.
-  if (GEPType->isVectorTy())
+  if (GEP.getType()->isVectorTy())
     return nullptr;
 
   // Handle gep(bitcast x) and gep(gep x, 0, 0, 0).
@@ -1768,7 +1777,7 @@ Instruction *InstCombiner::visitGetElementPtrInst(GetElementPtrInst &GEP) {
 
   if (StrippedPtr != PtrOp) {
     bool HasZeroPointerIndex = false;
-    if (auto *C = dyn_cast<ConstantInt>(GEP.getOperand(1)))
+    if (ConstantInt *C = dyn_cast<ConstantInt>(GEP.getOperand(1)))
       HasZeroPointerIndex = C->isZero();
 
     // Transform: GEP (bitcast [10 x i8]* X to [0 x i8]*), i32 0, ...
@@ -1779,7 +1788,8 @@ Instruction *InstCombiner::visitGetElementPtrInst(GetElementPtrInst &GEP) {
     //
     // This occurs when the program declares an array extern like "int X[];"
     if (HasZeroPointerIndex) {
-      if (auto *CATy = dyn_cast<ArrayType>(GEPEltType)) {
+      if (ArrayType *CATy =
+          dyn_cast<ArrayType>(GEP.getSourceElementType())) {
         // GEP (bitcast i8* X to [0 x i8]*), i32 0, ... ?
         if (CATy->getElementType() == StrippedPtrTy->getElementType()) {
           // -> GEP i8* X, ...
@@ -1795,10 +1805,11 @@ Instruction *InstCombiner::visitGetElementPtrInst(GetElementPtrInst &GEP) {
           // ->
           // %0 = GEP i8 addrspace(1)* X, ...
           // addrspacecast i8 addrspace(1)* %0 to i8*
-          return new AddrSpaceCastInst(Builder.Insert(Res), GEPType);
+          return new AddrSpaceCastInst(Builder.Insert(Res), GEP.getType());
         }
 
-        if (auto *XATy = dyn_cast<ArrayType>(StrippedPtrTy->getElementType())) {
+        if (ArrayType *XATy =
+              dyn_cast<ArrayType>(StrippedPtrTy->getElementType())){
           // GEP (bitcast [10 x i8]* X to [0 x i8]*), i32 0, ... ?
           if (CATy->getElementType() == XATy->getElementType()) {
             // -> GEP [10 x i8]* X, i32 0, ...
@@ -1826,7 +1837,7 @@ Instruction *InstCombiner::visitGetElementPtrInst(GetElementPtrInst &GEP) {
                                       nullptr, StrippedPtr, Idx, GEP.getName())
                                 : Builder.CreateGEP(nullptr, StrippedPtr, Idx,
                                                     GEP.getName());
-            return new AddrSpaceCastInst(NewGEP, GEPType);
+            return new AddrSpaceCastInst(NewGEP, GEP.getType());
           }
         }
       }
@@ -1834,11 +1845,12 @@ Instruction *InstCombiner::visitGetElementPtrInst(GetElementPtrInst &GEP) {
       // Transform things like:
       // %t = getelementptr i32* bitcast ([2 x i32]* %str to i32*), i32 %V
       // into:  %t1 = getelementptr [2 x i32]* %str, i32 0, i32 %V; bitcast
-      Type *SrcEltTy = StrippedPtrTy->getElementType();
-      if (SrcEltTy->isArrayTy() &&
-          DL.getTypeAllocSize(SrcEltTy->getArrayElementType()) ==
-              DL.getTypeAllocSize(GEPEltType)) {
-        Type *IdxType = DL.getIndexType(GEPType);
+      Type *SrcElTy = StrippedPtrTy->getElementType();
+      Type *ResElTy = GEP.getSourceElementType();
+      if (SrcElTy->isArrayTy() &&
+          DL.getTypeAllocSize(SrcElTy->getArrayElementType()) ==
+              DL.getTypeAllocSize(ResElTy)) {
+        Type *IdxType = DL.getIntPtrType(GEP.getType());
         Value *Idx[2] = { Constant::getNullValue(IdxType), GEP.getOperand(1) };
         Value *NewGEP =
             GEP.isInBounds()
@@ -1847,28 +1859,28 @@ Instruction *InstCombiner::visitGetElementPtrInst(GetElementPtrInst &GEP) {
                 : Builder.CreateGEP(nullptr, StrippedPtr, Idx, GEP.getName());
 
         // V and GEP are both pointer types --> BitCast
-        return CastInst::CreatePointerBitCastOrAddrSpaceCast(NewGEP, GEPType);
+        return CastInst::CreatePointerBitCastOrAddrSpaceCast(NewGEP,
+                                                             GEP.getType());
       }
 
       // Transform things like:
       // %V = mul i64 %N, 4
       // %t = getelementptr i8* bitcast (i32* %arr to i8*), i32 %V
       // into:  %t1 = getelementptr i32* %arr, i32 %N; bitcast
-      if (GEPEltType->isSized() && SrcEltTy->isSized()) {
+      if (ResElTy->isSized() && SrcElTy->isSized()) {
         // Check that changing the type amounts to dividing the index by a scale
         // factor.
-        uint64_t ResSize = DL.getTypeAllocSize(GEPEltType);
-        uint64_t SrcSize = DL.getTypeAllocSize(SrcEltTy);
+        uint64_t ResSize = DL.getTypeAllocSize(ResElTy);
+        uint64_t SrcSize = DL.getTypeAllocSize(SrcElTy);
         if (ResSize && SrcSize % ResSize == 0) {
           Value *Idx = GEP.getOperand(1);
           unsigned BitWidth = Idx->getType()->getPrimitiveSizeInBits();
           uint64_t Scale = SrcSize / ResSize;
 
-          // Earlier transforms ensure that the index has the right type
-          // according to Data Layout, which considerably simplifies the
-          // logic by eliminating implicit casts.
-          assert(Idx->getType() == DL.getIndexType(GEPType) &&
-                 "Index type does not match the Data Layout preferences");
+          // Earlier transforms ensure that the index has type IntPtrType, which
+          // considerably simplifies the logic by eliminating implicit casts.
+          assert(Idx->getType() == DL.getIntPtrType(GEP.getType()) &&
+                 "Index not cast to pointer width?");
 
           bool NSW;
           if (Value *NewIdx = Descale(Idx, APInt(BitWidth, Scale), NSW)) {
@@ -1884,7 +1896,7 @@ Instruction *InstCombiner::visitGetElementPtrInst(GetElementPtrInst &GEP) {
 
             // The NewGEP must be pointer typed, so must the old one -> BitCast
             return CastInst::CreatePointerBitCastOrAddrSpaceCast(NewGEP,
-                                                                 GEPType);
+                                                                 GEP.getType());
           }
         }
       }
@@ -1893,40 +1905,39 @@ Instruction *InstCombiner::visitGetElementPtrInst(GetElementPtrInst &GEP) {
       // getelementptr i8* bitcast ([100 x double]* X to i8*), i32 %tmp
       //   (where tmp = 8*tmp2) into:
       // getelementptr [100 x double]* %arr, i32 0, i32 %tmp2; bitcast
-      if (GEPEltType->isSized() && SrcEltTy->isSized() &&
-          SrcEltTy->isArrayTy()) {
+      if (ResElTy->isSized() && SrcElTy->isSized() && SrcElTy->isArrayTy()) {
         // Check that changing to the array element type amounts to dividing the
         // index by a scale factor.
-        uint64_t ResSize = DL.getTypeAllocSize(GEPEltType);
+        uint64_t ResSize = DL.getTypeAllocSize(ResElTy);
         uint64_t ArrayEltSize =
-            DL.getTypeAllocSize(SrcEltTy->getArrayElementType());
+            DL.getTypeAllocSize(SrcElTy->getArrayElementType());
         if (ResSize && ArrayEltSize % ResSize == 0) {
           Value *Idx = GEP.getOperand(1);
           unsigned BitWidth = Idx->getType()->getPrimitiveSizeInBits();
           uint64_t Scale = ArrayEltSize / ResSize;
 
-          // Earlier transforms ensure that the index has the right type
-          // according to the Data Layout, which considerably simplifies
-          // the logic by eliminating implicit casts.
-          assert(Idx->getType() == DL.getIndexType(GEPType) &&
-                 "Index type does not match the Data Layout preferences");
+          // Earlier transforms ensure that the index has type IntPtrType, which
+          // considerably simplifies the logic by eliminating implicit casts.
+          assert(Idx->getType() == DL.getIntPtrType(GEP.getType()) &&
+                 "Index not cast to pointer width?");
 
           bool NSW;
           if (Value *NewIdx = Descale(Idx, APInt(BitWidth, Scale), NSW)) {
             // Successfully decomposed Idx as NewIdx * Scale, form a new GEP.
             // If the multiplication NewIdx * Scale may overflow then the new
             // GEP may not be "inbounds".
-            Type *IndTy = DL.getIndexType(GEPType);
-            Value *Off[2] = {Constant::getNullValue(IndTy), NewIdx};
+            Value *Off[2] = {
+                Constant::getNullValue(DL.getIntPtrType(GEP.getType())),
+                NewIdx};
 
             Value *NewGEP = GEP.isInBounds() && NSW
                                 ? Builder.CreateInBoundsGEP(
-                                      SrcEltTy, StrippedPtr, Off, GEP.getName())
-                                : Builder.CreateGEP(SrcEltTy, StrippedPtr, Off,
+                                      SrcElTy, StrippedPtr, Off, GEP.getName())
+                                : Builder.CreateGEP(SrcElTy, StrippedPtr, Off,
                                                     GEP.getName());
             // The NewGEP must be pointer typed, so must the old one -> BitCast
             return CastInst::CreatePointerBitCastOrAddrSpaceCast(NewGEP,
-                                                                 GEPType);
+                                                                 GEP.getType());
           }
         }
       }
@@ -1936,52 +1947,34 @@ Instruction *InstCombiner::visitGetElementPtrInst(GetElementPtrInst &GEP) {
   // addrspacecast between types is canonicalized as a bitcast, then an
   // addrspacecast. To take advantage of the below bitcast + struct GEP, look
   // through the addrspacecast.
-  if (auto *ASC = dyn_cast<AddrSpaceCastInst>(PtrOp)) {
+  if (AddrSpaceCastInst *ASC = dyn_cast<AddrSpaceCastInst>(PtrOp)) {
     //   X = bitcast A addrspace(1)* to B addrspace(1)*
     //   Y = addrspacecast A addrspace(1)* to B addrspace(2)*
     //   Z = gep Y, <...constant indices...>
     // Into an addrspacecasted GEP of the struct.
-    if (auto *BC = dyn_cast<BitCastInst>(ASC->getOperand(0)))
+    if (BitCastInst *BC = dyn_cast<BitCastInst>(ASC->getOperand(0)))
       PtrOp = BC;
   }
 
-  if (auto *BCI = dyn_cast<BitCastInst>(PtrOp)) {
-    Value *SrcOp = BCI->getOperand(0);
-    PointerType *SrcType = cast<PointerType>(BCI->getSrcTy());
-    Type *SrcEltType = SrcType->getElementType();
-
-    // GEP directly using the source operand if this GEP is accessing an element
-    // of a bitcasted pointer to vector or array of the same dimensions:
-    // gep (bitcast <c x ty>* X to [c x ty]*), Y, Z --> gep X, Y, Z
-    // gep (bitcast [c x ty]* X to <c x ty>*), Y, Z --> gep X, Y, Z
-    auto areMatchingArrayAndVecTypes = [](Type *ArrTy, Type *VecTy) {
-      return ArrTy->getArrayElementType() == VecTy->getVectorElementType() &&
-             ArrTy->getArrayNumElements() == VecTy->getVectorNumElements();
-    };
-    if (GEP.getNumOperands() == 3 &&
-        ((GEPEltType->isArrayTy() && SrcEltType->isVectorTy() &&
-          areMatchingArrayAndVecTypes(GEPEltType, SrcEltType)) ||
-         (GEPEltType->isVectorTy() && SrcEltType->isArrayTy() &&
-          areMatchingArrayAndVecTypes(SrcEltType, GEPEltType)))) {
-      GEP.setOperand(0, SrcOp);
-      GEP.setSourceElementType(SrcEltType);
-      return &GEP;
-    }
-
-    // See if we can simplify:
-    //   X = bitcast A* to B*
-    //   Y = gep X, <...constant indices...>
-    // into a gep of the original struct. This is important for SROA and alias
-    // analysis of unions. If "A" is also a bitcast, wait for A/X to be merged.
-    unsigned OffsetBits = DL.getIndexTypeSizeInBits(GEPType);
+  /// See if we can simplify:
+  ///   X = bitcast A* to B*
+  ///   Y = gep X, <...constant indices...>
+  /// into a gep of the original struct.  This is important for SROA and alias
+  /// analysis of unions.  If "A" is also a bitcast, wait for A/X to be merged.
+  if (BitCastInst *BCI = dyn_cast<BitCastInst>(PtrOp)) {
+    Value *Operand = BCI->getOperand(0);
+    PointerType *OpType = cast<PointerType>(Operand->getType());
+    unsigned OffsetBits = DL.getPointerTypeSizeInBits(GEP.getType());
     APInt Offset(OffsetBits, 0);
-    if (!isa<BitCastInst>(SrcOp) && GEP.accumulateConstantOffset(DL, Offset)) {
+    if (!isa<BitCastInst>(Operand) &&
+        GEP.accumulateConstantOffset(DL, Offset)) {
+
       // If this GEP instruction doesn't move the pointer, just replace the GEP
       // with a bitcast of the real input to the dest type.
       if (!Offset) {
         // If the bitcast is of an allocation, and the allocation will be
         // converted to match the type of the cast, don't touch this.
-        if (isa<AllocaInst>(SrcOp) || isAllocationFn(SrcOp, &TLI)) {
+        if (isa<AllocaInst>(Operand) || isAllocationFn(Operand, &TLI)) {
           // See if the bitcast simplifies, if so, don't nuke this GEP yet.
           if (Instruction *I = visitBitCast(*BCI)) {
             if (I != BCI) {
@@ -1993,43 +1986,43 @@ Instruction *InstCombiner::visitGetElementPtrInst(GetElementPtrInst &GEP) {
           }
         }
 
-        if (SrcType->getPointerAddressSpace() != GEP.getAddressSpace())
-          return new AddrSpaceCastInst(SrcOp, GEPType);
-        return new BitCastInst(SrcOp, GEPType);
+        if (Operand->getType()->getPointerAddressSpace() != GEP.getAddressSpace())
+          return new AddrSpaceCastInst(Operand, GEP.getType());
+        return new BitCastInst(Operand, GEP.getType());
       }
 
       // Otherwise, if the offset is non-zero, we need to find out if there is a
       // field at Offset in 'A's type.  If so, we can pull the cast through the
       // GEP.
       SmallVector<Value*, 8> NewIndices;
-      if (FindElementAtOffset(SrcType, Offset.getSExtValue(), NewIndices)) {
+      if (FindElementAtOffset(OpType, Offset.getSExtValue(), NewIndices)) {
         Value *NGEP =
             GEP.isInBounds()
-                ? Builder.CreateInBoundsGEP(nullptr, SrcOp, NewIndices)
-                : Builder.CreateGEP(nullptr, SrcOp, NewIndices);
+                ? Builder.CreateInBoundsGEP(nullptr, Operand, NewIndices)
+                : Builder.CreateGEP(nullptr, Operand, NewIndices);
 
-        if (NGEP->getType() == GEPType)
+        if (NGEP->getType() == GEP.getType())
           return replaceInstUsesWith(GEP, NGEP);
         NGEP->takeName(&GEP);
 
         if (NGEP->getType()->getPointerAddressSpace() != GEP.getAddressSpace())
-          return new AddrSpaceCastInst(NGEP, GEPType);
-        return new BitCastInst(NGEP, GEPType);
+          return new AddrSpaceCastInst(NGEP, GEP.getType());
+        return new BitCastInst(NGEP, GEP.getType());
       }
     }
   }
 
   if (!GEP.isInBounds()) {
-    unsigned IdxWidth =
-        DL.getIndexSizeInBits(PtrOp->getType()->getPointerAddressSpace());
-    APInt BasePtrOffset(IdxWidth, 0);
+    unsigned PtrWidth =
+        DL.getPointerSizeInBits(PtrOp->getType()->getPointerAddressSpace());
+    APInt BasePtrOffset(PtrWidth, 0);
     Value *UnderlyingPtrOp =
             PtrOp->stripAndAccumulateInBoundsConstantOffsets(DL,
                                                              BasePtrOffset);
     if (auto *AI = dyn_cast<AllocaInst>(UnderlyingPtrOp)) {
       if (GEP.accumulateConstantOffset(DL, BasePtrOffset) &&
           BasePtrOffset.isNonNegative()) {
-        APInt AllocSize(IdxWidth, DL.getTypeAllocSize(AI->getAllocatedType()));
+        APInt AllocSize(PtrWidth, DL.getTypeAllocSize(AI->getAllocatedType()));
         if (BasePtrOffset.ule(AllocSize)) {
           return GetElementPtrInst::CreateInBounds(
               PtrOp, makeArrayRef(Ops).slice(1), GEP.getName());

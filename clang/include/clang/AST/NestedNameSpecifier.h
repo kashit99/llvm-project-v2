@@ -267,11 +267,11 @@ public:
   NestedNameSpecifierLoc(NestedNameSpecifier *Qualifier, void *Data)
       : Qualifier(Qualifier), Data(Data) {}
 
-  /// \brief Evaluates true when this nested-name-specifier location is
+  /// \brief Evalutes true when this nested-name-specifier location is
   /// non-empty.
   explicit operator bool() const { return Qualifier; }
 
-  /// \brief Evaluates true when this nested-name-specifier location is
+  /// \brief Evalutes true when this nested-name-specifier location is
   /// empty.
   bool hasQualifier() const { return Qualifier; }
 

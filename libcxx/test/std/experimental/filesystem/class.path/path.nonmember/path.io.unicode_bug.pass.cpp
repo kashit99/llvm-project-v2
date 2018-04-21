@@ -27,7 +27,7 @@
 // passes.
 // XFAIL: *
 
-#include "filesystem_include.hpp"
+#include <experimental/filesystem>
 #include <type_traits>
 #include <sstream>
 #include <cassert>

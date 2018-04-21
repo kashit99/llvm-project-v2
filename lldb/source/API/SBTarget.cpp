@@ -25,6 +25,7 @@
 #include "lldb/API/SBStringList.h"
 #include "lldb/API/SBStructuredData.h"
 #include "lldb/API/SBSymbolContextList.h"
+#include "lldb/Breakpoint/Breakpoint.h"
 #include "lldb/Breakpoint/BreakpointID.h"
 #include "lldb/Breakpoint/BreakpointIDList.h"
 #include "lldb/Breakpoint/BreakpointList.h"
@@ -44,6 +45,7 @@
 #include "lldb/Core/ValueObjectList.h"
 #include "lldb/Core/ValueObjectVariable.h"
 #include "lldb/Host/Host.h"
+#include "lldb/Interpreter/Args.h"
 #include "lldb/Symbol/ClangASTContext.h"
 #include "lldb/Symbol/DeclVendor.h"
 #include "lldb/Symbol/ObjectFile.h"
@@ -59,7 +61,6 @@
 #include "lldb/Target/Target.h"
 #include "lldb/Target/TargetList.h"
 #include "lldb/Utility/ArchSpec.h"
-#include "lldb/Utility/Args.h"
 #include "lldb/Utility/FileSpec.h"
 #include "lldb/Utility/Log.h"
 #include "lldb/Utility/RegularExpression.h"
@@ -311,7 +312,7 @@ SBProcess SBTarget::Launch(SBListener &listener, char const **argv,
     if (argv)
       launch_info.GetArguments().AppendArguments(argv);
     if (envp)
-      launch_info.GetEnvironment() = Environment(envp);
+      launch_info.GetEnvironmentEntries().SetArguments(envp);
 
     if (listener.IsValid())
       launch_info.SetListener(listener.GetSP());
@@ -361,7 +362,7 @@ SBProcess SBTarget::Launch(SBLaunchInfo &sb_launch_info, SBError &error) {
       }
     }
 
-    lldb_private::ProcessLaunchInfo launch_info = sb_launch_info.ref();
+    lldb_private::ProcessLaunchInfo &launch_info = sb_launch_info.ref();
 
     if (!launch_info.GetExecutableFile()) {
       Module *exe_module = target_sp->GetExecutableModulePointer();
@@ -374,7 +375,6 @@ SBProcess SBTarget::Launch(SBLaunchInfo &sb_launch_info, SBError &error) {
       launch_info.GetArchitecture() = arch_spec;
 
     error.SetError(target_sp->Launch(launch_info, NULL));
-    sb_launch_info.set_ref(launch_info);
     sb_process.SetSP(target_sp->GetProcessSP());
   } else {
     error.SetErrorString("SBTarget is invalid");
@@ -1014,6 +1014,15 @@ lldb::SBBreakpoint SBTarget::BreakpointCreateBySourceRegex(
 lldb::SBBreakpoint
 SBTarget::BreakpointCreateForException(lldb::LanguageType language,
                                        bool catch_bp, bool throw_bp) {
+  SBStringList no_extra_args;
+  return BreakpointCreateForException(language, catch_bp, throw_bp,
+                                      no_extra_args);
+}
+
+lldb::SBBreakpoint
+SBTarget::BreakpointCreateForException(lldb::LanguageType language,
+                                       bool catch_bp, bool throw_bp,
+                                       SBStringList &extra_args) {
   Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_API));
 
   SBBreakpoint sb_bp;
@@ -1023,6 +1032,22 @@ SBTarget::BreakpointCreateForException(lldb::LanguageType language,
     const bool hardware = false;
     sb_bp = target_sp->CreateExceptionBreakpoint(language, catch_bp, throw_bp,
                                                   hardware);
+    size_t num_extra_args = extra_args.GetSize();
+    if (num_extra_args > 0) {
+      // Have to convert this to Args, and pass it to the precondition:
+      if (num_extra_args % 2 == 0) {
+        Args args;
+        for (size_t i = 0; i < num_extra_args; i += 2) {
+          args.AppendArgument(extra_args.GetStringAtIndex(i));
+          args.AppendArgument(extra_args.GetStringAtIndex(i + 1));
+        }
+        BreakpointSP bkpt = sb_bp.GetSP();
+        Breakpoint::BreakpointPreconditionSP pre_condition_sp =
+            bkpt->GetPrecondition();
+        if (pre_condition_sp)
+          pre_condition_sp->ConfigurePrecondition(args);
+      }
+    }
   }
 
   if (log)
@@ -2217,7 +2242,7 @@ lldb::SBLaunchInfo SBTarget::GetLaunchInfo() const {
   lldb::SBLaunchInfo launch_info(NULL);
   TargetSP target_sp(GetSP());
   if (target_sp)
-    launch_info.set_ref(m_opaque_sp->GetProcessLaunchInfo());
+    launch_info.ref() = m_opaque_sp->GetProcessLaunchInfo();
   return launch_info;
 }
 

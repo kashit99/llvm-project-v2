@@ -41,12 +41,9 @@ void binary_bitwise() {
   // CHECK-MESSAGES: :[[@LINE-1]]:13: warning: use of a signed integer operand with a binary bitwise operator
   UResult = SValue & -1;
   // CHECK-MESSAGES: :[[@LINE-1]]:13: warning: use of a signed integer operand with a binary bitwise operator
-  UResult&= 1;
-  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: use of a signed integer operand with a binary bitwise operator
 
   UResult = UValue & 1u;     // Ok
   UResult = UValue & UValue; // Ok
-  UResult&= 2u;              // Ok
 
   unsigned char UByte1 = 0u;
   unsigned char UByte2 = 16u;
@@ -71,30 +68,18 @@ void binary_bitwise() {
   UByte1 = UByte1 | UByte2; // Ok
   UByte1 = UByte1 | SByte2;
   // CHECK-MESSAGES: :[[@LINE-1]]:12: warning: use of a signed integer operand with a binary bitwise operator
-  UByte1|= SByte2;
-  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: use of a signed integer operand with a binary bitwise operator
-  UByte1|= UByte2; // Ok
 
   UByte1 = UByte1 ^ UByte2; // Ok
   UByte1 = UByte1 ^ SByte2;
   // CHECK-MESSAGES: :[[@LINE-1]]:12: warning: use of a signed integer operand with a binary bitwise operator
-  UByte1^= SByte2;
-  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: use of a signed integer operand with a binary bitwise operator
-  UByte1^= UByte2; // Ok
 
   UByte1 = UByte1 >> UByte2; // Ok
   UByte1 = UByte1 >> SByte2;
   // CHECK-MESSAGES: :[[@LINE-1]]:12: warning: use of a signed integer operand with a binary bitwise operator
-  UByte1>>= SByte2;
-  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: use of a signed integer operand with a binary bitwise operator
-  UByte1>>= UByte2; // Ok
 
   UByte1 = UByte1 << UByte2; // Ok
   UByte1 = UByte1 << SByte2;
   // CHECK-MESSAGES: :[[@LINE-1]]:12: warning: use of a signed integer operand with a binary bitwise operator
-  UByte1<<= SByte2;
-  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: use of a signed integer operand with a binary bitwise operator
-  UByte1<<= UByte2; // Ok
 
   int SignedInt1 = 1 << 12;
   // CHECK-MESSAGES: :[[@LINE-1]]:20: warning: use of a signed integer operand with a binary bitwise operator
@@ -210,16 +195,10 @@ void classicEnums() {
   int s3;
   s3 = IntOne | IntTwo; // Signed
   // CHECK-MESSAGES: [[@LINE-1]]:8: warning: use of a signed integer operand with a binary bitwise operator
-  s3|= IntTwo; // Signed
-  // CHECK-MESSAGES: [[@LINE-1]]:3: warning: use of a signed integer operand with a binary bitwise operator
   s3 = IntOne & IntTwo; // Signed
   // CHECK-MESSAGES: [[@LINE-1]]:8: warning: use of a signed integer operand with a binary bitwise operator
-  s3&= IntTwo; // Signed
-  // CHECK-MESSAGES: [[@LINE-1]]:3: warning: use of a signed integer operand with a binary bitwise operator
   s3 = IntOne ^ IntTwo; // Signed
   // CHECK-MESSAGES: [[@LINE-1]]:8: warning: use of a signed integer operand with a binary bitwise operator
-  s3^= IntTwo; // Signed
-  // CHECK-MESSAGES: [[@LINE-1]]:3: warning: use of a signed integer operand with a binary bitwise operator
   s3 = s1 | s2; // Signed
   // CHECK-MESSAGES: [[@LINE-1]]:8: warning: use of a signed integer operand with a binary bitwise operator
   s3 = s1 & s2; // Signed

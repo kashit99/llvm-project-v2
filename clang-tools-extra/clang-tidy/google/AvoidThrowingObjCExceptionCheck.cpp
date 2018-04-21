@@ -19,11 +19,6 @@ namespace google {
 namespace objc {
 
 void AvoidThrowingObjCExceptionCheck::registerMatchers(MatchFinder *Finder) {
-  // this check should only be applied to ObjC sources.
-  if (!getLangOpts().ObjC1 && !getLangOpts().ObjC2) {
-    return;
-  }
-
   Finder->addMatcher(objcThrowStmt().bind("throwStmt"), this);
   Finder->addMatcher(
       objcMessageExpr(anyOf(hasSelector("raise:format:"),

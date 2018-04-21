@@ -1,10 +1,11 @@
 #include <assert.h>
 #include <isl/stream.h>
 #include <isl_map_private.h>
-#include <isl/polynomial.h>
+#include <isl_polynomial_private.h>
 #include <isl_scan.h>
-#include <isl/val.h>
 #include <isl/options.h>
+#include <isl/deprecated/point_int.h>
+#include <isl/deprecated/polynomial_int.h>
 
 struct bound_options {
 	struct isl_options	*isl;
@@ -62,7 +63,7 @@ static isl_stat verify_point(__isl_take isl_point *pnt, void *user)
 	int i;
 	unsigned nparam;
 	struct verify_point_bound *vpb = (struct verify_point_bound *) user;
-	isl_val *v;
+	isl_int t;
 	isl_ctx *ctx;
 	isl_pw_qpolynomial_fold *pwf;
 	isl_val *bound = NULL;
@@ -88,12 +89,14 @@ static isl_stat verify_point(__isl_take isl_point *pnt, void *user)
 	ctx = isl_point_get_ctx(pnt);
 	p = isl_printer_to_file(ctx, out);
 
+	isl_int_init(t);
+
 	pwf = isl_pw_qpolynomial_fold_copy(vpb->pwf);
 
 	nparam = isl_pw_qpolynomial_fold_dim(pwf, isl_dim_param);
 	for (i = 0; i < nparam; ++i) {
-		v = isl_point_get_coordinate_val(pnt, isl_dim_param, i);
-		pwf = isl_pw_qpolynomial_fold_fix_val(pwf, isl_dim_param, i, v);
+		isl_point_get_coordinate(pnt, isl_dim_param, i, &t);
+		pwf = isl_pw_qpolynomial_fold_fix_dim(pwf, isl_dim_param, i, t);
 	}
 
 	bound = isl_pw_qpolynomial_fold_eval(
@@ -130,9 +133,8 @@ static isl_stat verify_point(__isl_take isl_point *pnt, void *user)
 		for (i = 0; i < nparam; ++i) {
 			if (i)
 				p = isl_printer_print_str(p, ", ");
-			v = isl_point_get_coordinate_val(pnt, isl_dim_param, i);
-			p = isl_printer_print_val(p, v);
-			isl_val_free(v);
+			isl_point_get_coordinate(pnt, isl_dim_param, i, &t);
+			p = isl_printer_print_isl_int(p, t);
 		}
 		p = isl_printer_print_str(p, ") = ");
 		p = isl_printer_print_val(p, bound);
@@ -160,6 +162,8 @@ error:
 	isl_val_free(opt);
 	isl_point_free(pnt);
 	isl_set_free(dom);
+
+	isl_int_clear(t);
 
 	isl_printer_free(p);
 

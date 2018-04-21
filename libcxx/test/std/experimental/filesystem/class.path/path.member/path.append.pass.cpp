@@ -22,7 +22,7 @@
 //      path& append(InputIterator first, InputIterator last);
 
 
-#include "filesystem_include.hpp"
+#include <experimental/filesystem>
 #include <type_traits>
 #include <string_view>
 #include <cassert>
@@ -31,8 +31,8 @@
 #include "test_iterators.h"
 #include "count_new.hpp"
 #include "filesystem_test_helper.hpp"
-#include "verbose_assert.h"
 
+namespace fs = std::experimental::filesystem;
 
 struct AppendOperatorTestcase {
   MultiStringType lhs;
@@ -46,22 +46,13 @@ const AppendOperatorTestcase Cases[] =
         {S(""),     S(""),      S("")}
       , {S("p1"),   S("p2"),    S("p1/p2")}
       , {S("p1/"),  S("p2"),    S("p1/p2")}
-      , {S("p1"),   S("/p2"),   S("/p2")}
-      , {S("p1/"),  S("/p2"),   S("/p2")}
+      , {S("p1"),   S("/p2"),   S("p1/p2")}
+      , {S("p1/"),  S("/p2"),   S("p1//p2")}
       , {S("p1"),   S("\\p2"),  S("p1/\\p2")}
       , {S("p1\\"), S("p2"),  S("p1\\/p2")}
       , {S("p1\\"), S("\\p2"),  S("p1\\/\\p2")}
+      , {S("p1"),   S(""),      S("p1")}
       , {S(""),     S("p2"),    S("p2")}
-      , {S("/p1"),  S("p2"),    S("/p1/p2")}
-      , {S("/p1"),  S("/p2"),    S("/p2")}
-      , {S("/p1/p3"),  S("p2"),    S("/p1/p3/p2")}
-      , {S("/p1/p3/"),  S("p2"),    S("/p1/p3/p2")}
-      , {S("/p1/"),  S("p2"),    S("/p1/p2")}
-      , {S("/p1/p3/"),  S("/p2/p4"),    S("/p2/p4")}
-      , {S("/"),    S(""),      S("/")}
-      , {S("/p1"), S("/p2/"), S("/p2/")}
-      , {S("p1"),   S(""),      S("p1/")}
-      , {S("p1/"),  S(""),      S("p1/")}
     };
 
 
@@ -69,8 +60,7 @@ const AppendOperatorTestcase LongLHSCases[] =
     {
         {S("p1"),   S("p2"),    S("p1/p2")}
       , {S("p1/"),  S("p2"),    S("p1/p2")}
-      , {S("p1"),   S("/p2"),   S("/p2")}
-      , {S("/p1"),  S("p2"),    S("/p1/p2")}
+      , {S("p1"),   S("/p2"),   S("p1/p2")}
     };
 #undef S
 
@@ -109,7 +99,7 @@ void doAppendSourceAllocTest(AppendOperatorTestcase const& TC)
       DisableAllocationGuard g;
       LHS /= RHS;
     }
-    ASSERT_PRED(PathEq, LHS , E);
+    assert(LHS == E);
   }
   // basic_string_view
   {
@@ -119,7 +109,7 @@ void doAppendSourceAllocTest(AppendOperatorTestcase const& TC)
       DisableAllocationGuard g;
       LHS /= RHS;
     }
-    assert(PathEq(LHS, E));
+    assert(LHS == E);
   }
   // CharT*
   {
@@ -129,7 +119,7 @@ void doAppendSourceAllocTest(AppendOperatorTestcase const& TC)
       DisableAllocationGuard g;
       LHS /= RHS;
     }
-    assert(PathEq(LHS, E));
+    assert(LHS == E);
   }
   {
     path LHS(L); PathReserve(LHS, ReserveSize);
@@ -138,7 +128,7 @@ void doAppendSourceAllocTest(AppendOperatorTestcase const& TC)
       DisableAllocationGuard g;
       LHS.append(RHS, StrEnd(RHS));
     }
-    assert(PathEq(LHS, E));
+    assert(LHS == E);
   }
   // input iterator - For non-native char types, appends needs to copy the
   // iterator range into a contiguous block of memory before it can perform the
@@ -154,7 +144,7 @@ void doAppendSourceAllocTest(AppendOperatorTestcase const& TC)
       if (DisableAllocations) g.requireExactly(0);
       LHS /= RHS;
     }
-    assert(PathEq(LHS, E));
+    assert(LHS == E);
   }
   {
     path LHS(L); PathReserve(LHS, ReserveSize);
@@ -165,7 +155,7 @@ void doAppendSourceAllocTest(AppendOperatorTestcase const& TC)
       if (DisableAllocations) g.requireExactly(0);
       LHS.append(RHS, REnd);
     }
-    assert(PathEq(LHS, E));
+    assert(LHS == E);
   }
 }
 
@@ -182,18 +172,17 @@ void doAppendSourceTest(AppendOperatorTestcase const& TC)
   const Ptr E = TC.expect;
   // basic_string
   {
-    path Result(L);
+    path LHS(L);
     Str RHS(R);
-    path& Ref = (Result /= RHS);
-    ASSERT_EQ(Result, E)
-        << DISPLAY(L) << DISPLAY(R);
-    assert(&Ref == &Result);
+    path& Ref = (LHS /= RHS);
+    assert(LHS == E);
+    assert(&Ref == &LHS);
   }
   {
     path LHS(L);
     Str RHS(R);
     path& Ref = LHS.append(RHS);
-    assert(PathEq(LHS, E));
+    assert(LHS == E);
     assert(&Ref == &LHS);
   }
   // basic_string_view
@@ -201,14 +190,14 @@ void doAppendSourceTest(AppendOperatorTestcase const& TC)
     path LHS(L);
     StrView RHS(R);
     path& Ref = (LHS /= RHS);
-    assert(PathEq(LHS, E));
+    assert(LHS == E);
     assert(&Ref == &LHS);
   }
   {
     path LHS(L);
     StrView RHS(R);
     path& Ref = LHS.append(RHS);
-    assert(PathEq(LHS, E));
+    assert(LHS == E);
     assert(&Ref == &LHS);
   }
   // Char*
@@ -216,22 +205,21 @@ void doAppendSourceTest(AppendOperatorTestcase const& TC)
     path LHS(L);
     Str RHS(R);
     path& Ref = (LHS /= RHS);
-    assert(PathEq(LHS, E));
+    assert(LHS == E);
     assert(&Ref == &LHS);
   }
   {
     path LHS(L);
     Ptr RHS(R);
     path& Ref = LHS.append(RHS);
-    assert(PathEq(LHS, E));
+    assert(LHS == E);
     assert(&Ref == &LHS);
   }
   {
     path LHS(L);
     Ptr RHS(R);
     path& Ref = LHS.append(RHS, StrEnd(RHS));
-    ASSERT_PRED(PathEq, LHS, E)
-        << DISPLAY(L) << DISPLAY(R);
+    assert(LHS == E);
     assert(&Ref == &LHS);
   }
   // iterators
@@ -239,13 +227,13 @@ void doAppendSourceTest(AppendOperatorTestcase const& TC)
     path LHS(L);
     InputIter RHS(R);
     path& Ref = (LHS /= RHS);
-    assert(PathEq(LHS, E));
+    assert(LHS == E);
     assert(&Ref == &LHS);
   }
   {
     path LHS(L); InputIter RHS(R);
     path& Ref = LHS.append(RHS);
-    assert(PathEq(LHS, E));
+    assert(LHS == E);
     assert(&Ref == &LHS);
   }
   {
@@ -253,7 +241,7 @@ void doAppendSourceTest(AppendOperatorTestcase const& TC)
     InputIter RHS(R);
     InputIter REnd(StrEnd(R));
     path& Ref = LHS.append(RHS, REnd);
-    assert(PathEq(LHS, E));
+    assert(LHS == E);
     assert(&Ref == &LHS);
   }
 }
@@ -317,14 +305,11 @@ int main()
   using namespace fs;
   for (auto const & TC : Cases) {
     {
-      const char* LHS_In = TC.lhs;
-      const char* RHS_In = TC.rhs;
-      path LHS(LHS_In);
-      path RHS(RHS_In);
-      path& Res = (LHS /= RHS);
-      ASSERT_PRED(PathEq, Res, (const char*)TC.expect)
-          << DISPLAY(LHS_In) << DISPLAY(RHS_In);
-      assert(&Res == &LHS);
+      path LHS((const char*)TC.lhs);
+      path RHS((const char*)TC.rhs);
+      path& Ref = (LHS /= RHS);
+      assert(LHS == (const char*)TC.expect);
+      assert(&Ref == &LHS);
     }
     doAppendSourceTest<char>    (TC);
     doAppendSourceTest<wchar_t> (TC);

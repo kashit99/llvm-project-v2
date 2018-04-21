@@ -493,7 +493,7 @@ void ModuleMap::diagnoseHeaderInclusion(Module *RequestingModule,
   // We have found a module, but we don't use it.
   if (NotUsed) {
     Diags.Report(FilenameLoc, diag::err_undeclared_use_of_module)
-        << RequestingModule->getTopLevelModule()->Name << Filename;
+        << RequestingModule->getFullModuleName() << Filename;
     return;
   }
 
@@ -504,7 +504,7 @@ void ModuleMap::diagnoseHeaderInclusion(Module *RequestingModule,
 
   if (LangOpts.ModulesStrictDeclUse) {
     Diags.Report(FilenameLoc, diag::err_undeclared_use_of_module)
-        << RequestingModule->getTopLevelModule()->Name << Filename;
+        << RequestingModule->getFullModuleName() << Filename;
   } else if (RequestingModule && RequestingModuleIsModuleInterface &&
              LangOpts.isCompilingModule()) {
     // Do not diagnose when we are not compiling a module. 
@@ -741,8 +741,17 @@ ModuleMap::isHeaderUnavailableInModule(const FileEntry *Header,
 
 Module *ModuleMap::findModule(StringRef Name) const {
   llvm::StringMap<Module *>::const_iterator Known = Modules.find(Name);
-  if (Known != Modules.end())
-    return Known->getValue();
+  if (Known != Modules.end()) {
+    Module *M = Known->getValue();
+    // Notify callbacks that we found a module map for the module.
+    if (!M->DefinitionLoc.isInvalid())
+      for (const auto &Cb : Callbacks)
+        Cb->moduleMapFoundForModule(
+            *getContainingModuleMapFile(M), M,
+            SourceMgr.getFileCharacteristic(M->DefinitionLoc) ==
+                SrcMgr::C_System_ModuleMap);
+    return M;
+  }
 
   return nullptr;
 }
@@ -771,7 +780,7 @@ std::pair<Module *, bool> ModuleMap::findOrCreateModule(StringRef Name,
   // Try to find an existing module with this name.
   if (Module *Sub = lookupModuleQualified(Name, Parent))
     return std::make_pair(Sub, false);
-
+  
   // Create a new module with this name.
   Module *Result = new Module(Name, SourceLocation(), Parent, IsFramework,
                               IsExplicit, NumCreatedModules++);
@@ -782,6 +791,20 @@ std::pair<Module *, bool> ModuleMap::findOrCreateModule(StringRef Name,
     ModuleScopeIDs[Result] = CurrentModuleScopeID;
   }
   return std::make_pair(Result, true);
+}
+
+Module *ModuleMap::createShadowedModule(StringRef Name, bool IsFramework,
+                                        Module *ShadowingModule) {
+
+  // Create a new module with this name.
+  Module *Result =
+      new Module(Name, SourceLocation(), /*Parent=*/nullptr, IsFramework,
+                 /*IsExplicit=*/false, NumCreatedModules++);
+  Result->ShadowingModule = ShadowingModule;
+  Result->IsAvailable = false;
+  ModuleScopeIDs[Result] = CurrentModuleScopeID;
+  ShadowModules.push_back(Result);
+  return Result;
 }
 
 Module *ModuleMap::createGlobalModuleForInterfaceUnit(SourceLocation Loc) {
@@ -942,13 +965,14 @@ Module *ModuleMap::inferFrameworkModule(const DirectoryEntry *FrameworkDir,
   Module *Result = new Module(ModuleName, SourceLocation(), Parent,
                               /*IsFramework=*/true, /*IsExplicit=*/false,
                               NumCreatedModules++);
+  if (!Parent)
+    ModuleScopeIDs[Result] = CurrentModuleScopeID;
   InferredModuleAllowedBy[Result] = ModuleMapFile;
   Result->IsInferred = true;
   if (!Parent) {
     if (LangOpts.CurrentModule == ModuleName)
       SourceModule = Result;
     Modules[ModuleName] = Result;
-    ModuleScopeIDs[Result] = CurrentModuleScopeID;
   }
 
   Result->IsSystem |= Attrs.IsSystem;
@@ -1017,21 +1041,6 @@ Module *ModuleMap::inferFrameworkModule(const DirectoryEntry *FrameworkDir,
   if (!Result->isSubFramework()) {
     inferFrameworkLink(Result, FrameworkDir, FileMgr);
   }
-
-  return Result;
-}
-
-Module *ModuleMap::createShadowedModule(StringRef Name, bool IsFramework,
-                                        Module *ShadowingModule) {
-
-  // Create a new module with this name.
-  Module *Result =
-      new Module(Name, SourceLocation(), /*Parent=*/nullptr, IsFramework,
-                 /*IsExplicit=*/false, NumCreatedModules++);
-  Result->ShadowingModule = ShadowingModule;
-  Result->IsAvailable = false;
-  ModuleScopeIDs[Result] = CurrentModuleScopeID;
-  ShadowModules.push_back(Result);
 
   return Result;
 }
@@ -1356,7 +1365,7 @@ namespace clang {
 
     /// \brief Consume the current token and return its location.
     SourceLocation consumeToken();
-
+    
     /// \brief Skip tokens until we reach the a token with the given kind
     /// (or the end of the file).
     void skipUntil(MMToken::TokenKind K);
@@ -1382,17 +1391,20 @@ namespace clang {
     bool parseOptionalAttributes(Attributes &Attrs);
     
   public:
-    explicit ModuleMapParser(Lexer &L, SourceManager &SourceMgr,
-                             const TargetInfo *Target, DiagnosticsEngine &Diags,
-                             ModuleMap &Map, const FileEntry *ModuleMapFile,
-                             const DirectoryEntry *Directory, bool IsSystem)
+    explicit ModuleMapParser(Lexer &L, SourceManager &SourceMgr, 
+                             const TargetInfo *Target,
+                             DiagnosticsEngine &Diags,
+                             ModuleMap &Map,
+                             const FileEntry *ModuleMapFile,
+                             const DirectoryEntry *Directory,
+                             bool IsSystem)
         : L(L), SourceMgr(SourceMgr), Target(Target), Diags(Diags), Map(Map),
           ModuleMapFile(ModuleMapFile), Directory(Directory),
           IsSystem(IsSystem) {
       Tok.clear();
       consumeToken();
     }
-
+    
     bool parseModuleMapFile();
 
     bool terminatedByDirective() { return false; }
@@ -2919,6 +2931,5 @@ bool ModuleMap::parseModuleMapFile(const FileEntry *File, bool IsSystem,
   // Notify callbacks that we parsed it.
   for (const auto &Cb : Callbacks)
     Cb->moduleMapFileRead(Start, *File, IsSystem);
-
   return Result;
 }

@@ -27,6 +27,5 @@ template <class _E>
 class vector {
  public:
   vector(initializer_list<_E> init);
-  ~vector();
 };
 } // namespace std

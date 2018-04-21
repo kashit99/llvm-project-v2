@@ -1,6 +1,10 @@
 from __future__ import print_function
 from __future__ import absolute_import
 
+import lldb
+from lldbsuite.test.lldbtest import *
+import lldbsuite.test.lldbutil as lldbutil
+import lldbsuite.test.test_categories as test_categories
 # System modules
 import os
 
@@ -22,7 +26,8 @@ def source_type(filename):
         '.cxx': 'CXX_SOURCES',
         '.cc': 'CXX_SOURCES',
         '.m': 'OBJC_SOURCES',
-        '.mm': 'OBJCXX_SOURCES'
+        '.mm': 'OBJCXX_SOURCES',
+        '.swift': 'SWIFT_SOURCES'
     }.get(extension, None)
 
 
@@ -97,6 +102,7 @@ class InlineTest(TestBase):
             return "-N dsym " + self.mydir
 
     def BuildMakefile(self):
+        self.makeBuildDir()
         makefilePath = self.getBuildArtifact("Makefile")
         if os.path.exists(makefilePath):
             return
@@ -180,23 +186,14 @@ class InlineTest(TestBase):
         parser.parse_source_files(source_files)
         parser.set_breakpoints(target)
 
-        process = target.LaunchSimple(None, None, self.get_process_working_directory())
-        hit_breakpoints = 0
+        process = target.LaunchSimple(None, None, self.getBuildDir())
 
         while lldbutil.get_stopped_thread(process, lldb.eStopReasonBreakpoint):
-            hit_breakpoints += 1
             thread = lldbutil.get_stopped_thread(
                 process, lldb.eStopReasonBreakpoint)
             breakpoint_id = thread.GetStopReasonDataAtIndex(0)
             parser.handle_breakpoint(self, breakpoint_id)
             process.Continue()
-
-        self.assertTrue(hit_breakpoints > 0,
-                        "inline test did not hit a single breakpoint")
-        # Either the process exited or the stepping plan is complete.
-        self.assertTrue(process.GetState() in [lldb.eStateStopped,
-                                               lldb.eStateExited],
-                        PROCESS_EXITED)
 
     # Utilities for testcases
 
@@ -224,6 +221,16 @@ def ApplyDecoratorsToFunction(func, decorators):
         tmp = decorators(tmp)
     return tmp
 
+def isEnabled(debug_flavor, target_platform, configuration, decorators):
+    # If the platform is unsupported, skip the test.
+    if not test_categories.is_supported_on_platform(debug_flavor,
+            target_platform, configuration.compiler):
+        return False
+
+    # If the debug flavor is skipped, skip the test.
+    if debug_flavor in configuration.skipCategories:
+        return False
+    return True
 
 def MakeInlineTest(__file, __globals, decorators=None):
     # Adjust the filename if it ends in .pyc.  We want filenames to
@@ -242,20 +249,16 @@ def MakeInlineTest(__file, __globals, decorators=None):
     test.name = test_name
 
     target_platform = lldb.DBG.GetSelectedPlatform().GetTriple().split('-')[2]
-    if test_categories.is_supported_on_platform(
-            "dsym", target_platform, configuration.compiler):
+    if isEnabled("dsym", target_platform, configuration, decorators):
         test.test_with_dsym = ApplyDecoratorsToFunction(
             test._InlineTest__test_with_dsym, decorators)
-    if test_categories.is_supported_on_platform(
-            "dwarf", target_platform, configuration.compiler):
+    if isEnabled("dwarf", target_platform, configuration, decorators):
         test.test_with_dwarf = ApplyDecoratorsToFunction(
             test._InlineTest__test_with_dwarf, decorators)
-    if test_categories.is_supported_on_platform(
-            "dwo", target_platform, configuration.compiler):
+    if isEnabled("dwo", target_platform, configuration, decorators):
         test.test_with_dwo = ApplyDecoratorsToFunction(
             test._InlineTest__test_with_dwo, decorators)
-    if test_categories.is_supported_on_platform(
-            "gmodules", target_platform, configuration.compiler):
+    if isEnabled("gmodules", target_platform, configuration, decorators):
         test.test_with_gmodules = ApplyDecoratorsToFunction(
             test._InlineTest__test_with_gmodules, decorators)
 

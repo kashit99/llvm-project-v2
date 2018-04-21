@@ -18,7 +18,7 @@
 // basic_string<ECharT, Traits, Allocator>
 // string(const Allocator& a = Allocator()) const;
 
-#include "filesystem_include.hpp"
+#include <experimental/filesystem>
 #include <type_traits>
 #include <cassert>
 
@@ -28,6 +28,7 @@
 #include "min_allocator.h"
 #include "filesystem_test_helper.hpp"
 
+namespace fs = std::experimental::filesystem;
 
 // the SSO is always triggered for strings of size 2.
 MultiStringType shortString = MKSTR("a");

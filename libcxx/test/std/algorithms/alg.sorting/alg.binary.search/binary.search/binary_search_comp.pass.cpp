@@ -10,7 +10,9 @@
 // <algorithm>
 
 // template<ForwardIterator Iter, class T, CopyConstructible Compare>
-//   constexpr bool      // constexpr after C++17
+//   requires Predicate<Compare, T, Iter::value_type>
+//         && Predicate<Compare, Iter::value_type, T>
+//   bool
 //   binary_search(Iter first, Iter last, const T& value, Compare comp);
 
 #include <algorithm>
@@ -19,21 +21,7 @@
 #include <cassert>
 #include <cstddef>
 
-#include "test_macros.h"
 #include "test_iterators.h"
-
-#if TEST_STD_VER > 17
-TEST_CONSTEXPR bool lt(int a, int b) { return a < b; }
-
-TEST_CONSTEXPR bool test_constexpr() {
-    int ia[] = {1, 3, 3, 6, 7};
-
-    return  std::binary_search(std::begin(ia), std::end(ia), 1, lt)
-        &&  std::binary_search(std::begin(ia), std::end(ia), 3, lt)
-        && !std::binary_search(std::begin(ia), std::end(ia), 9, lt)
-        ;
-    }
-#endif
 
 template <class Iter, class T>
 void
@@ -74,8 +62,4 @@ int main()
     test<bidirectional_iterator<const int*> >();
     test<random_access_iterator<const int*> >();
     test<const int*>();
-
-#if TEST_STD_VER > 17
-    static_assert(test_constexpr());
-#endif
 }

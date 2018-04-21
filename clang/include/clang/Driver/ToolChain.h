@@ -1,4 +1,4 @@
-//===- ToolChain.h - Collections of tools for one platform ------*- C++ -*-===//
+//===--- ToolChain.h - Collections of tools for one platform ----*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -10,70 +10,59 @@
 #ifndef LLVM_CLANG_DRIVER_TOOLCHAIN_H
 #define LLVM_CLANG_DRIVER_TOOLCHAIN_H
 
-#include "clang/Basic/LLVM.h"
 #include "clang/Basic/Sanitizers.h"
 #include "clang/Basic/VersionTuple.h"
 #include "clang/Driver/Action.h"
 #include "clang/Driver/Multilib.h"
 #include "clang/Driver/Types.h"
-#include "llvm/ADT/ArrayRef.h"
+#include "clang/Driver/Util.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Triple.h"
-#include "llvm/MC/MCTargetOptions.h"
-#include "llvm/Option/Option.h"
 #include "llvm/Target/TargetOptions.h"
-#include <cassert>
 #include <memory>
 #include <string>
-#include <utility>
 
 namespace llvm {
 namespace opt {
-
-class Arg;
-class ArgList;
-class DerivedArgList;
-
-} // namespace opt
-} // namespace llvm
+  class ArgList;
+  class DerivedArgList;
+  class InputArgList;
+}
+}
 
 namespace clang {
-
 class ObjCRuntime;
-
 namespace vfs {
-
 class FileSystem;
-
-} // namespace vfs
+}
 
 namespace driver {
-
-class Driver;
-class InputInfo;
-class SanitizerArgs;
-class Tool;
-class XRayArgs;
+  class Compilation;
+  class CudaInstallationDetector;
+  class Driver;
+  class InputInfo;
+  class JobAction;
+  class RegisterEffectiveTriple;
+  class SanitizerArgs;
+  class Tool;
+  class XRayArgs;
 
 /// Helper structure used to pass information extracted from clang executable
 /// name such as `i686-linux-android-g++`.
+///
 struct ParsedClangName {
   /// Target part of the executable name, as `i686-linux-android`.
   std::string TargetPrefix;
-
   /// Driver mode part of the executable name, as `g++`.
   std::string ModeSuffix;
-
   /// Corresponding driver mode argument, as '--driver-mode=g++'
-  const char *DriverMode = nullptr;
-
+  const char *DriverMode;
   /// True if TargetPrefix is recognized as a registered target name.
-  bool TargetIsValid = false;
+  bool TargetIsValid;
 
-  ParsedClangName() = default;
+  ParsedClangName() : DriverMode(nullptr), TargetIsValid(false) {}
   ParsedClangName(std::string Suffix, const char *Mode)
-      : ModeSuffix(Suffix), DriverMode(Mode) {}
+      : ModeSuffix(Suffix), DriverMode(Mode), TargetIsValid(false) {}
   ParsedClangName(std::string Target, std::string Suffix, const char *Mode,
                   bool IsRegistered)
       : TargetPrefix(Target), ModeSuffix(Suffix), DriverMode(Mode),
@@ -83,7 +72,7 @@ struct ParsedClangName {
 /// ToolChain - Access to tools for a single platform.
 class ToolChain {
 public:
-  using path_list = SmallVector<std::string, 16>;
+  typedef SmallVector<std::string, 16> path_list;
 
   enum CXXStdlibType {
     CST_Libcxx,
@@ -103,28 +92,25 @@ public:
   };
 
 private:
-  friend class RegisterEffectiveTriple;
-
   const Driver &D;
   llvm::Triple Triple;
   const llvm::opt::ArgList &Args;
-
   // We need to initialize CachedRTTIArg before CachedRTTIMode
   const llvm::opt::Arg *const CachedRTTIArg;
-
   const RTTIMode CachedRTTIMode;
 
-  /// The list of toolchain specific path prefixes to search for files.
+  /// The list of toolchain specific path prefixes to search for
+  /// files.
   path_list FilePaths;
 
-  /// The list of toolchain specific path prefixes to search for programs.
+  /// The list of toolchain specific path prefixes to search for
+  /// programs.
   path_list ProgramPaths;
 
   mutable std::unique_ptr<Tool> Clang;
   mutable std::unique_ptr<Tool> Assemble;
   mutable std::unique_ptr<Tool> Link;
   mutable std::unique_ptr<Tool> OffloadBundler;
-
   Tool *getClang() const;
   Tool *getAssemble() const;
   Tool *getLink() const;
@@ -141,6 +127,8 @@ private:
   void setEffectiveTriple(llvm::Triple ET) const {
     EffectiveTriple = std::move(ET);
   }
+
+  friend class RegisterEffectiveTriple;
 
 protected:
   MultilibSet Multilibs;
@@ -243,6 +231,7 @@ public:
   /// e.g., argv[0]).
   /// \return A structure of type ParsedClangName that contains the executable
   /// name parts.
+  ///
   static ParsedClangName getTargetAndModeFromProgramName(StringRef ProgName);
 
   // Tool access.
@@ -339,7 +328,9 @@ public:
   }
 
   /// GetDefaultLinker - Get the default linker to use.
-  virtual const char *getDefaultLinker() const { return "ld"; }
+  virtual const char *getDefaultLinker() const {
+    return "ld";
+  }
 
   /// GetDefaultRuntimeLibType - Get the default runtime library variant to use.
   virtual RuntimeLibType GetDefaultRuntimeLibType() const {
@@ -363,9 +354,6 @@ public:
   // Returns <ResourceDir>/lib/<OSName>/<arch>.  This is used by runtimes (such
   // as OpenMP) to find arch-specific libraries.
   std::string getArchSpecificLibPath() const;
-
-  // Returns <OSname> part of above.
-  StringRef getOSLibName() const;
 
   /// needsProfileRT - returns true if instrumentation profile is on.
   static bool needsProfileRT(const llvm::opt::ArgList &Args);
@@ -416,7 +404,9 @@ public:
   GetExceptionModel(const llvm::opt::ArgList &Args) const;
 
   /// SupportsEmbeddedBitcode - Does this tool chain support embedded bitcode.
-  virtual bool SupportsEmbeddedBitcode() const { return false; }
+  virtual bool SupportsEmbeddedBitcode() const {
+    return false;
+  }
 
   /// getThreadModel() - Which thread model does this target use?
   virtual std::string getThreadModel() const { return "posix"; }
@@ -507,7 +497,6 @@ public:
   /// This checks for presence of the -Ofast, -ffast-math or -funsafe-math flags.
   virtual bool AddFastMathRuntimeIfAvailable(
       const llvm::opt::ArgList &Args, llvm::opt::ArgStringList &CmdArgs) const;
-
   /// addProfileRTLibs - When -fprofile-instr-profile is specified, try to pass
   /// a suitable profile runtime library to the linker.
   virtual void addProfileRTLibs(const llvm::opt::ArgList &Args,
@@ -545,8 +534,7 @@ public:
   ~RegisterEffectiveTriple() { TC.setEffectiveTriple(llvm::Triple()); }
 };
 
-} // namespace driver
+} // end namespace driver
+} // end namespace clang
 
-} // namespace clang
-
-#endif // LLVM_CLANG_DRIVER_TOOLCHAIN_H
+#endif

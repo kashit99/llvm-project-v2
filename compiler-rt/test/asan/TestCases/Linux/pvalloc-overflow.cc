@@ -6,8 +6,6 @@
 
 // UNSUPPORTED: freebsd, android
 
-// REQUIRES: stable-runtime
-
 // Checks that pvalloc overflows are caught. If the allocator is allowed to
 // return null, the errno should be set to ENOMEM.
 
@@ -40,7 +38,4 @@ int main(int argc, char *argv[]) {
   return 0;
 }
 
-// CHECK: {{ERROR: AddressSanitizer: pvalloc parameters overflow: size .* rounded up to system page size .* cannot be represented in type size_t}}
-// CHECK: {{#0 0x.* in .*pvalloc}}
-// CHECK: {{#1 0x.* in main .*pvalloc-overflow.cc:}}
-// CHECK: SUMMARY: AddressSanitizer: pvalloc-overflow
+// CHECK: AddressSanitizer's allocator is terminating the process

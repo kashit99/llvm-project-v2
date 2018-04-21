@@ -597,7 +597,7 @@ void LiveVariablesImpl::dumpBlockLiveness(const SourceManager &M) {
        it != ei; ++it) {
     vec.push_back(it->first);    
   }
-  llvm::sort(vec.begin(), vec.end(), [](const CFGBlock *A, const CFGBlock *B) {
+  std::sort(vec.begin(), vec.end(), [](const CFGBlock *A, const CFGBlock *B) {
     return A->getBlockID() < B->getBlockID();
   });
 
@@ -617,8 +617,7 @@ void LiveVariablesImpl::dumpBlockLiveness(const SourceManager &M) {
       declVec.push_back(*si);      
     }
 
-    llvm::sort(declVec.begin(), declVec.end(),
-               [](const Decl *A, const Decl *B) {
+    std::sort(declVec.begin(), declVec.end(), [](const Decl *A, const Decl *B) {
       return A->getLocStart() < B->getLocStart();
     });
 

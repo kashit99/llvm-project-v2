@@ -957,12 +957,6 @@ SourceManager::getImmediateExpansionRange(SourceLocation Loc) const {
   return Expansion.getExpansionLocRange();
 }
 
-SourceLocation SourceManager::getTopMacroCallerLoc(SourceLocation Loc) const {
-  while (isMacroArgExpansion(Loc))
-    Loc = getImmediateSpellingLoc(Loc);
-  return Loc;
-}
-
 /// getExpansionRange - Given a SourceLocation object, return the range of
 /// tokens covered by the expansion in the ultimate file.
 std::pair<SourceLocation,SourceLocation>
@@ -1887,7 +1881,7 @@ void SourceManager::associateFileChunkWithMacroArgExp(
   //     0   -> SourceLocation()
   //     100 -> Expanded loc #1
   //     110 -> SourceLocation()
-  // and we found a new macro FileID that lexed from offset 105 with length 3,
+  // and we found a new macro FileID that lexed from offet 105 with length 3,
   // the new map will be:
   //     0   -> SourceLocation()
   //     100 -> Expanded loc #1

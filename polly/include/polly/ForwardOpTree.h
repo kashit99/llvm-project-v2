@@ -19,6 +19,7 @@ namespace llvm {
 class PassRegistry;
 
 void initializeForwardOpTreePass(PassRegistry &);
+
 } // namespace llvm
 
 namespace polly {
@@ -26,6 +27,7 @@ namespace polly {
 class ScopPass;
 
 ScopPass *createForwardOpTreePass();
+
 } // namespace polly
 
 #endif // POLLY_FORWARDOPTREE_H

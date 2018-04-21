@@ -1282,8 +1282,14 @@ PlatformDarwin::GetResumeCountForLaunchInfo(ProcessLaunchInfo &launch_info) {
     // /bin/sh re-exec's itself as /bin/bash requiring another resume.
     // But it only does this if the COMMAND_MODE environment variable
     // is set to "legacy".
-    if (launch_info.GetEnvironment().lookup("COMMAND_MODE") == "legacy")
-      return 2;
+    const char **envp =
+        launch_info.GetEnvironmentEntries().GetConstArgumentVector();
+    if (envp != NULL) {
+      for (int i = 0; envp[i] != NULL; i++) {
+        if (strcmp(envp[i], "COMMAND_MODE=legacy") == 0)
+          return 2;
+      }
+    }
     return 1;
   } else if (strcmp(shell_name, "csh") == 0 ||
              strcmp(shell_name, "tcsh") == 0 ||
@@ -1326,7 +1332,7 @@ static FileSpec CheckPathForXcode(const FileSpec &fspec) {
 
 static FileSpec GetXcodeContentsPath() {
   static FileSpec g_xcode_filespec;
-  static llvm::once_flag g_once_flag;
+  static std::once_flag g_once_flag;
   llvm::call_once(g_once_flag, []() {
 
     FileSpec fspec;
@@ -1661,13 +1667,25 @@ bool PlatformDarwin::GetOSVersion(uint32_t &major, uint32_t &minor,
   if (process && strstr(GetPluginName().GetCString(), "-simulator")) {
     lldb_private::ProcessInstanceInfo proc_info;
     if (Host::GetProcessInfo(process->GetID(), proc_info)) {
-      const Environment &env = proc_info.GetEnvironment();
+      Args &env = proc_info.GetEnvironmentEntries();
+      const size_t n = env.GetArgumentCount();
+      const llvm::StringRef k_runtime_version("SIMULATOR_RUNTIME_VERSION=");
+      const llvm::StringRef k_dyld_root_path("DYLD_ROOT_PATH=");
+      std::string dyld_root_path;
 
-      if (Args::StringToVersion(env.lookup("SIMULATOR_RUNTIME_VERSION"), major,
-                                minor, update))
-        return true;
+      for (size_t i = 0; i < n; ++i) {
+        const char *env_cstr = env.GetArgumentAtIndex(i);
+        if (env_cstr) {
+          llvm::StringRef env_str(env_cstr);
+          if (env_str.consume_front(k_runtime_version)) {
+            if (Args::StringToVersion(env_str, major, minor, update))
+              return true;
+          } else if (env_str.consume_front(k_dyld_root_path)) {
+            dyld_root_path = env_str;
+          }
+        }
+      }
 
-      std::string dyld_root_path = env.lookup("DYLD_ROOT_PATH");
       if (!dyld_root_path.empty()) {
         dyld_root_path += "/System/Library/CoreServices/SystemVersion.plist";
         ApplePropertyList system_version_plist(dyld_root_path.c_str());
@@ -1697,7 +1715,7 @@ lldb_private::FileSpec PlatformDarwin::LocateExecutable(const char *basename) {
 
   // Find the global list of directories that we will search for
   // executables once so we don't keep doing the work over and over.
-  static llvm::once_flag g_once_flag;
+  static std::once_flag g_once_flag;
   llvm::call_once(g_once_flag, []() {
 
     // When locating executables, trust the DEVELOPER_DIR first if it is set
@@ -1728,6 +1746,60 @@ lldb_private::FileSpec PlatformDarwin::LocateExecutable(const char *basename) {
   return FileSpec();
 }
 
+bool PlatformDarwin::IsUnitTestExecutable(lldb_private::Module &module) {
+  static ConstString s_xctest("xctest");
+  static ConstString s_XCTRunner("XCTRunner");
+  ConstString executable_name = module.GetFileSpec().GetFilename();
+  return (executable_name == s_xctest || executable_name == s_XCTRunner);
+}
+
+lldb::ModuleSP
+PlatformDarwin::GetUnitTestModule(lldb_private::ModuleList &modules) {
+  ConstString test_bundle_executable;
+
+  for (size_t mi = 0, num_images = modules.GetSize(); mi != num_images; ++mi) {
+    ModuleSP module_sp = modules.GetModuleAtIndex(mi);
+
+    std::string module_path = module_sp->GetFileSpec().GetPath();
+
+    const char deep_substr[] = ".xctest/Contents/";
+    size_t pos = module_path.rfind(deep_substr);
+    if (pos == std::string::npos) {
+      const char flat_substr[] = ".xctest/";
+      pos = module_path.rfind(flat_substr);
+
+      if (pos == std::string::npos) {
+        continue;
+      } else {
+        module_path.erase(pos + strlen(flat_substr));
+      }
+    } else {
+      module_path.erase(pos + strlen(deep_substr));
+    }
+
+    if (!test_bundle_executable) {
+      module_path.append("Info.plist");
+
+      ApplePropertyList info_plist(module_path.c_str());
+
+      std::string cf_bundle_executable;
+      if (info_plist.GetValueAsString("CFBundleExecutable",
+                                      cf_bundle_executable)) {
+        test_bundle_executable = ConstString(cf_bundle_executable);
+      } else {
+        return ModuleSP();
+      }
+    }
+
+    if (test_bundle_executable &&
+        module_sp->GetFileSpec().GetFilename() == test_bundle_executable) {
+      return module_sp;
+    }
+  }
+
+  return ModuleSP();
+}
+
 lldb_private::Status
 PlatformDarwin::LaunchProcess(lldb_private::ProcessLaunchInfo &launch_info) {
   // Starting in Fall 2016 OSes, NSLog messages only get mirrored to stderr
@@ -1738,12 +1810,14 @@ PlatformDarwin::LaunchProcess(lldb_private::ProcessLaunchInfo &launch_info) {
   // LLDB *not* to muck with the OS_ACTIVITY_DT_MODE flag when they
   // specifically want it unset.
   const char *disable_env_var = "IDE_DISABLED_OS_ACTIVITY_DT_MODE";
-  auto &env_vars = launch_info.GetEnvironment();
-  if (!env_vars.count(disable_env_var)) {
+  auto &env_vars = launch_info.GetEnvironmentEntries();
+  if (!env_vars.ContainsEnvironmentVariable(llvm::StringRef(disable_env_var))) {
     // We want to make sure that OS_ACTIVITY_DT_MODE is set so that
     // we get os_log and NSLog messages mirrored to the target process
     // stderr.
-    env_vars.try_emplace("OS_ACTIVITY_DT_MODE", "enable");
+    if (!env_vars.ContainsEnvironmentVariable(
+            llvm::StringRef("OS_ACTIVITY_DT_MODE")))
+      env_vars.AppendArgument(llvm::StringRef("OS_ACTIVITY_DT_MODE=enable"));
   }
 
   // Let our parent class do the real launching.

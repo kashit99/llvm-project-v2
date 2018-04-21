@@ -102,6 +102,7 @@ public:
     CallGraphSCCPass::getAnalysisUsage(AU);
   }
 };
+
 } // namespace
 char ScopInliner::ID;
 

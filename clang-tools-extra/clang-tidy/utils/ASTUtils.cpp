@@ -49,7 +49,7 @@ bool exprHasBitFlagWithSpelling(const Expr *Flags, const SourceManager &SM,
         !SM.isMacroArgExpansion(Flags->getLocStart()))
       return false;
 
-    // Get the macro name.
+    // Get the marco name.
     auto MacroName = Lexer::getSourceText(
         CharSourceRange::getTokenRange(Flags->getSourceRange()), SM, LangOpts);
 

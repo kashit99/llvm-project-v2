@@ -19,7 +19,7 @@
 #include "lldb/Utility/DataExtractor.h"
 #include "lldb/Utility/StreamString.h"
 // Project includes
-#include "lldb/Utility/StringExtractorGDBRemote.h"
+#include "Utility/StringExtractorGDBRemote.h"
 
 using namespace lldb;
 using namespace lldb_private;

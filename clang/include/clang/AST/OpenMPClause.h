@@ -124,7 +124,7 @@ public:
   Stmt *getPreInitStmt() { return PreInit; }
 
   /// Get capture region for the stmt in the clause.
-  OpenMPDirectiveKind getCaptureRegion() const { return CaptureRegion; }
+  OpenMPDirectiveKind getCaptureRegion() { return CaptureRegion; }
 
   static OMPClauseWithPreInit *get(OMPClause *C);
   static const OMPClauseWithPreInit *get(const OMPClause *C);
@@ -3192,17 +3192,14 @@ public:
   /// \brief Build 'device' clause.
   ///
   /// \param E Expression associated with this clause.
-  /// \param CaptureRegion Innermost OpenMP region where expressions in this
-  /// clause must be captured.
   /// \param StartLoc Starting location of the clause.
   /// \param LParenLoc Location of '('.
   /// \param EndLoc Ending location of the clause.
-  OMPDeviceClause(Expr *E, Stmt *HelperE, OpenMPDirectiveKind CaptureRegion,
-                  SourceLocation StartLoc, SourceLocation LParenLoc,
-                  SourceLocation EndLoc)
+  OMPDeviceClause(Expr *E, Stmt *HelperE, SourceLocation StartLoc,
+                  SourceLocation LParenLoc, SourceLocation EndLoc)
       : OMPClause(OMPC_device, StartLoc, EndLoc), OMPClauseWithPreInit(this),
         LParenLoc(LParenLoc), Device(E) {
-    setPreInitStmt(HelperE, CaptureRegion);
+    setPreInitStmt(HelperE);
   }
 
   /// \brief Build an empty clause.
@@ -3288,19 +3285,19 @@ public:
 /// expressions used in OpenMP clauses.
 class OMPClauseMappableExprCommon {
 public:
-  /// Class that represents a component of a mappable expression. E.g.
-  /// for an expression S.a, the first component is a declaration reference
-  /// expression associated with 'S' and the second is a member expression
-  /// associated with the field declaration 'a'. If the expression is an array
-  /// subscript it may not have any associated declaration. In that case the
-  /// associated declaration is set to nullptr.
+  // \brief Class that represents a component of a mappable expression. E.g.
+  // for an expression S.a, the first component is a declaration reference
+  // expression associated with 'S' and the second is a member expression
+  // associated with the field declaration 'a'. If the expression is an array
+  // subscript it may not have any associated declaration. In that case the
+  // associated declaration is set to nullptr.
   class MappableComponent {
-    /// Expression associated with the component.
+    // \brief Expression associated with the component.
     Expr *AssociatedExpression = nullptr;
 
-    /// Declaration associated with the declaration. If the component does
-    /// not have a declaration (e.g. array subscripts or section), this is set
-    /// to nullptr.
+    // \brief Declaration associated with the declaration. If the component does
+    // not have a declaration (e.g. array subscripts or section), this is set to
+    // nullptr.
     ValueDecl *AssociatedDeclaration = nullptr;
 
   public:
@@ -3339,7 +3336,7 @@ protected:
   // \brief Return the total number of elements in a list of declarations. All
   // declarations are expected to be canonical.
   static unsigned
-  getUniqueDeclarationsTotalNumber(ArrayRef<const ValueDecl *> Declarations);
+  getUniqueDeclarationsTotalNumber(ArrayRef<ValueDecl *> Declarations);
 };
 
 /// \brief This represents clauses with a list of expressions that are mappable.

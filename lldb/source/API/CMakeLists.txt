@@ -1,3 +1,8 @@
+set(LLVM_NO_RTTI 1)
+
+include(AddLLVM)
+include(SwiftAddCustomCommandTarget)
+
 if ( CMAKE_SYSTEM_NAME MATCHES "Windows" )
   add_definitions( -DEXPORT_LIBLLDB )
 endif()
@@ -97,6 +102,7 @@ add_lldb_library(liblldb SHARED
     lldbTarget
     lldbUtility
     ${LLDB_ALL_PLUGINS}
+    ${SWIFT_ALL_LIBS}
   LINK_COMPONENTS
     Support
   )
@@ -161,6 +167,22 @@ if (LLDB_WRAP_PYTHON)
   add_dependencies(liblldb swig_wrapper)
 endif()
 
+set(lib_dir "${CMAKE_BINARY_DIR}/${CMAKE_CFG_INTDIR}/lib${LLVM_LIBDIR_SUFFIX}")
+set(CLANG_RESOURCE_PATH "${LLDB_PATH_TO_SWIFT_BUILD}/lib${LLVM_LIBDIR_SUFFIX}/swift/clang")
+set(clang_headers_target ${CLANG_RESOURCE_PATH}/include)
+if(NOT LLDB_BUILT_STANDALONE)
+  set(clang_headers_target symlink_clang_headers)
+endif()
+
+# Copy the clang resource directory.
+add_custom_command_target(
+    unused_var
+    COMMAND "${CMAKE_COMMAND}" "-E" "copy_directory" "${CLANG_RESOURCE_PATH}" "${lib_dir}/lldb/clang/${LLVM_PACKAGE_VERSION}"
+    OUTPUT "${lib_dir}/lldb/clang/${LLVM_PACKAGE_VERSION}"
+    VERBATIM
+    ALL
+    DEPENDS ${clang_headers_target})
+
 if(LLDB_BUILD_FRAMEWORK)
   file(GLOB public_headers ${LLDB_SOURCE_DIR}/include/lldb/API/*.h
       ${LLDB_SOURCE_DIR}/include/lldb/lldb-*.h)
@@ -192,7 +214,8 @@ if(LLDB_BUILD_FRAMEWORK)
       COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_BINARY_DIR}/FrameworkHeaders $<TARGET_FILE_DIR:liblldb>/Headers
       COMMAND ${CMAKE_COMMAND} -E create_symlink Versions/Current/Headers ${CMAKE_BINARY_DIR}/${LLDB_FRAMEWORK_INSTALL_DIR}/LLDB.framework/Headers
       COMMAND ${CMAKE_COMMAND} -E create_symlink ${LLDB_FRAMEWORK_VERSION} ${CMAKE_BINARY_DIR}/${LLDB_FRAMEWORK_INSTALL_DIR}/LLDB.framework/Versions/Current
-      COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_BINARY_DIR}/lib${LLVM_LIBDIR_SUFFIX}/clang/${LLDB_VERSION} $<TARGET_FILE_DIR:liblldb>/Resources/Clang
+      COMMAND ${CMAKE_COMMAND} -E copy_directory ${CLANG_RESOURCE_PATH} $<TARGET_FILE_DIR:liblldb>/Resources/Clang
+      COMMAND ${CMAKE_COMMAND} -E copy_directory ${LLDB_PATH_TO_SWIFT_BUILD}/lib/swift $<TARGET_FILE_DIR:liblldb>/Resources/Swift
       )
   else()
     add_custom_command(TARGET liblldb POST_BUILD
@@ -202,3 +225,9 @@ if(LLDB_BUILD_FRAMEWORK)
 
 endif()
 
+install(
+  CODE "file(MAKE_DIRECTORY ${lib_dir}/lldb)")
+
+install(
+  DIRECTORY "${lib_dir}/lldb/clang"
+  DESTINATION lib${LLVM_LIBDIR_SUFFIX}/lldb/)

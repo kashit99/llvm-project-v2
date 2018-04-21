@@ -1,4 +1,4 @@
-//===- SourceLocation.cpp - Compact identifier for Source Files -----------===//
+//==--- SourceLocation.cpp - Compact identifier for Source Files -*- C++ -*-==//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -12,17 +12,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/Basic/SourceLocation.h"
-#include "clang/Basic/LLVM.h"
 #include "clang/Basic/PrettyStackTrace.h"
 #include "clang/Basic/SourceManager.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Support/Compiler.h"
-#include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/raw_ostream.h"
-#include <cassert>
-#include <string>
-#include <utility>
-
+#include <cstdio>
 using namespace clang;
 
 //===----------------------------------------------------------------------===//
@@ -87,6 +80,7 @@ FileID FullSourceLoc::getFileID() const {
   assert(isValid());
   return SrcMgr->getFileID(*this);
 }
+
 
 FullSourceLoc FullSourceLoc::getExpansionLoc() const {
   assert(isValid());

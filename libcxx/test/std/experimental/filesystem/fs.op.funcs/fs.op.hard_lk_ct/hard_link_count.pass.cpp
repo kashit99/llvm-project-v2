@@ -14,7 +14,7 @@
 // uintmax_t hard_link_count(const path& p);
 // uintmax_t hard_link_count(const path& p, std::error_code& ec) noexcept;
 
-#include "filesystem_include.hpp"
+#include <experimental/filesystem>
 #include <type_traits>
 #include <cassert>
 
@@ -22,7 +22,7 @@
 #include "rapid-cxx-test.hpp"
 #include "filesystem_test_helper.hpp"
 
-using namespace fs;
+using namespace std::experimental::filesystem;
 
 TEST_SUITE(hard_link_count_test_suite)
 

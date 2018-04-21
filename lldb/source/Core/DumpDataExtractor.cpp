@@ -583,10 +583,8 @@ lldb::offset_t lldb_private::DumpDataExtractor(
             } else if (item_bit_size == ast->getTypeSize(ast->LongDoubleTy)) {
               const auto &semantics =
                   ast->getFloatTypeSemantics(ast->LongDoubleTy);
-
-              offset_t byte_size = item_byte_size;
-              if (&semantics == &llvm::APFloatBase::x87DoubleExtended())
-                byte_size = (llvm::APFloat::getSizeInBits(semantics) + 7) / 8;
+              const auto byte_size =
+                  (llvm::APFloat::getSizeInBits(semantics) + 7) / 8;
 
               llvm::APInt apint;
               if (GetAPInt(DE, &offset, byte_size, apint)) {

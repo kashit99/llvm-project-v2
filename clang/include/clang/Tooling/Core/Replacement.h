@@ -1,4 +1,4 @@
-//===- Replacement.h - Framework for clang refactoring tools ----*- C++ -*-===//
+//===--- Replacement.h - Framework for clang refactoring tools --*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -19,32 +19,29 @@
 #ifndef LLVM_CLANG_TOOLING_CORE_REPLACEMENT_H
 #define LLVM_CLANG_TOOLING_CORE_REPLACEMENT_H
 
+#include "clang/Basic/FileManager.h"
 #include "clang/Basic/LangOptions.h"
 #include "clang/Basic/SourceLocation.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/Support/Compiler.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/raw_ostream.h"
 #include <map>
 #include <set>
 #include <string>
 #include <system_error>
-#include <utility>
 #include <vector>
 
 namespace clang {
 
-class FileManager;
 class Rewriter;
-class SourceManager;
 
 namespace tooling {
 
 /// \brief A source range independent of the \c SourceManager.
 class Range {
 public:
-  Range() = default;
+  Range() : Offset(0), Length(0) {}
   Range(unsigned Offset, unsigned Length) : Offset(Offset), Length(Length) {}
 
   /// \brief Accessors.
@@ -73,8 +70,8 @@ public:
   /// @}
 
 private:
-  unsigned Offset = 0;
-  unsigned Length = 0;
+  unsigned Offset;
+  unsigned Length;
 };
 
 /// \brief A text replacement.
@@ -189,11 +186,9 @@ private:
   }
 
   replacement_error Err;
-
   // A new replacement, which is to expected be added into a set of
   // replacements, that is causing problem.
   llvm::Optional<Replacement> NewReplacement;
-
   // An existing replacement in a replacements set that is causing problem.
   llvm::Optional<Replacement> ExistingReplacement;
 };
@@ -208,12 +203,12 @@ bool operator==(const Replacement &LHS, const Replacement &RHS);
 /// Two replacements are considered conflicts if they overlap or have the same
 /// offset (i.e. order-dependent).
 class Replacements {
-private:
-  using ReplacementsImpl = std::set<Replacement>;
+ private:
+   typedef std::set<Replacement> ReplacementsImpl;
 
-public:
-  using const_iterator = ReplacementsImpl::const_iterator;
-  using const_reverse_iterator = ReplacementsImpl::const_reverse_iterator;
+ public:
+  typedef ReplacementsImpl::const_iterator const_iterator;
+  typedef ReplacementsImpl::const_reverse_iterator const_reverse_iterator;
 
   Replacements() = default;
 
@@ -288,6 +283,7 @@ public:
     return Replaces == RHS.Replaces;
   }
 
+
 private:
   Replacements(const_iterator Begin, const_iterator End)
       : Replaces(Begin, End) {}
@@ -333,7 +329,6 @@ llvm::Expected<std::string> applyAllReplacements(StringRef Code,
 struct TranslationUnitReplacements {
   /// Name of the main source for the translation unit.
   std::string MainSourceFile;
-
   std::vector<Replacement> Replacements;
 };
 
@@ -365,8 +360,7 @@ Replacement::Replacement(const SourceManager &Sources,
   setFromSourceRange(Sources, Range, ReplacementText, LangOpts);
 }
 
-} // namespace tooling
-
-} // namespace clang
+} // end namespace tooling
+} // end namespace clang
 
 #endif // LLVM_CLANG_TOOLING_CORE_REPLACEMENT_H

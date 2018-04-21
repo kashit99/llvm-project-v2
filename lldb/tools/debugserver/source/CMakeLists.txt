@@ -94,7 +94,6 @@ set(lldbDebugserverCommonSources
 
 add_library(lldbDebugserverCommon ${lldbDebugserverCommonSources})
 
-
 set(LLDB_CODESIGN_IDENTITY "lldb_codesign"
   CACHE STRING "Identity used for code signing. Set to empty string to skip the signing step.")
 
@@ -106,20 +105,13 @@ else()
     COMMAND xcode-select -p
     OUTPUT_VARIABLE XCODE_DEV_DIR)
   string(STRIP ${XCODE_DEV_DIR} XCODE_DEV_DIR)
-  if(EXISTS "${XCODE_DEV_DIR}/../SharedFrameworks/LLDB.framework/")
-    set(DEBUGSERVER_PATH
-      "${XCODE_DEV_DIR}/../SharedFrameworks/LLDB.framework/Resources/debugserver" CACHE PATH "Path to debugserver.")
-  elseif(EXISTS "${XCODE_DEV_DIR}/Library/PrivateFrameworks/LLDB.framework/")
-    set(DEBUGSERVER_PATH
-      "${XCODE_DEV_DIR}/Library/PrivateFrameworks/LLDB.framework/Resources/debugserver" CACHE PATH "Path to debugserver.")
-  else()
-    message(SEND_ERROR "Cannot find debugserver on system.")
-  endif()
+  set(DEBUGSERVER_PATH
+    "${XCODE_DEV_DIR}/../SharedFrameworks/LLDB.framework/Resources/debugserver" CACHE PATH "Path to debugserver.")
   set(SKIP_DEBUGSERVER ON CACHE BOOL "Skip building the in-tree debug server")
 endif()
 message(STATUS "Path to the lldb debugserver: ${DEBUGSERVER_PATH}")
 
-if (APPLE)
+if (APPLE AND NOT SKIP_DEBUGSERVER)
   if(IOS)
     find_library(BACKBOARD_LIBRARY BackBoardServices
       PATHS ${CMAKE_OSX_SYSROOT}/System/Library/PrivateFrameworks)
@@ -137,6 +129,21 @@ if (APPLE)
   else()
     find_library(COCOA_LIBRARY Cocoa)
   endif()
+  
+  target_link_libraries(lldbDebugserverCommon
+                        INTERFACE ${COCOA_LIBRARY}
+                        ${CORE_FOUNDATION_LIBRARY}
+                        ${FOUNDATION_LIBRARY}
+                        lldbDebugserverArchSupport
+                        lldbDebugserverDarwin_DarwinLog)
+  
+  set(LLVM_OPTIONAL_SOURCES ${lldbDebugserverCommonSources})
+  add_lldb_tool(debugserver INCLUDE_IN_FRAMEWORK
+    debugserver.cpp
+  
+    LINK_LIBS
+      lldbDebugserverCommon
+    )
 endif()
 
 if(HAVE_LIBCOMPRESSION)
@@ -211,6 +218,8 @@ if(IOS)
   set(entitlements_xml ${CMAKE_CURRENT_SOURCE_DIR}/debugserver-entitlements.plist)
 endif()
 
+set(LLDB_CODESIGN_IDENTITY "lldb_codesign"
+  CACHE STRING "Identity used for code signing. Set to empty string to skip the signing step.")
 set(LLDB_USE_ENTITLEMENTS_Default On)
 if("${LLDB_CODESIGN_IDENTITY}" STREQUAL "lldb_codesign")
   set(LLDB_USE_ENTITLEMENTS_Default Off)
@@ -226,6 +235,7 @@ if (SKIP_DEBUGSERVER)
       COMMENT "Copying the system debugserver to LLDB's binaries directory.")
   endif()
 else()
+if (NOT ("${LLDB_CODESIGN_IDENTITY}" STREQUAL ""))
   if(LLDB_USE_ENTITLEMENTS)
     set(entitlements_flags --entitlements ${entitlements_xml})
   endif()
@@ -253,7 +263,4 @@ else()
     )
   endif()
 endif()
-
-
-
-
+endif()

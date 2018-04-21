@@ -637,7 +637,8 @@ void FinalOverriderCollector::Collect(const CXXRecordDecl *RD,
                                OMEnd = BaseOverriders->end();
            OM != OMEnd;
            ++OM) {
-        const CXXMethodDecl *CanonOM = OM->first->getCanonicalDecl();
+        const CXXMethodDecl *CanonOM
+          = cast<CXXMethodDecl>(OM->first->getCanonicalDecl());
         Overriders[CanonOM].add(OM->second);
       }
     }
@@ -648,7 +649,7 @@ void FinalOverriderCollector::Collect(const CXXRecordDecl *RD,
     if (!M->isVirtual())
       continue;
 
-    CXXMethodDecl *CanonM = M->getCanonicalDecl();
+    CXXMethodDecl *CanonM = cast<CXXMethodDecl>(M->getCanonicalDecl());
     using OverriddenMethodsRange =
         llvm::iterator_range<CXXMethodDecl::method_iterator>;
     OverriddenMethodsRange OverriddenMethods = CanonM->overridden_methods();

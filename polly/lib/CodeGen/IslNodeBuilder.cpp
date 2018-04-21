@@ -540,7 +540,8 @@ void IslNodeBuilder::createForSequential(__isl_take isl_ast_node *For,
   Value *IV;
   CmpInst::Predicate Predicate;
 
-  bool LoopVectorizerDisabled = IsLoopVectorizerDisabled(isl::manage_copy(For));
+  bool LoopVectorizerDisabled =
+      IsLoopVectorizerDisabled(isl::manage(isl_ast_node_copy(For)));
 
   Body = isl_ast_node_for_get_body(For);
 
@@ -852,7 +853,7 @@ IslNodeBuilder::createNewAccesses(ScopStmt *Stmt,
 
   auto *Build = IslAstInfo::getBuild(Node);
   assert(Build && "Could not obtain isl_ast_build from user node");
-  Stmt->setAstBuild(isl::manage_copy(Build));
+  Stmt->setAstBuild(isl::manage(isl_ast_build_copy(Build)));
 
   for (auto *MA : *Stmt) {
     if (!MA->hasNewAccessRelation()) {
@@ -1595,7 +1596,7 @@ Value *IslNodeBuilder::createRTC(isl_ast_expr *Condition) {
   // bits. These are -- in case wrapping intrinsics are used -- translated to
   // runtime library calls that are not available on all systems (e.g., Android)
   // and consequently will result in linker errors.
-  if (ExprBuilder.hasLargeInts(isl::manage_copy(Condition))) {
+  if (ExprBuilder.hasLargeInts(isl::manage(isl_ast_expr_copy(Condition)))) {
     isl_ast_expr_free(Condition);
     return Builder.getFalse();
   }

@@ -28,7 +28,7 @@
 //   path& concat(InputIterator first, InputIterator last);
 
 
-#include "filesystem_include.hpp"
+#include <experimental/filesystem>
 #include <type_traits>
 #include <string>
 #include <string_view>
@@ -39,6 +39,7 @@
 #include "count_new.hpp"
 #include "filesystem_test_helper.hpp"
 
+namespace fs = std::experimental::filesystem;
 
 struct ConcatOperatorTestcase {
   MultiStringType lhs;

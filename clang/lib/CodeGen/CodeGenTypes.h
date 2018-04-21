@@ -313,8 +313,7 @@ public:
                                              const FunctionProtoType *type,
                                              RequiredArgs required,
                                              unsigned numPrefixArgs);
-  const CGFunctionInfo &
-  arrangeUnprototypedMustTailThunk(const CXXMethodDecl *MD);
+  const CGFunctionInfo &arrangeMSMemberPointerThunk(const CXXMethodDecl *MD);
   const CGFunctionInfo &arrangeMSCtorClosure(const CXXConstructorDecl *CD,
                                                  CXXCtorType CT);
   const CGFunctionInfo &arrangeCXXMethodType(const CXXRecordDecl *RD,

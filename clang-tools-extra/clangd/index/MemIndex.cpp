@@ -8,9 +8,7 @@
 //===-------------------------------------------------------------------===//
 
 #include "MemIndex.h"
-#include "../FuzzyMatch.h"
 #include "../Logger.h"
-#include <queue>
 
 namespace clang {
 namespace clangd {
@@ -29,14 +27,12 @@ void MemIndex::build(std::shared_ptr<std::vector<const Symbol *>> Syms) {
 }
 
 bool MemIndex::fuzzyFind(
-    const FuzzyFindRequest &Req,
+    const Context &Ctx, const FuzzyFindRequest &Req,
     llvm::function_ref<void(const Symbol &)> Callback) const {
   assert(!StringRef(Req.Query).contains("::") &&
          "There must be no :: in query.");
 
-  std::priority_queue<std::pair<float, const Symbol *>> Top;
-  FuzzyMatcher Filter(Req.Query);
-  bool More = false;
+  unsigned Matched = 0;
   {
     std::lock_guard<std::mutex> Lock(Mutex);
     for (const auto Pair : Index) {
@@ -46,43 +42,15 @@ bool MemIndex::fuzzyFind(
       if (!Req.Scopes.empty() && !llvm::is_contained(Req.Scopes, Sym->Scope))
         continue;
 
-      if (auto Score = Filter.match(Sym->Name)) {
-        Top.emplace(-*Score, Sym);
-        if (Top.size() > Req.MaxCandidateCount) {
-          More = true;
-          Top.pop();
-        }
+      // FIXME(ioeric): use fuzzy matcher.
+      if (StringRef(Sym->Name).find_lower(Req.Query) != StringRef::npos) {
+        if (++Matched > Req.MaxCandidateCount)
+          return false;
+        Callback(*Sym);
       }
     }
-    for (; !Top.empty(); Top.pop())
-      Callback(*Top.top().second);
   }
-  return More;
-}
-
-void MemIndex::lookup(const LookupRequest &Req,
-                      llvm::function_ref<void(const Symbol &)> Callback) const {
-  for (const auto &ID : Req.IDs) {
-    auto I = Index.find(ID);
-    if (I != Index.end())
-      Callback(*I->second);
-  }
-}
-
-std::unique_ptr<SymbolIndex> MemIndex::build(SymbolSlab Slab) {
-  struct Snapshot {
-    SymbolSlab Slab;
-    std::vector<const Symbol *> Pointers;
-  };
-  auto Snap = std::make_shared<Snapshot>();
-  Snap->Slab = std::move(Slab);
-  for (auto &Sym : Snap->Slab)
-    Snap->Pointers.push_back(&Sym);
-  auto S = std::shared_ptr<std::vector<const Symbol *>>(std::move(Snap),
-                                                        &Snap->Pointers);
-  auto MemIdx = llvm::make_unique<MemIndex>();
-  MemIdx->build(std::move(S));
-  return std::move(MemIdx);
+  return true;
 }
 
 } // namespace clangd

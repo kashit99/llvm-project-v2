@@ -1,4 +1,4 @@
-//===- DelayedDiagnostic.cpp - Delayed declarator diagnostics -------------===//
+//===--- DelayedDiagnostic.cpp - Delayed declarator diagnostics -*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -14,10 +14,8 @@
 // This file also defines AccessedEntity.
 //
 //===----------------------------------------------------------------------===//
-
 #include "clang/Sema/DelayedDiagnostic.h"
-#include <cstring>
-
+#include <string.h>
 using namespace clang;
 using namespace sema;
 
@@ -40,7 +38,7 @@ DelayedDiagnostic::makeAvailability(AvailabilityResult AR,
   DD.AvailabilityData.UnknownObjCClass = UnknownObjCClass;
   DD.AvailabilityData.ObjCProperty = ObjCProperty;
   char *MessageData = nullptr;
-  if (!Msg.empty()) {
+  if (Msg.size()) {
     MessageData = new char [Msg.size()];
     memcpy(MessageData, Msg.data(), Msg.size());
   }

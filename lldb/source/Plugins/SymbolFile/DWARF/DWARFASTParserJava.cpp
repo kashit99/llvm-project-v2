@@ -9,7 +9,7 @@
 
 #include "DWARFASTParserJava.h"
 #include "DWARFAttribute.h"
-#include "DWARFUnit.h"
+#include "DWARFCompileUnit.h"
 #include "DWARFDebugInfoEntry.h"
 #include "DWARFDebugInfoEntry.h"
 #include "DWARFDeclContext.h"
@@ -418,7 +418,7 @@ bool DWARFASTParserJava::CompleteTypeFromDWARF(
 
 void DWARFASTParserJava::ParseChildMembers(const DWARFDIE &parent_die,
                                            CompilerType &compiler_type) {
-  DWARFUnit *dwarf_cu = parent_die.GetCU();
+  DWARFCompileUnit *dwarf_cu = parent_die.GetCU();
   for (DWARFDIE die = parent_die.GetFirstChild(); die.IsValid();
        die = die.GetSibling()) {
     switch (die.Tag()) {

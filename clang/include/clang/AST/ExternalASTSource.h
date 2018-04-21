@@ -19,6 +19,7 @@
 #include "clang/AST/DeclBase.h"
 #include "clang/Basic/LLVM.h"
 #include "clang/Basic/Module.h"
+#include "clang/Basic/SourceLocation.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/IntrusiveRefCntPtr.h"
@@ -446,7 +447,7 @@ public:
 
   /// Set the value of this pointer, in the current generation.
   void set(T NewValue) {
-    if (auto *LazyVal = Value.template dyn_cast<LazyData *>()) {
+    if (LazyData *LazyVal = Value.template dyn_cast<LazyData*>()) {
       LazyVal->LastValue = NewValue;
       return;
     }
@@ -458,7 +459,7 @@ public:
 
   /// Get the value of this pointer, updating its owner if necessary.
   T get(Owner O) {
-    if (auto *LazyVal = Value.template dyn_cast<LazyData *>()) {
+    if (LazyData *LazyVal = Value.template dyn_cast<LazyData*>()) {
       if (LazyVal->LastGeneration != LazyVal->ExternalSource->getGeneration()) {
         LazyVal->LastGeneration = LazyVal->ExternalSource->getGeneration();
         (LazyVal->ExternalSource->*Update)(O);
@@ -470,7 +471,7 @@ public:
 
   /// Get the most recently computed value of this pointer without updating it.
   T getNotUpdated() const {
-    if (auto *LazyVal = Value.template dyn_cast<LazyData *>())
+    if (LazyData *LazyVal = Value.template dyn_cast<LazyData*>())
       return LazyVal->LastValue;
     return Value.template get<T>();
   }

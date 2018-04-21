@@ -54,9 +54,13 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include "lldb/Core/Communication.h"
+#include "lldb/Core/Module.h"
+#include "lldb/Core/ModuleSpec.h"
 #include "lldb/Host/ConnectionFileDescriptor.h"
 #include "lldb/Host/HostInfo.h"
 #include "lldb/Host/ThreadLauncher.h"
+#include "lldb/Target/Platform.h"
 #include "lldb/Target/Process.h"
 #include "lldb/Utility/ArchSpec.h"
 #include "lldb/Utility/CleanUp.h"
@@ -427,16 +431,33 @@ LaunchInNewTerminalWithAppleScript(const char *exe_path,
     command.PutCString(" --disable-aslr");
 
   // We are launching on this host in a terminal. So compare the environment on
-  // the host to what is supplied in the launch_info. Any items that aren't in
-  // the host environment need to be sent to darwin-debug. If we send all
-  // environment entries, we might blow the max command line length, so we only
-  // send user modified entries.
-  Environment host_env = Host::GetEnvironment();
+  // the host
+  // to what is supplied in the launch_info. Any items that aren't in the host
+  // environment
+  // need to be sent to darwin-debug. If we send all environment entries, we
+  // might blow the
+  // max command line length, so we only send user modified entries.
+  const char **envp =
+      launch_info.GetEnvironmentEntries().GetConstArgumentVector();
 
-  for (const auto &KV : launch_info.GetEnvironment()) {
-    auto host_entry = host_env.find(KV.first());
-    if (host_entry == host_env.end() || host_entry->second != KV.second)
-      command.Format(" --env='{0}'", Environment::compose(KV));
+  StringList host_env;
+  const size_t host_env_count = Host::GetEnvironment(host_env);
+
+  if (envp && envp[0]) {
+    const char *env_entry;
+    for (size_t env_idx = 0; (env_entry = envp[env_idx]) != NULL; ++env_idx) {
+      bool add_entry = true;
+      for (size_t i = 0; i < host_env_count; ++i) {
+        const char *host_env_entry = host_env.GetStringAtIndex(i);
+        if (strcmp(env_entry, host_env_entry) == 0) {
+          add_entry = false;
+          break;
+        }
+      }
+      if (add_entry) {
+        command.Printf(" --env='%s'", env_entry);
+      }
+    }
   }
 
   command.PutCString(" -- ");
@@ -620,7 +641,14 @@ bool Host::OpenFileInExternalEditor(const FileSpec &file_spec,
 #endif // #if !defined(__arm__) && !defined(__arm64__) && !defined(__aarch64__)
 }
 
-Environment Host::GetEnvironment() { return Environment(*_NSGetEnviron()); }
+size_t Host::GetEnvironment(StringList &env) {
+  char **host_env = *_NSGetEnviron();
+  char *env_entry;
+  size_t i;
+  for (i = 0; (env_entry = host_env[i]) != NULL; ++i)
+    env.AppendString(env_entry);
+  return i;
+}
 
 static bool GetMacOSXProcessCPUType(ProcessInstanceInfo &process_info) {
   if (process_info.ProcessIDIsValid()) {
@@ -742,7 +770,7 @@ static bool GetMacOSXProcessArgs(const ProcessInstanceInfoMatch *match_info_ptr,
               proc_args.AppendArgument(llvm::StringRef(cstr));
           }
 
-          Environment &proc_env = process_info.GetEnvironment();
+          Args &proc_env = process_info.GetEnvironmentEntries();
           while ((cstr = data.GetCStr(&offset))) {
             if (cstr[0] == '\0')
               break;
@@ -757,7 +785,7 @@ static bool GetMacOSXProcessArgs(const ProcessInstanceInfoMatch *match_info_ptr,
                     llvm::Triple::MacOSX);
             }
 
-            proc_env.insert(cstr);
+            proc_env.AppendArgument(llvm::StringRef(cstr));
           }
           return true;
         }
@@ -908,17 +936,6 @@ static void PackageXPCArguments(xpc_object_t message, const char *prefix,
     memset(buf, 0, 50);
     sprintf(buf, "%s%zi", prefix, i);
     xpc_dictionary_set_string(message, buf, args.GetArgumentAtIndex(i));
-  }
-}
-
-static void PackageXPCEnvironment(xpc_object_t message, llvm::StringRef prefix,
-                                  const Environment &env) {
-  xpc_dictionary_set_int64(message, (prefix + "Count").str().c_str(),
-                           env.size());
-  size_t i = 0;
-  for (const auto &KV : env) {
-    xpc_dictionary_set_string(message, (prefix + llvm::Twine(i)).str().c_str(),
-                              Environment::compose(KV).c_str());
   }
 }
 
@@ -1124,8 +1141,8 @@ static Status LaunchProcessXPC(const char *exe_path,
 
   PackageXPCArguments(message, LauncherXPCServiceArgPrefxKey,
                       launch_info.GetArguments());
-  PackageXPCEnvironment(message, LauncherXPCServiceEnvPrefxKey,
-                        launch_info.GetEnvironment());
+  PackageXPCArguments(message, LauncherXPCServiceEnvPrefxKey,
+                      launch_info.GetEnvironmentEntries());
 
   // Posix spawn stuff.
   xpc_dictionary_set_int64(message, LauncherXPCServiceCPUTypeKey,
@@ -1337,7 +1354,8 @@ static Status LaunchProcessPosixSpawn(const char *exe_path,
   const char *tmp_argv[2];
   char *const *argv = const_cast<char *const *>(
       launch_info.GetArguments().GetConstArgumentVector());
-  Environment::Envp envp = launch_info.GetEnvironment().getEnvp();
+  char *const *envp = const_cast<char *const *>(
+      launch_info.GetEnvironmentEntries().GetConstArgumentVector());
   if (argv == NULL) {
     // posix_spawn gets very unhappy if it doesn't have at least the program
     // name in argv[0]. One of the side affects I have noticed is the
@@ -1402,8 +1420,7 @@ static Status LaunchProcessPosixSpawn(const char *exe_path,
                "error: {0}, ::posix_spawnp(pid => {1}, path = '{2}', "
                "file_actions = {3}, "
                "attr = {4}, argv = {5}, envp = {6} )",
-               error, result_pid, exe_path, &file_actions, &attr, argv,
-               envp.get());
+               error, result_pid, exe_path, &file_actions, &attr, argv, envp);
       if (log) {
         for (int ii = 0; argv[ii]; ++ii)
           LLDB_LOG(log, "argv[{0}] = '{1}'", ii, argv[ii]);
@@ -1419,7 +1436,7 @@ static Status LaunchProcessPosixSpawn(const char *exe_path,
       LLDB_LOG(log,
                "error: {0}, ::posix_spawnp ( pid => {1}, path = '{2}', "
                "file_actions = NULL, attr = {3}, argv = {4}, envp = {5} )",
-               error, result_pid, exe_path, &attr, argv, envp.get());
+               error, result_pid, exe_path, &attr, argv, envp);
       if (log) {
         for (int ii = 0; argv[ii]; ++ii)
           LLDB_LOG(log, "argv[{0}] = '{1}'", ii, argv[ii]);
@@ -1454,28 +1471,36 @@ static bool ShouldLaunchUsingXPC(ProcessLaunchInfo &launch_info) {
 
 Status Host::LaunchProcess(ProcessLaunchInfo &launch_info) {
   Status error;
-  FileSpec exe_spec(launch_info.GetExecutableFile());
+  char exe_path[PATH_MAX];
+  PlatformSP host_platform_sp(Platform::GetHostPlatform());
 
-  llvm::sys::fs::file_status stats;
-  status(exe_spec.GetPath(), stats);
-  if (!exists(stats)) {
-    exe_spec.ResolvePath();
-    status(exe_spec.GetPath(), stats);
+  ModuleSpec exe_module_spec(launch_info.GetExecutableFile(),
+                             launch_info.GetArchitecture());
+
+  if (!llvm::sys::fs::is_regular_file(
+          exe_module_spec.GetFileSpec().GetPath())) {
+    lldb::ModuleSP exe_module_sp;
+    error = host_platform_sp->ResolveExecutable(exe_module_spec, exe_module_sp,
+                                                NULL);
+
+    if (error.Fail())
+      return error;
+
+    if (exe_module_sp)
+      exe_module_spec.GetFileSpec() = exe_module_sp->GetFileSpec();
   }
-  if (!exists(stats)) {
-    exe_spec.ResolveExecutableLocation();
-    status(exe_spec.GetPath(), stats);
-  }
-  if (!exists(stats)) {
-    error.SetErrorStringWithFormatv("executable doesn't exist: '{0}'",
-                                    launch_info.GetExecutableFile());
+
+  if (exe_module_spec.GetFileSpec().Exists()) {
+    exe_module_spec.GetFileSpec().GetPath(exe_path, sizeof(exe_path));
+  } else {
+    launch_info.GetExecutableFile().GetPath(exe_path, sizeof(exe_path));
+    error.SetErrorStringWithFormat("executable doesn't exist: '%s'", exe_path);
     return error;
   }
 
   if (launch_info.GetFlags().Test(eLaunchFlagLaunchInTTY)) {
 #if !defined(__arm__) && !defined(__arm64__) && !defined(__aarch64__)
-    return LaunchInNewTerminalWithAppleScript(exe_spec.GetPath().c_str(),
-                                              launch_info);
+    return LaunchInNewTerminalWithAppleScript(exe_path, launch_info);
 #else
     error.SetErrorString("launching a process in a new terminal is not "
                          "supported on iOS devices");
@@ -1486,10 +1511,9 @@ Status Host::LaunchProcess(ProcessLaunchInfo &launch_info) {
   lldb::pid_t pid = LLDB_INVALID_PROCESS_ID;
 
   if (ShouldLaunchUsingXPC(launch_info)) {
-    error = LaunchProcessXPC(exe_spec.GetPath().c_str(), launch_info, pid);
+    error = LaunchProcessXPC(exe_path, launch_info, pid);
   } else {
-    error =
-        LaunchProcessPosixSpawn(exe_spec.GetPath().c_str(), launch_info, pid);
+    error = LaunchProcessPosixSpawn(exe_path, launch_info, pid);
   }
 
   if (pid != LLDB_INVALID_PROCESS_ID) {
@@ -1626,9 +1650,13 @@ HostThread Host::StartMonitoringChildProcess(
 
   if (source) {
     Host::MonitorChildProcessCallback callback_copy = callback;
+#ifndef __clang_analyzer__
+    // This works around a bug in the static analyzer where it claims
+    // "dispatch_release" isn't a valid identifier.
     ::dispatch_source_set_cancel_handler(source, ^{
       dispatch_release(source);
     });
+#endif
     ::dispatch_source_set_event_handler(source, ^{
 
       int status = 0;

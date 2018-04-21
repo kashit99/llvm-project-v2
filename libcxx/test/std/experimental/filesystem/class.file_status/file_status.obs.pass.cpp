@@ -16,10 +16,11 @@
 // file_type type() const noexcept;
 // perms permissions(p) const noexcept;
 
-#include "filesystem_include.hpp"
+#include <experimental/filesystem>
 #include <type_traits>
 #include <cassert>
 
+namespace fs = std::experimental::filesystem;
 
 int main() {
   using namespace fs;

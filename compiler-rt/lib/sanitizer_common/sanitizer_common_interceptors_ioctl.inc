@@ -10,8 +10,6 @@
 // Ioctl handling in common sanitizer interceptors.
 //===----------------------------------------------------------------------===//
 
-#if !SANITIZER_NETBSD
-
 #include "sanitizer_flags.h"
 
 struct ioctl_desc {
@@ -606,5 +604,3 @@ static void ioctl_common_post(void *ctx, const ioctl_desc *desc, int res, int d,
     COMMON_INTERCEPTOR_WRITE_RANGE(ctx, ifc->ifc_ifcu.ifcu_req, ifc->ifc_len);
   }
 }
-
-#endif

@@ -6,6 +6,8 @@ function(add_python_test_target name test_script args comment)
     )
 
   add_custom_target(${name}
+    # Clear the test directory first.
+    COMMAND ${CMAKE_COMMAND} -E remove_directory ${CMAKE_BINARY_DIR}/lldb-test-build.noindex
     COMMAND ${PYTHON_TEST_COMMAND} ${ARG_DEFAULT_ARGS}
     COMMENT "${comment}"
     DEPENDS ${LLDB_TEST_DEPS}
@@ -13,7 +15,7 @@ function(add_python_test_target name test_script args comment)
     )
 endfunction()
 
-set(LLDB_TEST_DEPS lldb dsymutil)
+set(LLDB_TEST_DEPS lldb)
 
 # darwin-debug is an hard dependency for the testsuite.
 if (CMAKE_SYSTEM_NAME MATCHES "Darwin")
@@ -54,6 +56,18 @@ set(LLDB_TEST_ARCH
 	${LLDB_DEFAULT_TEST_ARCH}
 	CACHE STRING "Specify the architecture to run LLDB tests as (x86|x64).  Determines whether tests are compiled with -m32 or -m64")
 
+if(LLDB_TEST_CLANG)
+  set(LLDB_TEST_COMPILER $<TARGET_FILE:clang>)
+endif()
+
+if(LLDB_TEST_SWIFT)
+  set(LLDB_TEST_SWIFT_COMPILER $<TARGET_FILE:swift>c)
+endif()
+
+if(LLDB_TEST_SWIFT_COMPILER)
+  set(SWIFT_TEST_ARGS --swift-compiler ${LLDB_TEST_SWIFT_COMPILER})
+endif()
+
 # Users can override LLDB_TEST_USER_ARGS to specify arbitrary arguments to pass to the script
 set(LLDB_TEST_USER_ARGS
   ""
@@ -67,7 +81,6 @@ set(LLDB_TEST_USER_ARGS
 set(LLDB_TEST_COMMON_ARGS
   --arch=${LLDB_TEST_ARCH}
   --executable $<TARGET_FILE:lldb>
-  --dsymutil $<TARGET_FILE:dsymutil>
   -s
   ${CMAKE_BINARY_DIR}/lldb-test-traces
   --build-dir
@@ -76,6 +89,7 @@ set(LLDB_TEST_COMMON_ARGS
   -u CXXFLAGS
   -u CFLAGS
   -C ${LLDB_TEST_C_COMPILER}
+  ${SWIFT_TEST_ARGS}
   )
 
 if ( CMAKE_SYSTEM_NAME MATCHES "Windows" )
@@ -130,7 +144,11 @@ add_python_test_target(check-lldb-single
 
 # If tests crash cause LLDB to crash, or things are otherwise unstable, or if machine-parsable
 # output is desired (i.e. in continuous integration contexts) check-lldb-single is a better target.
-add_custom_target(check-lldb)
+add_python_test_target(check-lldb
+  ${LLDB_SOURCE_DIR}/test/dotest.py
+  "-q;${LLDB_DOTEST_ARGS}"
+  "Testing LLDB (parallel execution, with a separate subprocess per test)"
+  )
 
 # Generate a wrapper for dotest.py in the bin directory.
 # We need configure_file to substitute variables.
@@ -149,17 +167,6 @@ file(GENERATE
 add_custom_target(lldb-dotest)
 add_dependencies(lldb-dotest ${LLDB_TEST_DEPS})
 
-configure_file(
-  ${CMAKE_CURRENT_SOURCE_DIR}/../lit/Suite/lit.site.cfg.in
-  ${CMAKE_CURRENT_BINARY_DIR}/../lit/Suite/lit.site.cfg
-  )
-file(GENERATE
-  OUTPUT
-  ${CMAKE_CURRENT_BINARY_DIR}/../lit/Suite/lit.site.cfg
-  INPUT
-  ${CMAKE_CURRENT_BINARY_DIR}/../lit/Suite/lit.site.cfg
-  )
-
 # If we're building with an in-tree clang, then list clang as a dependency
 # to run tests.
 if (TARGET clang)
@@ -174,9 +181,6 @@ if (CMAKE_SYSTEM_NAME MATCHES "Windows")
     message(WARNING "lld required to test LLDB on Windows")
   endif ()
 endif ()
-
-# Run the lit-style tests and the unittests as part of the check-lldb target.
-add_dependencies(check-lldb check-lldb-lit)
 
 add_custom_target(lldb-test-depends DEPENDS ${LLDB_TEST_DEPENDS})
 # This will add LLDB's test dependencies to the depenednecies for check-all and

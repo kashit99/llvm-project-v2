@@ -15,6 +15,7 @@
 #include "lldb/Interpreter/CommandObjectRegexCommand.h"
 
 #include "../Commands/CommandObjectApropos.h"
+#include "../Commands/CommandObjectArgs.h"
 #include "../Commands/CommandObjectBreakpoint.h"
 #include "../Commands/CommandObjectBugreport.h"
 #include "../Commands/CommandObjectCommands.h"
@@ -33,6 +34,7 @@
 #include "../Commands/CommandObjectRegister.h"
 #include "../Commands/CommandObjectSettings.h"
 #include "../Commands/CommandObjectSource.h"
+#include "../Commands/CommandObjectSyntax.h"
 #include "../Commands/CommandObjectStats.h"
 #include "../Commands/CommandObjectTarget.h"
 #include "../Commands/CommandObjectThread.h"
@@ -54,13 +56,13 @@
 #include "lldb/Host/Host.h"
 #include "lldb/Host/HostInfo.h"
 
+#include "lldb/Interpreter/Args.h"
 #include "lldb/Interpreter/CommandCompletions.h"
 #include "lldb/Interpreter/CommandInterpreter.h"
 #include "lldb/Interpreter/CommandReturnObject.h"
 #include "lldb/Interpreter/OptionValueProperties.h"
 #include "lldb/Interpreter/Options.h"
 #include "lldb/Interpreter/Property.h"
-#include "lldb/Utility/Args.h"
 
 #include "lldb/Target/Process.h"
 #include "lldb/Target/TargetList.h"
@@ -139,9 +141,9 @@ bool CommandInterpreter::GetPromptOnQuit() const {
       nullptr, idx, g_properties[idx].default_uint_value != 0);
 }
 
-void CommandInterpreter::SetPromptOnQuit(bool b) {
+void CommandInterpreter::SetPromptOnQuit(bool enable) {
   const uint32_t idx = ePropertyPromptOnQuit;
-  m_collection_sp->SetPropertyAtIndexAsBoolean(nullptr, idx, b);
+  m_collection_sp->SetPropertyAtIndexAsBoolean(nullptr, idx, enable);
 }
 
 void CommandInterpreter::ResolveCommand(const char *command_line,
@@ -316,12 +318,16 @@ void CommandInterpreter::Initialize() {
     AddAlias("p", cmd_obj_sp, "--")->SetHelpLong("");
     AddAlias("print", cmd_obj_sp, "--")->SetHelpLong("");
     AddAlias("call", cmd_obj_sp, "--")->SetHelpLong("");
+
     if (auto po = AddAlias("po", cmd_obj_sp, "-O --")) {
       po->SetHelp("Evaluate an expression on the current thread.  Displays any "
                   "returned value with formatting "
                   "controlled by the type's author.");
       po->SetHelpLong("");
     }
+
+    AddAlias("repl", cmd_obj_sp, "--repl -- ");
+
     AddAlias("parray", cmd_obj_sp, "--element-count %1 --")->SetHelpLong("");
     AddAlias("poarray", cmd_obj_sp,
              "--object-description --element-count %1 --")
@@ -724,6 +730,8 @@ void CommandInterpreter::LoadCommandDictionary() {
         list_regex_cmd_ap->AddRegexCommand(
             "^-([[:digit:]]+)[[:space:]]*$",
             "source list --reverse --count %1") &&
+        list_regex_cmd_ap->AddRegexCommand("^([^.]+)\\.([^.]+)$",
+                                           "source list --file \"%1.%2\"") &&
         list_regex_cmd_ap->AddRegexCommand("^(.+)$",
                                            "source list --name \"%1\"") &&
         list_regex_cmd_ap->AddRegexCommand("^$", "source list")) {

@@ -13,16 +13,15 @@
 #include "CloexecAccept4Check.h"
 #include "CloexecAcceptCheck.h"
 #include "CloexecCreatCheck.h"
-#include "CloexecDupCheck.h"
 #include "CloexecEpollCreate1Check.h"
 #include "CloexecEpollCreateCheck.h"
+#include "CloexecDupCheck.h"
 #include "CloexecFopenCheck.h"
 #include "CloexecInotifyInit1Check.h"
 #include "CloexecInotifyInitCheck.h"
 #include "CloexecMemfdCreateCheck.h"
 #include "CloexecOpenCheck.h"
 #include "CloexecSocketCheck.h"
-#include "ComparisonInTempFailureRetryCheck.h"
 
 using namespace clang::ast_matchers;
 
@@ -51,8 +50,6 @@ public:
         "android-cloexec-memfd-create");
     CheckFactories.registerCheck<CloexecOpenCheck>("android-cloexec-open");
     CheckFactories.registerCheck<CloexecSocketCheck>("android-cloexec-socket");
-    CheckFactories.registerCheck<ComparisonInTempFailureRetryCheck>(
-        "android-comparison-in-temp-failure-retry");
   }
 };
 

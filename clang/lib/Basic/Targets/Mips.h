@@ -163,7 +163,6 @@ public:
   }
 
   bool isValidCPUName(StringRef Name) const override;
-  void fillValidCPUList(SmallVectorImpl<StringRef> &Values) const override;
 
   bool setCPU(const std::string &Name) override {
     CPU = Name;
@@ -392,9 +391,7 @@ public:
     return llvm::makeArrayRef(NewABIRegAliases);
   }
 
-  bool hasInt128Type() const override {
-    return (ABI == "n32" || ABI == "n64") || getTargetOpts().ForceEnableInt128;
-  }
+  bool hasInt128Type() const override { return ABI == "n32" || ABI == "n64"; }
 
   bool validateTarget(DiagnosticsEngine &Diags) const override;
 };

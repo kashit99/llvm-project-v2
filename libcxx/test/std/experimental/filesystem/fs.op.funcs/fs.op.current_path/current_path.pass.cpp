@@ -16,7 +16,7 @@
 // void current_path(path const&);
 // void current_path(path const&, std::error_code& ec) noexcept;
 
-#include "filesystem_include.hpp"
+#include <experimental/filesystem>
 #include <type_traits>
 #include <cassert>
 
@@ -24,7 +24,7 @@
 #include "rapid-cxx-test.hpp"
 #include "filesystem_test_helper.hpp"
 
-using namespace fs;
+using namespace std::experimental::filesystem;
 
 TEST_SUITE(filesystem_current_path_path_test_suite)
 

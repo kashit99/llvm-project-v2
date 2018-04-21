@@ -238,7 +238,6 @@ public:
     TAIL_CALL = 2,
     LOG_ARGS_ENTER = 3,
     CUSTOM_EVENT = 4,
-    TYPED_EVENT = 5,
   };
 
   // The table will contain these structs that point to the sled, the function
@@ -469,10 +468,6 @@ public:
   void EmitLabelDifference(const MCSymbol *Hi, const MCSymbol *Lo,
                            unsigned Size) const;
 
-  /// Emit something like ".uleb128 Hi-Lo".
-  void EmitLabelDifferenceAsULEB128(const MCSymbol *Hi,
-                                    const MCSymbol *Lo) const;
-
   /// Emit something like ".long Label+Offset" where the size in bytes of the
   /// directive is specified by Size and Label specifies the label.  This
   /// implicitly uses .set if it is available.
@@ -486,9 +481,6 @@ public:
     EmitLabelPlusOffset(Label, 0, Size, IsSectionRelative);
   }
 
-  /// Emit something like ".long Label + Offset".
-  void EmitDwarfOffset(const MCSymbol *Label, uint64_t Offset) const;
-
   //===------------------------------------------------------------------===//
   // Dwarf Emission Helper Routines
   //===------------------------------------------------------------------===//
@@ -498,6 +490,11 @@ public:
 
   /// Emit the specified unsigned leb128 value.
   void EmitULEB128(uint64_t Value, const char *Desc = nullptr) const;
+
+  /// Emit the specified unsigned leb128 value padded to a specific number
+  /// bytes
+  void EmitPaddedULEB128(uint64_t Value, unsigned PadTo,
+                         const char *Desc = nullptr) const;
 
   /// Emit a .byte 42 directive that corresponds to an encoding.  If verbose
   /// assembly output is enabled, we output comments describing the encoding.
@@ -645,7 +642,8 @@ private:
 
   GCMetadataPrinter *GetOrCreateGCPrinter(GCStrategy &C);
   /// Emit GlobalAlias or GlobalIFunc.
-  void emitGlobalIndirectSymbol(Module &M, const GlobalIndirectSymbol &GIS);
+  void emitGlobalIndirectSymbol(Module &M,
+                                const GlobalIndirectSymbol& GIS);
   void setupCodePaddingContext(const MachineBasicBlock &MBB,
                                MCCodePaddingContext &Context) const;
 };

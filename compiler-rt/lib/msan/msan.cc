@@ -379,14 +379,6 @@ static void MsanOnDeadlySignal(int signo, void *siginfo, void *context) {
   HandleDeadlySignal(siginfo, context, GetTid(), &OnStackUnwind, nullptr);
 }
 
-static void MsanCheckFailed(const char *file, int line, const char *cond,
-                            u64 v1, u64 v2) {
-  Report("MemorySanitizer CHECK failed: %s:%d \"%s\" (0x%zx, 0x%zx)\n", file,
-         line, cond, (uptr)v1, (uptr)v2);
-  PRINT_CURRENT_STACK_CHECK();
-  Die();
-}
-
 void __msan_init() {
   CHECK(!msan_init_is_running);
   if (msan_inited) return;
@@ -398,9 +390,6 @@ void __msan_init() {
 
   CacheBinaryName();
   InitializeFlags();
-
-  // Install tool-specific callbacks in sanitizer_common.
-  SetCheckFailedCallback(MsanCheckFailed);
 
   __sanitizer_set_report_path(common_flags()->log_path);
 

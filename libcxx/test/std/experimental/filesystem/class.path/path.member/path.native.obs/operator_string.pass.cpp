@@ -16,13 +16,14 @@
 
 // operator string_type() const;
 
-#include "filesystem_include.hpp"
+#include <experimental/filesystem>
 #include <type_traits>
 #include <cassert>
 
 #include "test_macros.h"
 #include "filesystem_test_helper.hpp"
 
+namespace fs = std::experimental::filesystem;
 
 int main()
 {

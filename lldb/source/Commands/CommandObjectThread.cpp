@@ -21,7 +21,6 @@
 #include "lldb/Host/StringConvert.h"
 #include "lldb/Interpreter/CommandInterpreter.h"
 #include "lldb/Interpreter/CommandReturnObject.h"
-#include "lldb/Interpreter/OptionArgParser.h"
 #include "lldb/Interpreter/Options.h"
 #include "lldb/Symbol/CompileUnit.h"
 #include "lldb/Symbol/Function.h"
@@ -291,7 +290,7 @@ public:
       case 'e': {
         bool success;
         m_extended_backtrace =
-            OptionArgParser::ToBoolean(option_arg, false, &success);
+            Args::StringToBoolean(option_arg, false, &success);
         if (!success)
           error.SetErrorStringWithFormat(
               "invalid boolean value for option '%c'", short_option);
@@ -448,8 +447,7 @@ public:
       switch (short_option) {
       case 'a': {
         bool success;
-        bool avoid_no_debug =
-            OptionArgParser::ToBoolean(option_arg, true, &success);
+        bool avoid_no_debug = Args::StringToBoolean(option_arg, true, &success);
         if (!success)
           error.SetErrorStringWithFormat(
               "invalid boolean value for option '%c'", short_option);
@@ -461,8 +459,7 @@ public:
 
       case 'A': {
         bool success;
-        bool avoid_no_debug =
-            OptionArgParser::ToBoolean(option_arg, true, &success);
+        bool avoid_no_debug = Args::StringToBoolean(option_arg, true, &success);
         if (!success)
           error.SetErrorStringWithFormat(
               "invalid boolean value for option '%c'", short_option);
@@ -486,7 +483,7 @@ public:
       case 'm': {
         OptionEnumValueElement *enum_values =
             GetDefinitions()[option_idx].enum_values;
-        m_run_mode = (lldb::RunMode)OptionArgParser::ToOptionEnum(
+        m_run_mode = (lldb::RunMode)Args::StringToOptionEnum(
             option_arg, enum_values, eOnlyDuringStepping, error);
       } break;
 
@@ -1033,7 +1030,7 @@ public:
 
       switch (short_option) {
       case 'a': {
-        lldb::addr_t tmp_addr = OptionArgParser::ToAddress(
+        lldb::addr_t tmp_addr = Args::StringToAddress(
             execution_context, option_arg, LLDB_INVALID_ADDRESS, &error);
         if (error.Success())
           m_until_addrs.push_back(tmp_addr);
@@ -1055,7 +1052,7 @@ public:
       case 'm': {
         OptionEnumValueElement *enum_values =
             GetDefinitions()[option_idx].enum_values;
-        lldb::RunMode run_mode = (lldb::RunMode)OptionArgParser::ToOptionEnum(
+        lldb::RunMode run_mode = (lldb::RunMode)Args::StringToOptionEnum(
             option_arg, enum_values, eOnlyDuringStepping, error);
 
         if (error.Success()) {
@@ -1544,8 +1541,7 @@ public:
       switch (short_option) {
       case 'x': {
         bool success;
-        bool tmp_value =
-            OptionArgParser::ToBoolean(option_arg, false, &success);
+        bool tmp_value = Args::StringToBoolean(option_arg, false, &success);
         if (success)
           m_from_expression = tmp_value;
         else {
@@ -1741,8 +1737,8 @@ public:
           return Status("invalid line offset: '%s'.", option_arg.str().c_str());
         break;
       case 'a':
-        m_load_addr = OptionArgParser::ToAddress(execution_context, option_arg,
-                                                 LLDB_INVALID_ADDRESS, &error);
+        m_load_addr = Args::StringToAddress(execution_context, option_arg,
+                                            LLDB_INVALID_ADDRESS, &error);
         break;
       case 'r':
         m_force = true;

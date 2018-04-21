@@ -10,6 +10,7 @@
 #include <stdlib.h>
 
 #include "DWARFASTParserClang.h"
+#include "DWARFCompileUnit.h"
 #include "DWARFDIE.h"
 #include "DWARFDIECollection.h"
 #include "DWARFDebugInfo.h"
@@ -24,6 +25,7 @@
 #include "lldb/Core/Module.h"
 #include "lldb/Core/Value.h"
 #include "lldb/Host/Host.h"
+#include "lldb/Interpreter/Args.h"
 #include "lldb/Symbol/ClangASTImporter.h"
 #include "lldb/Symbol/ClangExternalASTSourceCommon.h"
 #include "lldb/Symbol/ClangUtil.h"
@@ -180,6 +182,9 @@ TypeSP DWARFASTParserClang::ParseTypeFromDWO(const DWARFDIE &die, Log *log) {
   lldb_private::CompilerType type =
       GetClangASTImporter().CopyType(m_ast, dwo_type);
 
+  // printf ("copied_qual_type: ast = %p, clang_type = %p, name =
+  // '%s'\n", m_ast, copied_qual_type.getAsOpaquePtr(),
+  // external_type->GetName().GetCString());
   if (!type)
     return TypeSP();
 
@@ -252,6 +257,17 @@ TypeSP DWARFASTParserClang::ParseTypeFromDWARF(const SymbolContext &sc,
           die.GetOffset(), static_cast<void *>(context),
           context_die.GetOffset(), die.GetTagAsCString(), die.GetName());
     }
+    //
+    //        Log *log (LogChannelDWARF::GetLogIfAll(DWARF_LOG_DEBUG_INFO));
+    //        if (log && dwarf_cu)
+    //        {
+    //            StreamString s;
+    //            die->DumpLocation (this, dwarf_cu, s);
+    //            dwarf->GetObjectFile()->GetModule()->LogMessage (log,
+    //            "SymbolFileDwarf::%s %s", __FUNCTION__, s.GetData());
+    //
+    //        }
+
     Type *type_ptr = dwarf->GetDIEToType().lookup(die.GetDIE());
     TypeList *type_list = dwarf->GetTypeList();
     if (type_ptr == NULL) {
@@ -263,7 +279,6 @@ TypeSP DWARFASTParserClang::ParseTypeFromDWARF(const SymbolContext &sc,
       bool is_forward_declaration = false;
       DWARFAttributes attributes;
       const char *type_name_cstr = NULL;
-      const char *mangled_name_cstr = NULL;
       ConstString type_name_const_str;
       Type::ResolveState resolve_state = Type::eResolveStateUnresolved;
       uint64_t byte_size = 0;
@@ -539,6 +554,17 @@ TypeSP DWARFASTParserClang::ParseTypeFromDWARF(const SymbolContext &sc,
                      &decl, clang_type, resolve_state));
 
         dwarf->GetDIEToType()[die.GetDIE()] = type_sp.get();
+
+        //                  Type* encoding_type =
+        //                  GetUniquedTypeForDIEOffset(encoding_uid, type_sp,
+        //                  NULL, 0, 0, false);
+        //                  if (encoding_type != NULL)
+        //                  {
+        //                      if (encoding_type != DIE_IS_BEING_PARSED)
+        //                          type_sp->SetEncodingType(encoding_type);
+        //                      else
+        //                          m_indirect_fixups.push_back(type_sp.get());
+        //                  }
       } break;
 
       case DW_TAG_structure_type:
@@ -553,6 +579,7 @@ TypeSP DWARFASTParserClang::ParseTypeFromDWARF(const SymbolContext &sc,
         size_t calling_convention 
                 = llvm::dwarf::CallingConvention::DW_CC_normal;
         
+        // bool struct_is_class = false;
         const size_t num_attributes = die.GetAttributes(attributes);
         if (num_attributes > 0) {
           uint32_t i;
@@ -1207,8 +1234,9 @@ TypeSP DWARFASTParserClang::ParseTypeFromDWARF(const SymbolContext &sc,
 
               case DW_AT_linkage_name:
               case DW_AT_MIPS_linkage_name:
-                mangled_name_cstr = form_value.AsCString();
-                break;
+                break; // mangled =
+                       // form_value.AsCString(&dwarf->get_debug_str_data());
+                       // break;
               case DW_AT_type:
                 type_die_form = form_value;
                 break;
@@ -1569,10 +1597,9 @@ TypeSP DWARFASTParserClang::ParseTypeFromDWARF(const SymbolContext &sc,
                           clang::CXXMethodDecl *cxx_method_decl =
                               m_ast.AddMethodToCXXRecordType(
                                   class_opaque_type.GetOpaqueQualType(),
-                                  type_name_cstr, mangled_name_cstr, clang_type,
-                                  accessibility, is_virtual, is_static,
-                                  is_inline, is_explicit, is_attr_used,
-                                  is_artificial);
+                                  type_name_cstr, clang_type, accessibility,
+                                  is_virtual, is_static, is_inline, is_explicit,
+                                  is_attr_used, is_artificial);
 
                           type_handled = cxx_method_decl != NULL;
 
@@ -1799,7 +1826,8 @@ TypeSP DWARFASTParserClang::ParseTypeFromDWARF(const SymbolContext &sc,
                 array_element_type.GetCompleteType() == false) {
               ModuleSP module_sp = die.GetModule();
               if (module_sp) {
-                if (die.GetCU()->GetProducer() == eProducerClang)
+                if (die.GetCU()->GetProducer() ==
+                    DWARFCompileUnit::eProducerClang)
                   module_sp->ReportError(
                       "DWARF DW_TAG_array_type DIE at 0x%8.8x has a "
                       "class/union/struct element type DIE 0x%8.8x that is a "
@@ -2126,6 +2154,7 @@ bool DWARFASTParserClang::ParseTemplateParameterInfos(
   if (!parent_die)
     return false;
 
+  Args template_parameter_names;
   for (DWARFDIE die = parent_die.GetFirstChild(); die.IsValid();
        die = die.GetSibling()) {
     const dw_tag_t tag = die.Tag();
@@ -2415,7 +2444,8 @@ bool DWARFASTParserClang::CompleteTypeFromDWARF(const DWARFDIE &die,
                                     "does not have a complete definition.",
                                     die.GetName(),
                                     base_class_type.GetTypeName().GetCString());
-                if (die.GetCU()->GetProducer() == eProducerClang)
+                if (die.GetCU()->GetProducer() ==
+                    DWARFCompileUnit::eProducerClang)
                   module->ReportError(":: Try compiling the source file with "
                                       "-fstandalone-debug.");
 
@@ -3252,7 +3282,8 @@ bool DWARFASTParserClang::ParseChildMembers(
 
               if (ClangASTContext::IsCXXClassType(member_clang_type) &&
                   member_clang_type.GetCompleteType() == false) {
-                if (die.GetCU()->GetProducer() == eProducerClang)
+                if (die.GetCU()->GetProducer() ==
+                    DWARFCompileUnit::eProducerClang)
                   module_sp->ReportError(
                       "DWARF DIE at 0x%8.8x (class %s) has a member variable "
                       "0x%8.8x (%s) whose type is a forward declaration, not a "
@@ -3527,6 +3558,22 @@ size_t DWARFASTParserClang::ParseChildParameters(
               is_artificial = form_value.Boolean();
               break;
             case DW_AT_location:
+            //                          if (form_value.BlockData())
+            //                          {
+            //                              const DWARFDataExtractor&
+            //                              debug_info_data = debug_info();
+            //                              uint32_t block_length =
+            //                              form_value.Unsigned();
+            //                              DWARFDataExtractor
+            //                              location(debug_info_data,
+            //                              form_value.BlockData() -
+            //                              debug_info_data.GetDataStart(),
+            //                              block_length);
+            //                          }
+            //                          else
+            //                          {
+            //                          }
+            //                          break;
             case DW_AT_const_value:
             case DW_AT_default_value:
             case DW_AT_description:

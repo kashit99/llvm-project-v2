@@ -27,6 +27,7 @@
 #include "lldb/Symbol/GoASTContext.h"
 #include "lldb/Symbol/JavaASTContext.h"
 #include "lldb/Symbol/OCamlASTContext.h"
+#include "lldb/Symbol/SwiftASTContext.h"
 #include "lldb/Utility/Timer.h"
 
 #include "Plugins/ABI/MacOSX-arm/ABIMacOSX_arm.h"
@@ -43,7 +44,6 @@
 #include "Plugins/ABI/SysV-s390x/ABISysV_s390x.h"
 #include "Plugins/ABI/SysV-x86_64/ABISysV_x86_64.h"
 #include "Plugins/Architecture/Arm/ArchitectureArm.h"
-#include "Plugins/Architecture/PPC64/ArchitecturePPC64.h"
 #include "Plugins/Disassembler/llvm/DisassemblerLLVMC.h"
 #include "Plugins/DynamicLoader/MacOSX-DYLD/DynamicLoaderMacOS.h"
 #include "Plugins/DynamicLoader/MacOSX-DYLD/DynamicLoaderMacOSXDYLD.h"
@@ -51,11 +51,11 @@
 #include "Plugins/DynamicLoader/Static/DynamicLoaderStatic.h"
 #include "Plugins/DynamicLoader/Windows-DYLD/DynamicLoaderWindowsDYLD.h"
 #include "Plugins/Instruction/ARM64/EmulateInstructionARM64.h"
-#include "Plugins/Instruction/PPC64/EmulateInstructionPPC64.h"
 #include "Plugins/InstrumentationRuntime/ASan/ASanRuntime.h"
 #include "Plugins/InstrumentationRuntime/MainThreadChecker/MainThreadCheckerRuntime.h"
 #include "Plugins/InstrumentationRuntime/TSan/TSanRuntime.h"
 #include "Plugins/InstrumentationRuntime/UBSan/UBSanRuntime.h"
+#include "Plugins/InstrumentationRuntime/SwiftRuntimeReporting/SwiftRuntimeReporting.h"
 #include "Plugins/JITLoader/GDB/JITLoaderGDB.h"
 #include "Plugins/Language/CPlusPlus/CPlusPlusLanguage.h"
 #include "Plugins/Language/Go/GoLanguage.h"
@@ -116,6 +116,11 @@
 #if defined(_WIN32)
 #include "Plugins/Process/Windows/Common/ProcessWindows.h"
 #include "lldb/Host/windows/windows.h"
+#endif
+
+#if defined(__APPLE__) || defined(__linux__)
+#include "Plugins/Language/Swift/SwiftLanguage.h"
+#include "lldb/Target/SwiftLanguageRuntime.h"
 #endif
 
 #include "llvm/Support/TargetSelect.h"
@@ -250,6 +255,20 @@ SystemInitializerFull::SystemInitializerFull() {}
 
 SystemInitializerFull::~SystemInitializerFull() {}
 
+static void SwiftInitialize() {
+#if defined(__APPLE__) || defined(__linux__)
+  SwiftLanguage::Initialize();
+  SwiftLanguageRuntime::Initialize();
+#endif
+}
+
+static void SwiftTerminate() {
+#if defined(__APPLE__) || defined(__linux__)
+  SwiftLanguage::Terminate();
+  SwiftLanguageRuntime::Terminate();
+#endif
+}
+
 void SystemInitializerFull::Initialize() {
   SystemInitializerCommon::Initialize();
   ScriptInterpreterNone::Initialize();
@@ -293,6 +312,7 @@ void SystemInitializerFull::Initialize() {
   GoASTContext::Initialize();
   JavaASTContext::Initialize();
   OCamlASTContext::Initialize();
+  SwiftASTContext::Initialize();
 
   ABIMacOSX_i386::Initialize();
   ABIMacOSX_arm::Initialize();
@@ -309,7 +329,6 @@ void SystemInitializerFull::Initialize() {
   ABISysV_s390x::Initialize();
 
   ArchitectureArm::Initialize();
-  ArchitecturePPC64::Initialize();
 
   DisassemblerLLVMC::Initialize();
 
@@ -321,6 +340,7 @@ void SystemInitializerFull::Initialize() {
   ThreadSanitizerRuntime::Initialize();
   UndefinedBehaviorSanitizerRuntime::Initialize();
   MainThreadCheckerRuntime::Initialize();
+  SwiftRuntimeReporting::Initialize();
 
   SymbolVendorELF::Initialize();
   SymbolFileDWARF::Initialize();
@@ -329,7 +349,6 @@ void SystemInitializerFull::Initialize() {
   UnwindAssemblyInstEmulation::Initialize();
   UnwindAssembly_x86::Initialize();
   EmulateInstructionARM64::Initialize();
-  EmulateInstructionPPC64::Initialize();
   SymbolFileDWARFDebugMap::Initialize();
   ItaniumABILanguageRuntime::Initialize();
   AppleObjCRuntimeV2::Initialize();
@@ -345,6 +364,7 @@ void SystemInitializerFull::Initialize() {
   ObjCLanguage::Initialize();
   ObjCPlusPlusLanguage::Initialize();
   OCamlLanguage::Initialize();
+  ::SwiftInitialize();
 
 #if defined(_WIN32)
   ProcessWindows::Initialize();
@@ -424,6 +444,7 @@ void SystemInitializerFull::Terminate() {
   GoASTContext::Terminate();
   JavaASTContext::Terminate();
   OCamlASTContext::Terminate();
+  SwiftASTContext::Terminate();
 
   ABIMacOSX_i386::Terminate();
   ABIMacOSX_arm::Terminate();
@@ -448,6 +469,7 @@ void SystemInitializerFull::Terminate() {
   ThreadSanitizerRuntime::Terminate();
   UndefinedBehaviorSanitizerRuntime::Terminate();
   MainThreadCheckerRuntime::Terminate();
+  SwiftRuntimeReporting::Terminate();
   SymbolVendorELF::Terminate();
   SymbolFileDWARF::Terminate();
   SymbolFilePDB::Terminate();
@@ -455,7 +477,6 @@ void SystemInitializerFull::Terminate() {
   UnwindAssembly_x86::Terminate();
   UnwindAssemblyInstEmulation::Terminate();
   EmulateInstructionARM64::Terminate();
-  EmulateInstructionPPC64::Terminate();
   SymbolFileDWARFDebugMap::Terminate();
   ItaniumABILanguageRuntime::Terminate();
   AppleObjCRuntimeV2::Terminate();
@@ -463,6 +484,8 @@ void SystemInitializerFull::Terminate() {
   SystemRuntimeMacOSX::Terminate();
   RenderScriptRuntime::Terminate();
   JavaLanguageRuntime::Terminate();
+
+  ::SwiftTerminate();
 
   CPlusPlusLanguage::Terminate();
   GoLanguage::Terminate();

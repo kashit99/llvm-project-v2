@@ -53,8 +53,7 @@ static void EmitDeclInit(CodeGenFunction &CGF, const VarDecl &D,
   case TEK_Aggregate:
     CGF.EmitAggExpr(Init, AggValueSlot::forLValue(lv,AggValueSlot::IsDestructed,
                                           AggValueSlot::DoesNotNeedGCBarriers,
-                                                  AggValueSlot::IsNotAliased,
-                                                  AggValueSlot::DoesNotOverlap));
+                                                  AggValueSlot::IsNotAliased));
     return;
   }
   llvm_unreachable("bad evaluation kind");
@@ -316,7 +315,7 @@ llvm::Function *CodeGenModule::CreateGlobalInitOrDestructFunction(
       Fn->setSection(Section);
   }
 
-  SetInternalFunctionAttributes(GlobalDecl(), Fn, FI);
+  SetInternalFunctionAttributes(nullptr, Fn, FI);
 
   Fn->setCallingConv(getRuntimeCC());
 
@@ -335,10 +334,6 @@ llvm::Function *CodeGenModule::CreateGlobalInitOrDestructFunction(
       !isInSanitizerBlacklist(SanitizerKind::HWAddress, Fn, Loc))
     Fn->addFnAttr(llvm::Attribute::SanitizeHWAddress);
 
-  if (getLangOpts().Sanitize.has(SanitizerKind::KernelHWAddress) &&
-      !isInSanitizerBlacklist(SanitizerKind::KernelHWAddress, Fn, Loc))
-    Fn->addFnAttr(llvm::Attribute::SanitizeHWAddress);
-
   if (getLangOpts().Sanitize.has(SanitizerKind::Thread) &&
       !isInSanitizerBlacklist(SanitizerKind::Thread, Fn, Loc))
     Fn->addFnAttr(llvm::Attribute::SanitizeThread);
@@ -350,10 +345,6 @@ llvm::Function *CodeGenModule::CreateGlobalInitOrDestructFunction(
   if (getLangOpts().Sanitize.has(SanitizerKind::SafeStack) &&
       !isInSanitizerBlacklist(SanitizerKind::SafeStack, Fn, Loc))
     Fn->addFnAttr(llvm::Attribute::SafeStack);
-
-  if (getLangOpts().Sanitize.has(SanitizerKind::ShadowCallStack) &&
-      !isInSanitizerBlacklist(SanitizerKind::ShadowCallStack, Fn, Loc))
-    Fn->addFnAttr(llvm::Attribute::ShadowCallStack);
 
   return Fn;
 }
@@ -389,10 +380,6 @@ CodeGenModule::EmitCXXGlobalVarDeclInitFunc(const VarDecl *D,
   if (getLangOpts().CUDA && getLangOpts().CUDAIsDevice &&
       (D->hasAttr<CUDADeviceAttr>() || D->hasAttr<CUDAConstantAttr>() ||
        D->hasAttr<CUDASharedAttr>()))
-    return;
-
-  if (getLangOpts().OpenMP &&
-      getOpenMPRuntime().emitDeclareTargetVarDefinition(D, Addr, PerformInit))
     return;
 
   // Check if we've already initialized this decl.

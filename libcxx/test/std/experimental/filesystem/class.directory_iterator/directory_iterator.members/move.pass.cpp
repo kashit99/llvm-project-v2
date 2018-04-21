@@ -15,7 +15,7 @@
 
 // directory_iterator(directory_iterator&&) noexcept;
 
-#include "filesystem_include.hpp"
+#include <experimental/filesystem>
 #include <type_traits>
 #include <set>
 #include <cassert>
@@ -24,7 +24,7 @@
 #include "rapid-cxx-test.hpp"
 #include "filesystem_test_helper.hpp"
 
-using namespace fs;
+using namespace std::experimental::filesystem;
 
 TEST_SUITE(directory_iterator_move_construct_tests)
 

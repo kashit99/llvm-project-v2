@@ -4,7 +4,6 @@ google-build-namespaces
 =======================
 
 `cert-dcl59-cpp` redirects here as an alias for this check.
-`fuchsia-header-anon-namespaces` redirects here as an alias for this check.
 
 Finds anonymous namespaces in headers.
 

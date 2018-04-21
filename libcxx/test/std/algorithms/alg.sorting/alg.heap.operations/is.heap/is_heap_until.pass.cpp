@@ -11,22 +11,11 @@
 
 // template<RandomAccessIterator Iter>
 //   requires LessThanComparable<Iter::value_type>
-//   constexpr bool   // constexpr after C++17
+//   Iter
 //   is_heap_until(Iter first, Iter last);
 
 #include <algorithm>
 #include <cassert>
-
-#include "test_macros.h"
-
-#if TEST_STD_VER > 17
-TEST_CONSTEXPR bool test_constexpr() {
-    int ia[] = {0, 0, 0, 0, 1, 0};
-    int ib[] = {0, 0, 0, 1, 1, 1};
-    return    (std::is_heap_until(std::begin(ia), std::end(ia)) == ia+4)
-           && (std::is_heap_until(std::begin(ib), std::end(ib)) == ib+3);
-    }
-#endif
 
 void test()
 {
@@ -529,8 +518,4 @@ void test()
 int main()
 {
     test();
-
-#if TEST_STD_VER > 17
-    static_assert(test_constexpr());
-#endif
 }

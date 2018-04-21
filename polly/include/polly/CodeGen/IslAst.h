@@ -36,6 +36,7 @@ class PassRegistry;
 class raw_ostream;
 
 void initializeIslAstInfoWrapperPassPass(PassRegistry &);
+
 } // namespace llvm
 
 struct isl_ast_build;
@@ -229,6 +230,7 @@ struct IslAstPrinterPass : public PassInfoMixin<IslAstPrinterPass> {
 
   raw_ostream &OS;
 };
+
 } // namespace polly
 
 #endif // POLLY_ISLAST_H

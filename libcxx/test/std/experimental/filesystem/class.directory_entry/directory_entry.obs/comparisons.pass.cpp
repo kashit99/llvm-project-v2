@@ -21,10 +21,11 @@
 // bool operator>=(directory_entry const&) const noexcept;
 
 
-#include "filesystem_include.hpp"
+#include <experimental/filesystem>
 #include <type_traits>
 #include <cassert>
 
+namespace fs = std::experimental::filesystem;
 
 #define CHECK_OP(Op) \
   static_assert(std::is_same<decltype(ce. operator Op (ce)), bool>::value, ""); \

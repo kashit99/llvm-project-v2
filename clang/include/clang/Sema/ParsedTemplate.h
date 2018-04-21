@@ -199,7 +199,8 @@ namespace clang {
            SourceLocation LAngleLoc, SourceLocation RAngleLoc,
            ArrayRef<ParsedTemplateArgument> TemplateArgs,
            SmallVectorImpl<TemplateIdAnnotation *> &CleanupList) {
-      TemplateIdAnnotation *TemplateId = new (llvm::safe_malloc(
+
+      TemplateIdAnnotation *TemplateId = new (std::malloc(
           totalSizeToAlloc<ParsedTemplateArgument>(TemplateArgs.size())))
           TemplateIdAnnotation(SS, TemplateKWLoc, TemplateNameLoc, Name,
                                OperatorKind, OpaqueTemplateName, TemplateKind,

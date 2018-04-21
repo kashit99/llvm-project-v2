@@ -20,7 +20,7 @@
 // std::u32string u32string() const;
 
 
-#include "filesystem_include.hpp"
+#include <experimental/filesystem>
 #include <type_traits>
 #include <cassert>
 
@@ -30,6 +30,7 @@
 #include "min_allocator.h"
 #include "filesystem_test_helper.hpp"
 
+namespace fs = std::experimental::filesystem;
 
 MultiStringType longString = MKSTR("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ/123456789/abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ");
 

@@ -624,7 +624,7 @@ static void destroyOptimisticNormalEntry(CodeGenFunction &CGF,
       si->eraseFromParent();
 
       // Destroy the load.
-      assert(condition->getOperand(0) == CGF.NormalCleanupDest.getPointer());
+      assert(condition->getOperand(0) == CGF.NormalCleanupDest);
       assert(condition->use_empty());
       condition->eraseFromParent();
     }
@@ -833,7 +833,7 @@ void CodeGenFunction::PopCleanupBlock(bool FallthroughIsBranchThrough) {
         if (NormalCleanupDestSlot->hasOneUse()) {
           NormalCleanupDestSlot->user_back()->eraseFromParent();
           NormalCleanupDestSlot->eraseFromParent();
-          NormalCleanupDest = Address::invalid();
+          NormalCleanupDest = nullptr;
         }
 
         llvm::BasicBlock *BranchAfter = Scope.getBranchAfterBlock(0);
@@ -1250,10 +1250,10 @@ void CodeGenFunction::DeactivateCleanupBlock(EHScopeStack::stable_iterator C,
 }
 
 Address CodeGenFunction::getNormalCleanupDestSlot() {
-  if (!NormalCleanupDest.isValid())
+  if (!NormalCleanupDest)
     NormalCleanupDest =
-      CreateDefaultAlignTempAlloca(Builder.getInt32Ty(), "cleanup.dest.slot");
-  return NormalCleanupDest;
+      CreateTempAlloca(Builder.getInt32Ty(), "cleanup.dest.slot");
+  return Address(NormalCleanupDest, CharUnits::fromQuantity(4));
 }
 
 /// Emits all the code to cause the given temporary to be cleaned up.

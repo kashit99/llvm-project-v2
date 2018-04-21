@@ -450,9 +450,9 @@ public:
   // FIXME: This should be in CompilationInfo.
   std::string GetProgramPath(StringRef Name, const ToolChain &TC) const;
 
-  /// HandleAutocompletions - Handle --autocomplete by searching and printing
+  /// handleAutocompletions - Handle --autocomplete by searching and printing
   /// possible flags, descriptions, and its arguments.
-  void HandleAutocompletions(StringRef PassedFlags) const;
+  void handleAutocompletions(StringRef PassedFlags) const;
 
   /// HandleImmediateArgs - Handle any arguments which should be
   /// treated before building actions or binding tools.
@@ -464,10 +464,8 @@ public:
   /// ConstructAction - Construct the appropriate action to do for
   /// \p Phase on the \p Input, taking in to account arguments
   /// like -fsyntax-only or --analyze.
-  Action *ConstructPhaseAction(
-      Compilation &C, const llvm::opt::ArgList &Args, phases::ID Phase,
-      Action *Input,
-      Action::OffloadKind TargetDeviceOffloadKind = Action::OFK_None) const;
+  Action *ConstructPhaseAction(Compilation &C, const llvm::opt::ArgList &Args,
+                               phases::ID Phase, Action *Input) const;
 
   /// BuildJobsForAction - Construct the jobs to perform for the action \p A and
   /// return an InputInfo for the result of running \p A.  Will only construct

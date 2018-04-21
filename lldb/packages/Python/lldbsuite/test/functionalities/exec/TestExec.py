@@ -38,9 +38,10 @@ class ExecTestCase(TestBase):
     @expectedFailureAll(archs=['i386'], bugnumber="rdar://28656532")
     @expectedFailureAll(oslist=["ios", "tvos", "watchos", "bridgeos"], bugnumber="rdar://problem/34559552") # this exec test has problems on ios systems
     def test_skipping_exec (self):
-        self.do_test(True)
+        self.do_test(False)
 
     def do_test(self, skip_exec):
+        self.makeBuildDir()
         exe = self.getBuildArtifact("a.out")
         if self.getArchitecture() == 'x86_64':
             source = self.getSourcePath("main.cpp")

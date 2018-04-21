@@ -36,31 +36,31 @@ class TestReporter : public benchmark::ConsoleReporter {
 }  // end namespace
 
 static void NoPrefix(benchmark::State& state) {
-  for (auto _ : state) {
+  while (state.KeepRunning()) {
   }
 }
 BENCHMARK(NoPrefix);
 
 static void BM_Foo(benchmark::State& state) {
-  for (auto _ : state) {
+  while (state.KeepRunning()) {
   }
 }
 BENCHMARK(BM_Foo);
 
 static void BM_Bar(benchmark::State& state) {
-  for (auto _ : state) {
+  while (state.KeepRunning()) {
   }
 }
 BENCHMARK(BM_Bar);
 
 static void BM_FooBar(benchmark::State& state) {
-  for (auto _ : state) {
+  while (state.KeepRunning()) {
   }
 }
 BENCHMARK(BM_FooBar);
 
 static void BM_FooBa(benchmark::State& state) {
-  for (auto _ : state) {
+  while (state.KeepRunning()) {
   }
 }
 BENCHMARK(BM_FooBa);

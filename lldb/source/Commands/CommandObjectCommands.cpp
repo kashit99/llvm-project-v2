@@ -18,17 +18,16 @@
 #include "lldb/Core/Debugger.h"
 #include "lldb/Core/IOHandler.h"
 #include "lldb/Host/OptionParser.h"
+#include "lldb/Interpreter/Args.h"
 #include "lldb/Interpreter/CommandHistory.h"
 #include "lldb/Interpreter/CommandInterpreter.h"
 #include "lldb/Interpreter/CommandObjectRegexCommand.h"
 #include "lldb/Interpreter/CommandReturnObject.h"
-#include "lldb/Interpreter/OptionArgParser.h"
 #include "lldb/Interpreter/OptionValueBoolean.h"
 #include "lldb/Interpreter/OptionValueString.h"
 #include "lldb/Interpreter/OptionValueUInt64.h"
 #include "lldb/Interpreter/Options.h"
 #include "lldb/Interpreter/ScriptInterpreter.h"
-#include "lldb/Utility/Args.h"
 #include "lldb/Utility/StringList.h"
 
 using namespace lldb;
@@ -1050,6 +1049,20 @@ protected:
     }
   }
 
+  bool IOHandlerIsInputComplete(IOHandler &io_handler,
+                                StringList &lines) override {
+    // An empty lines is used to indicate the end of input
+    const size_t num_lines = lines.GetSize();
+    if (num_lines > 0 && lines[num_lines - 1].empty()) {
+      // Remove the last empty line from "lines" so it doesn't appear
+      // in our resulting input and return true to indicate we are done
+      // getting lines
+      lines.PopBack();
+      return true;
+    }
+    return false;
+  }
+
   bool DoExecute(Args &command, CommandReturnObject &result) override {
     const size_t argc = command.GetArgumentCount();
     if (argc == 0) {
@@ -1640,7 +1653,7 @@ protected:
         break;
       case 's':
         m_synchronicity =
-            (ScriptedCommandSynchronicity)OptionArgParser::ToOptionEnum(
+            (ScriptedCommandSynchronicity)Args::StringToOptionEnum(
                 option_arg, GetDefinitions()[option_idx].enum_values, 0, error);
         if (!error.Success())
           error.SetErrorStringWithFormat(

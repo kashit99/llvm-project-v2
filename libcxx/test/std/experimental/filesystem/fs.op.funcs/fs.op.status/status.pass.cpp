@@ -14,13 +14,13 @@
 // file_status status(const path& p);
 // file_status status(const path& p, error_code& ec) noexcept;
 
-#include "filesystem_include.hpp"
+#include <experimental/filesystem>
 
 #include "test_macros.h"
 #include "rapid-cxx-test.hpp"
 #include "filesystem_test_helper.hpp"
 
-using namespace fs;
+using namespace std::experimental::filesystem;
 
 TEST_SUITE(filesystem_status_test_suite)
 

@@ -180,8 +180,6 @@ public:
   computeMSVCVersion(const Driver *D,
                      const llvm::opt::ArgList &Args) const override;
 
-  unsigned GetDefaultDwarfVersion() const override { return 2; }
-
   const ToolChain &HostTC;
   CudaInstallationDetector CudaInstallation;
 

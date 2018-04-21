@@ -72,7 +72,7 @@ using namespace llvm;
 
 static bool ProcessVmReadvSupported() {
   static bool is_supported;
-  static llvm::once_flag flag;
+  static std::once_flag flag;
 
   llvm::call_once(flag, [] {
     Log *log(ProcessPOSIXLog::GetLogIfAllCategoriesSet(POSIX_LOG_PROCESS));
@@ -245,15 +245,13 @@ NativeProcessLinux::Factory::Launch(ProcessLaunchInfo &launch_info,
   }
   LLDB_LOG(log, "inferior started, now in stopped state");
 
-  ProcessInstanceInfo Info;
-  if (!Host::GetProcessInfo(pid, Info)) {
-    return llvm::make_error<StringError>("Cannot get process architecture",
-                                         llvm::inconvertibleErrorCode());
-  }
+  ArchSpec arch;
+  if ((status = ResolveProcessArchitecture(pid, arch)).Fail())
+    return status.ToError();
 
   // Set the architecture to the exe architecture.
   LLDB_LOG(log, "pid = {0:x}, detected architecture {1}", pid,
-           Info.GetArchitecture().GetArchitectureName());
+           arch.GetArchitectureName());
 
   status = SetDefaultPtraceOpts(pid);
   if (status.Fail()) {
@@ -263,7 +261,7 @@ NativeProcessLinux::Factory::Launch(ProcessLaunchInfo &launch_info,
 
   return std::unique_ptr<NativeProcessLinux>(new NativeProcessLinux(
       pid, launch_info.GetPTY().ReleaseMasterFileDescriptor(), native_delegate,
-      Info.GetArchitecture(), mainloop, {pid}));
+      arch, mainloop, {pid}));
 }
 
 llvm::Expected<std::unique_ptr<NativeProcessProtocol>>
@@ -274,18 +272,17 @@ NativeProcessLinux::Factory::Attach(
   LLDB_LOG(log, "pid = {0:x}", pid);
 
   // Retrieve the architecture for the running process.
-  ProcessInstanceInfo Info;
-  if (!Host::GetProcessInfo(pid, Info)) {
-    return llvm::make_error<StringError>("Cannot get process architecture",
-                                         llvm::inconvertibleErrorCode());
-  }
+  ArchSpec arch;
+  Status status = ResolveProcessArchitecture(pid, arch);
+  if (!status.Success())
+    return status.ToError();
 
   auto tids_or = NativeProcessLinux::Attach(pid);
   if (!tids_or)
     return tids_or.takeError();
 
   return std::unique_ptr<NativeProcessLinux>(new NativeProcessLinux(
-      pid, -1, native_delegate, Info.GetArchitecture(), mainloop, *tids_or));
+      pid, -1, native_delegate, arch, mainloop, *tids_or));
 }
 
 // -----------------------------------------------------------------------------
@@ -1518,6 +1515,7 @@ Status NativeProcessLinux::GetSoftwareBreakpointPCOffset(
   // set per architecture.  Need ARM, MIPS support here.
   static const uint8_t g_i386_opcode[] = {0xCC};
   static const uint8_t g_s390x_opcode[] = {0x00, 0x01};
+  static const uint8_t g_ppc64le_opcode[] = {0x08, 0x00, 0xe0, 0x7f}; // trap
 
   switch (m_arch.GetMachine()) {
   case llvm::Triple::x86:
@@ -1529,13 +1527,16 @@ Status NativeProcessLinux::GetSoftwareBreakpointPCOffset(
     actual_opcode_size = static_cast<uint32_t>(sizeof(g_s390x_opcode));
     return Status();
 
+  case llvm::Triple::ppc64le:
+    actual_opcode_size = static_cast<uint32_t>(sizeof(g_ppc64le_opcode));
+    return Status();
+
   case llvm::Triple::arm:
   case llvm::Triple::aarch64:
   case llvm::Triple::mips64:
   case llvm::Triple::mips64el:
   case llvm::Triple::mips:
   case llvm::Triple::mipsel:
-  case llvm::Triple::ppc64le:
     // On these architectures the PC don't get updated for breakpoint hits
     actual_opcode_size = 0;
     return Status();

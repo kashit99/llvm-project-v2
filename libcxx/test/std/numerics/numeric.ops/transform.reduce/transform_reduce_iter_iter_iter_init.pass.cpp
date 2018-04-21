@@ -17,9 +17,7 @@
 
 #include <numeric>
 #include <cassert>
-#include <iterator>
 
-#include "MoveOnly.h"
 #include "test_iterators.h"
 
 template <class Iter1, class Iter2, class T>
@@ -58,14 +56,6 @@ void test_return_type()
                        decltype(std::transform_reduce(p, p, p, Init{}))> );
 }
 
-void test_move_only_types()
-{
-    MoveOnly ia[] = {{1}, {2}, {3}};
-    MoveOnly ib[] = {{1}, {2}, {3}};
-    assert(14 ==
-        std::transform_reduce(std::begin(ia), std::end(ia), std::begin(ib), MoveOnly{0}).get());
-}
-
 int main()
 {
     test_return_type<char, int>();
@@ -102,6 +92,4 @@ int main()
     test<const int*,       unsigned int *>();
     test<      int*, const unsigned int *>();
     test<      int*,       unsigned int *>();
-
-    test_move_only_types();
 }

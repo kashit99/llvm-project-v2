@@ -16,7 +16,7 @@
 // void pop();
 // void pop(error_code& ec);
 
-#include "filesystem_include.hpp"
+#include <experimental/filesystem>
 #include <set>
 #include <cassert>
 
@@ -24,7 +24,7 @@
 #include "rapid-cxx-test.hpp"
 #include "filesystem_test_helper.hpp"
 
-using namespace fs;
+using namespace std::experimental::filesystem;
 
 TEST_SUITE(recursive_directory_iterator_pop_tests)
 

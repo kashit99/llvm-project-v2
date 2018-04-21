@@ -22,7 +22,7 @@
 //      path& assign(InputIterator first, InputIterator last);
 
 
-#include "filesystem_include.hpp"
+#include <experimental/filesystem>
 #include <type_traits>
 #include <string_view>
 #include <cassert>
@@ -33,6 +33,7 @@
 #include "filesystem_test_helper.hpp"
 #include <iostream>
 
+namespace fs = std::experimental::filesystem;
 
 template <class CharT>
 void RunTestCase(MultiStringType const& MS) {

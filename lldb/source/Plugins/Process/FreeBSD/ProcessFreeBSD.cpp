@@ -83,7 +83,7 @@ ProcessFreeBSD::CreateInstance(lldb::TargetSP target_sp,
 }
 
 void ProcessFreeBSD::Initialize() {
-  static llvm::once_flag g_once_flag;
+  static std::once_flag g_once_flag;
 
   llvm::call_once(g_once_flag, []() {
     PluginManager::RegisterPlugin(GetPluginNameStatic(),
@@ -407,8 +407,9 @@ Status ProcessFreeBSD::DoLaunch(Module *module,
 
   m_monitor = new ProcessMonitor(
       this, module, launch_info.GetArguments().GetConstArgumentVector(),
-      launch_info.GetEnvironment(), stdin_file_spec, stdout_file_spec,
-      stderr_file_spec, working_dir, launch_info, error);
+      launch_info.GetEnvironmentEntries().GetConstArgumentVector(),
+      stdin_file_spec, stdout_file_spec, stderr_file_spec, working_dir,
+      launch_info, error);
 
   m_module = module;
 

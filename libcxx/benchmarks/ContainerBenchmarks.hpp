@@ -3,7 +3,7 @@
 
 #include <cassert>
 
-#include "benchmark/benchmark.h"
+#include "benchmark/benchmark_api.h"
 
 namespace ContainerBenchmarks {
 

@@ -75,7 +75,8 @@ File::File(const char *path, uint32_t options, uint32_t permissions)
     : IOObject(eFDTypeFile, false), m_descriptor(kInvalidDescriptor),
       m_stream(kInvalidStream), m_options(), m_own_stream(false),
       m_is_interactive(eLazyBoolCalculate),
-      m_is_real_terminal(eLazyBoolCalculate) {
+      m_is_real_terminal(eLazyBoolCalculate),
+      m_supports_colors(eLazyBoolCalculate) {
   Open(path, options, permissions);
 }
 
@@ -83,9 +84,8 @@ File::File(const FileSpec &filespec, uint32_t options, uint32_t permissions)
     : IOObject(eFDTypeFile, false), m_descriptor(kInvalidDescriptor),
       m_stream(kInvalidStream), m_options(0), m_own_stream(false),
       m_is_interactive(eLazyBoolCalculate),
-      m_is_real_terminal(eLazyBoolCalculate)
-
-{
+      m_is_real_terminal(eLazyBoolCalculate),
+      m_supports_colors(eLazyBoolCalculate) {
   if (filespec) {
     Open(filespec.GetPath().c_str(), options, permissions);
   }
@@ -100,7 +100,7 @@ int File::GetDescriptor() const {
   // Don't open the file descriptor if we don't need to, just get it from the
   // stream if we have one.
   if (StreamIsValid()) {
-#if defined(_WIN32)
+#if defined(LLVM_ON_WIN32)
     return _fileno(m_stream);
 #else
     return fileno(m_stream);
@@ -802,6 +802,7 @@ void File::CalculateInteractiveAndTerminal() {
   if (fd >= 0) {
     m_is_interactive = eLazyBoolNo;
     m_is_real_terminal = eLazyBoolNo;
+    m_supports_colors = eLazyBoolNo;
 #if defined(_WIN32)
     if (_isatty(fd)) {
       m_is_interactive = eLazyBoolYes;

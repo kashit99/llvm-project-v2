@@ -280,7 +280,7 @@ SourceLocation
 getLocForEndOfDecl(const clang::Decl *D,
                    const LangOptions &LangOpts = clang::LangOptions()) {
   const auto &SM = D->getASTContext().getSourceManager();
-  auto EndExpansionLoc = SM.getExpansionRange(D->getLocEnd()).second;
+  auto EndExpansionLoc = SM.getExpansionLoc(D->getLocEnd());
   std::pair<FileID, unsigned> LocInfo = SM.getDecomposedLoc(EndExpansionLoc);
   // Try to load the file buffer.
   bool InvalidTemp = false;
@@ -523,7 +523,6 @@ void ClangMoveTool::registerMatchers(ast_matchers::MatchFinder *Finder) {
   auto AllDeclsInHeader = namedDecl(
       unless(ForwardClassDecls), unless(namespaceDecl()),
       unless(usingDirectiveDecl()), // using namespace decl.
-      notInMacro(),
       InOldHeader,
       hasParent(decl(anyOf(namespaceDecl(), translationUnitDecl()))),
       hasDeclContext(decl(anyOf(namespaceDecl(), translationUnitDecl()))));
@@ -695,28 +694,22 @@ void ClangMoveTool::addIncludes(llvm::StringRef IncludeHeader, bool IsAngled,
                                 const SourceManager &SM) {
   SmallVector<char, 128> HeaderWithSearchPath;
   llvm::sys::path::append(HeaderWithSearchPath, SearchPath, IncludeHeader);
-  std::string AbsoluteIncludeHeader =
+  std::string AbsoluteOldHeader = makeAbsolutePath(Context->Spec.OldHeader);
+  if (AbsoluteOldHeader ==
       MakeAbsolutePath(SM, llvm::StringRef(HeaderWithSearchPath.data(),
-                                           HeaderWithSearchPath.size()));
+                                           HeaderWithSearchPath.size()))) {
+    OldHeaderIncludeRange = IncludeFilenameRange;
+    return;
+  }
+
   std::string IncludeLine =
       IsAngled ? ("#include <" + IncludeHeader + ">\n").str()
                : ("#include \"" + IncludeHeader + "\"\n").str();
 
-  std::string AbsoluteOldHeader = makeAbsolutePath(Context->Spec.OldHeader);
   std::string AbsoluteCurrentFile = MakeAbsolutePath(SM, FileName);
   if (AbsoluteOldHeader == AbsoluteCurrentFile) {
-    // Find old.h includes "old.h".
-    if (AbsoluteOldHeader == AbsoluteIncludeHeader) {
-      OldHeaderIncludeRangeInHeader = IncludeFilenameRange;
-      return;
-    }
     HeaderIncludes.push_back(IncludeLine);
   } else if (makeAbsolutePath(Context->Spec.OldCC) == AbsoluteCurrentFile) {
-    // Find old.cc includes "old.h".
-    if (AbsoluteOldHeader == AbsoluteIncludeHeader) {
-      OldHeaderIncludeRangeInCC = IncludeFilenameRange;
-      return;
-    }
     CCIncludes.push_back(IncludeLine);
   }
 }
@@ -864,18 +857,13 @@ void ClangMoveTool::moveAll(SourceManager &SM, StringRef OldFile,
   if (!NewFile.empty()) {
     auto AllCode = clang::tooling::Replacements(
         clang::tooling::Replacement(NewFile, 0, 0, Code));
-    auto ReplaceOldInclude = [&](clang::CharSourceRange OldHeaderIncludeRange) {
-      AllCode = AllCode.merge(clang::tooling::Replacements(
-          clang::tooling::Replacement(SM, OldHeaderIncludeRange,
-                                      '"' + Context->Spec.NewHeader + '"')));
-    };
-    // Fix the case where old.h/old.cc includes "old.h", we replace the
-    // `#include "old.h"` with `#include "new.h"`.
-    if (Context->Spec.NewCC == NewFile && OldHeaderIncludeRangeInCC.isValid())
-      ReplaceOldInclude(OldHeaderIncludeRangeInCC);
-    else if (Context->Spec.NewHeader == NewFile &&
-             OldHeaderIncludeRangeInHeader.isValid())
-      ReplaceOldInclude(OldHeaderIncludeRangeInHeader);
+    // If we are moving from old.cc, an extra step is required: excluding
+    // the #include of "old.h", instead, we replace it with #include of "new.h".
+    if (Context->Spec.NewCC == NewFile && OldHeaderIncludeRange.isValid()) {
+      AllCode = AllCode.merge(
+          clang::tooling::Replacements(clang::tooling::Replacement(
+              SM, OldHeaderIncludeRange, '"' + Context->Spec.NewHeader + '"')));
+    }
     Context->FileToReplacements[NewFile] = std::move(AllCode);
   }
 }
@@ -906,9 +894,10 @@ void ClangMoveTool::onEndOfTranslationUnit() {
 
   if (RemovedDecls.empty())
     return;
-  // Ignore symbols that are not supported when checking if there is unremoved
-  // symbol in old header. This makes sure that we always move old files to new
-  // files when all symbols produced from dump_decls are moved.
+  // Ignore symbols that are not supported (e.g. typedef and enum) when
+  // checking if there is unremoved symbol in old header. This makes sure that
+  // we always move old files to new files when all symbols produced from
+  // dump_decls are moved.
   auto IsSupportedKind = [](const clang::NamedDecl *Decl) {
     switch (Decl->getKind()) {
     case Decl::Kind::Function:

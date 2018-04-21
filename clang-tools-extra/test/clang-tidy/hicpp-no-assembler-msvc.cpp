@@ -1,6 +1,4 @@
 // REQUIRES: system-windows
-// FIXME: Re-enable test on windows (PR36855)
-// UNSUPPORTED: system-windows
 // RUN: %check_clang_tidy %s hicpp-no-assembler %t
 
 void f() {

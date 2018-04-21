@@ -19,6 +19,7 @@
 // Other libraries and framework includes
 // Project includes
 #include "lldb/Core/ClangForward.h"
+#include "lldb/Core/SwiftForward.h"
 #include "lldb/lldb-private.h"
 #include "llvm/ADT/APSInt.h"
 
@@ -43,6 +44,7 @@ public:
   //----------------------------------------------------------------------
   CompilerType(TypeSystem *type_system, lldb::opaque_compiler_type_t type);
   CompilerType(clang::ASTContext *ast_context, clang::QualType qual_type);
+  CompilerType(swift::ASTContext *ast_context, swift::Type qual_type);
 
   CompilerType(const CompilerType &rhs)
       : m_type(rhs.m_type), m_type_system(rhs.m_type_system) {}
@@ -126,11 +128,12 @@ public:
 
   bool
   IsPossibleCPlusPlusDynamicType(CompilerType *target_type = nullptr) const {
-    return IsPossibleDynamicType(target_type, true, false);
+    return IsPossibleDynamicType(target_type, true, false, false);
   }
 
   bool IsPossibleDynamicType(CompilerType *target_type, // Can pass nullptr
-                             bool check_cplusplus, bool check_objc) const;
+                             bool check_cplusplus, bool check_objc,
+                             bool check_swift) const;
 
   bool IsPointerToScalarType() const;
 
@@ -177,6 +180,10 @@ public:
 
   ConstString GetDisplayTypeName() const;
 
+  ConstString GetTypeSymbolName() const;
+
+  ConstString GetMangledTypeName() const;
+
   uint32_t
   GetTypeInfo(CompilerType *pointee_or_element_compiler_type = nullptr) const;
 
@@ -202,6 +209,8 @@ public:
   CompilerType GetArrayType(uint64_t size) const;
 
   CompilerType GetCanonicalType() const;
+
+  CompilerType GetInstanceType() const;
 
   CompilerType GetFullyUnqualifiedType() const;
 
@@ -282,6 +291,8 @@ public:
   // If the current object represents a typedef type, get the underlying type
   CompilerType GetTypedefedType() const;
 
+  CompilerType GetUnboundType() const;
+
   //----------------------------------------------------------------------
   // Create related types using the current type's AST
   //----------------------------------------------------------------------
@@ -296,6 +307,10 @@ public:
   uint64_t GetByteSize(ExecutionContextScope *exe_scope) const;
 
   uint64_t GetBitSize(ExecutionContextScope *exe_scope) const;
+
+  uint64_t GetByteStride() const;
+
+  uint64_t GetAlignedBitSize() const;
 
   lldb::Encoding GetEncoding(uint64_t &count) const;
 
@@ -371,6 +386,9 @@ public:
   lldb::TemplateArgumentKind GetTemplateArgumentKind(size_t idx) const;
   CompilerType GetTypeTemplateArgument(size_t idx) const;
 
+  lldb::GenericKind GetGenericArgumentKind(size_t idx) const;
+  CompilerType GetGenericArgumentType(size_t idx) const;
+
   // Returns the value of the template argument and its type.
   llvm::Optional<IntegralTemplateArgument>
   GetIntegralTemplateArgument(size_t idx) const;
@@ -402,7 +420,7 @@ public:
   bool DumpTypeValue(Stream *s, lldb::Format format, const DataExtractor &data,
                      lldb::offset_t data_offset, size_t data_byte_size,
                      uint32_t bitfield_bit_size, uint32_t bitfield_bit_offset,
-                     ExecutionContextScope *exe_scope);
+                     ExecutionContextScope *exe_scope, bool is_base_class);
 
   void DumpSummary(ExecutionContext *exe_ctx, Stream *s,
                    const DataExtractor &data, lldb::offset_t data_offset,

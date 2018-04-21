@@ -119,7 +119,7 @@ private:
   void parseObjCProtocolList();
   void parseObjCUntilAtEnd();
   void parseObjCInterfaceOrImplementation();
-  bool parseObjCProtocol();
+  void parseObjCProtocol();
   void parseJavaScriptEs6ImportExport();
   bool tryToParseLambda();
   bool tryToParseLambdaIntroducer();
@@ -141,7 +141,7 @@ private:
   // token.
   //
   // NextTok specifies the next token. A null pointer NextTok is supported, and
-  // signifies either the absence of a next token, or that the next token
+  // signifies either the absense of a next token, or that the next token
   // shouldn't be taken into accunt for the analysis.
   void distributeComments(const SmallVectorImpl<FormatToken *> &Comments,
                           const FormatToken *NextTok);

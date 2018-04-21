@@ -242,7 +242,8 @@ bool CPlusPlusNameParser::ConsumeTemplateArgs() {
     }
   }
 
-  if (template_counter != 0) {
+  assert(template_counter >= 0);
+  if (template_counter > 0) {
     return false;
   }
   start_position.Remove();

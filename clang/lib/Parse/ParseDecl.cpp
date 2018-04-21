@@ -440,28 +440,14 @@ unsigned Parser::ParseClangAttributeArgs(
   AttributeList::Kind AttrKind =
       AttributeList::getKind(AttrName, ScopeName, Syntax);
 
-  switch (AttrKind) {
-  default:
-    return ParseAttributeArgsCommon(AttrName, AttrNameLoc, Attrs, EndLoc,
-                                    ScopeName, ScopeLoc, Syntax);
-  case AttributeList::AT_ExternalSourceSymbol:
+  if (AttrKind == AttributeList::AT_ExternalSourceSymbol) {
     ParseExternalSourceSymbolAttribute(*AttrName, AttrNameLoc, Attrs, EndLoc,
                                        ScopeName, ScopeLoc, Syntax);
-    break;
-  case AttributeList::AT_Availability:
-    ParseAvailabilityAttribute(*AttrName, AttrNameLoc, Attrs, EndLoc, ScopeName,
-                               ScopeLoc, Syntax);
-    break;
-  case AttributeList::AT_ObjCBridgeRelated:
-    ParseObjCBridgeRelatedAttribute(*AttrName, AttrNameLoc, Attrs, EndLoc,
-                                    ScopeName, ScopeLoc, Syntax);
-    break;
-  case AttributeList::AT_TypeTagForDatatype:
-    ParseTypeTagForDatatypeAttribute(*AttrName, AttrNameLoc, Attrs, EndLoc,
-                                     ScopeName, ScopeLoc, Syntax);
-    break;
+    return Attrs.getList() ? Attrs.getList()->getNumArgs() : 0;
   }
-  return Attrs.getList() ? Attrs.getList()->getNumArgs() : 0;
+
+  return ParseAttributeArgsCommon(AttrName, AttrNameLoc, Attrs, EndLoc,
+                                  ScopeName, ScopeLoc, Syntax);
 }
 
 bool Parser::ParseMicrosoftDeclSpecArgs(IdentifierInfo *AttrName,
@@ -1309,9 +1295,7 @@ void Parser::ParseObjCBridgeRelatedAttribute(IdentifierInfo &ObjCBridgeRelated,
     return;
   }
 
-  // Parse class method name.  It's non-optional in the sense that a trailing
-  // comma is required, but it can be the empty string, and then we record a
-  // nullptr.
+  // Parse optional class method name.
   IdentifierLoc *ClassMethod = nullptr;
   if (Tok.is(tok::identifier)) {
     ClassMethod = ParseIdentifierLoc();
@@ -1330,8 +1314,7 @@ void Parser::ParseObjCBridgeRelatedAttribute(IdentifierInfo &ObjCBridgeRelated,
     return;
   }
   
-  // Parse instance method name.  Also non-optional but empty string is
-  // permitted.
+  // Parse optional instance method name.
   IdentifierLoc *InstanceMethod = nullptr;
   if (Tok.is(tok::identifier))
     InstanceMethod = ParseIdentifierLoc();
@@ -2078,13 +2061,8 @@ Parser::DeclGroupPtrTy Parser::ParseDeclGroup(ParsingDeclSpec &DS,
     }
 
     Decl *ThisDecl = Actions.ActOnDeclarator(getCurScope(), D);
-    if (IsForRangeLoop) {
+    if (IsForRangeLoop)
       Actions.ActOnCXXForRangeDecl(ThisDecl);
-    } else {
-      // Obj-C for loop
-      if (auto *VD = dyn_cast_or_null<VarDecl>(ThisDecl))
-        VD->setObjCForDecl(true);
-    }
     Actions.FinalizeDeclaration(ThisDecl);
     D.complete(ThisDecl);
     return Actions.FinalizeDeclaratorGroup(getCurScope(), DS, ThisDecl);
@@ -2519,7 +2497,7 @@ bool Parser::ParseImplicitInt(DeclSpec &DS, CXXScopeSpec *SS,
 
   SourceLocation Loc = Tok.getLocation();
   // If we see an identifier that is not a type name, we normally would
-  // parse it as the identifier being declared.  However, when a typename
+  // parse it as the identifer being declared.  However, when a typename
   // is typo'd or the definition is not included, this will incorrectly
   // parse the typename as the identifier name and fall over misparsing
   // later parts of the diagnostic.
@@ -2742,11 +2720,9 @@ Parser::getDeclSpecContextFromDeclaratorContext(DeclaratorContext Context) {
     return DeclSpecContext::DSC_top_level;
   if (Context == DeclaratorContext::TemplateParamContext)
     return DeclSpecContext::DSC_template_param;
-  if (Context == DeclaratorContext::TemplateArgContext ||
-      Context == DeclaratorContext::TemplateTypeArgContext)
+  if (Context == DeclaratorContext::TemplateTypeArgContext)
     return DeclSpecContext::DSC_template_type_arg;
-  if (Context == DeclaratorContext::TrailingReturnContext ||
-      Context == DeclaratorContext::TrailingReturnVarContext)
+  if (Context == DeclaratorContext::TrailingReturnContext)
     return DeclSpecContext::DSC_trailing;
   if (Context == DeclaratorContext::AliasDeclContext ||
       Context == DeclaratorContext::AliasTemplateContext)
@@ -5176,7 +5152,7 @@ void Parser::ParseTypeQualifierListOpt(
                                  getLangOpts());
       break;
     case tok::kw___uptr:
-      // GNU libc headers in C mode use '__uptr' as an identifier which conflicts
+      // GNU libc headers in C mode use '__uptr' as an identifer which conflicts
       // with the MS modifier keyword.
       if ((AttrReqs & AR_DeclspecAttributesParsed) && !getLangOpts().CPlusPlus &&
           IdentifierRequired && DS.isEmpty() && NextToken().is(tok::semi)) {
@@ -5695,7 +5671,7 @@ void Parser::ParseDirectDeclarator(Declarator &D) {
       // An identifier within parens is unlikely to be intended to be anything
       // other than a name being "declared".
       DiagnoseIdentifier = true;
-    else if (D.getContext() == DeclaratorContext::TemplateArgContext)
+    else if (D.getContext() == DeclaratorContext::TemplateTypeArgContext)
       // T<int N> is an accidental identifier; T<int N indicates a missing '>'.
       DiagnoseIdentifier =
           NextToken().isOneOf(tok::comma, tok::greater, tok::greatergreater);
@@ -5703,8 +5679,7 @@ void Parser::ParseDirectDeclarator(Declarator &D) {
              D.getContext() == DeclaratorContext::AliasTemplateContext)
       // The most likely error is that the ';' was forgotten.
       DiagnoseIdentifier = NextToken().isOneOf(tok::comma, tok::semi);
-    else if ((D.getContext() == DeclaratorContext::TrailingReturnContext ||
-              D.getContext() == DeclaratorContext::TrailingReturnVarContext) &&
+    else if (D.getContext() == DeclaratorContext::TrailingReturnContext &&
              !isCXX11VirtSpecifier(Tok))
       DiagnoseIdentifier = NextToken().isOneOf(
           tok::comma, tok::semi, tok::equal, tok::l_brace, tok::kw_try);
@@ -5718,18 +5693,6 @@ void Parser::ParseDirectDeclarator(Declarator &D) {
   }
 
   if (Tok.is(tok::l_paren)) {
-    // If this might be an abstract-declarator followed by a direct-initializer,
-    // check whether this is a valid declarator chunk. If it can't be, assume
-    // that it's an initializer instead.
-    if (D.mayOmitIdentifier() && D.mayBeFollowedByCXXDirectInit()) {
-      RevertingTentativeParsingAction PA(*this);
-      if (TryParseDeclarator(true, D.mayHaveIdentifier(), true) ==
-              TPResult::False) {
-        D.SetIdentifier(nullptr, Tok.getLocation());
-        goto PastIdentifier;
-      }
-    }
-
     // direct-declarator: '(' declarator ')'
     // direct-declarator: '(' attributes declarator ')'
     // Example: 'char (*X)'   or 'int (*XX)(void)'
@@ -6200,8 +6163,7 @@ void Parser::ParseFunctionDeclarator(Declarator &D,
           StartLoc = D.getDeclSpec().getTypeSpecTypeLoc();
         LocalEndLoc = Tok.getLocation();
         SourceRange Range;
-        TrailingReturnType =
-            ParseTrailingReturnType(Range, D.mayBeFollowedByCXXDirectInit());
+        TrailingReturnType = ParseTrailingReturnType(Range);
         EndLoc = Range.getEnd();
       }
     } else if (standardAttributesAllowed()) {

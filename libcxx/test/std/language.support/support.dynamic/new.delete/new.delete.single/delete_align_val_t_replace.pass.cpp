@@ -68,32 +68,31 @@ void operator delete(void* p, std::align_val_t) TEST_NOEXCEPT
 struct alignas(OverAligned) A {};
 struct alignas(std::max_align_t) B {};
 
+B* volatile bp;
+A* volatile ap;
+
 int main()
 {
     reset();
     {
-        B *bp = new B;
-        DoNotOptimize(bp);
+        bp = new B;
         assert(0 == unsized_delete_called);
         assert(0 == unsized_delete_nothrow_called);
         assert(0 == aligned_delete_called);
 
         delete bp;
-        DoNotOptimize(bp);
         assert(1 == unsized_delete_called);
         assert(0 == unsized_delete_nothrow_called);
         assert(0 == aligned_delete_called);
     }
     reset();
     {
-        A *ap = new A;
-        DoNotOptimize(ap);
+        ap = new A;
         assert(0 == unsized_delete_called);
         assert(0 == unsized_delete_nothrow_called);
         assert(0 == aligned_delete_called);
 
         delete ap;
-        DoNotOptimize(ap);
         assert(0 == unsized_delete_called);
         assert(0 == unsized_delete_nothrow_called);
         assert(1 == aligned_delete_called);

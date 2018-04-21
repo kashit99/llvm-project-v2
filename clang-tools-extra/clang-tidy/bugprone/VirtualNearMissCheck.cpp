@@ -19,13 +19,11 @@ namespace clang {
 namespace tidy {
 namespace bugprone {
 
-namespace {
 AST_MATCHER(CXXMethodDecl, isStatic) { return Node.isStatic(); }
 
 AST_MATCHER(CXXMethodDecl, isOverloadedOperator) {
   return Node.isOverloadedOperator();
 }
-} // namespace
 
 /// Finds out if the given method overrides some method.
 static bool isOverrideMethod(const CXXMethodDecl *MD) {

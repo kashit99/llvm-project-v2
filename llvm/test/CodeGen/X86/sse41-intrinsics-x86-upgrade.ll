@@ -7,7 +7,7 @@
 define <2 x double> @test_x86_sse41_blendpd(<2 x double> %a0, <2 x double> %a1) {
 ; CHECK-LABEL: test_x86_sse41_blendpd:
 ; CHECK:       ## %bb.0:
-; CHECK-NEXT:    blendps {{.*#+}} xmm0 = xmm0[0,1],xmm1[2,3]
+; CHECK-NEXT:    blendpd {{.*#+}} xmm0 = xmm0[0],xmm1[1]
 ; CHECK-NEXT:    retl
   %res = call <2 x double> @llvm.x86.sse41.blendpd(<2 x double> %a0, <2 x double> %a1, i32 6) ; <<2 x double>> [#uses=1]
   ret <2 x double> %res
@@ -305,13 +305,3 @@ define <4 x i32> @min_epu32(<4 x i32> %a0, <4 x i32> %a1) {
 }
 declare <4 x i32> @llvm.x86.sse41.pminud(<4 x i32>, <4 x i32>) nounwind readnone
 
-
-define <2 x i64> @test_x86_sse41_pmuldq(<4 x i32> %a0, <4 x i32> %a1) {
-; CHECK-LABEL: test_x86_sse41_pmuldq:
-; CHECK:       ## %bb.0:
-; CHECK-NEXT:    pmuldq %xmm1, %xmm0
-; CHECK-NEXT:    retl
-  %res = call <2 x i64> @llvm.x86.sse41.pmuldq(<4 x i32> %a0, <4 x i32> %a1) ; <<2 x i64>> [#uses=1]
-  ret <2 x i64> %res
-}
-declare <2 x i64> @llvm.x86.sse41.pmuldq(<4 x i32>, <4 x i32>) nounwind readnone

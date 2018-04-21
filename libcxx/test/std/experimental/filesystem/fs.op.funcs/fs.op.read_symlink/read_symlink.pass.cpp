@@ -14,13 +14,14 @@
 // path read_symlink(const path& p);
 // path read_symlink(const path& p, error_code& ec);
 
-#include "filesystem_include.hpp"
+#include <experimental/filesystem>
 
 #include "test_macros.h"
 #include "rapid-cxx-test.hpp"
 #include "filesystem_test_helper.hpp"
 
-using namespace fs;
+using namespace std::experimental::filesystem;
+namespace fs = std::experimental::filesystem;
 
 TEST_SUITE(filesystem_read_symlink_test_suite)
 

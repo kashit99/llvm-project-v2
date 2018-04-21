@@ -933,7 +933,24 @@ public:
 
   bool GetIsDynamicLinkEditor();
 
+  // This function must be called immediately after construction of the Module
+  // in the cases where the AST is to be shared.
+  void SetTypeSystemForLanguage(lldb::LanguageType language,
+                                const lldb::TypeSystemSP &type_system_sp);
+
+#ifdef __clang_analyzer__
+  // See GetScratchTypeSystemForLanguage() in Target.h for what this block does
+  TypeSystem *GetTypeSystemForLanguage(lldb::LanguageType language)
+      __attribute__((always_inline)) {
+    TypeSystem *ret = GetTypeSystemForLanguageImpl(language);
+    return ret ? ret : nullptr;
+  }
+
+  TypeSystem *GetTypeSystemForLanguageImpl(lldb::LanguageType language);
+#else
   TypeSystem *GetTypeSystemForLanguage(lldb::LanguageType language);
+  TypeSystem *GetTypeSystemForLanguageNoCreate(lldb::LanguageType language);
+#endif
 
   // Special error functions that can do printf style formatting that will
   // prepend the message with
@@ -1020,6 +1037,26 @@ public:
   //------------------------------------------------------------------
   bool RemapSourceFile(llvm::StringRef path, std::string &new_path) const;
   bool RemapSourceFile(const char *, std::string &) const = delete;
+
+  //------------------------------------------------------------------
+  /// Loads this module to memory.
+  ///
+  /// Loads the bits needed to create an executable image to the memory.
+  /// It is useful with bare-metal targets where target does not have the
+  /// ability to start a process itself.
+  ///
+  /// @param[in] target
+  ///     Target where to load the module.
+  ///
+  /// @return
+  //------------------------------------------------------------------
+  Status LoadInMemory(Target &target, bool set_pc);
+
+  void ClearModuleDependentCaches();
+
+  void SetTypeSystemMap(const TypeSystemMap &type_system_map) {
+    m_type_system_map = type_system_map;
+  }
 
   //----------------------------------------------------------------------
   /// @class LookupInfo Module.h "lldb/Core/Module.h"

@@ -16,7 +16,7 @@
 // recursive_directory_iterator begin(recursive_directory_iterator iter) noexcept;
 // recursive_directory_iterator end(recursive_directory_iterator iter) noexcept;
 
-#include "filesystem_include.hpp"
+#include <experimental/filesystem>
 #include <type_traits>
 #include <set>
 #include <cassert>
@@ -26,7 +26,7 @@
 #include "filesystem_test_helper.hpp"
 #include <iostream>
 
-using namespace fs;
+using namespace std::experimental::filesystem;
 
 TEST_SUITE(recursive_directory_iterator_begin_end_tests)
 

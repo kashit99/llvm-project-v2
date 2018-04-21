@@ -10,6 +10,7 @@
 #include "DWARFASTParserGo.h"
 
 #include "DWARFASTParserGo.h"
+#include "DWARFCompileUnit.h"
 #include "DWARFDIE.h"
 #include "DWARFDIECollection.h"
 #include "DWARFDebugInfo.h"

@@ -22,7 +22,6 @@
 #include "lldb/Host/OptionParser.h"
 #include "lldb/Interpreter/CommandInterpreter.h"
 #include "lldb/Interpreter/CommandReturnObject.h"
-#include "lldb/Interpreter/OptionArgParser.h"
 #include "lldb/Target/Target.h"
 #include "lldb/Target/Thread.h"
 
@@ -332,7 +331,7 @@ are no syntax errors may indicate that a function was declared but never called.
         break;
 
       case 's':
-        m_script_language = (lldb::ScriptLanguage)OptionArgParser::ToOptionEnum(
+        m_script_language = (lldb::ScriptLanguage)Args::StringToOptionEnum(
             option_arg, GetDefinitions()[option_idx].enum_values,
             eScriptLanguageNone, error);
 
@@ -342,8 +341,7 @@ are no syntax errors may indicate that a function was declared but never called.
 
       case 'e': {
         bool success = false;
-        m_stop_on_error =
-            OptionArgParser::ToBoolean(option_arg, false, &success);
+        m_stop_on_error = Args::StringToBoolean(option_arg, false, &success);
         if (!success)
           error.SetErrorStringWithFormat(
               "invalid value for stop-on-error: \"%s\"",

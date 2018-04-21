@@ -1,4 +1,4 @@
-//===- DelayedDiagnostic.h - Delayed declarator diagnostics -----*- C++ -*-===//
+//===--- DelayedDiagnostic.h - Delayed declarator diagnostics ---*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -6,7 +6,7 @@
 // License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
-//
+///
 /// \file
 /// \brief Defines the classes clang::DelayedDiagnostic and 
 /// clang::AccessedEntity.
@@ -16,34 +16,16 @@
 /// diagnostics -- notably deprecation and access control -- are suppressed
 /// based on semantic properties of the parsed declaration that aren't known
 /// until it is fully parsed.
-//
+///
 //===----------------------------------------------------------------------===//
 
 #ifndef LLVM_CLANG_SEMA_DELAYEDDIAGNOSTIC_H
 #define LLVM_CLANG_SEMA_DELAYEDDIAGNOSTIC_H
 
-#include "clang/AST/DeclAccessPair.h"
-#include "clang/AST/DeclBase.h"
-#include "clang/AST/DeclCXX.h"
-#include "clang/AST/Type.h"
-#include "clang/Basic/LLVM.h"
-#include "clang/Basic/PartialDiagnostic.h"
-#include "clang/Basic/SourceLocation.h"
-#include "clang/Basic/Specifiers.h"
 #include "clang/Sema/Sema.h"
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Support/Casting.h"
-#include <cassert>
-#include <cstddef>
-#include <utility>
 
 namespace clang {
-
-class ObjCInterfaceDecl;
-class ObjCPropertyDecl;
-
 namespace sema {
 
 /// A declaration being accessed, together with information about how
@@ -58,14 +40,16 @@ public:
   /// The target is the base class.
   enum BaseNonce { Base };
 
+  bool isMemberAccess() const { return IsMember; }
+
   AccessedEntity(PartialDiagnostic::StorageAllocator &Allocator,
                  MemberNonce _,
                  CXXRecordDecl *NamingClass,
                  DeclAccessPair FoundDecl,
                  QualType BaseObjectType)
-      : Access(FoundDecl.getAccess()), IsMember(true),
-        Target(FoundDecl.getDecl()), NamingClass(NamingClass),
-        BaseObjectType(BaseObjectType), Diag(0, Allocator) {
+    : Access(FoundDecl.getAccess()), IsMember(true),
+      Target(FoundDecl.getDecl()), NamingClass(NamingClass),
+      BaseObjectType(BaseObjectType), Diag(0, Allocator) {
   }
 
   AccessedEntity(PartialDiagnostic::StorageAllocator &Allocator,
@@ -73,10 +57,11 @@ public:
                  CXXRecordDecl *BaseClass,
                  CXXRecordDecl *DerivedClass,
                  AccessSpecifier Access)
-      : Access(Access), IsMember(false), Target(BaseClass),
-        NamingClass(DerivedClass), Diag(0, Allocator) {}
-
-  bool isMemberAccess() const { return IsMember; }
+    : Access(Access), IsMember(false),
+      Target(BaseClass),
+      NamingClass(DerivedClass),
+      Diag(0, Allocator) {
+  }
 
   bool isQuiet() const { return Diag.getDiagID() == 0; }
 
@@ -237,6 +222,7 @@ public:
   }
 
 private:
+
   struct AD {
     const NamedDecl *ReferringDecl;
     const NamedDecl *OffendingDecl;
@@ -270,28 +256,25 @@ class DelayedDiagnosticPool {
   const DelayedDiagnosticPool *Parent;
   SmallVector<DelayedDiagnostic, 4> Diagnostics;
 
+  DelayedDiagnosticPool(const DelayedDiagnosticPool &) = delete;
+  void operator=(const DelayedDiagnosticPool &) = delete;
 public:
   DelayedDiagnosticPool(const DelayedDiagnosticPool *parent) : Parent(parent) {}
-
-  DelayedDiagnosticPool(const DelayedDiagnosticPool &) = delete;
-  DelayedDiagnosticPool &operator=(const DelayedDiagnosticPool &) = delete;
-
-  DelayedDiagnosticPool(DelayedDiagnosticPool &&Other)
-      : Parent(Other.Parent), Diagnostics(std::move(Other.Diagnostics)) {
-    Other.Diagnostics.clear();
+  ~DelayedDiagnosticPool() {
+    for (SmallVectorImpl<DelayedDiagnostic>::iterator
+           i = Diagnostics.begin(), e = Diagnostics.end(); i != e; ++i)
+      i->Destroy();
   }
 
+  DelayedDiagnosticPool(DelayedDiagnosticPool &&Other)
+    : Parent(Other.Parent), Diagnostics(std::move(Other.Diagnostics)) {
+    Other.Diagnostics.clear();
+  }
   DelayedDiagnosticPool &operator=(DelayedDiagnosticPool &&Other) {
     Parent = Other.Parent;
     Diagnostics = std::move(Other.Diagnostics);
     Other.Diagnostics.clear();
     return *this;
-  }
-
-  ~DelayedDiagnosticPool() {
-    for (SmallVectorImpl<DelayedDiagnostic>::iterator
-           i = Diagnostics.begin(), e = Diagnostics.end(); i != e; ++i)
-      i->Destroy();
   }
 
   const DelayedDiagnosticPool *getParent() const { return Parent; }
@@ -318,14 +301,13 @@ public:
     pool.Diagnostics.clear();
   }
 
-  using pool_iterator = SmallVectorImpl<DelayedDiagnostic>::const_iterator;
-
+  typedef SmallVectorImpl<DelayedDiagnostic>::const_iterator pool_iterator;
   pool_iterator pool_begin() const { return Diagnostics.begin(); }
   pool_iterator pool_end() const { return Diagnostics.end(); }
   bool pool_empty() const { return Diagnostics.empty(); }
 };
 
-} // namespace clang
+}
 
 /// Add a diagnostic to the current delay pool.
 inline void Sema::DelayedDiagnostics::add(const sema::DelayedDiagnostic &diag) {
@@ -333,6 +315,7 @@ inline void Sema::DelayedDiagnostics::add(const sema::DelayedDiagnostic &diag) {
   CurPool->add(diag);
 }
 
-} // namespace clang
 
-#endif // LLVM_CLANG_SEMA_DELAYEDDIAGNOSTIC_H
+}
+
+#endif

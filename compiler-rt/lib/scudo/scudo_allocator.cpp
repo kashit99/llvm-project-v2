@@ -17,7 +17,6 @@
 #include "scudo_allocator.h"
 #include "scudo_crc32.h"
 #include "scudo_flags.h"
-#include "scudo_interface_internal.h"
 #include "scudo_tsd.h"
 #include "scudo_utils.h"
 
@@ -64,46 +63,37 @@ INLINE u32 computeCRC32(u32 Crc, uptr Value, uptr *Array, uptr ArraySize) {
 static ScudoBackendAllocator &getBackendAllocator();
 
 namespace Chunk {
+  // We can't use the offset member of the chunk itself, as we would double
+  // fetch it without any warranty that it wouldn't have been tampered. To
+  // prevent this, we work with a local copy of the header.
+  static INLINE void *getBackendPtr(const void *Ptr, UnpackedHeader *Header) {
+    return reinterpret_cast<void *>(reinterpret_cast<uptr>(Ptr) -
+                                    AlignedChunkHeaderSize -
+                                    (Header->Offset << MinAlignmentLog));
+  }
+
   static INLINE AtomicPackedHeader *getAtomicHeader(void *Ptr) {
     return reinterpret_cast<AtomicPackedHeader *>(reinterpret_cast<uptr>(Ptr) -
-        getHeaderSize());
+                                                  AlignedChunkHeaderSize);
   }
   static INLINE
   const AtomicPackedHeader *getConstAtomicHeader(const void *Ptr) {
     return reinterpret_cast<const AtomicPackedHeader *>(
-        reinterpret_cast<uptr>(Ptr) - getHeaderSize());
+        reinterpret_cast<uptr>(Ptr) - AlignedChunkHeaderSize);
   }
 
   static INLINE bool isAligned(const void *Ptr) {
     return IsAligned(reinterpret_cast<uptr>(Ptr), MinAlignment);
   }
 
-  // We can't use the offset member of the chunk itself, as we would double
-  // fetch it without any warranty that it wouldn't have been tampered. To
-  // prevent this, we work with a local copy of the header.
-  static INLINE void *getBackendPtr(const void *Ptr, UnpackedHeader *Header) {
-    return reinterpret_cast<void *>(reinterpret_cast<uptr>(Ptr) -
-        getHeaderSize() - (Header->Offset << MinAlignmentLog));
-  }
-
   // Returns the usable size for a chunk, meaning the amount of bytes from the
   // beginning of the user data to the end of the backend allocated chunk.
   static INLINE uptr getUsableSize(const void *Ptr, UnpackedHeader *Header) {
-    const uptr ClassId = Header->ClassId;
-    if (ClassId)
-      return PrimaryAllocator::ClassIdToSize(ClassId) - getHeaderSize() -
-          (Header->Offset << MinAlignmentLog);
-    return SecondaryAllocator::GetActuallyAllocatedSize(
-        getBackendPtr(Ptr, Header)) - getHeaderSize();
-  }
-
-  // Returns the size the user requested when allocating the chunk.
-  static INLINE uptr getSize(const void *Ptr, UnpackedHeader *Header) {
-    const uptr SizeOrUnusedBytes = Header->SizeOrUnusedBytes;
-    if (Header->ClassId)
-      return SizeOrUnusedBytes;
-    return SecondaryAllocator::GetActuallyAllocatedSize(
-        getBackendPtr(Ptr, Header)) - getHeaderSize() - SizeOrUnusedBytes;
+    const uptr Size = getBackendAllocator().getActuallyAllocatedSize(
+        getBackendPtr(Ptr, Header), Header->ClassId);
+    if (Size == 0)
+      return 0;
+    return Size - AlignedChunkHeaderSize - (Header->Offset << MinAlignmentLog);
   }
 
   // Compute the checksum of the chunk pointer and its header.
@@ -146,8 +136,9 @@ namespace Chunk {
         atomic_load_relaxed(getConstAtomicHeader(Ptr));
     *NewUnpackedHeader = bit_cast<UnpackedHeader>(NewPackedHeader);
     if (UNLIKELY(NewUnpackedHeader->Checksum !=
-        computeChecksum(Ptr, NewUnpackedHeader)))
-      dieWithMessage("corrupted chunk header at address %p\n", Ptr);
+        computeChecksum(Ptr, NewUnpackedHeader))) {
+      dieWithMessage("ERROR: corrupted chunk header at address %p\n", Ptr);
+    }
   }
 
   // Packs and stores the header, computing the checksum in the process.
@@ -168,8 +159,9 @@ namespace Chunk {
     PackedHeader OldPackedHeader = bit_cast<PackedHeader>(*OldUnpackedHeader);
     if (UNLIKELY(!atomic_compare_exchange_strong(
             getAtomicHeader(Ptr), &OldPackedHeader, NewPackedHeader,
-            memory_order_relaxed)))
-      dieWithMessage("race on chunk header at address %p\n", Ptr);
+            memory_order_relaxed))) {
+      dieWithMessage("ERROR: race on chunk header at address %p\n", Ptr);
+    }
   }
 }  // namespace Chunk
 
@@ -182,8 +174,10 @@ struct QuarantineCallback {
   void Recycle(void *Ptr) {
     UnpackedHeader Header;
     Chunk::loadHeader(Ptr, &Header);
-    if (UNLIKELY(Header.State != ChunkQuarantine))
-      dieWithMessage("invalid chunk state when recycling address %p\n", Ptr);
+    if (UNLIKELY(Header.State != ChunkQuarantine)) {
+      dieWithMessage("ERROR: invalid chunk state when recycling address %p\n",
+                     Ptr);
+    }
     Chunk::eraseHeader(Ptr);
     void *BackendPtr = Chunk::getBackendPtr(Ptr, &Header);
     if (Header.ClassId)
@@ -243,7 +237,7 @@ struct ScudoAllocator {
   explicit ScudoAllocator(LinkerInitialized)
     : AllocatorQuarantine(LINKER_INITIALIZED) {}
 
-  NOINLINE void performSanityChecks() {
+  void performSanityChecks() {
     // Verify that the header offset field can hold the maximum offset. In the
     // case of the Secondary allocator, it takes care of alignment and the
     // offset will always be 0. In the case of the Primary, the worst case
@@ -256,10 +250,12 @@ struct ScudoAllocator {
     const uptr MaxPrimaryAlignment =
         1 << MostSignificantSetBitIndex(SizeClassMap::kMaxSize - MinAlignment);
     const uptr MaxOffset =
-        (MaxPrimaryAlignment - Chunk::getHeaderSize()) >> MinAlignmentLog;
+        (MaxPrimaryAlignment - AlignedChunkHeaderSize) >> MinAlignmentLog;
     Header.Offset = MaxOffset;
-    if (Header.Offset != MaxOffset)
-      dieWithMessage("maximum possible offset doesn't fit in header\n");
+    if (Header.Offset != MaxOffset) {
+      dieWithMessage("ERROR: the maximum possible offset doesn't fit in the "
+                     "header\n");
+    }
     // Verify that we can fit the maximum size or amount of unused bytes in the
     // header. Given that the Secondary fits the allocation to a page, the worst
     // case scenario happens in the Primary. It will depend on the second to
@@ -267,20 +263,20 @@ struct ScudoAllocator {
     // The following is an over-approximation that works for our needs.
     const uptr MaxSizeOrUnusedBytes = SizeClassMap::kMaxSize - 1;
     Header.SizeOrUnusedBytes = MaxSizeOrUnusedBytes;
-    if (Header.SizeOrUnusedBytes != MaxSizeOrUnusedBytes)
-      dieWithMessage("maximum possible unused bytes doesn't fit in header\n");
+    if (Header.SizeOrUnusedBytes != MaxSizeOrUnusedBytes) {
+      dieWithMessage("ERROR: the maximum possible unused bytes doesn't fit in "
+                     "the header\n");
+    }
 
     const uptr LargestClassId = SizeClassMap::kLargestClassID;
     Header.ClassId = LargestClassId;
-    if (Header.ClassId != LargestClassId)
-      dieWithMessage("largest class ID doesn't fit in header\n");
+    if (Header.ClassId != LargestClassId) {
+      dieWithMessage("ERROR: the largest class ID doesn't fit in the header\n");
+    }
   }
 
   void init() {
     SanitizerToolName = "Scudo";
-    PrimaryAllocatorName = "ScudoPrimary";
-    SecondaryAllocatorName = "ScudoSecondary";
-
     initFlags();
 
     performSanityChecks();
@@ -337,9 +333,12 @@ struct ScudoAllocator {
     //                RSS from /proc/self/statm by default. We might want to
     //                call getrusage directly, even if it's less accurate.
     const uptr CurrentRssMb = GetRSS() >> 20;
-    if (HardRssLimitMb && UNLIKELY(HardRssLimitMb < CurrentRssMb))
-      dieWithMessage("hard RSS limit exhausted (%zdMb vs %zdMb)\n",
-                     HardRssLimitMb, CurrentRssMb);
+    if (HardRssLimitMb && HardRssLimitMb < CurrentRssMb) {
+      Report("%s: hard RSS limit exhausted (%zdMb vs %zdMb)\n",
+             SanitizerToolName, HardRssLimitMb, CurrentRssMb);
+      DumpProcessMap();
+      Die();
+    }
     if (SoftRssLimitMb) {
       if (atomic_load_relaxed(&RssLimitExceeded)) {
         if (CurrentRssMb <= SoftRssLimitMb)
@@ -347,8 +346,8 @@ struct ScudoAllocator {
       } else {
         if (CurrentRssMb > SoftRssLimitMb) {
           atomic_store_relaxed(&RssLimitExceeded, true);
-          Printf("Scudo INFO: soft RSS limit exhausted (%zdMb vs %zdMb)\n",
-                 SoftRssLimitMb, CurrentRssMb);
+          Report("%s: soft RSS limit exhausted (%zdMb vs %zdMb)\n",
+                 SanitizerToolName, SoftRssLimitMb, CurrentRssMb);
         }
       }
     }
@@ -368,10 +367,9 @@ struct ScudoAllocator {
     if (UNLIKELY(Size == 0))
       Size = 1;
 
-    const uptr NeededSize = RoundUpTo(Size, MinAlignment) +
-        Chunk::getHeaderSize();
-    const uptr AlignedSize = (Alignment > MinAlignment) ?
-        NeededSize + (Alignment - Chunk::getHeaderSize()) : NeededSize;
+    uptr NeededSize = RoundUpTo(Size, MinAlignment) + AlignedChunkHeaderSize;
+    uptr AlignedSize = (Alignment > MinAlignment) ?
+        NeededSize + (Alignment - AlignedChunkHeaderSize) : NeededSize;
     if (UNLIKELY(AlignedSize >= MaxAllowedMallocSize))
       return FailureHandler::OnBadRequest();
 
@@ -400,10 +398,11 @@ struct ScudoAllocator {
 
     // If requested, we will zero out the entire contents of the returned chunk.
     if ((ForceZeroContents || ZeroContents) && ClassId)
-      memset(BackendPtr, 0, PrimaryAllocator::ClassIdToSize(ClassId));
+      memset(BackendPtr, 0,
+             BackendAllocator.getActuallyAllocatedSize(BackendPtr, ClassId));
 
     UnpackedHeader Header = {};
-    uptr UserPtr = reinterpret_cast<uptr>(BackendPtr) + Chunk::getHeaderSize();
+    uptr UserPtr = reinterpret_cast<uptr>(BackendPtr) + AlignedChunkHeaderSize;
     if (UNLIKELY(!IsAligned(UserPtr, Alignment))) {
       // Since the Secondary takes care of alignment, a non-aligned pointer
       // means it is from the Primary. It is also the only case where the offset
@@ -413,7 +412,7 @@ struct ScudoAllocator {
       Header.Offset = (AlignedUserPtr - UserPtr) >> MinAlignmentLog;
       UserPtr = AlignedUserPtr;
     }
-    DCHECK_LE(UserPtr + Size, reinterpret_cast<uptr>(BackendPtr) + BackendSize);
+    CHECK_LE(UserPtr + Size, reinterpret_cast<uptr>(BackendPtr) + BackendSize);
     Header.State = ChunkAllocated;
     Header.AllocType = Type;
     if (ClassId) {
@@ -430,8 +429,7 @@ struct ScudoAllocator {
     }
     void *Ptr = reinterpret_cast<void *>(UserPtr);
     Chunk::storeHeader(Ptr, &Header);
-    if (SCUDO_CAN_USE_HOOKS && &__sanitizer_malloc_hook)
-      __sanitizer_malloc_hook(Ptr, Size);
+    // if (&__sanitizer_malloc_hook) __sanitizer_malloc_hook(Ptr, Size);
     return Ptr;
   }
 
@@ -459,7 +457,7 @@ struct ScudoAllocator {
       // with tiny chunks, taking a lot of VA memory. This is an approximation
       // of the usable size, that allows us to not call
       // GetActuallyAllocatedSize.
-      const uptr EstimatedSize = Size + (Header->Offset << MinAlignmentLog);
+      uptr EstimatedSize = Size + (Header->Offset << MinAlignmentLog);
       UnpackedHeader NewHeader = *Header;
       NewHeader.State = ChunkQuarantine;
       Chunk::compareExchangeHeader(Ptr, &NewHeader, Header);
@@ -481,30 +479,36 @@ struct ScudoAllocator {
     // the TLS destructors, ending up in initialized thread specific data never
     // being destroyed properly. Any other heap operation will do a full init.
     initThreadMaybe(/*MinimalInit=*/true);
-    if (SCUDO_CAN_USE_HOOKS && &__sanitizer_free_hook)
-      __sanitizer_free_hook(Ptr);
+    // if (&__sanitizer_free_hook) __sanitizer_free_hook(Ptr);
     if (UNLIKELY(!Ptr))
       return;
-    if (UNLIKELY(!Chunk::isAligned(Ptr)))
-      dieWithMessage("misaligned pointer when deallocating address %p\n", Ptr);
+    if (UNLIKELY(!Chunk::isAligned(Ptr))) {
+      dieWithMessage("ERROR: attempted to deallocate a chunk not properly "
+                     "aligned at address %p\n", Ptr);
+    }
     UnpackedHeader Header;
     Chunk::loadHeader(Ptr, &Header);
-    if (UNLIKELY(Header.State != ChunkAllocated))
-      dieWithMessage("invalid chunk state when deallocating address %p\n", Ptr);
+    if (UNLIKELY(Header.State != ChunkAllocated)) {
+      dieWithMessage("ERROR: invalid chunk state when deallocating address "
+                     "%p\n", Ptr);
+    }
     if (DeallocationTypeMismatch) {
       // The deallocation type has to match the allocation one.
       if (Header.AllocType != Type) {
         // With the exception of memalign'd Chunks, that can be still be free'd.
-        if (Header.AllocType != FromMemalign || Type != FromMalloc)
-          dieWithMessage("allocation type mismatch when deallocating address "
-                         "%p\n", Ptr);
+        if (Header.AllocType != FromMemalign || Type != FromMalloc) {
+          dieWithMessage("ERROR: allocation type mismatch when deallocating "
+                         "address %p\n", Ptr);
+        }
       }
     }
-    const uptr Size = Chunk::getSize(Ptr, &Header);
+    uptr Size = Header.ClassId ? Header.SizeOrUnusedBytes :
+        Chunk::getUsableSize(Ptr, &Header) - Header.SizeOrUnusedBytes;
     if (DeleteSizeMismatch) {
-      if (DeleteSize && DeleteSize != Size)
-        dieWithMessage("invalid sized delete when deallocating address %p\n",
+      if (DeleteSize && DeleteSize != Size) {
+        dieWithMessage("ERROR: invalid sized delete on chunk at address %p\n",
                        Ptr);
+      }
     }
     quarantineOrDeallocateChunk(Ptr, &Header, Size);
   }
@@ -513,18 +517,21 @@ struct ScudoAllocator {
   // size still fits in the chunk.
   void *reallocate(void *OldPtr, uptr NewSize) {
     initThreadMaybe();
-    if (UNLIKELY(!Chunk::isAligned(OldPtr)))
-      dieWithMessage("misaligned address when reallocating address %p\n",
-                     OldPtr);
+    if (UNLIKELY(!Chunk::isAligned(OldPtr))) {
+      dieWithMessage("ERROR: attempted to reallocate a chunk not properly "
+                     "aligned at address %p\n", OldPtr);
+    }
     UnpackedHeader OldHeader;
     Chunk::loadHeader(OldPtr, &OldHeader);
-    if (UNLIKELY(OldHeader.State != ChunkAllocated))
-      dieWithMessage("invalid chunk state when reallocating address %p\n",
-                     OldPtr);
+    if (UNLIKELY(OldHeader.State != ChunkAllocated)) {
+      dieWithMessage("ERROR: invalid chunk state when reallocating address "
+                     "%p\n", OldPtr);
+    }
     if (DeallocationTypeMismatch) {
-      if (UNLIKELY(OldHeader.AllocType != FromMalloc))
-        dieWithMessage("allocation type mismatch when reallocating address "
-                       "%p\n", OldPtr);
+      if (UNLIKELY(OldHeader.AllocType != FromMalloc)) {
+        dieWithMessage("ERROR: allocation type mismatch when reallocating "
+                       "address %p\n", OldPtr);
+      }
     }
     const uptr UsableSize = Chunk::getUsableSize(OldPtr, &OldHeader);
     // The new size still fits in the current chunk, and the size difference
@@ -541,7 +548,7 @@ struct ScudoAllocator {
     // old one.
     void *NewPtr = allocate(NewSize, MinAlignment, FromMalloc);
     if (NewPtr) {
-      const uptr OldSize = OldHeader.ClassId ? OldHeader.SizeOrUnusedBytes :
+      uptr OldSize = OldHeader.ClassId ? OldHeader.SizeOrUnusedBytes :
           UsableSize - OldHeader.SizeOrUnusedBytes;
       memcpy(NewPtr, OldPtr, Min(NewSize, UsableSize));
       quarantineOrDeallocateChunk(OldPtr, &OldHeader, OldSize);
@@ -557,8 +564,10 @@ struct ScudoAllocator {
     UnpackedHeader Header;
     Chunk::loadHeader(Ptr, &Header);
     // Getting the usable size of a chunk only makes sense if it's allocated.
-    if (UNLIKELY(Header.State != ChunkAllocated))
-      dieWithMessage("invalid chunk state when sizing address %p\n", Ptr);
+    if (UNLIKELY(Header.State != ChunkAllocated)) {
+      dieWithMessage("ERROR: invalid chunk state when sizing address %p\n",
+                     Ptr);
+    }
     return Chunk::getUsableSize(Ptr, &Header);
   }
 
@@ -712,8 +721,8 @@ uptr __sanitizer_get_unmapped_bytes() {
   return 1;
 }
 
-uptr __sanitizer_get_estimated_allocated_size(uptr Size) {
-  return Size;
+uptr __sanitizer_get_estimated_allocated_size(uptr size) {
+  return size;
 }
 
 int __sanitizer_get_ownership(const void *Ptr) {
@@ -724,22 +733,12 @@ uptr __sanitizer_get_allocated_size(const void *Ptr) {
   return Instance.getUsableSize(Ptr);
 }
 
-#if !SANITIZER_SUPPORTS_WEAK_HOOKS
-SANITIZER_INTERFACE_WEAK_DEF(void, __sanitizer_malloc_hook,
-                             void *Ptr, uptr Size) {
-  (void)Ptr;
-  (void)Size;
-}
-
-SANITIZER_INTERFACE_WEAK_DEF(void, __sanitizer_free_hook, void *Ptr) {
-  (void)Ptr;
-}
-#endif
-
 // Interface functions
 
-void __scudo_set_rss_limit(uptr LimitMb, s32 HardLimit) {
+extern "C" {
+void __scudo_set_rss_limit(unsigned long LimitMb, int HardLimit) {  // NOLINT
   if (!SCUDO_CAN_USE_PUBLIC_INTERFACE)
     return;
   Instance.setRssLimit(LimitMb, !!HardLimit);
 }
+}  // extern "C"

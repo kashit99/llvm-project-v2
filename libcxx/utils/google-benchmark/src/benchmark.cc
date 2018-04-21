@@ -38,12 +38,12 @@
 #include "commandlineflags.h"
 #include "complexity.h"
 #include "counter.h"
-#include "internal_macros.h"
 #include "log.h"
 #include "mutex.h"
 #include "re.h"
-#include "statistics.h"
+#include "stat.h"
 #include "string_util.h"
+#include "sysinfo.h"
 #include "timers.h"
 
 DEFINE_bool(benchmark_list_tests, false,
@@ -91,22 +91,22 @@ DEFINE_string(benchmark_color, "auto",
               "environment variable is set to a terminal type that supports "
               "colors.");
 
-DEFINE_bool(benchmark_counters_tabular, false,
-            "Whether to use tabular format when printing user counters to "
-            "the console.  Valid values: 'true'/'yes'/1, 'false'/'no'/0."
-            "Defaults to false.");
-
 DEFINE_int32(v, 0, "The level of verbose logging to output");
 
 namespace benchmark {
-
-namespace {
-static const size_t kMaxIterations = 1000000000;
-}  // end namespace
-
 namespace internal {
 
 void UseCharPointer(char const volatile*) {}
+
+}  // end namespace internal
+
+namespace {
+
+static const size_t kMaxIterations = 1000000000;
+
+}  // end namespace
+
+namespace internal {
 
 class ThreadManager {
  public:
@@ -175,9 +175,7 @@ class ThreadTimer {
     CHECK(running_);
     running_ = false;
     real_time_used_ += ChronoClockNow() - start_real_time_;
-    // Floating point error can result in the subtraction producing a negative
-    // time. Guard against that.
-    cpu_time_used_ += std::max<double>(ThreadCPUUsage() - start_cpu_time_, 0);
+    cpu_time_used_ += ThreadCPUUsage() - start_cpu_time_;
   }
 
   // Called by each thread
@@ -253,9 +251,7 @@ BenchmarkReporter::Run CreateRunReport(
     report.complexity_n = results.complexity_n;
     report.complexity = b.complexity;
     report.complexity_lambda = b.complexity_lambda;
-    report.statistics = b.statistics;
     report.counters = results.counters;
-    internal::Finish(&report.counters, seconds, b.threads);
   }
   return report;
 }
@@ -399,7 +395,7 @@ State::State(size_t max_iters, const std::vector<int>& ranges, int thread_i,
              internal::ThreadManager* manager)
     : started_(false),
       finished_(false),
-      total_iterations_(max_iters + 1),
+      total_iterations_(0),
       range_(ranges),
       bytes_processed_(0),
       items_processed_(0),
@@ -412,7 +408,6 @@ State::State(size_t max_iters, const std::vector<int>& ranges, int thread_i,
       timer_(timer),
       manager_(manager) {
   CHECK(max_iterations != 0) << "At least one iteration must be run";
-  CHECK(total_iterations_ != 0) << "max iterations wrapped around";
   CHECK_LT(thread_index, threads) << "thread_index must be less than threads";
 }
 
@@ -437,7 +432,7 @@ void State::SkipWithError(const char* msg) {
       manager_->results.has_error_ = true;
     }
   }
-  total_iterations_ = 1;
+  total_iterations_ = max_iterations;
   if (timer_->running()) timer_->StopTimer();
 }
 
@@ -462,8 +457,8 @@ void State::FinishKeepRunning() {
   if (!error_occurred_) {
     PauseTiming();
   }
-  // Total iterations has now wrapped around zero. Fix this.
-  total_iterations_ = 1;
+  // Total iterations now is one greater than max iterations. Fix this.
+  total_iterations_ = max_iterations;
   finished_ = true;
   manager_->StartStopBarrier();
 }
@@ -480,19 +475,19 @@ void RunBenchmarks(const std::vector<Benchmark::Instance>& benchmarks,
   // Determine the width of the name field using a minimum width of 10.
   bool has_repetitions = FLAGS_benchmark_repetitions > 1;
   size_t name_field_width = 10;
-  size_t stat_field_width = 0;
   for (const Benchmark::Instance& benchmark : benchmarks) {
     name_field_width =
         std::max<size_t>(name_field_width, benchmark.name.size());
     has_repetitions |= benchmark.repetitions > 1;
-
-    for(const auto& Stat : *benchmark.statistics)
-      stat_field_width = std::max<size_t>(stat_field_width, Stat.name_.size());
   }
-  if (has_repetitions) name_field_width += 1 + stat_field_width;
+  if (has_repetitions) name_field_width += std::strlen("_stddev");
 
   // Print header here
   BenchmarkReporter::Context context;
+  context.num_cpus = NumCPUs();
+  context.mhz_per_cpu = CyclesPerSecond() / 1000000.0f;
+
+  context.cpu_scaling_enabled = CpuScalingEnabled();
   context.name_field_width = name_field_width;
 
   // Keep track of runing times of all instances of current benchmark
@@ -526,10 +521,10 @@ void RunBenchmarks(const std::vector<Benchmark::Instance>& benchmarks,
 }
 
 std::unique_ptr<BenchmarkReporter> CreateReporter(
-    std::string const& name, ConsoleReporter::OutputOptions output_opts) {
+    std::string const& name, ConsoleReporter::OutputOptions allow_color) {
   typedef std::unique_ptr<BenchmarkReporter> PtrType;
   if (name == "console") {
-    return PtrType(new ConsoleReporter(output_opts));
+    return PtrType(new ConsoleReporter(allow_color));
   } else if (name == "json") {
     return PtrType(new JSONReporter);
   } else if (name == "csv") {
@@ -541,30 +536,6 @@ std::unique_ptr<BenchmarkReporter> CreateReporter(
 }
 
 }  // end namespace
-
-bool IsZero(double n) {
-  return std::abs(n) < std::numeric_limits<double>::epsilon();
-}
-
-ConsoleReporter::OutputOptions GetOutputOptions(bool force_no_color) {
-  int output_opts = ConsoleReporter::OO_Defaults;
-  if ((FLAGS_benchmark_color == "auto" && IsColorTerminal()) ||
-      IsTruthyFlagValue(FLAGS_benchmark_color)) {
-    output_opts |= ConsoleReporter::OO_Color;
-  } else {
-    output_opts &= ~ConsoleReporter::OO_Color;
-  }
-  if(force_no_color) {
-    output_opts &= ~ConsoleReporter::OO_Color;
-  }
-  if(FLAGS_benchmark_counters_tabular) {
-    output_opts |= ConsoleReporter::OO_Tabular;
-  } else {
-    output_opts &= ~ConsoleReporter::OO_Tabular;
-  }
-  return static_cast< ConsoleReporter::OutputOptions >(output_opts);
-}
-
 }  // end namespace internal
 
 size_t RunSpecifiedBenchmarks() {
@@ -586,21 +557,29 @@ size_t RunSpecifiedBenchmarks(BenchmarkReporter* console_reporter,
   std::unique_ptr<BenchmarkReporter> default_console_reporter;
   std::unique_ptr<BenchmarkReporter> default_file_reporter;
   if (!console_reporter) {
-    default_console_reporter = internal::CreateReporter(
-          FLAGS_benchmark_format, internal::GetOutputOptions());
+    auto output_opts = ConsoleReporter::OO_None;
+    if (FLAGS_benchmark_color == "auto")
+      output_opts = IsColorTerminal() ? ConsoleReporter::OO_Color
+                                      : ConsoleReporter::OO_None;
+    else
+      output_opts = IsTruthyFlagValue(FLAGS_benchmark_color)
+                        ? ConsoleReporter::OO_Color
+                        : ConsoleReporter::OO_None;
+    default_console_reporter =
+        internal::CreateReporter(FLAGS_benchmark_format, output_opts);
     console_reporter = default_console_reporter.get();
   }
   auto& Out = console_reporter->GetOutputStream();
   auto& Err = console_reporter->GetErrorStream();
 
   std::string const& fname = FLAGS_benchmark_out;
-  if (fname.empty() && file_reporter) {
+  if (fname == "" && file_reporter) {
     Err << "A custom file reporter was provided but "
            "--benchmark_out=<file> was not specified."
         << std::endl;
     std::exit(1);
   }
-  if (!fname.empty()) {
+  if (fname != "") {
     output_file.open(fname);
     if (!output_file.is_open()) {
       Err << "invalid file name: '" << fname << std::endl;
@@ -646,7 +625,6 @@ void PrintUsageAndExit() {
           "          [--benchmark_out=<filename>]\n"
           "          [--benchmark_out_format=<json|console|csv>]\n"
           "          [--benchmark_color={auto|true|false}]\n"
-          "          [--benchmark_counters_tabular={true|false}]\n"
           "          [--v=<verbosity>]\n");
   exit(0);
 }
@@ -671,8 +649,6 @@ void ParseCommandLineFlags(int* argc, char** argv) {
         // "color_print" is the deprecated name for "benchmark_color".
         // TODO: Remove this.
         ParseStringFlag(argv[i], "color_print", &FLAGS_benchmark_color) ||
-        ParseBoolFlag(argv[i], "benchmark_counters_tabular",
-                        &FLAGS_benchmark_counters_tabular) ||
         ParseInt32Flag(argv[i], "v", &FLAGS_v)) {
       for (int j = i; j != *argc - 1; ++j) argv[j] = argv[j + 1];
 

@@ -483,15 +483,20 @@ bool PrecompiledPreamble::CanReuse(const CompilerInvocation &Invocation,
 void PrecompiledPreamble::AddImplicitPreamble(
     CompilerInvocation &CI, IntrusiveRefCntPtr<vfs::FileSystem> &VFS,
     llvm::MemoryBuffer *MainFileBuffer) const {
-  PreambleBounds Bounds(PreambleBytes.size(), PreambleEndsAtStartOfLine);
-  configurePreamble(Bounds, CI, VFS, MainFileBuffer);
-}
+  assert(VFS && "VFS must not be null");
 
-void PrecompiledPreamble::OverridePreamble(
-    CompilerInvocation &CI, IntrusiveRefCntPtr<vfs::FileSystem> &VFS,
-    llvm::MemoryBuffer *MainFileBuffer) const {
-  auto Bounds = ComputePreambleBounds(*CI.getLangOpts(), MainFileBuffer, 0);
-  configurePreamble(Bounds, CI, VFS, MainFileBuffer);
+  auto &PreprocessorOpts = CI.getPreprocessorOpts();
+
+  // Remap main file to point to MainFileBuffer.
+  auto MainFilePath = CI.getFrontendOpts().Inputs[0].getFile();
+  PreprocessorOpts.addRemappedFile(MainFilePath, MainFileBuffer);
+
+  // Configure ImpicitPCHInclude.
+  PreprocessorOpts.PrecompiledPreambleBytes.first = PreambleBytes.size();
+  PreprocessorOpts.PrecompiledPreambleBytes.second = PreambleEndsAtStartOfLine;
+  PreprocessorOpts.DisablePCHValidation = true;
+
+  setupPreambleStorage(Storage, PreprocessorOpts, VFS);
 }
 
 PrecompiledPreamble::PrecompiledPreamble(
@@ -672,27 +677,6 @@ PrecompiledPreamble::PreambleFileHash::createForMemoryBuffer(
   MD5Ctx.final(Result.MD5);
 
   return Result;
-}
-
-void PrecompiledPreamble::configurePreamble(
-    PreambleBounds Bounds, CompilerInvocation &CI,
-    IntrusiveRefCntPtr<vfs::FileSystem> &VFS,
-    llvm::MemoryBuffer *MainFileBuffer) const {
-  assert(VFS);
-
-  auto &PreprocessorOpts = CI.getPreprocessorOpts();
-
-  // Remap main file to point to MainFileBuffer.
-  auto MainFilePath = CI.getFrontendOpts().Inputs[0].getFile();
-  PreprocessorOpts.addRemappedFile(MainFilePath, MainFileBuffer);
-
-  // Configure ImpicitPCHInclude.
-  PreprocessorOpts.PrecompiledPreambleBytes.first = Bounds.Size;
-  PreprocessorOpts.PrecompiledPreambleBytes.second =
-      Bounds.PreambleEndsAtStartOfLine;
-  PreprocessorOpts.DisablePCHValidation = true;
-
-  setupPreambleStorage(Storage, PreprocessorOpts, VFS);
 }
 
 void PrecompiledPreamble::setupPreambleStorage(

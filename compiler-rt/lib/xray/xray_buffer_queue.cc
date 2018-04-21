@@ -37,7 +37,7 @@ BufferQueue::BufferQueue(size_t B, size_t N, bool &Success)
       return;
     }
     auto &Buf = T.Buff;
-    Buf.Data = Tmp;
+    Buf.Buffer = Tmp;
     Buf.Size = B;
     Buf.Extents = reinterpret_cast<BufferExtents *>(Extents);
     OwnedBuffers[i] = Tmp;
@@ -68,7 +68,7 @@ BufferQueue::ErrorCode BufferQueue::releaseBuffer(Buffer &Buf) {
   // Blitz through the buffers array to find the buffer.
   bool Found = false;
   for (auto I = OwnedBuffers, E = OwnedBuffers + BufferCount; I != E; ++I) {
-    if (*I == Buf.Data) {
+    if (*I == Buf.Buffer) {
       Found = true;
       break;
     }
@@ -86,7 +86,7 @@ BufferQueue::ErrorCode BufferQueue::releaseBuffer(Buffer &Buf) {
   // Now that the buffer has been released, we mark it as "used".
   First->Buff = Buf;
   First->Used = true;
-  Buf.Data = nullptr;
+  Buf.Buffer = nullptr;
   Buf.Size = 0;
   --LiveBuffers;
   if (++First == (Buffers + BufferCount))
@@ -106,7 +106,7 @@ BufferQueue::~BufferQueue() {
   for (auto I = Buffers, E = Buffers + BufferCount; I != E; ++I) {
     auto &T = *I;
     auto &Buf = T.Buff;
-    InternalFree(Buf.Data);
+    InternalFree(Buf.Buffer);
     InternalFree(Buf.Extents);
   }
   delete[] Buffers;

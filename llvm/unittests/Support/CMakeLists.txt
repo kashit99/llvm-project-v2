@@ -13,7 +13,6 @@ add_llvm_unittest(SupportTests
   CachePruningTest.cpp
   CrashRecoveryTest.cpp
   Casting.cpp
-  CheckedArithmeticTest.cpp
   Chrono.cpp
   CommandLineTest.cpp
   CompressionTest.cpp

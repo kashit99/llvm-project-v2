@@ -13,12 +13,13 @@
 
 // enum class file_type;
 
-#include "filesystem_include.hpp"
+#include <experimental/filesystem>
 #include <type_traits>
 #include <cassert>
 
 #include "test_macros.h"
 
+namespace fs = std::experimental::filesystem;
 
 constexpr fs::file_type ME(int val) { return static_cast<fs::file_type>(val); }
 

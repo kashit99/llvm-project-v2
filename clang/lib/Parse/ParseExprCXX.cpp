@@ -1183,8 +1183,7 @@ ExprResult Parser::ParseLambdaExpressionAfterIntroducer(
     if (Tok.is(tok::arrow)) {
       FunLocalRangeEnd = Tok.getLocation();
       SourceRange Range;
-      TrailingReturnType =
-          ParseTrailingReturnType(Range, /*MayBeFollowedByDirectInit*/ false);
+      TrailingReturnType = ParseTrailingReturnType(Range);
       if (Range.getEnd().isValid())
         DeclEndLoc = Range.getEnd();
     }
@@ -1254,8 +1253,7 @@ ExprResult Parser::ParseLambdaExpressionAfterIntroducer(
     // Parse the return type, if there is one.
     if (Tok.is(tok::arrow)) {
       SourceRange Range;
-      TrailingReturnType =
-          ParseTrailingReturnType(Range, /*MayBeFollowedByDirectInit*/ false);
+      TrailingReturnType = ParseTrailingReturnType(Range);
       if (Range.getEnd().isValid())
         DeclEndLoc = Range.getEnd();
     }
@@ -1744,26 +1742,10 @@ Sema::ConditionResult Parser::ParseCXXCondition(StmtResult *InitStmt,
   ParsedAttributesWithRange attrs(AttrFactory);
   MaybeParseCXX11Attributes(attrs);
 
-  const auto WarnOnInit = [this, &CK] {
-    Diag(Tok.getLocation(), getLangOpts().CPlusPlus17
-                                ? diag::warn_cxx14_compat_init_statement
-                                : diag::ext_init_statement)
-        << (CK == Sema::ConditionKind::Switch);
-  };
-
   // Determine what kind of thing we have.
   switch (isCXXConditionDeclarationOrInitStatement(InitStmt)) {
   case ConditionOrInitStatement::Expression: {
     ProhibitAttributes(attrs);
-
-    // We can have an empty expression here.
-    //   if (; true);
-    if (InitStmt && Tok.is(tok::semi)) {
-      WarnOnInit();
-      SourceLocation SemiLoc = ConsumeToken();
-      *InitStmt = Actions.ActOnNullStmt(SemiLoc);
-      return ParseCXXCondition(nullptr, Loc, CK);
-    }
 
     // Parse the expression.
     ExprResult Expr = ParseExpression(); // expression
@@ -1771,7 +1753,6 @@ Sema::ConditionResult Parser::ParseCXXCondition(StmtResult *InitStmt,
       return Sema::ConditionError();
 
     if (InitStmt && Tok.is(tok::semi)) {
-      WarnOnInit();
       *InitStmt = Actions.ActOnExprStmt(Expr.get());
       ConsumeToken();
       return ParseCXXCondition(nullptr, Loc, CK);
@@ -1781,7 +1762,10 @@ Sema::ConditionResult Parser::ParseCXXCondition(StmtResult *InitStmt,
   }
 
   case ConditionOrInitStatement::InitStmtDecl: {
-    WarnOnInit();
+    Diag(Tok.getLocation(), getLangOpts().CPlusPlus17
+                                ? diag::warn_cxx14_compat_init_statement
+                                : diag::ext_init_statement)
+        << (CK == Sema::ConditionKind::Switch);
     SourceLocation DeclStart = Tok.getLocation(), DeclEnd;
     DeclGroupPtrTy DG =
         ParseSimpleDeclaration(DeclaratorContext::InitStmtContext, DeclEnd,

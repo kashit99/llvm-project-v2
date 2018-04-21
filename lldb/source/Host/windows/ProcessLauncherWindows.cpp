@@ -21,15 +21,14 @@ using namespace lldb;
 using namespace lldb_private;
 
 namespace {
-void CreateEnvironmentBuffer(const Environment &env,
-                             std::vector<char> &buffer) {
-  if (env.size() == 0)
+void CreateEnvironmentBuffer(const Args &env, std::vector<char> &buffer) {
+  if (env.GetArgumentCount() == 0)
     return;
 
   // Environment buffer is a null terminated list of null terminated strings
-  for (const auto &KV : env) {
+  for (auto &entry : env.entries()) {
     std::wstring warg;
-    if (llvm::ConvertUTF8toWide(Environment::compose(KV), warg)) {
+    if (llvm::ConvertUTF8toWide(entry.ref, warg)) {
       buffer.insert(buffer.end(), (char *)warg.c_str(),
                     (char *)(warg.c_str() + warg.size() + 1));
     }
@@ -76,8 +75,9 @@ ProcessLauncherWindows::LaunchProcess(const ProcessLaunchInfo &launch_info,
   if (launch_info.GetFlags().Test(eLaunchFlagDebug))
     flags |= DEBUG_ONLY_THIS_PROCESS;
 
+  auto &env = const_cast<Args &>(launch_info.GetEnvironmentEntries());
   LPVOID env_block = nullptr;
-  ::CreateEnvironmentBuffer(launch_info.GetEnvironment(), environment);
+  ::CreateEnvironmentBuffer(env, environment);
   if (!environment.empty())
     env_block = environment.data();
 

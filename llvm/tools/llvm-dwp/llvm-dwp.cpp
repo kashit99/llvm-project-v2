@@ -26,7 +26,7 @@
 #include "llvm/MC/MCObjectFileInfo.h"
 #include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/MC/MCStreamer.h"
-#include "llvm/MC/MCTargetOptionsCommandFlags.inc"
+#include "llvm/MC/MCTargetOptionsCommandFlags.def"
 #include "llvm/Object/Decompressor.h"
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/Support/DataExtractor.h"
@@ -183,7 +183,7 @@ static Expected<CompileUnitIdentifiers> getCUIdentifiers(StringRef Abbrev,
       break;
     default:
       DWARFFormValue::skipValue(Form, InfoData, &Offset,
-                                dwarf::FormParams({Version, AddrSize, Format}));
+                                DWARFFormParams({Version, AddrSize, Format}));
     }
   }
   return ID;

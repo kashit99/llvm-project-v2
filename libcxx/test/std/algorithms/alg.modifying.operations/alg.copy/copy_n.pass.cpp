@@ -10,27 +10,14 @@
 // <algorithm>
 
 // template<InputIterator InIter, OutputIterator<auto, InIter::reference> OutIter>
-//   constexpr OutIter   // constexpr after C++17
+//   OutIter
 //   copy_n(InIter first, InIter::difference_type n, OutIter result);
 
 #include <algorithm>
 #include <cassert>
 
-#include "test_macros.h"
 #include "test_iterators.h"
 #include "user_defined_integral.hpp"
-
-// #if TEST_STD_VER > 17
-// TEST_CONSTEXPR bool test_constexpr() {
-//     int ia[] = {1, 2, 3, 4, 5};
-//     int ic[] = {6, 6, 6, 6, 6, 6, 6};
-//
-//     auto p = std::copy_n(std::begin(ia), 4, std::begin(ic));
-//     return std::equal(std::begin(ic), p, std::begin(ia))
-//         && std::all_of(p, std::end(ic), [](int a){return a == 6;})
-//         ;
-//     }
-// #endif
 
 typedef UserDefinedIntegral<unsigned> UDI;
 
@@ -86,8 +73,4 @@ int main()
     test<const int*, bidirectional_iterator<int*> >();
     test<const int*, random_access_iterator<int*> >();
     test<const int*, int*>();
-
-// #if TEST_STD_VER > 17
-//     static_assert(test_constexpr());
-// #endif
 }

@@ -1,4 +1,4 @@
-//===--- NoMallocCheck.cpp - clang-tidy------------------------------------===//
+﻿//===--- NoMallocCheck.cpp - clang-tidy------------------------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //

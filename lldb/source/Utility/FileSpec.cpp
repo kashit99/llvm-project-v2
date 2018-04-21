@@ -17,6 +17,7 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Triple.h"         // for Triple
 #include "llvm/ADT/Twine.h"          // for Twine
+#include "llvm/Config/llvm-config.h" // for LLVM_ON_WIN32
 #include "llvm/Support/ErrorOr.h"    // for ErrorOr
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
@@ -37,7 +38,7 @@ using namespace lldb_private;
 namespace {
 
 static constexpr FileSpec::PathSyntax GetNativeSyntax() {
-#if defined(_WIN32)
+#if defined(LLVM_ON_WIN32)
   return FileSpec::ePathSyntaxWindows;
 #else
   return FileSpec::ePathSyntaxPosix;

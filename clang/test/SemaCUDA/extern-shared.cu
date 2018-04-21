@@ -1,11 +1,6 @@
 // RUN: %clang_cc1 -fsyntax-only -verify %s
 // RUN: %clang_cc1 -fsyntax-only -fcuda-is-device -verify %s
 
-// RUN: %clang_cc1 -fsyntax-only -fcuda-rdc -verify=rdc %s
-// RUN: %clang_cc1 -fsyntax-only -fcuda-is-device -fcuda-rdc -verify=rdc %s
-// These declarations are fine in separate compilation mode:
-// rdc-no-diagnostics
-
 #include "Inputs/cuda.h"
 
 __device__ void foo() {

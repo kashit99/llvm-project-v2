@@ -14,7 +14,6 @@
 
 #include "asan_allocator.h"
 #include "asan_internal.h"
-#include "asan_report.h"
 #include "asan_stack.h"
 
 #include "interception/interception.h"
@@ -68,16 +67,16 @@ struct nothrow_t {};
 enum class align_val_t: size_t {};
 }  // namespace std
 
-// TODO(alekseyshl): throw std::bad_alloc instead of dying on OOM.
+// TODO(alekseys): throw std::bad_alloc instead of dying on OOM.
 #define OPERATOR_NEW_BODY(type, nothrow) \
   GET_STACK_TRACE_MALLOC;\
   void *res = asan_memalign(0, size, &stack, type);\
-  if (!nothrow && UNLIKELY(!res)) ReportOutOfMemory(size, &stack);\
+  if (!nothrow && UNLIKELY(!res)) DieOnFailure::OnOOM();\
   return res;
 #define OPERATOR_NEW_BODY_ALIGN(type, nothrow) \
   GET_STACK_TRACE_MALLOC;\
   void *res = asan_memalign((uptr)align, size, &stack, type);\
-  if (!nothrow && UNLIKELY(!res)) ReportOutOfMemory(size, &stack);\
+  if (!nothrow && UNLIKELY(!res)) DieOnFailure::OnOOM();\
   return res;
 
 // On OS X it's not enough to just provide our own 'operator new' and

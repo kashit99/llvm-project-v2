@@ -374,8 +374,7 @@ static bool windowsRequiresStackProbe(MachineFunction &MF,
     F.getFnAttribute("stack-probe-size")
         .getValueAsString()
         .getAsInteger(0, StackProbeSize);
-  return (StackSizeInBytes >= StackProbeSize) &&
-         !F.hasFnAttribute("no-stack-arg-probe");
+  return StackSizeInBytes >= StackProbeSize;
 }
 
 bool AArch64FrameLowering::shouldCombineCSRLocalStackBump(
@@ -414,14 +413,6 @@ bool AArch64FrameLowering::shouldCombineCSRLocalStackBump(
 static MachineBasicBlock::iterator convertCalleeSaveRestoreToSPPrePostIncDec(
     MachineBasicBlock &MBB, MachineBasicBlock::iterator MBBI,
     const DebugLoc &DL, const TargetInstrInfo *TII, int CSStackSizeInc) {
-  // Ignore instructions that do not operate on SP, i.e. shadow call stack
-  // instructions.
-  while (MBBI->getOpcode() == AArch64::STRXpost ||
-         MBBI->getOpcode() == AArch64::LDRXpre) {
-    assert(MBBI->getOperand(0).getReg() != AArch64::SP);
-    ++MBBI;
-  }
-
   unsigned NewOpc;
   bool NewIsUnscaled = false;
   switch (MBBI->getOpcode()) {
@@ -489,14 +480,6 @@ static MachineBasicBlock::iterator convertCalleeSaveRestoreToSPPrePostIncDec(
 static void fixupCalleeSaveRestoreStackOffset(MachineInstr &MI,
                                               unsigned LocalStackSize) {
   unsigned Opc = MI.getOpcode();
-
-  // Ignore instructions that do not operate on SP, i.e. shadow call stack
-  // instructions.
-  if (Opc == AArch64::STRXpost || Opc == AArch64::LDRXpre) {
-    assert(MI.getOperand(0).getReg() != AArch64::SP);
-    return;
-  }
-
   (void)Opc;
   assert((Opc == AArch64::STPXi || Opc == AArch64::STPDi ||
           Opc == AArch64::STRXui || Opc == AArch64::STRDui ||
@@ -527,11 +510,6 @@ void AArch64FrameLowering::emitPrologue(MachineFunction &MF,
   bool needsFrameMoves = MMI.hasDebugInfo() || F.needsUnwindTableEntry();
   bool HasFP = hasFP(MF);
 
-  // At this point, we're going to decide whether or not the function uses a
-  // redzone. In most cases, the function doesn't have a redzone so let's
-  // assume that's false and set it to true in the case that there's a redzone.
-  AFI->setHasRedZone(false);
-
   // Debug location must be unknown since the first debug location is used
   // to determine the end of the prologue.
   DebugLoc DL;
@@ -556,6 +534,7 @@ void AArch64FrameLowering::emitPrologue(MachineFunction &MF,
       AFI->setHasRedZone(true);
       ++NumRedZoneFunctions;
     } else {
+      AFI->setHasRedZone(false);
       emitFrameOffset(MBB, MBBI, DL, AArch64::SP, AArch64::SP, -NumBytes, TII,
                       MachineInstr::FrameSetup);
 
@@ -955,18 +934,6 @@ void AArch64FrameLowering::emitEpilogue(MachineFunction &MF,
   // assumes the SP is at the same location as it was after the callee-save save
   // code in the prologue.
   if (AfterCSRPopSize) {
-    // Find an insertion point for the first ldp so that it goes before the
-    // shadow call stack epilog instruction. This ensures that the restore of
-    // lr from x18 is placed after the restore from sp.
-    auto FirstSPPopI = MBB.getFirstTerminator();
-    while (FirstSPPopI != Begin) {
-      auto Prev = std::prev(FirstSPPopI);
-      if (Prev->getOpcode() != AArch64::LDRXpre ||
-          Prev->getOperand(0).getReg() == AArch64::SP)
-        break;
-      FirstSPPopI = Prev;
-    }
-
     // Sometimes (when we restore in the same order as we save), we can end up
     // with code like this:
     //
@@ -981,7 +948,7 @@ void AArch64FrameLowering::emitEpilogue(MachineFunction &MF,
     // a post-index ldp.
     // If we managed to grab the first pop instruction, move it to the end.
     if (LastPopI != Begin)
-      MBB.splice(FirstSPPopI, &MBB, LastPopI);
+      MBB.splice(MBB.getFirstTerminator(), &MBB, LastPopI);
     // We should end up with something like this now:
     //
     // ldp      x24, x23, [sp, #16]
@@ -994,7 +961,7 @@ void AArch64FrameLowering::emitEpilogue(MachineFunction &MF,
     //
     // ldp      x26, x25, [sp], #64
     //
-    emitFrameOffset(MBB, FirstSPPopI, DL, AArch64::SP, AArch64::SP,
+    emitFrameOffset(MBB, MBB.getFirstTerminator(), DL, AArch64::SP, AArch64::SP,
                     AfterCSRPopSize, TII, MachineInstr::FrameDestroy);
   }
 }
@@ -1131,8 +1098,7 @@ struct RegPairInfo {
 
 static void computeCalleeSaveRegisterPairs(
     MachineFunction &MF, const std::vector<CalleeSavedInfo> &CSI,
-    const TargetRegisterInfo *TRI, SmallVectorImpl<RegPairInfo> &RegPairs,
-    bool &NeedShadowCallStackProlog) {
+    const TargetRegisterInfo *TRI, SmallVectorImpl<RegPairInfo> &RegPairs) {
 
   if (CSI.empty())
     return;
@@ -1164,15 +1130,6 @@ static void computeCalleeSaveRegisterPairs(
       if ((RPI.IsGPR && AArch64::GPR64RegClass.contains(NextReg)) ||
           (!RPI.IsGPR && AArch64::FPR64RegClass.contains(NextReg)))
         RPI.Reg2 = NextReg;
-    }
-
-    // If either of the registers to be saved is the lr register, it means that
-    // we also need to save lr in the shadow call stack.
-    if ((RPI.Reg1 == AArch64::LR || RPI.Reg2 == AArch64::LR) &&
-        MF.getFunction().hasFnAttribute(Attribute::ShadowCallStack)) {
-      if (!MF.getSubtarget<AArch64Subtarget>().isX18Reserved())
-        report_fatal_error("Must reserve x18 to use shadow call stack");
-      NeedShadowCallStackProlog = true;
     }
 
     // GPRs and FPRs are saved in pairs of 64-bit regs. We expect the CSI
@@ -1225,23 +1182,8 @@ bool AArch64FrameLowering::spillCalleeSavedRegisters(
   DebugLoc DL;
   SmallVector<RegPairInfo, 8> RegPairs;
 
-  bool NeedShadowCallStackProlog = false;
-  computeCalleeSaveRegisterPairs(MF, CSI, TRI, RegPairs,
-                                 NeedShadowCallStackProlog);
+  computeCalleeSaveRegisterPairs(MF, CSI, TRI, RegPairs);
   const MachineRegisterInfo &MRI = MF.getRegInfo();
-
-  if (NeedShadowCallStackProlog) {
-    // Shadow call stack prolog: str x30, [x18], #8
-    BuildMI(MBB, MI, DL, TII.get(AArch64::STRXpost))
-        .addReg(AArch64::X18, RegState::Define)
-        .addReg(AArch64::LR)
-        .addReg(AArch64::X18)
-        .addImm(8)
-        .setMIFlag(MachineInstr::FrameSetup);
-
-    // This instruction also makes x18 live-in to the entry block.
-    MBB.addLiveIn(AArch64::X18);
-  }
 
   for (auto RPII = RegPairs.rbegin(), RPIE = RegPairs.rend(); RPII != RPIE;
        ++RPII) {
@@ -1306,9 +1248,7 @@ bool AArch64FrameLowering::restoreCalleeSavedRegisters(
   if (MI != MBB.end())
     DL = MI->getDebugLoc();
 
-  bool NeedShadowCallStackProlog = false;
-  computeCalleeSaveRegisterPairs(MF, CSI, TRI, RegPairs,
-                                 NeedShadowCallStackProlog);
+  computeCalleeSaveRegisterPairs(MF, CSI, TRI, RegPairs);
 
   auto EmitMI = [&](const RegPairInfo &RPI) {
     unsigned Reg1 = RPI.Reg1;
@@ -1357,17 +1297,6 @@ bool AArch64FrameLowering::restoreCalleeSavedRegisters(
   else
     for (const RegPairInfo &RPI : RegPairs)
       EmitMI(RPI);
-
-  if (NeedShadowCallStackProlog) {
-    // Shadow call stack epilog: ldr x30, [x18, #-8]!
-    BuildMI(MBB, MI, DL, TII.get(AArch64::LDRXpre))
-        .addReg(AArch64::X18, RegState::Define)
-        .addReg(AArch64::LR, RegState::Define)
-        .addReg(AArch64::X18)
-        .addImm(-8)
-        .setMIFlag(MachineInstr::FrameDestroy);
-  }
-
   return true;
 }
 

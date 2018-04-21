@@ -54,6 +54,7 @@ class DWARFDebugAranges;
 class DWARFDebugInfo;
 class DWARFDebugInfoEntry;
 class DWARFDebugLine;
+class DWARFDebugPubnames;
 class DWARFDebugRanges;
 class DWARFDeclContext;
 class DWARFDIECollection;
@@ -71,9 +72,10 @@ public:
   friend class SymbolFileDWARFDwo;
   friend class DebugMapModule;
   friend struct DIERef;
-  friend class DWARFUnit;
+  friend class DWARFCompileUnit;
   friend class DWARFDIE;
   friend class DWARFASTParserClang;
+  friend class DWARFASTParserSwift;
   friend class DWARFASTParserGo;
   friend class DWARFASTParserJava;
   friend class DWARFASTParserOCaml;
@@ -226,6 +228,15 @@ public:
       const lldb_private::ConstString &name,
       const lldb_private::CompilerDeclContext *parent_decl_ctx) override;
 
+  bool GetCompileOption(const char *option, std::string &value,
+                        lldb_private::CompileUnit *cu = nullptr) override;
+
+  int GetCompileOptions(const char *option, std::vector<std::string> &value,
+                        lldb_private::CompileUnit *cu = nullptr) override;
+
+  void GetLoadedModules(lldb::LanguageType language,
+                        lldb_private::FileSpecList &modules) override;
+
   void PreloadSymbols() override;
 
   //------------------------------------------------------------------
@@ -248,6 +259,7 @@ public:
   const lldb_private::DWARFDataExtractor &get_debug_str_offsets_data();
   const lldb_private::DWARFDataExtractor &get_apple_names_data();
   const lldb_private::DWARFDataExtractor &get_apple_types_data();
+  const lldb_private::DWARFDataExtractor &get_apple_exttypes_data();
   const lldb_private::DWARFDataExtractor &get_apple_namespaces_data();
   const lldb_private::DWARFDataExtractor &get_apple_objc_data();
 
@@ -272,19 +284,19 @@ public:
   HasForwardDeclForClangType(const lldb_private::CompilerType &compiler_type);
 
   lldb_private::CompileUnit *
-  GetCompUnitForDWARFCompUnit(DWARFUnit *dwarf_cu,
+  GetCompUnitForDWARFCompUnit(DWARFCompileUnit *dwarf_cu,
                               uint32_t cu_idx = UINT32_MAX);
 
   virtual size_t GetObjCMethodDIEOffsets(lldb_private::ConstString class_name,
                                          DIEArray &method_die_offsets);
 
-  bool Supports_DW_AT_APPLE_objc_complete_type(DWARFUnit *cu);
+  bool Supports_DW_AT_APPLE_objc_complete_type(DWARFCompileUnit *cu);
 
   lldb_private::DebugMacrosSP ParseDebugMacros(lldb::offset_t *offset);
 
   static DWARFDIE GetParentSymbolContextDIE(const DWARFDIE &die);
 
-  virtual lldb::CompUnitSP ParseCompileUnit(DWARFUnit *dwarf_cu,
+  virtual lldb::CompUnitSP ParseCompileUnit(DWARFCompileUnit *dwarf_cu,
                                             uint32_t cu_idx);
 
   virtual lldb_private::DWARFExpression::LocationListFormat
@@ -303,13 +315,13 @@ public:
   virtual DWARFDIE GetDIE(const DIERef &die_ref);
 
   virtual std::unique_ptr<SymbolFileDWARFDwo>
-  GetDwoSymbolFileForCompileUnit(DWARFUnit &dwarf_cu,
+  GetDwoSymbolFileForCompileUnit(DWARFCompileUnit &dwarf_cu,
                                  const DWARFDebugInfoEntry &cu_die);
 
   // For regular SymbolFileDWARF instances the method returns nullptr,
   // for the instances of the subclass SymbolFileDWARFDwo
   // the method returns a pointer to the base compile unit.
-  virtual DWARFUnit *GetBaseCompileUnit();
+  virtual DWARFCompileUnit *GetBaseCompileUnit();
 
 protected:
   typedef llvm::DenseMap<const DWARFDebugInfoEntry *, lldb_private::Type *>
@@ -322,7 +334,7 @@ protected:
   typedef llvm::DenseMap<lldb::opaque_compiler_type_t, DIERef> ClangTypeToDIE;
 
   struct DWARFDataSegment {
-    llvm::once_flag m_flag;
+    std::once_flag m_flag;
     lldb_private::DWARFDataExtractor m_data;
   };
 
@@ -342,10 +354,10 @@ protected:
   DIEInDeclContext(const lldb_private::CompilerDeclContext *parent_decl_ctx,
                    const DWARFDIE &die);
 
-  virtual DWARFUnit *
+  virtual DWARFCompileUnit *
   GetDWARFCompileUnit(lldb_private::CompileUnit *comp_unit);
 
-  DWARFUnit *GetNextUnparsedDWARFCompileUnit(DWARFUnit *prev_cu);
+  DWARFCompileUnit *GetNextUnparsedDWARFCompileUnit(DWARFCompileUnit *prev_cu);
 
   bool GetFunction(const DWARFDIE &die, lldb_private::SymbolContext &sc);
 
@@ -458,6 +470,15 @@ protected:
 
   void UpdateExternalModuleListIfNeeded();
 
+  lldb_private::ClangASTImporter &GetClangASTImporter();
+
+  lldb_private::SwiftASTContext *
+  GetSwiftASTContextForCU(lldb_private::Status *error, DWARFCompileUnit &cu);
+
+  lldb::user_id_t GetTypeUIDFromTypeAttribute(const DWARFFormValue &type_attr);
+
+  lldb::TypeSP ResolveTypeFromAttribute(const DWARFFormValue &type_attr);
+
   virtual DIEToTypePtr &GetDIEToType() { return m_die_to_type; }
 
   virtual DIEToVariableSP &GetDIEToVariable() { return m_die_to_variable_sp; }
@@ -493,6 +514,7 @@ protected:
   DWARFDataSegment m_data_debug_str_offsets;
   DWARFDataSegment m_data_apple_names;
   DWARFDataSegment m_data_apple_types;
+  DWARFDataSegment m_data_apple_exttypes;
   DWARFDataSegment m_data_apple_namespaces;
   DWARFDataSegment m_data_apple_objc;
 
@@ -504,9 +526,11 @@ protected:
   std::unique_ptr<DWARFDebugLine> m_line;
   std::unique_ptr<DWARFMappedHash::MemoryTable> m_apple_names_ap;
   std::unique_ptr<DWARFMappedHash::MemoryTable> m_apple_types_ap;
+  std::unique_ptr<DWARFMappedHash::MemoryTable> m_apple_exttypes_ap;
   std::unique_ptr<DWARFMappedHash::MemoryTable> m_apple_namespaces_ap;
   std::unique_ptr<DWARFMappedHash::MemoryTable> m_apple_objc_ap;
   std::unique_ptr<GlobalVariableMap> m_global_aranges_ap;
+  std::unique_ptr<lldb_private::ClangASTImporter> m_clang_ast_importer_ap;
 
   typedef std::unordered_map<lldb::offset_t, lldb_private::DebugMacrosSP>
       DebugMacrosMap;
@@ -523,7 +547,8 @@ protected:
   NameToDIE m_global_index;               // Global and static variables
   NameToDIE m_type_index;                 // All type DIE offsets
   NameToDIE m_namespace_index;            // All type DIE offsets
-  bool m_indexed : 1, m_using_apple_tables : 1, m_fetched_external_modules : 1;
+  bool m_indexed : 1, m_using_apple_tables : 1, m_initialized_swift_modules : 1,
+      m_reported_missing_sdk : 1, m_fetched_external_modules : 1;
   lldb_private::LazyBool m_supports_DW_AT_APPLE_objc_complete_type;
 
   typedef std::shared_ptr<std::set<DIERef>> DIERefSetSP;

@@ -20,11 +20,13 @@ class Pass;
 class PassRegistry;
 
 void initializePruneUnprofitablePass(PassRegistry &);
+
 } // namespace llvm
 
 namespace polly {
 
 llvm::Pass *createPruneUnprofitablePass();
+
 } // namespace polly
 
 #endif // POLLY_PRUNEUNPROFITABLE_H

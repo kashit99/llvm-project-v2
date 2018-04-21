@@ -1,5 +1,3 @@
-target triple = "wasm32-unknown-unknown-wasm"
-
 ; Function Attrs: norecurse nounwind readnone
 define i32 @direct_fn() #0 {
 entry:

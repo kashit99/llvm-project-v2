@@ -222,25 +222,6 @@ public:
     llvm_unreachable("Incorrect RegionKind specified for directive.");
   }
 
-  /// Get innermost captured statement for the construct.
-  CapturedStmt *getInnermostCapturedStmt() {
-    assert(hasAssociatedStmt() && getAssociatedStmt() &&
-           "Must have associated statement.");
-    SmallVector<OpenMPDirectiveKind, 4> CaptureRegions;
-    getOpenMPCaptureRegions(CaptureRegions, getDirectiveKind());
-    assert(!CaptureRegions.empty() &&
-           "At least one captured statement must be provided.");
-    auto *CS = cast<CapturedStmt>(getAssociatedStmt());
-    for (unsigned Level = CaptureRegions.size(); Level > 1; --Level)
-      CS = cast<CapturedStmt>(CS->getCapturedStmt());
-    return CS;
-  }
-
-  const CapturedStmt *getInnermostCapturedStmt() const {
-    return const_cast<OMPExecutableDirective *>(this)
-        ->getInnermostCapturedStmt();
-  }
-
   OpenMPDirectiveKind getDirectiveKind() const { return Kind; }
 
   static bool classof(const Stmt *S) {
@@ -629,10 +610,10 @@ public:
     /// Distribute Loop condition used when composing 'omp distribute'
     ///  with 'omp for' in a same construct
     Expr *Cond;
-    /// Update of LowerBound for statically scheduled omp loops for
+    /// Update of LowerBound for statically sheduled omp loops for
     /// outer loop in combined constructs (e.g. 'distribute parallel for')
     Expr *NLB;
-    /// Update of UpperBound for statically scheduled omp loops for
+    /// Update of UpperBound for statically sheduled omp loops for
     /// outer loop in combined constructs (e.g. 'distribute parallel for')
     Expr *NUB;
   };
@@ -666,9 +647,9 @@ public:
     Expr *ST;
     /// \brief EnsureUpperBound -- expression UB = min(UB, NumIterations).
     Expr *EUB;
-    /// \brief Update of LowerBound for statically scheduled 'omp for' loops.
+    /// \brief Update of LowerBound for statically sheduled 'omp for' loops.
     Expr *NLB;
-    /// \brief Update of UpperBound for statically scheduled 'omp for' loops.
+    /// \brief Update of UpperBound for statically sheduled 'omp for' loops.
     Expr *NUB;
     /// \brief PreviousLowerBound - local variable passed to runtime in the
     /// enclosing schedule or null if that does not apply.
@@ -922,8 +903,9 @@ public:
   }
   const Stmt *getBody() const {
     // This relies on the loop form is already checked by Sema.
-    const Stmt *Body =
-        getInnermostCapturedStmt()->getCapturedStmt()->IgnoreContainers();
+    const Stmt *Body = getAssociatedStmt()->IgnoreContainers(true);
+    while(const auto *CS = dyn_cast<CapturedStmt>(Body))
+      Body = CS->getCapturedStmt();
     Body = cast<ForStmt>(Body)->getBody();
     for (unsigned Cnt = 1; Cnt < CollapsedNum; ++Cnt) {
       Body = Body->IgnoreContainers();

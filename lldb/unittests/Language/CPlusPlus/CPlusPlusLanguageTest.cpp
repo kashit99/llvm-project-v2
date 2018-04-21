@@ -160,6 +160,4 @@ TEST(CPlusPlusLanguage, ExtractContextAndIdentifier) {
       "selector:otherField:", context, basename));
   EXPECT_FALSE(CPlusPlusLanguage::ExtractContextAndIdentifier(
       "abc::", context, basename));
-  EXPECT_FALSE(CPlusPlusLanguage::ExtractContextAndIdentifier(
-      "f<A<B><C>>", context, basename));
 }

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "benchmark/benchmark.h"
+#include "benchmark/reporter.h"
 #include "complexity.h"
 
 #include <algorithm>
@@ -35,7 +35,7 @@ std::vector<std::string> elements = {
     "name",           "iterations",       "real_time",        "cpu_time",
     "time_unit",      "bytes_per_second", "items_per_second", "label",
     "error_occurred", "error_message"};
-}  // namespace
+}
 
 bool CSVReporter::ReportContext(const Context& context) {
   PrintBasicContext(&GetErrorStream(), context);
@@ -137,11 +137,8 @@ void CSVReporter::PrintRunData(const Run & run) {
   // Print user counters
   for (const auto &ucn : user_counter_names_) {
     auto it = run.counters.find(ucn);
-    if(it == run.counters.end()) {
-      Out << ",";
-    } else {
-      Out << "," << it->second;
-    }
+    CHECK(it != run.counters.end());
+    Out << "," << it->second;
   }
   Out << '\n';
 }

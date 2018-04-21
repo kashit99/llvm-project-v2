@@ -121,7 +121,6 @@ public:
   ///     response was received.
   //------------------------------------------------------------------
   int SendEnvironmentPacket(char const *name_equal_value);
-  int SendEnvironment(const Environment &env);
 
   int SendLaunchArchPacket(const char *arch);
 
@@ -355,8 +354,6 @@ public:
 
   bool GetQXferFeaturesReadSupported();
 
-  bool GetQXferMemoryMapReadSupported();
-
   LazyBool SupportsAllocDeallocMemory() // const
   {
     // Uncomment this to have lldb pretend the debug server doesn't respond to
@@ -547,7 +544,6 @@ protected:
   LazyBool m_supports_qXfer_libraries_read;
   LazyBool m_supports_qXfer_libraries_svr4_read;
   LazyBool m_supports_qXfer_features_read;
-  LazyBool m_supports_qXfer_memory_map_read;
   LazyBool m_supports_augmented_libraries_svr4_read;
   LazyBool m_supports_jThreadExtendedInfo;
   LazyBool m_supports_jLoadedDynamicLibrariesInfos;
@@ -591,9 +587,6 @@ protected:
   bool m_supported_async_json_packets_is_valid;
   lldb_private::StructuredData::ObjectSP m_supported_async_json_packets_sp;
 
-  std::vector<MemoryRegionInfo> m_qXfer_memory_map;
-  bool m_qXfer_memory_map_loaded;
-
   bool GetCurrentProcessInfo(bool allow_lazy_pid = true);
 
   bool GetGDBServerVersion();
@@ -615,11 +608,6 @@ protected:
                                 lldb::tid_t thread_id,
                                 llvm::MutableArrayRef<uint8_t> &buffer,
                                 size_t offset);
-
-  Status LoadQXferMemoryMap();
-
-  Status GetQXferMemoryMapRegionInfo(lldb::addr_t addr,
-                                     MemoryRegionInfo &region);
 
 private:
   DISALLOW_COPY_AND_ASSIGN(GDBRemoteCommunicationClient);

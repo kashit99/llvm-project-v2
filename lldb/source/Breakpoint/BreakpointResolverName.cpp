@@ -16,15 +16,14 @@
 #include "Plugins/Language/CPlusPlus/CPlusPlusLanguage.h"
 #include "Plugins/Language/ObjC/ObjCLanguage.h"
 #include "lldb/Breakpoint/BreakpointLocation.h"
-#include "lldb/Core/Architecture.h"
 #include "lldb/Core/Module.h"
 #include "lldb/Symbol/Block.h"
 #include "lldb/Symbol/Function.h"
 #include "lldb/Symbol/Symbol.h"
 #include "lldb/Symbol/SymbolContext.h"
-#include "lldb/Target/Target.h"
 #include "lldb/Utility/Log.h"
 #include "lldb/Utility/StreamString.h"
+#include "lldb/Target/SwiftLanguageRuntime.h"
 
 using namespace lldb;
 using namespace lldb_private;
@@ -235,6 +234,25 @@ void BreakpointResolverName::AddNameLookup(const ConstString &name,
   } else {
     Module::LookupInfo lookup(name, name_type_mask, m_language);
     m_lookups.push_back(lookup);
+
+    // we need to do this because we don't have a proper parser for Swift
+    // function name syntax
+    // so we try to ensure that if we autocomplete to something, we'll look for
+    // its mangled
+    // equivalent and use the mangled version as a lookup as well - to avoid
+    // overhead
+    // only do it for mangled names that start with _T - i.e. Swift mangled
+    // names!
+    ConstString counterpart;
+    if (name.GetMangledCounterpart(counterpart)) {
+      if (SwiftLanguageRuntime::IsSwiftMangledName(counterpart.GetCString())) {
+        Module::LookupInfo lookup;
+        lookup.SetName(counterpart);
+        lookup.SetLookupName(counterpart);
+        lookup.SetNameTypeMask(eFunctionNameTypeAuto);
+        m_lookups.push_back(lookup);
+      }
+    }
   }
 }
 
@@ -367,12 +385,6 @@ BreakpointResolverName::SearchCallback(SearchFilter &filter,
                 sc.symbol->GetPrologueByteSize();
             if (prologue_byte_size)
               break_addr.SetOffset(break_addr.GetOffset() + prologue_byte_size);
-            else {
-              Architecture *arch =
-                  m_breakpoint->GetTarget().GetArchitecturePlugin();
-              if (arch)
-                arch->AdjustBreakpointAddress(*sc.symbol, break_addr);
-            }
           }
         }
 

@@ -39,10 +39,11 @@ static struct RegisterJIT {
 extern "C" void LLVMLinkInMCJIT() {
 }
 
-ExecutionEngine *
-MCJIT::createJIT(std::unique_ptr<Module> M, std::string *ErrorStr,
+ExecutionEngine*
+MCJIT::createJIT(std::unique_ptr<Module> M,
+                 std::string *ErrorStr,
                  std::shared_ptr<MCJITMemoryManager> MemMgr,
-                 std::shared_ptr<LegacyJITSymbolResolver> Resolver,
+                 std::shared_ptr<JITSymbolResolver> Resolver,
                  std::unique_ptr<TargetMachine> TM) {
   // Try to register the program as a source of symbols to resolve against.
   //
@@ -63,7 +64,7 @@ MCJIT::createJIT(std::unique_ptr<Module> M, std::string *ErrorStr,
 
 MCJIT::MCJIT(std::unique_ptr<Module> M, std::unique_ptr<TargetMachine> TM,
              std::shared_ptr<MCJITMemoryManager> MemMgr,
-             std::shared_ptr<LegacyJITSymbolResolver> Resolver)
+             std::shared_ptr<JITSymbolResolver> Resolver)
     : ExecutionEngine(TM->createDataLayout(), std::move(M)), TM(std::move(TM)),
       Ctx(nullptr), MemMgr(std::move(MemMgr)),
       Resolver(*this, std::move(Resolver)), Dyld(*this->MemMgr, this->Resolver),
@@ -164,7 +165,7 @@ std::unique_ptr<MemoryBuffer> MCJIT::emitObject(Module *M) {
   // Flush the output buffer to get the generated code into memory
 
   std::unique_ptr<MemoryBuffer> CompiledObjBuffer(
-      new SmallVectorMemoryBuffer(std::move(ObjBufferSV)));
+                                new ObjectMemoryBuffer(std::move(ObjBufferSV)));
 
   // If we have an object cache, tell it about the new object.
   // Note that we're using the compiled image, not the loaded image (as below).
@@ -665,5 +666,3 @@ LinkingSymbolResolver::findSymbol(const std::string &Name) {
     return nullptr;
   return ClientResolver->findSymbol(Name);
 }
-
-void LinkingSymbolResolver::anchor() {}

@@ -24,7 +24,6 @@
 #include "lldb/Interpreter/CommandInterpreter.h"
 #include "lldb/Interpreter/CommandObject.h"
 #include "lldb/Interpreter/CommandReturnObject.h"
-#include "lldb/Interpreter/OptionArgParser.h"
 #include "lldb/Interpreter/OptionGroupFormat.h"
 #include "lldb/Interpreter/OptionValueBoolean.h"
 #include "lldb/Interpreter/OptionValueLanguage.h"
@@ -330,7 +329,7 @@ private:
 
       switch (short_option) {
       case 'C':
-        m_cascade = OptionArgParser::ToBoolean(option_arg, true, &success);
+        m_cascade = Args::StringToBoolean(option_arg, true, &success);
         if (!success)
           error.SetErrorStringWithFormat("invalid value for cascade: %s",
                                          option_arg.str().c_str());
@@ -572,7 +571,7 @@ private:
 
       switch (short_option) {
       case 'C':
-        m_cascade = OptionArgParser::ToBoolean(option_value, true, &success);
+        m_cascade = Args::StringToBoolean(option_value, true, &success);
         if (!success)
           error.SetErrorStringWithFormat("invalid value for cascade: %s",
                                          option_value.str().c_str());
@@ -1253,7 +1252,7 @@ Status CommandObjectTypeSummaryAdd::CommandOptions::SetOptionValue(
 
   switch (short_option) {
   case 'C':
-    m_flags.SetCascades(OptionArgParser::ToBoolean(option_arg, true, &success));
+    m_flags.SetCascades(Args::StringToBoolean(option_arg, true, &success));
     if (!success)
       error.SetErrorStringWithFormat("invalid value for cascade: %s",
                                      option_arg.str().c_str());
@@ -2521,7 +2520,7 @@ private:
 
       switch (short_option) {
       case 'C':
-        m_cascade = OptionArgParser::ToBoolean(option_arg, true, &success);
+        m_cascade = Args::StringToBoolean(option_arg, true, &success);
         if (!success)
           error.SetErrorStringWithFormat("invalid value for cascade: %s",
                                          option_arg.str().c_str());
@@ -2849,7 +2848,8 @@ public:
     StreamString stream;
     // FIXME: hardcoding languages is not good
     lldb::LanguageType languages[] = {eLanguageTypeObjC,
-                                      eLanguageTypeC_plus_plus};
+                                      eLanguageTypeC_plus_plus,
+                                      eLanguageTypeSwift};
 
     for (const auto lang_type : languages) {
       if (auto language = Language::FindPlugin(lang_type)) {
@@ -2929,6 +2929,7 @@ public:
       // FIXME: hardcoding languages is not good
       languages.push_back(Language::FindPlugin(eLanguageTypeObjC));
       languages.push_back(Language::FindPlugin(eLanguageTypeC_plus_plus));
+      languages.push_back(Language::FindPlugin(eLanguageTypeSwift));
     } else {
       languages.push_back(Language::FindPlugin(m_command_options.m_language));
     }

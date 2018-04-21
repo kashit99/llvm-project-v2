@@ -389,6 +389,8 @@ public:
   //------------------------------------------------------------------
   // Subclasses can implement the functions below.
   //------------------------------------------------------------------
+  virtual ConstString GetMangledTypeName();
+
   virtual ConstString GetTypeName();
 
   virtual ConstString GetDisplayTypeName();
@@ -611,6 +613,8 @@ public:
   lldb::ValueObjectSP GetSyntheticValue(bool use_synthetic = true);
 
   virtual bool HasSyntheticValue();
+
+  SwiftASTContext *GetSwiftASTContext();
 
   virtual bool IsSynthetic() { return false; }
 
@@ -1022,6 +1026,11 @@ protected:
 
   const char *GetLocationAsCStringImpl(const Value &value,
                                        const DataExtractor &data);
+
+  virtual lldb_private::Status
+  GetValueAsData(ExecutionContext *exe_ctx, DataExtractor &data,
+                 uint32_t data_offset, Module *module,
+                 bool mask_error_on_zerosize_type = true);
 
   bool IsChecksumEmpty();
 

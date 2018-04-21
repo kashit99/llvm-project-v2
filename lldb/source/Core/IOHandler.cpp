@@ -67,7 +67,6 @@
 #include <assert.h>    // for assert
 #include <ctype.h>     // for isspace
 #include <errno.h>     // for EINTR, errno
-#include <locale.h>    // for setlocale
 #include <stdint.h>    // for uint32_t, UINT32_MAX
 #include <stdio.h>     // for size_t, fprintf, feof
 #include <string.h>    // for strlen
@@ -315,6 +314,7 @@ IOHandlerEditline::IOHandlerEditline(
     m_editline_ap.reset(new Editline(editline_name, GetInputFILE(),
                                      GetOutputFILE(), GetErrorFILE(),
                                      m_color_prompts));
+    SetBaseLineNumber(m_base_line_number);
     m_editline_ap->SetIsInputCompleteCallback(IsInputCompleteCallback, this);
     m_editline_ap->SetAutoCompleteCallback(AutoCompleteCallback, this);
     // See if the delegate supports fixing indentation
@@ -542,6 +542,7 @@ bool IOHandlerEditline::GetLines(StringList &lines, bool &interrupted) {
 #ifndef LLDB_DISABLE_LIBEDIT
   }
 #endif
+  m_current_lines_ptr = NULL;
   return success;
 }
 

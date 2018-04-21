@@ -23,7 +23,6 @@
 #include <isl/ast.h>
 #include <isl/ast_build.h>
 #include <isl/options.h>
-#include <isl/space.h>
 #include <isl/set.h>
 #include <isl/union_set.h>
 #include <isl/union_map.h>

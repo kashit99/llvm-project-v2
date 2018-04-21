@@ -1,4 +1,4 @@
-//===- ObjCRuntime.h - Objective-C Runtime Configuration --------*- C++ -*-===//
+//===--- ObjCRuntime.h - Objective-C Runtime Configuration ------*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -6,21 +6,18 @@
 // License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
-//
+///
 /// \file
 /// \brief Defines types useful for describing an Objective-C runtime.
-//
+///
 //===----------------------------------------------------------------------===//
 
 #ifndef LLVM_CLANG_BASIC_OBJCRUNTIME_H
 #define LLVM_CLANG_BASIC_OBJCRUNTIME_H
 
-#include "clang/Basic/LLVM.h"
 #include "clang/Basic/VersionTuple.h"
-#include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Triple.h"
 #include "llvm/Support/ErrorHandling.h"
-#include <string>
 
 namespace clang {
 
@@ -60,14 +57,15 @@ public:
   };
 
 private:
-  Kind TheKind = MacOSX;
+  Kind TheKind;
   VersionTuple Version;
 
 public:
   /// A bogus initialization of the runtime.
-  ObjCRuntime() = default;
+  ObjCRuntime() : TheKind(MacOSX) {}
+
   ObjCRuntime(Kind kind, const VersionTuple &version)
-      : TheKind(kind), Version(version) {}
+    : TheKind(kind), Version(version) {}
 
   void set(Kind kind, VersionTuple version) {
     TheKind = kind;
@@ -184,8 +182,9 @@ public:
         return true;
       case GNUstep:
         return getVersion() >= VersionTuple(1, 7);
+    
       default:
-        return false;
+      return false;
     }
   }
 
@@ -208,8 +207,8 @@ public:
   bool hasSubscripting() const {
     switch (getKind()) {
     case FragileMacOSX: return false;
-    case MacOSX: return getVersion() >= VersionTuple(10, 11);
-    case iOS: return getVersion() >= VersionTuple(9);
+    case MacOSX: return getVersion() >= VersionTuple(10, 8);
+    case iOS: return getVersion() >= VersionTuple(6);
     case WatchOS: return true;
 
     // This is really a lie, because some implementations and versions
@@ -321,6 +320,7 @@ public:
       return getVersion() >= VersionTuple(2);
     case GNUstep:
       return false;
+
     default:
       return false;
     }
@@ -360,6 +360,6 @@ public:
 
 raw_ostream &operator<<(raw_ostream &out, const ObjCRuntime &value);
 
-} // namespace clang
+}  // end namespace clang
 
-#endif // LLVM_CLANG_BASIC_OBJCRUNTIME_H
+#endif

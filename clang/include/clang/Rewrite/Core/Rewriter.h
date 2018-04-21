@@ -1,4 +1,4 @@
-//===- Rewriter.h - Code rewriting interface --------------------*- C++ -*-===//
+//===--- Rewriter.h - Code rewriting interface ------------------*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -15,55 +15,52 @@
 #ifndef LLVM_CLANG_REWRITE_CORE_REWRITER_H
 #define LLVM_CLANG_REWRITE_CORE_REWRITER_H
 
-#include "clang/Basic/LLVM.h"
 #include "clang/Basic/SourceLocation.h"
 #include "clang/Rewrite/Core/RewriteBuffer.h"
-#include "llvm/ADT/StringRef.h"
+#include <cstring>
 #include <map>
 #include <string>
 
 namespace clang {
-
-class LangOptions;
-class SourceManager;
+  class LangOptions;
+  class SourceManager;
 
 /// Rewriter - This is the main interface to the rewrite buffers.  Its primary
 /// job is to dispatch high-level requests to the low-level RewriteBuffers that
 /// are involved.
 class Rewriter {
-  SourceManager *SourceMgr = nullptr;
-  const LangOptions *LangOpts = nullptr;
+  SourceManager *SourceMgr;
+  const LangOptions *LangOpts;
   std::map<FileID, RewriteBuffer> RewriteBuffers;
-
 public:
   struct RewriteOptions {
     /// \brief Given a source range, true to include previous inserts at the
     /// beginning of the range as part of the range itself (true by default).
-    bool IncludeInsertsAtBeginOfRange = true;
-
+    bool IncludeInsertsAtBeginOfRange;
     /// \brief Given a source range, true to include previous inserts at the
     /// end of the range as part of the range itself (true by default).
-    bool IncludeInsertsAtEndOfRange = true;
-
+    bool IncludeInsertsAtEndOfRange;
     /// \brief If true and removing some text leaves a blank line
     /// also remove the empty line (false by default).
-    bool RemoveLineIfEmpty = false;
+    bool RemoveLineIfEmpty;
 
-    RewriteOptions() {}
+    RewriteOptions()
+      : IncludeInsertsAtBeginOfRange(true),
+        IncludeInsertsAtEndOfRange(true),
+        RemoveLineIfEmpty(false) { }
   };
 
-  using buffer_iterator = std::map<FileID, RewriteBuffer>::iterator;
-  using const_buffer_iterator = std::map<FileID, RewriteBuffer>::const_iterator;
+  typedef std::map<FileID, RewriteBuffer>::iterator buffer_iterator;
+  typedef std::map<FileID, RewriteBuffer>::const_iterator const_buffer_iterator;
 
-  explicit Rewriter() = default;
   explicit Rewriter(SourceManager &SM, const LangOptions &LO)
-      : SourceMgr(&SM), LangOpts(&LO) {}
+    : SourceMgr(&SM), LangOpts(&LO) {}
+  explicit Rewriter() : SourceMgr(nullptr), LangOpts(nullptr) {}
 
   void setSourceMgr(SourceManager &SM, const LangOptions &LO) {
     SourceMgr = &SM;
     LangOpts = &LO;
   }
-
   SourceManager &getSourceMgr() const { return *SourceMgr; }
   const LangOptions &getLangOpts() const { return *LangOpts; }
 
@@ -85,6 +82,7 @@ public:
   /// in different buffers, this returns an empty string.
   ///
   /// Note that this method is not particularly efficient.
+  ///
   std::string getRewrittenText(SourceRange Range) const;
 
   /// InsertText - Insert the specified string at the specified location in the
@@ -192,6 +190,6 @@ private:
   unsigned getLocationOffsetAndFileID(SourceLocation Loc, FileID &FID) const;
 };
 
-} // namespace clang
+} // end namespace clang
 
-#endif // LLVM_CLANG_REWRITE_CORE_REWRITER_H
+#endif

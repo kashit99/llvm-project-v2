@@ -14,7 +14,6 @@
 // C Includes
 // C++ Includes
 #include <chrono>
-#include <csignal>
 #include <cstring>
 #include <mutex>
 #include <sstream>
@@ -39,7 +38,7 @@
 #include "lldb/Utility/UriParser.h"
 
 // Project includes
-#include "lldb/Utility/StringExtractorGDBRemote.h"
+#include "Utility/StringExtractorGDBRemote.h"
 
 using namespace lldb;
 using namespace lldb_private;
@@ -530,7 +529,7 @@ bool GDBRemoteCommunicationServerPlatform::FreePortForProcess(lldb::pid_t pid) {
 
 const FileSpec &GDBRemoteCommunicationServerPlatform::GetDomainSocketDir() {
   static FileSpec g_domainsocket_dir;
-  static llvm::once_flag g_once_flag;
+  static std::once_flag g_once_flag;
 
   llvm::call_once(g_once_flag, []() {
     const char *domainsocket_dir_env =

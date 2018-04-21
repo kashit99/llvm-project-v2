@@ -13,7 +13,7 @@
 
 // typedef TrivialClock file_time_type;
 
-#include "filesystem_include.hpp"
+#include <experimental/filesystem>
 #include <chrono>
 #include <type_traits>
 
@@ -25,7 +25,7 @@ typedef std::chrono::time_point<ExpectedClock> ExpectedTimePoint;
 
 int main() {
   static_assert(std::is_same<
-          fs::file_time_type,
+          std::experimental::filesystem::file_time_type,
           ExpectedTimePoint
       >::value, "");
 }

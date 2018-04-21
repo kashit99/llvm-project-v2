@@ -18,15 +18,9 @@ namespace clangd {
 
 tooling::CompileCommand
 GlobalCompilationDatabase::getFallbackCommand(PathRef File) const {
-  std::vector<std::string> Argv = {"clang"};
-  // Clang treats .h files as C by default, resulting in unhelpful diagnostics.
-  // Parsing as Objective C++ is friendly to more cases.
-  if (llvm::sys::path::extension(File) == ".h")
-    Argv.push_back("-xobjective-c++-header");
-  Argv.push_back(File);
   return tooling::CompileCommand(llvm::sys::path::parent_path(File),
                                  llvm::sys::path::filename(File),
-                                 std::move(Argv),
+                                 {"clang", File.str()},
                                  /*Output=*/"");
 }
 
@@ -34,9 +28,6 @@ DirectoryBasedGlobalCompilationDatabase::
     DirectoryBasedGlobalCompilationDatabase(
         llvm::Optional<Path> CompileCommandsDir)
     : CompileCommandsDir(std::move(CompileCommandsDir)) {}
-
-DirectoryBasedGlobalCompilationDatabase::
-    ~DirectoryBasedGlobalCompilationDatabase() = default;
 
 llvm::Optional<tooling::CompileCommand>
 DirectoryBasedGlobalCompilationDatabase::getCompileCommand(PathRef File) const {
@@ -47,7 +38,8 @@ DirectoryBasedGlobalCompilationDatabase::getCompileCommand(PathRef File) const {
       return std::move(Candidates.front());
     }
   } else {
-    log("Failed to find compilation database for " + Twine(File));
+    log(Context::empty(), // FIXME(ibiryukov): pass a proper Context here.
+        "Failed to find compilation database for " + Twine(File));
   }
   return llvm::None;
 }
@@ -58,12 +50,6 @@ DirectoryBasedGlobalCompilationDatabase::getFallbackCommand(
   auto C = GlobalCompilationDatabase::getFallbackCommand(File);
   addExtraFlags(File, C);
   return C;
-}
-
-void DirectoryBasedGlobalCompilationDatabase::setCompileCommandsDir(Path P) {
-  std::lock_guard<std::mutex> Lock(Mutex);
-  CompileCommandsDir = P;
-  CompilationDatabases.clear();
 }
 
 void DirectoryBasedGlobalCompilationDatabase::setExtraFlagsForFile(
@@ -95,8 +81,6 @@ DirectoryBasedGlobalCompilationDatabase::getCDBInDirLocked(PathRef Dir) const {
     return CachedIt->second.get();
   std::string Error = "";
   auto CDB = tooling::CompilationDatabase::loadFromDirectory(Dir, Error);
-  if (CDB)
-    CDB = tooling::inferMissingCompileCommands(std::move(CDB));
   auto Result = CDB.get();
   CompilationDatabases.insert(std::make_pair(Dir, std::move(CDB)));
   return Result;

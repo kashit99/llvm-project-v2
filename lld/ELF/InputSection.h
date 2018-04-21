@@ -18,6 +18,8 @@
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/TinyPtrVector.h"
 #include "llvm/Object/ELF.h"
+#include "llvm/Support/Threading.h"
+#include <mutex>
 
 namespace lld {
 namespace elf {
@@ -77,8 +79,6 @@ public:
   // Translate an offset in the input section to an offset in the output
   // section.
   uint64_t getOffset(uint64_t Offset) const;
-
-  uint64_t getVA(uint64_t Offset = 0) const;
 
 protected:
   SectionBase(Kind SectionKind, StringRef Name, uint64_t Flags,
@@ -164,7 +164,7 @@ public:
   // Compilers emit zlib-compressed debug sections if the -gz option
   // is given. This function checks if this section is compressed, and
   // if so, decompress in memory.
-  void maybeDecompress();
+  void maybeUncompress();
 
   // Returns a source location string. Used to construct an error message.
   template <class ELFT> std::string getLocation(uint64_t Offset);
@@ -189,9 +189,9 @@ public:
   }
 
 private:
-  // A pointer that owns decompressed data if a section is compressed by zlib.
+  // A pointer that owns uncompressed data if a section is compressed by zlib.
   // Since the feature is not used often, this is usually a nullptr.
-  std::unique_ptr<char[]> DecompressBuf;
+  std::unique_ptr<char[]> UncompressBuf;
 };
 
 // SectionPiece represents a piece of splittable section contents.
@@ -200,7 +200,7 @@ private:
 // be found by looking at the next one).
 struct SectionPiece {
   SectionPiece(size_t Off, uint32_t Hash, bool Live)
-      : InputOff(Off), Hash(Hash), OutputOff(0),
+      : InputOff(Off), Hash(Hash), OutputOff(-1),
         Live(Live || !Config->GcSections) {}
 
   uint32_t InputOff;
@@ -229,14 +229,13 @@ public:
       LiveOffsets.insert(Offset);
   }
 
-  // Translate an offset in the input section to an offset in the parent
-  // MergeSyntheticSection.
-  uint64_t getParentOffset(uint64_t Offset) const;
+  // Translate an offset in the input section to an offset
+  // in the output section.
+  uint64_t getOffset(uint64_t Offset) const;
 
   // Splittable sections are handled as a sequence of data
   // rather than a single large blob of data.
   std::vector<SectionPiece> Pieces;
-  llvm::DenseMap<uint32_t, uint32_t> OffsetMap;
 
   // Returns I'th piece's data. This function is very hot when
   // string merging is enabled, so we want to inline.
@@ -250,9 +249,7 @@ public:
 
   // Returns the SectionPiece at a given input section offset.
   SectionPiece *getSectionPiece(uint64_t Offset);
-  const SectionPiece *getSectionPiece(uint64_t Offset) const {
-    return const_cast<MergeInputSection *>(this)->getSectionPiece(Offset);
-  }
+  const SectionPiece *getSectionPiece(uint64_t Offset) const;
 
   SyntheticSection *getParent() const;
 
@@ -260,7 +257,10 @@ private:
   void splitStrings(ArrayRef<uint8_t> A, size_t Size);
   void splitNonStrings(ArrayRef<uint8_t> A, size_t Size);
 
-  llvm::DenseSet<uint32_t> LiveOffsets;
+  mutable llvm::DenseMap<uint32_t, uint32_t> OffsetMap;
+  mutable llvm::once_flag InitOffsetMap;
+
+  llvm::DenseSet<uint64_t> LiveOffsets;
 };
 
 struct EhSectionPiece {
@@ -310,8 +310,6 @@ public:
   // beginning of the output section.
   template <class ELFT> void writeTo(uint8_t *Buf);
 
-  uint64_t getOffset(uint64_t Offset) const { return OutSecOff + Offset; }
-
   OutputSection *getParent() const;
 
   // This variable has two usages. Initially, it represents an index in the
@@ -344,6 +342,10 @@ private:
 
 // The list of all input sections.
 extern std::vector<InputSectionBase *> InputSections;
+
+// Builds section order for handling --symbol-ordering-file.
+llvm::DenseMap<SectionBase *, int> buildSectionOrder();
+
 } // namespace elf
 
 std::string toString(const elf::InputSectionBase *);

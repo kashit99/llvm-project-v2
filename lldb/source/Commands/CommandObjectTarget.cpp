@@ -21,9 +21,9 @@
 #include "lldb/Host/OptionParser.h"
 #include "lldb/Host/StringConvert.h"
 #include "lldb/Host/Symbols.h"
+#include "lldb/Interpreter/Args.h"
 #include "lldb/Interpreter/CommandInterpreter.h"
 #include "lldb/Interpreter/CommandReturnObject.h"
-#include "lldb/Interpreter/OptionArgParser.h"
 #include "lldb/Interpreter/OptionGroupArchitecture.h"
 #include "lldb/Interpreter/OptionGroupBoolean.h"
 #include "lldb/Interpreter/OptionGroupFile.h"
@@ -45,12 +45,10 @@
 #include "lldb/Symbol/VariableList.h"
 #include "lldb/Target/ABI.h"
 #include "lldb/Target/Process.h"
-#include "lldb/Target/RegisterContext.h"
 #include "lldb/Target/SectionLoadList.h"
 #include "lldb/Target/StackFrame.h"
 #include "lldb/Target/Thread.h"
 #include "lldb/Target/ThreadSpec.h"
-#include "lldb/Utility/Args.h"
 #include "lldb/Utility/Timer.h"
 
 #include "llvm/Support/FileSystem.h"
@@ -1388,8 +1386,7 @@ static size_t DumpModuleObjfileHeaders(Stream &strm, ModuleList &module_list) {
           strm.EOL();
         }
         ObjectFile *objfile = module->GetObjectFile();
-        if (objfile)
-          objfile->Dump(&strm);
+        objfile->Dump(&strm);
       }
     }
     strm.IndentLess();
@@ -1398,14 +1395,15 @@ static size_t DumpModuleObjfileHeaders(Stream &strm, ModuleList &module_list) {
 }
 
 static void DumpModuleSymtab(CommandInterpreter &interpreter, Stream &strm,
-                             Module *module, SortOrder sort_order) {
+                             Module *module, SortOrder sort_order,
+                             Mangled::NamePreference name_preference) {
   if (module) {
     SymbolVendor *sym_vendor = module->GetSymbolVendor();
     if (sym_vendor) {
       Symtab *symtab = sym_vendor->GetSymtab();
       if (symtab)
         symtab->Dump(&strm, interpreter.GetExecutionContext().GetTargetPtr(),
-                     sort_order);
+                     sort_order, name_preference);
     }
   }
 }
@@ -1955,7 +1953,8 @@ static OptionEnumValueElement g_sort_option_enumeration[4] = {
 
 static OptionDefinition g_target_modules_dump_symtab_options[] = {
     // clang-format off
-  { LLDB_OPT_SET_1, false, "sort", 's', OptionParser::eRequiredArgument, nullptr, g_sort_option_enumeration, 0, eArgTypeSortOrder, "Supply a sort order when dumping the symbol table." }
+    { LLDB_OPT_SET_1, false, "sort",               's', OptionParser::eRequiredArgument, nullptr, g_sort_option_enumeration, 0, eArgTypeSortOrder, "Supply a sort order when dumping the symbol table." },
+    { LLDB_OPT_SET_1, false, "show-mangled-names", 'm', OptionParser::eNoArgument,       nullptr, nullptr,                   0, eArgTypeNone,      "Do not demangle symbol names before showing them." },
     // clang-format on
 };
 
@@ -1974,7 +1973,9 @@ public:
 
   class CommandOptions : public Options {
   public:
-    CommandOptions() : Options(), m_sort_order(eSortOrderNone) {}
+    CommandOptions()
+        : Options(), m_sort_order(eSortOrderNone),
+          m_prefer_mangled(false, false) {}
 
     ~CommandOptions() override = default;
 
@@ -1984,8 +1985,13 @@ public:
       const int short_option = m_getopt_table[option_idx].val;
 
       switch (short_option) {
+      case 'm':
+        m_prefer_mangled.SetCurrentValue(true);
+        m_prefer_mangled.SetOptionWasSet();
+        break;
+
       case 's':
-        m_sort_order = (SortOrder)OptionArgParser::ToOptionEnum(
+        m_sort_order = (SortOrder)Args::StringToOptionEnum(
             option_arg, GetDefinitions()[option_idx].enum_values,
             eSortOrderNone, error);
         break;
@@ -2000,6 +2006,7 @@ public:
 
     void OptionParsingStarting(ExecutionContext *execution_context) override {
       m_sort_order = eSortOrderNone;
+      m_prefer_mangled.Clear();
     }
 
     llvm::ArrayRef<OptionDefinition> GetDefinitions() override {
@@ -2007,6 +2014,7 @@ public:
     }
 
     SortOrder m_sort_order;
+    OptionValueBoolean m_prefer_mangled;
   };
 
 protected:
@@ -2019,6 +2027,10 @@ protected:
       return false;
     } else {
       uint32_t num_dumped = 0;
+
+      Mangled::NamePreference preference =
+          (m_options.m_prefer_mangled ? Mangled::ePreferMangled
+                                      : Mangled::ePreferDemangled);
 
       uint32_t addr_byte_size = target->GetArchitecture().GetAddressByteSize();
       result.GetOutputStream().SetAddressByteSize(addr_byte_size);
@@ -2044,7 +2056,7 @@ protected:
             DumpModuleSymtab(
                 m_interpreter, result.GetOutputStream(),
                 target->GetImages().GetModulePointerAtIndexUnlocked(image_idx),
-                m_options.m_sort_order);
+                m_options.m_sort_order, preference);
           }
         } else {
           result.AppendError("the target has no associated executable images");
@@ -2072,7 +2084,7 @@ protected:
                   break;
                 num_dumped++;
                 DumpModuleSymtab(m_interpreter, result.GetOutputStream(),
-                                 module, m_options.m_sort_order);
+                                 module, m_options.m_sort_order, preference);
               }
             }
           } else
@@ -2749,33 +2761,10 @@ protected:
                     process->Flush();
                 }
                 if (load) {
-                  ProcessSP process = target->CalculateProcess();
-                  Address file_entry = objfile->GetEntryPointAddress();
-                  if (!process) {
-                    result.AppendError("No process");
-                    return false;
-                  }
-                  if (set_pc && !file_entry.IsValid()) {
-                    result.AppendError("No entry address in object file");
-                    return false;
-                  }
-                  std::vector<ObjectFile::LoadableData> loadables(
-                      objfile->GetLoadableData(*target));
-                  if (loadables.size() == 0) {
-                    result.AppendError("No loadable sections");
-                    return false;
-                  }
-                  Status error = process->WriteObjectFile(std::move(loadables));
+                  Status error = module->LoadInMemory(*target, set_pc);
                   if (error.Fail()) {
                     result.AppendError(error.AsCString());
                     return false;
-                  }
-                  if (set_pc) {
-                    ThreadList &thread_list = process->GetThreadList();
-                    ThreadSP curr_thread(thread_list.GetSelectedThread());
-                    RegisterContextSP reg_context(
-                        curr_thread->GetRegisterContext());
-                    reg_context->SetPC(file_entry.GetLoadAddress(target));
                   }
                 }
               } else {
@@ -2887,8 +2876,8 @@ public:
       if (short_option == 'g') {
         m_use_global_module_list = true;
       } else if (short_option == 'a') {
-        m_module_addr = OptionArgParser::ToAddress(
-            execution_context, option_arg, LLDB_INVALID_ADDRESS, &error);
+        m_module_addr = Args::StringToAddress(execution_context, option_arg,
+                                              LLDB_INVALID_ADDRESS, &error);
       } else {
         unsigned long width = 0;
         option_arg.getAsInteger(0, width);
@@ -3253,8 +3242,8 @@ public:
       case 'a': {
         m_str = option_arg;
         m_type = eLookupTypeAddress;
-        m_addr = OptionArgParser::ToAddress(execution_context, option_arg,
-                                            LLDB_INVALID_ADDRESS, &error);
+        m_addr = Args::StringToAddress(execution_context, option_arg,
+                                       LLDB_INVALID_ADDRESS, &error);
         if (m_addr == LLDB_INVALID_ADDRESS)
           error.SetErrorStringWithFormat("invalid address string '%s'",
                                          option_arg.str().c_str());
@@ -3569,8 +3558,8 @@ public:
       switch (short_option) {
       case 'a': {
         m_type = eLookupTypeAddress;
-        m_addr = OptionArgParser::ToAddress(execution_context, option_arg,
-                                            LLDB_INVALID_ADDRESS, &error);
+        m_addr = Args::StringToAddress(execution_context, option_arg,
+                                       LLDB_INVALID_ADDRESS, &error);
       } break;
 
       case 'o':
@@ -3728,7 +3717,7 @@ public:
       break;
     }
 
-    return true;
+    return false;
   }
 
   bool LookupInModule(CommandInterpreter &interpreter, Module *module,

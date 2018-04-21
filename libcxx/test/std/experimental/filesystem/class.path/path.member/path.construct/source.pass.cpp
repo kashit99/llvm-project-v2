@@ -19,7 +19,7 @@
 //      path(InputIterator first, InputIterator last);
 
 
-#include "filesystem_include.hpp"
+#include <experimental/filesystem>
 #include <type_traits>
 #include <cassert>
 
@@ -28,9 +28,10 @@
 #include "min_allocator.h"
 #include "filesystem_test_helper.hpp"
 
+namespace fs = std::experimental::filesystem;
 
-template <class CharT, class ...Args>
-void RunTestCaseImpl(MultiStringType const& MS, Args... args) {
+template <class CharT>
+void RunTestCase(MultiStringType const& MS) {
   using namespace fs;
   const char* Expect = MS;
   const CharT* TestPath = MS;
@@ -41,50 +42,42 @@ void RunTestCaseImpl(MultiStringType const& MS, Args... args) {
   // StringTypes
   {
     const std::basic_string<CharT> S(TestPath);
-    path p(S, args...);
+    path p(S);
     assert(p.native() == Expect);
     assert(p.string<CharT>() == TestPath);
     assert(p.string<CharT>() == S);
   }
   {
     const std::basic_string_view<CharT> S(TestPath);
-    path p(S, args...);
+    path p(S);
     assert(p.native() == Expect);
     assert(p.string<CharT>() == TestPath);
     assert(p.string<CharT>() == S);
   }
   // Char* pointers
   {
-    path p(TestPath, args...);
+    path p(TestPath);
     assert(p.native() == Expect);
     assert(p.string<CharT>() == TestPath);
   }
   {
-    path p(TestPath, TestPathEnd, args...);
+    path p(TestPath, TestPathEnd);
     assert(p.native() == Expect);
     assert(p.string<CharT>() == TestPath);
   }
   // Iterators
   {
     using It = input_iterator<const CharT*>;
-    path p(It{TestPath}, args...);
+    path p(It{TestPath});
     assert(p.native() == Expect);
     assert(p.string<CharT>() == TestPath);
   }
   {
     using It = input_iterator<const CharT*>;
-    path p(It{TestPath}, It{TestPathEnd}, args...);
+    path p(It{TestPath}, It{TestPathEnd});
     assert(p.native() == Expect);
     assert(p.string<CharT>() == TestPath);
   }
-}
-
-template <class CharT, class ...Args>
-void RunTestCase(MultiStringType const& MS) {
-  RunTestCaseImpl<CharT>(MS);
-  RunTestCaseImpl<CharT>(MS, fs::path::format::auto_format);
-  RunTestCaseImpl<CharT>(MS, fs::path::format::native_format);
-  RunTestCaseImpl<CharT>(MS, fs::path::format::generic_format);
 }
 
 void test_sfinae() {

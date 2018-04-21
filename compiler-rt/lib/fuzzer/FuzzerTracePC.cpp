@@ -134,9 +134,6 @@ void TracePC::PrintModuleInfo() {
   }
   if (size_t NumClangCounters = ClangCountersEnd() - ClangCountersBegin())
     Printf("INFO: %zd Clang Coverage Counters\n", NumClangCounters);
-
-  if (size_t NumExtraCounters = ExtraCountersEnd() - ExtraCountersBegin())
-    Printf("INFO: %zd Extra Counters\n", NumExtraCounters);
 }
 
 ATTRIBUTE_NO_SANITIZE_ALL

@@ -67,7 +67,7 @@ target triple = "x86_64-apple-macosx10.4.0"
 define i32 @test1() local_unnamed_addr #0 !dbg !17 {
 ; CHECK-LABEL: bb.0.entry1
 ; CHECK-NEXT:    [[REG1:%[0-9]+]]:gr64 =
-; CHECK-NEXT:    DBG_VALUE debug-use [[REG1]], debug-use $noreg, ![[FOO1]], !DIExpression()
+; CHECK-NEXT:    DBG_VALUE debug-use [[REG1]], debug-use {{.}}noreg, ![[FOO1]], !DIExpression()
 entry1:
   call void @llvm.dbg.value(metadata %struct.SS* @S, metadata !20, metadata !DIExpression()), !dbg !23
   call void @llvm.dbg.value(metadata %struct.SS* null, metadata !22, metadata !DIExpression()), !dbg !24
@@ -78,8 +78,8 @@ entry1:
 define i32 @test2() local_unnamed_addr #0 !dbg !26 {
 ; CHECK-LABEL: bb.0.entry2
 ; CHECK-NEXT:    [[REG2:%[0-9]+]]:gr64 =
-; CHECK-NEXT:    DBG_VALUE debug-use [[REG2]], debug-use $noreg, ![[FOO2]], !DIExpression()
-; CHECK-NEXT:    DBG_VALUE debug-use [[REG2]], debug-use $noreg, ![[BAR2]], !DIExpression()
+; CHECK-NEXT:    DBG_VALUE debug-use [[REG2]], debug-use {{.}}noreg, ![[FOO2]], !DIExpression()
+; CHECK-NEXT:    DBG_VALUE debug-use [[REG2]], debug-use {{.}}noreg, ![[BAR2]], !DIExpression()
 entry2:
   call void @llvm.dbg.value(metadata %struct.SS* @S, metadata !28, metadata !DIExpression()), !dbg !30
   call void @llvm.dbg.value(metadata %struct.SS* @S, metadata !29, metadata !DIExpression()), !dbg !31
@@ -90,8 +90,8 @@ entry2:
 define i32 @test3() local_unnamed_addr #0 !dbg !33 {
 ; CHECK-LABEL: bb.0.entry3
 ; CHECK-NEXT:    [[REG3:%[0-9]+]]:gr64 =
-; CHECK-NEXT:    DBG_VALUE debug-use [[REG3]], debug-use $noreg, ![[BAR3]], !DIExpression()
-; CHECK-NEXT:    DBG_VALUE debug-use [[REG3]], debug-use $noreg, ![[FOO3]], !DIExpression()
+; CHECK-NEXT:    DBG_VALUE debug-use [[REG3]], debug-use {{.}}noreg, ![[BAR3]], !DIExpression()
+; CHECK-NEXT:    DBG_VALUE debug-use [[REG3]], debug-use {{.}}noreg, ![[FOO3]], !DIExpression()
 entry3:
   call void @llvm.dbg.value(metadata %struct.SS* @S, metadata !36, metadata !DIExpression()), !dbg !38
   call void @llvm.dbg.value(metadata %struct.SS* @S, metadata !35, metadata !DIExpression()), !dbg !37
@@ -105,7 +105,7 @@ entry3:
 define i32 @test4() local_unnamed_addr #0 !dbg !40 {
 ; CHECK-LABEL: bb.0.entry4
 ; CHECK-NEXT:    [[REG4:%[0-9]+]]:gr64 =
-; CHECK-NEXT:    DBG_VALUE debug-use [[REG4]], debug-use $noreg, ![[BAR4]], !DIExpression()
+; CHECK-NEXT:    DBG_VALUE debug-use [[REG4]], debug-use {{.}}noreg, ![[BAR4]], !DIExpression()
 entry4:
   call void @llvm.dbg.value(metadata %struct.SS* @S, metadata !42, metadata !DIExpression()), !dbg !44
   call void @llvm.dbg.value(metadata %struct.SS* @S, metadata !43, metadata !DIExpression()), !dbg !45
@@ -119,8 +119,8 @@ entry4:
 define i32 @test5() local_unnamed_addr #0 !dbg !47 {
 ; CHECK-LABEL: bb.0.entry5:
 ; CHECK-NEXT:    [[REG5:%[0-9]+]]:gr64 =
-; CHECK-NEXT:    DBG_VALUE debug-use [[REG5]], debug-use $noreg, ![[BAR5]], !DIExpression()
-; CHECK-NOT:     DBG_VALUE debug-use [[REG5]], debug-use $noreg, ![[FOO5]], !DIExpression()
+; CHECK-NEXT:    DBG_VALUE debug-use [[REG5]], debug-use {{.}}noreg, ![[BAR5]], !DIExpression()
+; CHECK-NOT:     DBG_VALUE debug-use [[REG5]], debug-use {{.}}noreg, ![[FOO5]], !DIExpression()
 ; CHECK:         RET
 entry5:
   call void @llvm.dbg.value(metadata %struct.SS* @S, metadata !49, metadata !DIExpression()), !dbg !51

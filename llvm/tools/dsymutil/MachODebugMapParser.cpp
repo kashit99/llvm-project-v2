@@ -9,11 +9,11 @@
 
 #include "BinaryHolder.h"
 #include "DebugMap.h"
+#include "ErrorReporting.h"
 #include "MachOUtils.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/Object/MachO.h"
 #include "llvm/Support/Path.h"
-#include "llvm/Support/WithColor.h"
 #include "llvm/Support/raw_ostream.h"
 
 namespace {
@@ -31,8 +31,9 @@ public:
         MainBinaryHolder(Verbose), CurrentObjectHolder(Verbose),
         CurrentDebugMapObject(nullptr) {}
 
-  /// Parses and returns the DebugMaps of the input binary. The binary contains
-  /// multiple maps in case it is a universal binary.
+  /// \brief Parses and returns the DebugMaps of the input binary.
+  /// The binary contains multiple maps in case it is a universal
+  /// binary.
   /// \returns an error in case the provided BinaryPath doesn't exist
   /// or isn't of a supported type.
   ErrorOr<std::vector<std::unique_ptr<DebugMap>>> parse();
@@ -102,10 +103,9 @@ private:
                          StringRef BinaryPath);
 
   void Warning(const Twine &Msg, StringRef File = StringRef()) {
-    WithColor::warning() << "("
-                         << MachOUtils::getArchName(
-                                Result->getTriple().getArchName())
-                         << ") " << File << " " << Msg << "\n";
+    warn_ostream() << "("
+                   << MachOUtils::getArchName(Result->getTriple().getArchName())
+                   << ") " << File << " " << Msg << "\n";
 
     if (PaperTrailWarnings) {
       if (!File.empty())

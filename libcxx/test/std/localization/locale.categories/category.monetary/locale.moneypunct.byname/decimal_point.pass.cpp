@@ -110,11 +110,7 @@ int main()
         assert(f.decimal_point() == L',');
     }
 // GLIBC 2.23 uses '.' as the decimal point while other C libraries use ','
-// GLIBC 2.27 corrects this
-#ifndef TEST_GLIBC_PREREQ
-#define TEST_GLIBC_PREREQ(x, y) 0
-#endif
-#if !defined(TEST_HAS_GLIBC) || TEST_GLIBC_PREREQ(2, 27)
+#ifndef TEST_HAS_GLIBC
     const char sep = ',';
     const wchar_t wsep = L',';
 #else

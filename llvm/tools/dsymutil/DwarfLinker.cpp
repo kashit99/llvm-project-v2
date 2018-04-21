@@ -9,6 +9,7 @@
 
 #include "BinaryHolder.h"
 #include "DebugMap.h"
+#include "ErrorReporting.h"
 #include "MachOUtils.h"
 #include "NonRelocatableStringpool.h"
 #include "dsymutil.h"
@@ -57,7 +58,7 @@
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/MC/MCSubtargetInfo.h"
 #include "llvm/MC/MCTargetOptions.h"
-#include "llvm/MC/MCTargetOptionsCommandFlags.inc"
+#include "llvm/MC/MCTargetOptionsCommandFlags.def"
 #include "llvm/Object/MachO.h"
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/Object/SymbolicFile.h"
@@ -78,7 +79,6 @@
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/ThreadPool.h"
 #include "llvm/Support/ToolOutputFile.h"
-#include "llvm/Support/WithColor.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
@@ -342,10 +342,6 @@ public:
     Info.resize(OrigUnit.getNumDIEs());
 
     auto CUDie = OrigUnit.getUnitDIE(false);
-    if (!CUDie) {
-      HasODR = false;
-      return;
-    }
     if (auto Lang = dwarf::toUnsigned(CUDie.find(dwarf::DW_AT_language)))
       HasODR = CanUseODR && (*Lang == dwarf::DW_LANG_C_plus_plus ||
                              *Lang == dwarf::DW_LANG_C_plus_plus_03 ||
@@ -587,15 +583,15 @@ static bool inFunctionScope(CompileUnit &U, unsigned Idx) {
 } // namespace
 
 void warn(Twine Warning, Twine Context) {
-  WithColor::warning() << Warning + "\n";
+  warn_ostream() << Warning + "\n";
   if (!Context.isTriviallyEmpty())
-    WithColor::note() << Twine("while processing ") + Context + "\n";
+    note_ostream() << Twine("while processing ") + Context + "\n";
 }
 
 bool error(Twine Error, Twine Context) {
-  WithColor::error() << Error + "\n";
+  error_ostream() << Error + "\n";
   if (!Context.isTriviallyEmpty())
-    WithColor::note() << Twine("while processing ") + Context + "\n";
+    note_ostream() << Twine("while processing ") + Context + "\n";
   return false;
 }
 
@@ -1073,7 +1069,7 @@ void DwarfStreamer::emitUnitRangesEntries(CompileUnit &Unit,
 
   // The object addresses where sorted, but again, the linked
   // addresses might end up in a different order.
-  llvm::sort(Ranges.begin(), Ranges.end());
+  std::sort(Ranges.begin(), Ranges.end());
 
   if (!Ranges.empty()) {
     MS->SwitchSection(MC->getObjectFileInfo()->getDwarfARangesSection());
@@ -1623,7 +1619,7 @@ private:
                         unsigned Indent = 0);
 
   /// Flags passed to DwarfLinker::lookForDIEsToKeep
-  enum TraversalFlags {
+  enum TravesalFlags {
     TF_Keep = 1 << 0,            ///< Mark the traversed DIEs as kept.
     TF_InFunctionScope = 1 << 1, ///< Current scope is a function scope.
     TF_DependencyWalk = 1 << 2,  ///< Walking the dependencies of a kept DIE.
@@ -2178,7 +2174,7 @@ void DwarfLinker::reportWarning(const Twine &Warning, const DebugMapObject &DMO,
   DumpOpts.RecurseDepth = 0;
   DumpOpts.Verbose = Options.Verbose;
 
-  WithColor::note() << "    in DIE:\n";
+  note_ostream() << "    in DIE:\n";
   DIE->dump(errs(), 6 /* Indent */, DumpOpts);
 }
 
@@ -2420,7 +2416,7 @@ bool DwarfLinker::RelocationManager::findValidRelocs(
   // the file, this allows us to just keep an index in the relocation
   // array that we advance during our walk, rather than resorting to
   // some associative container. See DwarfLinker::NextValidReloc.
-  llvm::sort(ValidRelocs.begin(), ValidRelocs.end());
+  std::sort(ValidRelocs.begin(), ValidRelocs.end());
   return true;
 }
 
@@ -2685,8 +2681,7 @@ void DwarfLinker::keepDIEAndDependencies(RelocationManager &RelocMgr,
   for (const auto &AttrSpec : Abbrev->attributes()) {
     DWARFFormValue Val(AttrSpec.Form);
 
-    if (!Val.isFormClass(DWARFFormValue::FC_Reference) ||
-        AttrSpec.Attr == dwarf::DW_AT_sibling) {
+    if (!Val.isFormClass(DWARFFormValue::FC_Reference)) {
       DWARFFormValue::skipValue(AttrSpec.Form, Data, &Offset,
                                 Unit.getFormParams());
       continue;
@@ -2868,7 +2863,7 @@ unsigned DwarfLinker::DIECloner::cloneDieReferenceAttribute(
       resolveDIEReference(Linker, DMO, CompileUnits, Val, U, InputDIE, RefUnit);
 
   // If the referenced DIE is not found,  drop the attribute.
-  if (!RefDie || AttrSpec.Attr == dwarf::DW_AT_sibling)
+  if (!RefDie)
     return 0;
 
   unsigned Idx = RefUnit->getOrigUnit().getDIEIndex(RefDie);
@@ -3603,7 +3598,7 @@ void DwarfLinker::patchLineTableForUnit(CompileUnit &Unit,
   DWARFDataExtractor LineExtractor(
       OrigDwarf.getDWARFObj(), OrigDwarf.getDWARFObj().getLineSection(),
       OrigDwarf.isLittleEndian(), Unit.getOrigUnit().getAddressByteSize());
-  LineTable.parse(LineExtractor, &StmtOffset, OrigDwarf, &Unit.getOrigUnit());
+  LineTable.parse(LineExtractor, &StmtOffset, &Unit.getOrigUnit());
 
   // This vector is the output line table.
   std::vector<DWARFDebugLine::Row> NewRows;
@@ -3703,7 +3698,7 @@ void DwarfLinker::patchLineTableForUnit(CompileUnit &Unit,
     reportWarning("line table parameters mismatch. Cannot emit.", DMO);
   else {
     uint32_t PrologueEnd = *StmtList + 10 + LineTable.Prologue.PrologueLength;
-    // DWARF v5 has an extra 2 bytes of information before the header_length
+    // DWARFv5 has an extra 2 bytes of information before the header_length
     // field.
     if (LineTable.Prologue.getVersion() == 5)
       PrologueEnd += 2;
@@ -3999,9 +3994,9 @@ Error DwarfLinker::loadClangModule(StringRef Filename, StringRef ModulePath,
         // cache has expired and was pruned by clang.  A more adventurous
         // dsymutil would invoke clang to rebuild the module now.
         if (!ModuleCacheHintDisplayed) {
-          WithColor::note() << "The clang module cache may have expired since "
-                               "this object file was built. Rebuilding the "
-                               "object file will rebuild the module cache.\n";
+          note_ostream() << "The clang module cache may have expired since "
+                            "this object file was built. Rebuilding the "
+                            "object file will rebuild the module cache.\n";
           ModuleCacheHintDisplayed = true;
         }
       } else if (isArchive) {
@@ -4010,13 +4005,12 @@ Error DwarfLinker::loadClangModule(StringRef Filename, StringRef ModulePath,
         // was built on a different machine. We don't want to discourage module
         // debugging for convenience libraries within a project though.
         if (!ArchiveHintDisplayed) {
-          WithColor::note()
-              << "Linking a static library that was built with "
-                 "-gmodules, but the module cache was not found.  "
-                 "Redistributable static libraries should never be "
-                 "built with module debugging enabled.  The debug "
-                 "experience will be degraded due to incomplete "
-                 "debug information.\n";
+          note_ostream() << "Linking a static library that was built with "
+                            "-gmodules, but the module cache was not found.  "
+                            "Redistributable static libraries should never be "
+                            "built with module debugging enabled.  The debug "
+                            "experience will be degraded due to incomplete "
+                            "debug information.\n";
           ArchiveHintDisplayed = true;
         }
       }
@@ -4034,8 +4028,6 @@ Error DwarfLinker::loadClangModule(StringRef Filename, StringRef ModulePath,
 
     // Recursively get all modules imported by this one.
     auto CUDie = CU->getUnitDIE(false);
-    if (!CUDie)
-      continue;
     if (!registerModuleReference(CUDie, *CU, ModuleMap, DMO, Ranges, StringPool,
                                  UniquingStringPool, ODRContexts, UnitID,
                                  Indent)) {
@@ -4095,10 +4087,6 @@ void DwarfLinker::DIECloner::cloneAllCompileUnits(
   for (auto &CurrentUnit : CompileUnits) {
     auto InputDIE = CurrentUnit->getOrigUnit().getUnitDIE();
     CurrentUnit->setStartOffset(Linker.OutputDebugInfoSize);
-    if (!InputDIE) {
-      Linker.OutputDebugInfoSize = CurrentUnit->computeNextUnitOffset();
-      continue;
-    }
     if (CurrentUnit->getInfo(0).Keep) {
       // Clone the InputDIE into your Unit DIE in our compile unit since it
       // already has a DIE inside of it.
@@ -4249,10 +4237,10 @@ bool DwarfLinker::link(const DebugMap &Map) {
           Stat.getLastModificationTime() !=
               sys::TimePoint<>(LinkContext.DMO.getTimestamp())) {
         // Not using the helper here as we can easily stream TimePoint<>.
-        WithColor::warning()
-            << "Timestamp mismatch for " << File << ": "
-            << Stat.getLastModificationTime() << " and "
-            << sys::TimePoint<>(LinkContext.DMO.getTimestamp()) << "\n";
+        warn_ostream() << "Timestamp mismatch for " << File << ": "
+                       << Stat.getLastModificationTime() << " and "
+                       << sys::TimePoint<>(LinkContext.DMO.getTimestamp())
+                       << "\n";
         continue;
       }
 
@@ -4336,14 +4324,10 @@ bool DwarfLinker::link(const DebugMap &Map) {
       }
 
       // Now build the DIE parent links that we will use during the next phase.
-      for (auto &CurrentUnit : LinkContext.CompileUnits) {
-        auto CUDie = CurrentUnit->getOrigUnit().getUnitDIE();
-        if (!CUDie)
-          continue;
+      for (auto &CurrentUnit : LinkContext.CompileUnits)
         analyzeContextInfo(CurrentUnit->getOrigUnit().getUnitDIE(), 0,
                            *CurrentUnit, &ODRContexts.getRoot(),
                            UniquingStringPool, ODRContexts);
-      }
 
       std::unique_lock<std::mutex> LockGuard(ProcessedFilesMutex);
       ProcessedFiles.set(i);
@@ -4431,6 +4415,49 @@ bool DwarfLinker::link(const DebugMap &Map) {
   }
 
   return Options.NoOutput ? true : Streamer->finish(Map);
+}
+
+DwarfStringPoolEntryRef NonRelocatableStringpool::getEntry(StringRef S) {
+  if (S.empty() && !Strings.empty())
+    return EmptyString;
+
+  auto I = Strings.insert(std::make_pair(S, DwarfStringPoolEntry()));
+  auto &Entry = I.first->second;
+  if (I.second || Entry.Index == -1U) {
+    Entry.Index = NumEntries++;
+    Entry.Offset = CurrentEndOffset;
+    Entry.Symbol = nullptr;
+    CurrentEndOffset += S.size() + 1;
+  }
+  return DwarfStringPoolEntryRef(*I.first);
+}
+
+uint32_t NonRelocatableStringpool::getStringOffset(StringRef S) {
+  return getEntry(S).getOffset();
+}
+
+/// Put \p S into the StringMap so that it gets permanent
+/// storage, but do not actually link it in the chain of elements
+/// that go into the output section. A latter call to
+/// getStringOffset() with the same string will chain it though.
+StringRef NonRelocatableStringpool::internString(StringRef S) {
+  DwarfStringPoolEntry Entry{nullptr, 0, -1U};
+  auto InsertResult = Strings.insert(std::make_pair(S, Entry));
+  return InsertResult.first->getKey();
+}
+
+std::vector<DwarfStringPoolEntryRef>
+NonRelocatableStringpool::getEntries() const {
+  std::vector<DwarfStringPoolEntryRef> Result;
+  Result.reserve(Strings.size());
+  for (const auto &E : Strings)
+    Result.emplace_back(E);
+  std::sort(
+      Result.begin(), Result.end(),
+      [](const DwarfStringPoolEntryRef A, const DwarfStringPoolEntryRef B) {
+        return A.getIndex() < B.getIndex();
+      });
+  return Result;
 }
 
 bool linkDwarf(raw_fd_ostream &OutFile, const DebugMap &DM,

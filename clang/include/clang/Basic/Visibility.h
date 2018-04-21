@@ -16,7 +16,6 @@
 #define LLVM_CLANG_BASIC_VISIBILITY_H
 
 #include "clang/Basic/Linkage.h"
-#include <cassert>
 
 namespace clang {
 

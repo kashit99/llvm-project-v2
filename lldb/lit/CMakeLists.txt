@@ -1,23 +1,10 @@
-# Test runner infrastructure for LLDB. This configures the LLDB test trees
-# for use by Lit, and delegates to LLVM's lit test handlers.
-
-if (CMAKE_CFG_INTDIR STREQUAL ".")
-  set(LLVM_BUILD_MODE ".")
-else ()
-  set(LLVM_BUILD_MODE "%(build_mode)s")
-endif ()
-
-if (NOT LLDB_TEST_USE_CUSTOM_C_COMPILER)
-  string(REPLACE ${CMAKE_CFG_INTDIR} ${LLVM_BUILD_MODE} LLDB_TEST_C_COMPILER ${LLDB_TEST_C_COMPILER})
-endif ()
-
-if (NOT LLDB_TEST_USE_CUSTOM_CXX_COMPILER)
-  string(REPLACE ${CMAKE_CFG_INTDIR} ${LLVM_BUILD_MODE} LLDB_TEST_CXX_COMPILER ${LLDB_TEST_CXX_COMPILER})
-endif ()
-
-string(REPLACE ${CMAKE_CFG_INTDIR} ${LLVM_BUILD_MODE} LLDB_LIBS_DIR ${LLVM_LIBRARY_OUTPUT_INTDIR})
-string(REPLACE ${CMAKE_CFG_INTDIR} ${LLVM_BUILD_MODE} LLDB_TOOLS_DIR ${LLVM_RUNTIME_OUTPUT_INTDIR})
-
+set(LLVM_SOURCE_DIR "${LLVM_MAIN_SRC_DIR}")
+set(LLVM_BINARY_DIR "${LLVM_BINARY_DIR}")
+set(LLVM_BUILD_MODE "%(build_mode)s")
+set(LLVM_TOOLS_DIR "${LLVM_TOOLS_BINARY_DIR}/%(build_config)s")
+set(LLVM_LIBS_DIR "${LLVM_BINARY_DIR}/lib${LLVM_LIBDIR_SUFFIX}/%(build_config)s")
+set(CLANG_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/..")
+set(CLANG_BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}/..")
 if(BUILD_SHARED_LIBS)
   set(ENABLE_SHARED 1)
 else()
@@ -27,6 +14,15 @@ endif(BUILD_SHARED_LIBS)
 # the value is not canonicalized within LLVM
 llvm_canonicalize_cmake_booleans(
   LLVM_ENABLE_ZLIB)
+
+# BEGIN - Swift Mods
+option(LLDB_TEST_CLANG "Use in-tree clang when testing lldb" On)
+option(LLDB_TEST_SWIFT "Use in-tree swift when testing lldb" On)
+# END - Swift Mods
+
+# This should be inherited from the `check-lldb` target. We currently don't run
+# it for swift, but we might consider removing this code once we're done.
+set(LIT_ARGS "-sv")
 
 configure_lit_site_cfg(
   ${CMAKE_CURRENT_SOURCE_DIR}/lit.site.cfg.in
@@ -40,9 +36,6 @@ set(LLDB_TEST_DEPS
   LLDBUnitTests
   lldb
   lldb-test
-  llvm-config
-  llvm-mc
-  llvm-objcopy
   )
 
 if(NOT LLDB_BUILT_STANDALONE)
@@ -68,6 +61,7 @@ set(LLDB_TEST_PARAMS
 
 add_lit_testsuite(check-lldb-lit "Running lldb lit test suite"
   ${CMAKE_CURRENT_BINARY_DIR}
+  ${LIT_ARGS}
   PARAMS lldb_site_config=${CMAKE_CURRENT_BINARY_DIR}/lit.site.cfg
        lldb_unit_site_config=${CMAKE_CURRENT_BINARY_DIR}/Unit/lit.site.cfg
   DEPENDS ${LLDB_TEST_DEPS}
@@ -82,6 +76,7 @@ if (TARGET clang)
 endif()
 
 add_lit_testsuites(LLDB ${CMAKE_CURRENT_SOURCE_DIR}
+  ${LIT_ARGS}
   PARAMS lldb_site_config=${CMAKE_CURRENT_BINARY_DIR}/lit.site.cfg
          lldb_unit_site_config=${CMAKE_CURRENT_BINARY_DIR}/Unit/lit.site.cfg
   DEPENDS ${LLDB_TEST_DEPS}

@@ -13,7 +13,7 @@
 
 // enum class perms;
 
-#include "filesystem_include.hpp"
+#include <experimental/filesystem>
 #include <type_traits>
 #include <cassert>
 #include <sys/stat.h>
@@ -21,6 +21,7 @@
 #include "test_macros.h"
 #include "check_bitmask_types.hpp"
 
+namespace fs = std::experimental::filesystem;
 
 constexpr fs::perms ME(int val) { return static_cast<fs::perms>(val); }
 
@@ -59,6 +60,9 @@ int main() {
         E::set_gid      == ME(02000) &&
         E::sticky_bit   == ME(01000) &&
         E::mask         == ME(07777) &&
-        E::unknown      == ME(0xFFFF),
+        E::unknown      == ME(0xFFFF) &&
+        E::add_perms        == ME(0x10000) &&
+        E::remove_perms     == ME(0x20000) &&
+        E::symlink_nofollow == ME(0x40000),
         "Expected enumeration values do not match");
 }

@@ -767,7 +767,7 @@ bool CodeGenTypes::isZeroInitializable(QualType T) {
   // Records are non-zero-initializable if they contain any
   // non-zero-initializable subobjects.
   if (const RecordType *RT = T->getAs<RecordType>()) {
-    const RecordDecl *RD = RT->getDecl();
+    auto RD = cast<RecordDecl>(RT->getDecl());
     return isZeroInitializable(RD);
   }
 

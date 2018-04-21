@@ -14,6 +14,7 @@
 #include "SyntheticSections.h"
 #include "Target.h"
 #include "Writer.h"
+
 #include "lld/Common/ErrorHandler.h"
 #include "lld/Common/Strings.h"
 #include "llvm/ADT/STLExtras.h"
@@ -38,7 +39,6 @@ Defined *ElfSym::GlobalOffsetTable;
 Defined *ElfSym::MipsGp;
 Defined *ElfSym::MipsGpDisp;
 Defined *ElfSym::MipsLocalGp;
-Defined *ElfSym::RelaIpltEnd;
 
 static uint64_t getSymVA(const Symbol &Sym, int64_t &Addend) {
   switch (Sym.kind()) {
@@ -58,7 +58,6 @@ static uint64_t getSymVA(const Symbol &Sym, int64_t &Addend) {
       return D.Value;
 
     IS = IS->Repl;
-
     uint64_t Offset = D.Value;
 
     // An object in an SHF_MERGE section might be referenced via a
@@ -77,6 +76,8 @@ static uint64_t getSymVA(const Symbol &Sym, int64_t &Addend) {
       Addend = 0;
     }
 
+    const OutputSection *OutSec = IS->getOutputSection();
+
     // In the typical case, this is actually very simple and boils
     // down to adding together 3 numbers:
     // 1. The address of the output section.
@@ -87,7 +88,7 @@ static uint64_t getSymVA(const Symbol &Sym, int64_t &Addend) {
     // If you understand the data structures involved with this next
     // line (and how they get built), then you have a pretty good
     // understanding of the linker.
-    uint64_t VA = IS->getVA(Offset);
+    uint64_t VA = (OutSec ? OutSec->Addr : 0) + IS->getOffset(Offset);
 
     if (D.isTls() && !Config->Relocatable) {
       if (!Out::TlsPhdr)
@@ -100,7 +101,7 @@ static uint64_t getSymVA(const Symbol &Sym, int64_t &Addend) {
   case Symbol::SharedKind: {
     auto &SS = cast<SharedSymbol>(Sym);
     if (SS.CopyRelSec)
-      return SS.CopyRelSec->getVA(0);
+      return SS.CopyRelSec->getParent()->Addr + SS.CopyRelSec->OutSecOff;
     if (SS.NeedsPltAddr)
       return Sym.getPltVA();
     return 0;
@@ -139,7 +140,8 @@ uint64_t Symbol::getGotPltOffset() const {
 uint64_t Symbol::getPltVA() const {
   if (this->IsInIplt)
     return InX::Iplt->getVA() + PltIndex * Target->PltEntrySize;
-  return InX::Plt->getVA() + Target->getPltEntryOffset(PltIndex);
+  return InX::Plt->getVA() + Target->PltHeaderSize +
+         PltIndex * Target->PltEntrySize;
 }
 
 uint64_t Symbol::getSize() const {
@@ -210,7 +212,27 @@ void Symbol::parseSymbolVersion() {
           Verstr);
 }
 
-InputFile *LazyArchive::fetch() { return cast<ArchiveFile>(File)->fetch(Sym); }
+InputFile *Lazy::fetch() {
+  if (auto *S = dyn_cast<LazyArchive>(this))
+    return S->fetch();
+  return cast<LazyObject>(this)->fetch();
+}
+
+ArchiveFile &LazyArchive::getFile() { return *cast<ArchiveFile>(File); }
+
+InputFile *LazyArchive::fetch() {
+  std::pair<MemoryBufferRef, uint64_t> MBInfo = getFile().getMember(&Sym);
+
+  // getMember returns an empty buffer if the member was already
+  // read from the library.
+  if (MBInfo.first.getBuffer().empty())
+    return nullptr;
+  return createObjectFile(MBInfo.first, getFile().getName(), MBInfo.second);
+}
+
+LazyObjFile &LazyObject::getFile() { return *cast<LazyObjFile>(File); }
+
+InputFile *LazyObject::fetch() { return getFile().fetch(); }
 
 uint8_t Symbol::computeBinding() const {
   if (Config->Relocatable)
@@ -219,7 +241,7 @@ uint8_t Symbol::computeBinding() const {
     return STB_LOCAL;
   if (VersionId == VER_NDX_LOCAL && isDefined())
     return STB_LOCAL;
-  if (!Config->GnuUnique && Binding == STB_GNU_UNIQUE)
+  if (Config->NoGnuUnique && Binding == STB_GNU_UNIQUE)
     return STB_GLOBAL;
   return Binding;
 }
@@ -249,27 +271,6 @@ void elf::printTraceSymbol(Symbol *Sym) {
     S = ": definition of ";
 
   message(toString(Sym->File) + S + Sym->getName());
-}
-
-void elf::warnUnorderableSymbol(const Symbol *Sym) {
-  if (!Config->WarnSymbolOrdering)
-    return;
-  const InputFile *File = Sym->File;
-  auto *D = dyn_cast<Defined>(Sym);
-  if (Sym->isUndefined())
-    warn(toString(File) +
-         ": unable to order undefined symbol: " + Sym->getName());
-  else if (Sym->isShared())
-    warn(toString(File) + ": unable to order shared symbol: " + Sym->getName());
-  else if (D && !D->Section)
-    warn(toString(File) +
-         ": unable to order absolute symbol: " + Sym->getName());
-  else if (D && isa<OutputSection>(D->Section))
-    warn(toString(File) +
-         ": unable to order synthetic symbol: " + Sym->getName());
-  else if (D && !D->Section->Repl->Live)
-    warn(toString(File) +
-         ": unable to order discarded symbol: " + Sym->getName());
 }
 
 // Returns a symbol for an error message.

@@ -455,7 +455,6 @@ public:
   using const_child_range = llvm::iterator_range<const_child_iterator>;
 
   child_range children();
-
   const_child_range children() const {
     auto Children = const_cast<Stmt *>(this)->children();
     return const_child_range(Children.begin(), Children.end());
@@ -544,11 +543,9 @@ public:
   using decl_const_range = llvm::iterator_range<const_decl_iterator>;
 
   decl_range decls() { return decl_range(decl_begin(), decl_end()); }
-
   decl_const_range decls() const {
     return decl_const_range(decl_begin(), decl_end());
   }
-
   decl_iterator decl_begin() { return DG.begin(); }
   decl_iterator decl_end() { return DG.end(); }
   const_decl_iterator decl_begin() const { return DG.begin(); }
@@ -641,7 +638,6 @@ public:
   body_iterator body_begin() { return getTrailingObjects<Stmt *>(); }
   body_iterator body_end() { return body_begin() + size(); }
   Stmt *body_front() { return !body_empty() ? body_begin()[0] : nullptr; }
-
   Stmt *body_back() {
     return !body_empty() ? body_begin()[size() - 1] : nullptr;
   }
@@ -661,7 +657,6 @@ public:
   const_body_iterator body_begin() const {
     return getTrailingObjects<Stmt *>();
   }
-
   const_body_iterator body_end() const { return body_begin() + size(); }
 
   const Stmt *body_front() const {
@@ -800,7 +795,7 @@ public:
   SourceLocation getLocEnd() const LLVM_READONLY {
     // Handle deeply nested case statements with iteration instead of recursion.
     const CaseStmt *CS = this;
-    while (const auto *CS2 = dyn_cast<CaseStmt>(CS->getSubStmt()))
+    while (const CaseStmt *CS2 = dyn_cast<CaseStmt>(CS->getSubStmt()))
       CS = CS2;
 
     return CS->getSubStmt()->getLocEnd();
@@ -848,7 +843,7 @@ public:
 };
 
 inline SourceLocation SwitchCase::getLocEnd() const {
-  if (const auto *CS = dyn_cast<CaseStmt>(this))
+  if (const CaseStmt *CS = dyn_cast<CaseStmt>(this))
     return CS->getLocEnd();
   return cast<DefaultStmt>(this)->getLocEnd();
 }
@@ -911,7 +906,7 @@ class AttributedStmt final
   }
 
   explicit AttributedStmt(EmptyShell Empty, unsigned NumAttrs)
-      : Stmt(AttributedStmtClass, Empty), NumAttrs(NumAttrs) {
+    : Stmt(AttributedStmtClass, Empty), NumAttrs(NumAttrs) {
     std::fill_n(getAttrArrayPtr(), NumAttrs, nullptr);
   }
 
@@ -1517,8 +1512,8 @@ public:
   bool isVolatile() const { return IsVolatile; }
   void setVolatile(bool V) { IsVolatile = V; }
 
-  SourceLocation getLocStart() const LLVM_READONLY { return {}; }
-  SourceLocation getLocEnd() const LLVM_READONLY { return {}; }
+  SourceLocation getLocStart() const LLVM_READONLY { return SourceLocation(); }
+  SourceLocation getLocEnd() const LLVM_READONLY { return SourceLocation(); }
 
   //===--- Asm String Analysis ---===//
 
@@ -1691,7 +1686,9 @@ public:
     bool isString() const { return MyKind == String; }
     bool isOperand() const { return MyKind == Operand; }
 
-    const std::string &getString() const { return Str; }
+    const std::string &getString() const {
+      return Str;
+    }
 
     unsigned getOperandNo() const {
       assert(isOperand());
@@ -1721,13 +1718,15 @@ public:
 
   //===--- Output operands ---===//
 
-  IdentifierInfo *getOutputIdentifier(unsigned i) const { return Names[i]; }
+  IdentifierInfo *getOutputIdentifier(unsigned i) const {
+    return Names[i];
+  }
 
   StringRef getOutputName(unsigned i) const {
     if (IdentifierInfo *II = getOutputIdentifier(i))
       return II->getName();
 
-    return {};
+    return StringRef();
   }
 
   StringRef getOutputConstraint(unsigned i) const;
@@ -1755,7 +1754,7 @@ public:
     if (IdentifierInfo *II = getInputIdentifier(i))
       return II->getName();
 
-    return {};
+    return StringRef();
   }
 
   StringRef getInputConstraint(unsigned i) const;
@@ -1942,7 +1941,7 @@ public:
   }
 
   child_range children() {
-    return child_range(Children, Children+2);
+    return child_range(Children,Children+2);
   }
 
   static bool classof(const Stmt *T) {
@@ -2023,7 +2022,7 @@ public:
   SEHFinallyStmt *getFinallyHandler() const;
 
   child_range children() {
-    return child_range(Children, Children+2);
+    return child_range(Children,Children+2);
   }
 
   static bool classof(const Stmt *T) {

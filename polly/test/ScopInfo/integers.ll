@@ -123,7 +123,7 @@ bb:
 ; CHECK-NEXT:    Assumed Context:
 ; CHECK-NEXT:    [n] -> {  :  }
 ; CHECK-NEXT:    Invalid Context:
-; CHECK-NEXT:    [n] -> {  : false }
+; CHECK-NEXT:    [n] -> {  : 1 = 0 }
 
 ; CHECK:     Statements {
 ; CHECK-NEXT:    Stmt_bb

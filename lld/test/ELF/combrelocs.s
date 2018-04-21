@@ -4,9 +4,6 @@
 # RUN: ld.lld -shared %t.o -o %t.out
 # RUN: llvm-readobj -r --expand-relocs --dynamic-table %t.out | FileCheck %s
 
-# RUN: ld.lld -shared %t.o -o %t.out -z combreloc
-# RUN: llvm-readobj -r --expand-relocs --dynamic-table %t.out | FileCheck %s
-
 # CHECK:      Relocations [
 # CHECK-NEXT:   Section ({{.*}}) .rela.dyn {
 # CHECK-NEXT:     Relocation {

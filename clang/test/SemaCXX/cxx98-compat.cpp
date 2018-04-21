@@ -185,9 +185,9 @@ namespace RedundantParensInAddressTemplateParam {
 }
 
 namespace TemplateSpecOutOfScopeNs {
-  template<typename T> struct S {};
+  template<typename T> struct S {}; // expected-note {{here}}
 }
-template<> struct TemplateSpecOutOfScopeNs::S<char> {};
+template<> struct TemplateSpecOutOfScopeNs::S<char> {}; // expected-warning {{class template specialization of 'S' outside namespace 'TemplateSpecOutOfScopeNs' is incompatible with C++98}}
 
 struct Typename {
   template<typename T> struct Inner {};

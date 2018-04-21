@@ -1,4 +1,4 @@
-//===- SerializedDiagnosticReader.h - Reads diagnostics ---------*- C++ -*-===//
+//===--- SerializedDiagnosticReader.h - Reads diagnostics -------*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,14 +7,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_CLANG_FRONTEND_SERIALIZEDDIAGNOSTICREADER_H
-#define LLVM_CLANG_FRONTEND_SERIALIZEDDIAGNOSTICREADER_H
+#ifndef LLVM_CLANG_FRONTEND_SERIALIZED_DIAGNOSTIC_READER_H_
+#define LLVM_CLANG_FRONTEND_SERIALIZED_DIAGNOSTIC_READER_H_
 
 #include "clang/Basic/LLVM.h"
 #include "llvm/Bitcode/BitstreamReader.h"
-#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/ErrorOr.h"
-#include <system_error>
 
 namespace clang {
 namespace serialized_diags {
@@ -49,7 +47,6 @@ struct Location {
   unsigned Line;
   unsigned Col;
   unsigned Offset;
-
   Location(unsigned FileID, unsigned Line, unsigned Col, unsigned Offset)
       : FileID(FileID), Line(Line), Col(Col), Offset(Offset) {}
 };
@@ -60,8 +57,8 @@ struct Location {
 /// the various constructs that are found in serialized diagnostics.
 class SerializedDiagnosticReader {
 public:
-  SerializedDiagnosticReader() = default;
-  virtual ~SerializedDiagnosticReader() = default;
+  SerializedDiagnosticReader() {}
+  virtual ~SerializedDiagnosticReader() {}
 
   /// \brief Read the diagnostics in \c File
   std::error_code readDiagnostics(StringRef File);
@@ -81,59 +78,53 @@ private:
 
 protected:
   /// \brief Visit the start of a diagnostic block.
-  virtual std::error_code visitStartOfDiagnostic() { return {}; }
-
+  virtual std::error_code visitStartOfDiagnostic() {
+    return std::error_code();
+  }
   /// \brief Visit the end of a diagnostic block.
-  virtual std::error_code visitEndOfDiagnostic() { return {}; }
-
+  virtual std::error_code visitEndOfDiagnostic() { return std::error_code(); }
   /// \brief Visit a category. This associates the category \c ID to a \c Name.
   virtual std::error_code visitCategoryRecord(unsigned ID, StringRef Name) {
-    return {};
+    return std::error_code();
   }
-
   /// \brief Visit a flag. This associates the flag's \c ID to a \c Name.
   virtual std::error_code visitDiagFlagRecord(unsigned ID, StringRef Name) {
-    return {};
+    return std::error_code();
   }
-
   /// \brief Visit a diagnostic.
   virtual std::error_code
   visitDiagnosticRecord(unsigned Severity, const Location &Location,
                         unsigned Category, unsigned Flag, StringRef Message) {
-    return {};
+    return std::error_code();
   }
-
   /// \brief Visit a filename. This associates the file's \c ID to a \c Name.
   virtual std::error_code visitFilenameRecord(unsigned ID, unsigned Size,
                                               unsigned Timestamp,
                                               StringRef Name) {
-    return {};
+    return std::error_code();
   }
-
   /// \brief Visit a fixit hint.
   virtual std::error_code
   visitFixitRecord(const Location &Start, const Location &End, StringRef Text) {
-    return {};
+    return std::error_code();
   }
-
   /// \brief Visit a source range.
   virtual std::error_code visitSourceRangeRecord(const Location &Start,
                                                  const Location &End) {
-    return {};
+    return std::error_code();
   }
-
   /// \brief Visit the version of the set of diagnostics.
-  virtual std::error_code visitVersionRecord(unsigned Version) { return {}; }
+  virtual std::error_code visitVersionRecord(unsigned Version) {
+    return std::error_code();
+  }
 };
 
-} // namespace serialized_diags
-} // namespace clang
+} // end serialized_diags namespace
+} // end clang namespace
 
 namespace std {
-
 template <>
 struct is_error_code_enum<clang::serialized_diags::SDError> : std::true_type {};
+}
 
-} // namespace std
-
-#endif // LLVM_CLANG_FRONTEND_SERIALIZEDDIAGNOSTICREADER_H
+#endif

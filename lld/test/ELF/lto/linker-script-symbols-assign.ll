@@ -6,7 +6,16 @@
 ; RUN: llvm-readobj -symbols %t2.lto.o | FileCheck %s
 
 ; CHECK-NOT: bar
-; CHECK-NOT: foo
+; CHECK:     Symbol {
+; CHECK:         Name: foo
+; CHECK-NEXT:    Value: 0x0
+; CHECK-NEXT:    Size: 4
+; CHECK-NEXT:    Binding: Weak
+; CHECK-NEXT:    Type: Object
+; CHECK-NEXT:    Other: 0
+; CHECK-NEXT:    Section: .bss.foo
+; CHECK-NEXT:  }
+; CHECK-NEXT:]
 
 ; RUN: llvm-readobj -symbols %t2 | FileCheck %s --check-prefix=VAL
 ; VAL:       Symbol {

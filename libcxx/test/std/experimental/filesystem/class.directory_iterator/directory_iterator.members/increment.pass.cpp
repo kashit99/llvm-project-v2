@@ -16,7 +16,7 @@
 // directory_iterator& operator++();
 // directory_iterator& increment(error_code& ec);
 
-#include "filesystem_include.hpp"
+#include <experimental/filesystem>
 #include <type_traits>
 #include <set>
 #include <cassert>
@@ -26,7 +26,7 @@
 #include "filesystem_test_helper.hpp"
 #include <iostream>
 
-using namespace fs;
+using namespace std::experimental::filesystem;
 
 TEST_SUITE(directory_iterator_increment_tests)
 

@@ -9,7 +9,6 @@
  */
 
 #include <isl_ctx_private.h>
-#include <isl/id.h>
 #include <isl_space_private.h>
 #include <isl_reordering.h>
 
@@ -168,20 +167,20 @@ error:
 }
 
 __isl_give isl_reordering *isl_reordering_extend_space(
-	__isl_take isl_reordering *exp, __isl_take isl_space *space)
+	__isl_take isl_reordering *exp, __isl_take isl_space *dim)
 {
 	isl_reordering *res;
 
-	if (!exp || !space)
+	if (!exp || !dim)
 		goto error;
 
 	res = isl_reordering_extend(isl_reordering_copy(exp),
-				isl_space_dim(space, isl_dim_all) - exp->len);
+				    isl_space_dim(dim, isl_dim_all) - exp->len);
 	res = isl_reordering_cow(res);
 	if (!res)
 		goto error;
 	isl_space_free(res->dim);
-	res->dim = isl_space_replace_params(space, exp->dim);
+	res->dim = isl_space_replace(dim, isl_dim_param, exp->dim);
 
 	isl_reordering_free(exp);
 
@@ -191,7 +190,7 @@ __isl_give isl_reordering *isl_reordering_extend_space(
 	return res;
 error:
 	isl_reordering_free(exp);
-	isl_space_free(space);
+	isl_space_free(dim);
 	return NULL;
 }
 

@@ -112,6 +112,7 @@ private:
   void expandPhi(Scop &S, const ScopArrayInfo *SAI,
                  const isl::union_map &Dependences);
 };
+
 } // namespace
 
 #ifndef NDEBUG

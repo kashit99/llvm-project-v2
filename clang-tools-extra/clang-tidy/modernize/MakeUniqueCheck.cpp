@@ -17,8 +17,7 @@ namespace modernize {
 
 MakeUniqueCheck::MakeUniqueCheck(StringRef Name,
                                  clang::tidy::ClangTidyContext *Context)
-    : MakeSmartPtrCheck(Name, Context, "std::make_unique"),
-      RequireCPlusPlus14(Options.get("MakeSmartPtrFunction", "").empty()) {}
+    : MakeSmartPtrCheck(Name, Context, "std::make_unique") {}
 
 MakeUniqueCheck::SmartPtrTypeMatcher
 MakeUniqueCheck::getSmartPointerTypeMatcher() const {
@@ -35,11 +34,6 @@ MakeUniqueCheck::getSmartPointerTypeMatcher() const {
                          hasTemplateArgument(
                              0, templateArgument(refersToType(qualType(
                                     equalsBoundNode(PointerType))))))))))))))));
-}
-
-bool MakeUniqueCheck::isLanguageVersionSupported(
-    const LangOptions &LangOpts) const {
-  return RequireCPlusPlus14 ? LangOpts.CPlusPlus14 : LangOpts.CPlusPlus11;
 }
 
 } // namespace modernize

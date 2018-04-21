@@ -14,7 +14,7 @@
 // bool is_empty(path const& p);
 // bool is_empty(path const& p, std::error_code& ec);
 
-#include "filesystem_include.hpp"
+#include <experimental/filesystem>
 #include <type_traits>
 #include <cassert>
 
@@ -22,7 +22,7 @@
 #include "rapid-cxx-test.hpp"
 #include "filesystem_test_helper.hpp"
 
-using namespace fs;
+using namespace std::experimental::filesystem;
 
 TEST_SUITE(is_empty_test_suite)
 

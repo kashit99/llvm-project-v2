@@ -135,8 +135,6 @@ class Result(object):
         self.elapsed = elapsed
         # The metrics reported by this test.
         self.metrics = {}
-        # The micro-test results reported by this test.
-        self.microResults = {}
 
     def addMetric(self, name, value):
         """
@@ -154,24 +152,6 @@ class Result(object):
         if not isinstance(value, MetricValue):
             raise TypeError("unexpected metric value: %r" % (value,))
         self.metrics[name] = value
-
-    def addMicroResult(self, name, microResult):
-        """
-        addMicroResult(microResult)
-
-        Attach a micro-test result to the test result, with the given name and
-        result.  It is an error to attempt to attach a micro-test with the 
-        same name multiple times.
-
-        Each micro-test result must be an instance of the Result class.
-        """
-        if name in self.microResults:
-            raise ValueError("Result already includes microResult for %r" % (
-                   name,))
-        if not isinstance(microResult, Result):
-            raise TypeError("unexpected MicroResult value %r" % (microResult,))
-        self.microResults[name] = microResult
-
 
 # Test classes.
 
@@ -373,8 +353,7 @@ class Test:
 
         xml = "<testcase classname='" + class_name + "' name='" + \
             test_name + "'"
-        xml += " time='{:.2f}'".format(
-            self.result.elapsed if self.result.elapsed is not None else 0.0)
+        xml += " time='%.2f'" % (self.result.elapsed,)
         if self.result.code.isFailure:
             xml += ">\n\t<failure >\n" + escape(self.result.output)
             xml += "\n\t</failure>\n</testcase>"

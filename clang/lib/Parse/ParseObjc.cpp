@@ -45,8 +45,7 @@ void Parser::MaybeSkipAttributes(tok::ObjCKeywordKind Kind) {
 /// [OBJC]  objc-protocol-definition
 /// [OBJC]  objc-method-definition
 /// [OBJC]  '@' 'end'
-Parser::DeclGroupPtrTy
-Parser::ParseObjCAtDirectives(ParsedAttributesWithRange &Attrs) {
+Parser::DeclGroupPtrTy Parser::ParseObjCAtDirectives() {
   SourceLocation AtLoc = ConsumeToken(); // the "@"
 
   if (Tok.is(tok::code_completion)) {
@@ -59,11 +58,15 @@ Parser::ParseObjCAtDirectives(ParsedAttributesWithRange &Attrs) {
   switch (Tok.getObjCKeywordID()) {
   case tok::objc_class:
     return ParseObjCAtClassDeclaration(AtLoc);
-  case tok::objc_interface:
-    SingleDecl = ParseObjCAtInterfaceDeclaration(AtLoc, Attrs);
+  case tok::objc_interface: {
+    ParsedAttributes attrs(AttrFactory);
+    SingleDecl = ParseObjCAtInterfaceDeclaration(AtLoc, attrs);
     break;
-  case tok::objc_protocol:
-    return ParseObjCAtProtocolDeclaration(AtLoc, Attrs);
+  }
+  case tok::objc_protocol: {
+    ParsedAttributes attrs(AttrFactory);
+    return ParseObjCAtProtocolDeclaration(AtLoc, attrs);
+  }
   case tok::objc_implementation:
     return ParseObjCAtImplementationDeclaration(AtLoc);
   case tok::objc_end:
@@ -1358,7 +1361,6 @@ Decl *Parser::ParseObjCMethodDecl(SourceLocation mLoc,
   ParsedAttributes methodAttrs(AttrFactory);
   if (getLangOpts().ObjC2)
     MaybeParseGNUAttributes(methodAttrs);
-  MaybeParseCXX11Attributes(methodAttrs);
 
   if (Tok.is(tok::code_completion)) {
     Actions.CodeCompleteObjCMethodDecl(getCurScope(), mType == tok::minus, 
@@ -1385,7 +1387,6 @@ Decl *Parser::ParseObjCMethodDecl(SourceLocation mLoc,
     // If attributes exist after the method, parse them.
     if (getLangOpts().ObjC2)
       MaybeParseGNUAttributes(methodAttrs);
-    MaybeParseCXX11Attributes(methodAttrs);
 
     Selector Sel = PP.getSelectorTable().getNullarySelector(SelIdent);
     Decl *Result
@@ -1422,10 +1423,11 @@ Decl *Parser::ParseObjCMethodDecl(SourceLocation mLoc,
 
     // If attributes exist before the argument name, parse them.
     // Regardless, collect all the attributes we've parsed so far.
-    if (getLangOpts().ObjC2)
+    ArgInfo.ArgAttrs = nullptr;
+    if (getLangOpts().ObjC2) {
       MaybeParseGNUAttributes(paramAttrs);
-    MaybeParseCXX11Attributes(paramAttrs);
-    ArgInfo.ArgAttrs = paramAttrs.getList();
+      ArgInfo.ArgAttrs = paramAttrs.getList();
+    }
 
     // Code completion for the next piece of the selector.
     if (Tok.is(tok::code_completion)) {
@@ -1508,8 +1510,7 @@ Decl *Parser::ParseObjCMethodDecl(SourceLocation mLoc,
   // If attributes exist after the method, parse them.
   if (getLangOpts().ObjC2)
     MaybeParseGNUAttributes(methodAttrs);
-  MaybeParseCXX11Attributes(methodAttrs);
-
+  
   if (KeyIdents.size() == 0)
     return nullptr;
 

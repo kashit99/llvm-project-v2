@@ -212,11 +212,11 @@ public:
   /// getElement - Return the Element at the specified index.
   Expr *getElement(unsigned Index) {
     assert((Index < NumElements) && "Arg access out of range!");
-    return getElements()[Index];
+    return cast<Expr>(getElements()[Index]);
   }
   const Expr *getElement(unsigned Index) const {
     assert((Index < NumElements) && "Arg access out of range!");
-    return getElements()[Index];
+    return cast<Expr>(getElements()[Index]);
   }
     
   ObjCMethodDecl *getArrayWithObjectsMethod() const {

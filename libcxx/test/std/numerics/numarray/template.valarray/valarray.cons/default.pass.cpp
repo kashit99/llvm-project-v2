@@ -16,13 +16,6 @@
 #include <valarray>
 #include <cassert>
 
-struct S {
-    S() { ctor_called = true; }
-    static bool ctor_called;
-};
-
-bool S::ctor_called = false;
-
 int main()
 {
     {
@@ -40,10 +33,5 @@ int main()
     {
         std::valarray<std::valarray<double> > v;
         assert(v.size() == 0);
-    }
-    {
-        std::valarray<S> v;
-        assert(v.size() == 0);
-        assert(!S::ctor_called);
     }
 }

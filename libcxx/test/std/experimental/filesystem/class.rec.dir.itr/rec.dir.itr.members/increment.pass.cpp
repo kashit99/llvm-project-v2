@@ -16,7 +16,7 @@
 // recursive_directory_iterator& operator++();
 // recursive_directory_iterator& increment(error_code& ec) noexcept;
 
-#include "filesystem_include.hpp"
+#include <experimental/filesystem>
 #include <type_traits>
 #include <set>
 #include <cassert>
@@ -24,8 +24,9 @@
 #include "test_macros.h"
 #include "rapid-cxx-test.hpp"
 #include "filesystem_test_helper.hpp"
+#include <iostream>
 
-using namespace fs;
+using namespace std::experimental::filesystem;
 
 TEST_SUITE(recursive_directory_iterator_increment_tests)
 
@@ -140,7 +141,7 @@ TEST_CASE(test_follow_symlinks)
 
 TEST_CASE(access_denied_on_recursion_test_case)
 {
-    using namespace fs;
+    using namespace std::experimental::filesystem;
     scoped_test_env env;
     const path testFiles[] = {
         env.create_dir("dir1"),
@@ -239,7 +240,7 @@ TEST_CASE(access_denied_on_recursion_test_case)
 // See llvm.org/PR35078
 TEST_CASE(test_PR35078)
 {
-  using namespace fs;
+  using namespace std::experimental::filesystem;
     scoped_test_env env;
     const path testFiles[] = {
         env.create_dir("dir1"),
@@ -255,8 +256,8 @@ TEST_CASE(test_PR35078)
 
     // Change the permissions so we can no longer iterate
     permissions(permDeniedDir,
-                perms::group_exec|perms::owner_exec|perms::others_exec,
-                perm_options::remove);
+                perms::remove_perms|perms::group_exec
+               |perms::owner_exec|perms::others_exec);
 
     const std::error_code eacess_ec =
         std::make_error_code(std::errc::permission_denied);
@@ -309,7 +310,7 @@ TEST_CASE(test_PR35078)
 // See llvm.org/PR35078
 TEST_CASE(test_PR35078_with_symlink)
 {
-  using namespace fs;
+  using namespace std::experimental::filesystem;
     scoped_test_env env;
     const path testFiles[] = {
         env.create_dir("dir1"),
@@ -329,8 +330,8 @@ TEST_CASE(test_PR35078_with_symlink)
 
     // Change the permissions so we can no longer iterate
     permissions(permDeniedDir,
-                perms::group_exec|perms::owner_exec|perms::others_exec,
-                perm_options::remove);
+                perms::remove_perms|perms::group_exec
+               |perms::owner_exec|perms::others_exec);
 
     const std::error_code eacess_ec =
         std::make_error_code(std::errc::permission_denied);
@@ -346,6 +347,7 @@ TEST_CASE(test_PR35078_with_symlink)
         Opts |= directory_options::follow_directory_symlink;
       recursive_directory_iterator it(startDir, Opts, ec);
       while (!ec && it != endIt && *it != symDir) {
+        std::cout << *it << std::endl;
         if (*it == nestedFile)
           SeenFile3 = true;
         it.increment(ec);
@@ -393,7 +395,7 @@ TEST_CASE(test_PR35078_with_symlink)
 // See llvm.org/PR35078
 TEST_CASE(test_PR35078_with_symlink_file)
 {
-  using namespace fs;
+  using namespace std::experimental::filesystem;
     scoped_test_env env;
     const path testFiles[] = {
         env.create_dir("dir1"),
@@ -413,8 +415,8 @@ TEST_CASE(test_PR35078_with_symlink_file)
 
     // Change the permissions so we can no longer iterate
     permissions(permDeniedDir,
-                perms::group_exec|perms::owner_exec|perms::others_exec,
-                perm_options::remove);
+                perms::remove_perms|perms::group_exec
+               |perms::owner_exec|perms::others_exec);
 
     const std::error_code eacess_ec =
         std::make_error_code(std::errc::permission_denied);

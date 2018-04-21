@@ -15,12 +15,10 @@ namespace clang {
 namespace tidy {
 namespace boost {
 
-namespace {
 AST_MATCHER(Type, isStrictlyInteger) {
   return Node.isIntegerType() && !Node.isAnyCharacterType() &&
          !Node.isBooleanType();
 }
-} // namespace
 
 void UseToStringCheck::registerMatchers(MatchFinder *Finder) {
   if (!getLangOpts().CPlusPlus)

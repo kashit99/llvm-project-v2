@@ -13,7 +13,7 @@
 
 // void swap(path& lhs, path& rhs) noexcept;
 
-#include "filesystem_include.hpp"
+#include <experimental/filesystem>
 #include <type_traits>
 #include <cassert>
 
@@ -21,6 +21,7 @@
 #include "count_new.hpp"
 #include "filesystem_test_helper.hpp"
 
+namespace fs = std::experimental::filesystem;
 
 // NOTE: this is tested in path.members/path.modifiers via the member swap.
 int main()

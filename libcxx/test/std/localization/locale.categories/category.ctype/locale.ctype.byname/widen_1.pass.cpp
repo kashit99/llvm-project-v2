@@ -55,7 +55,7 @@ int main()
             assert(f.widen('.') == L'.');
             assert(f.widen('a') == L'a');
             assert(f.widen('1') == L'1');
-#if defined(__APPLE__) || defined(__FreeBSD__)
+#ifdef __APPLE__
             assert(f.widen(char(-5)) == L'\u00fb');
 #else
             assert(f.widen(char(-5)) == wchar_t(-1));

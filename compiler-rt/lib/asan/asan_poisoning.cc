@@ -32,7 +32,7 @@ bool CanPoisonMemory() {
 }
 
 void PoisonShadow(uptr addr, uptr size, u8 value) {
-  if (value && !CanPoisonMemory()) return;
+  if (!CanPoisonMemory()) return;
   CHECK(AddrIsAlignedByGranularity(addr));
   CHECK(AddrIsInMem(addr));
   CHECK(AddrIsAlignedByGranularity(addr + size));

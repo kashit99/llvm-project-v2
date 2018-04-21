@@ -23,7 +23,6 @@ namespace clang {
 namespace tidy {
 namespace modernize {
 
-namespace {
 /// \brief Matches move-constructible classes.
 ///
 /// Given
@@ -45,7 +44,6 @@ AST_MATCHER(CXXRecordDecl, isMoveConstructible) {
   }
   return false;
 }
-} // namespace
 
 static TypeMatcher constRefType() {
   return lValueReferenceType(pointee(isConstQualified()));

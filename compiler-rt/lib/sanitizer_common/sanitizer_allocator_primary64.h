@@ -72,17 +72,14 @@ class SizeClassAllocator64 {
   void Init(s32 release_to_os_interval_ms) {
     uptr TotalSpaceSize = kSpaceSize + AdditionalSize();
     if (kUsingConstantSpaceBeg) {
-      CHECK_EQ(kSpaceBeg, address_range.Init(TotalSpaceSize,
-                                             PrimaryAllocatorName, kSpaceBeg));
+      CHECK_EQ(kSpaceBeg, address_range.Init(TotalSpaceSize, AllocatorName(),
+                                             kSpaceBeg));
     } else {
-      NonConstSpaceBeg = address_range.Init(TotalSpaceSize,
-                                            PrimaryAllocatorName);
+      NonConstSpaceBeg = address_range.Init(TotalSpaceSize, AllocatorName());
       CHECK_NE(NonConstSpaceBeg, ~(uptr)0);
     }
     SetReleaseToOSIntervalMs(release_to_os_interval_ms);
     MapWithCallbackOrDie(SpaceEnd(), AdditionalSize());
-    // Check that the RegionInfo array is aligned on the CacheLine size.
-    DCHECK_EQ(SpaceEnd() % kCacheLineSize, 0);
   }
 
   s32 ReleaseToOSIntervalMs() const {
@@ -547,6 +544,7 @@ class SizeClassAllocator64 {
   friend class MemoryMapper;
 
   ReservedAddressRange address_range;
+  static const char *AllocatorName() { return "sanitizer_allocator"; }
 
   static const uptr kRegionSize = kSpaceSize / kNumClassesRounded;
   // FreeArray is the array of free-d chunks (stored as 4-byte offsets).
@@ -586,7 +584,7 @@ class SizeClassAllocator64 {
     u64 last_released_bytes;
   };
 
-  struct ALIGNED(SANITIZER_CACHE_LINE_SIZE) RegionInfo {
+  struct RegionInfo {
     BlockingMutex mutex;
     uptr num_freed_chunks;  // Number of elements in the freearray.
     uptr mapped_free_array;  // Bytes mapped for freearray.
@@ -599,11 +597,12 @@ class SizeClassAllocator64 {
     Stats stats;
     ReleaseToOsInfo rtoi;
   };
-  COMPILER_CHECK(sizeof(RegionInfo) % kCacheLineSize == 0);
+  COMPILER_CHECK(sizeof(RegionInfo) >= kCacheLineSize);
 
   RegionInfo *GetRegionInfo(uptr class_id) const {
-    DCHECK_LT(class_id, kNumClasses);
-    RegionInfo *regions = reinterpret_cast<RegionInfo *>(SpaceEnd());
+    CHECK_LT(class_id, kNumClasses);
+    RegionInfo *regions =
+        reinterpret_cast<RegionInfo *>(SpaceBeg() + kSpaceSize);
     return &regions[class_id];
   }
 

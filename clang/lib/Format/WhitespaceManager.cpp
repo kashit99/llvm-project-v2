@@ -90,7 +90,7 @@ const tooling::Replacements &WhitespaceManager::generateReplacements() {
   if (Changes.empty())
     return Replaces;
 
-  llvm::sort(Changes.begin(), Changes.end(), Change::IsBeforeInFile(SourceMgr));
+  std::sort(Changes.begin(), Changes.end(), Change::IsBeforeInFile(SourceMgr));
   calculateLineBreakInformation();
   alignConsecutiveDeclarations();
   alignConsecutiveAssignments();

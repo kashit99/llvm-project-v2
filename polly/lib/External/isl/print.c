@@ -7,6 +7,7 @@
 #include <isl/union_set.h>
 #include <isl/union_map.h>
 #include <isl/polynomial.h>
+#include <isl/band.h>
 #include <isl/constraint.h>
 #include <isl/aff.h>
 #include <isl/ast.h>
@@ -63,6 +64,9 @@
 #include <print_templ.c>
 #undef BASE
 #define BASE union_pw_qpolynomial_fold
+#include <print_templ.c>
+#undef BASE
+#define BASE band
 #include <print_templ.c>
 #undef BASE
 #define BASE constraint

@@ -79,10 +79,6 @@ UnnecessaryValueParamCheck::UnnecessaryValueParamCheck(
           Options.getLocalOrGlobal("IncludeStyle", "llvm"))) {}
 
 void UnnecessaryValueParamCheck::registerMatchers(MatchFinder *Finder) {
-  // This check is specific to C++ and doesn't apply to languages like
-  // Objective-C.
-  if (!getLangOpts().CPlusPlus)
-    return;
   const auto ExpensiveValueParamDecl =
       parmVarDecl(hasType(hasCanonicalType(allOf(
                       unless(referenceType()), matchers::isExpensiveToCopy()))),

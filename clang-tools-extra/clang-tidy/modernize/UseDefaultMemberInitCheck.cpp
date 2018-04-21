@@ -167,9 +167,7 @@ void UseDefaultMemberInitCheck::registerMatchers(MatchFinder *Finder) {
           isDefaultConstructor(), unless(isInstantiated()),
           forEachConstructorInitializer(
               cxxCtorInitializer(
-                  forField(unless(anyOf(getLangOpts().CPlusPlus2a
-                                            ? unless(anything())
-                                            : isBitField(),
+                  forField(unless(anyOf(isBitField(),
                                         hasInClassInitializer(anything()),
                                         hasParent(recordDecl(isUnion()))))),
                   isWritten(), withInitializer(ignoringImplicit(Init)))

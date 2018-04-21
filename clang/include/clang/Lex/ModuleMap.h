@@ -57,6 +57,14 @@ public:
   virtual void moduleMapFileRead(SourceLocation FileStart,
                                  const FileEntry &File, bool IsSystem) {}
 
+  /// Called when a module map file matches a module lookup
+  ///
+  /// \param File The file itself.
+  /// \param M The module found that matches this module map.
+  /// \param IsSystem Whether this is a module map from a system include path.
+  virtual void moduleMapFoundForModule(const FileEntry &File, const Module *M,
+                                       bool IsSystem) {}
+
   /// \brief Called when a header is added during module map parsing.
   ///
   /// \param Filename The header file itself.
@@ -212,7 +220,7 @@ private:
   llvm::DenseMap<const DirectoryEntry *, Module *> UmbrellaDirs;
 
   /// \brief A generation counter that is used to test whether modules of the
-  /// same name may shadow or are illegal redefinitions.
+  /// same name may shadow or are illegal redefintions.
   ///
   /// Modules from earlier scopes may shadow modules from later ones.
   /// Modules from the same scope may not have the same name.
@@ -375,6 +383,8 @@ public:
   ModuleMap(SourceManager &SourceMgr, DiagnosticsEngine &Diags,
             const LangOptions &LangOpts, const TargetInfo *Target,
             HeaderSearch &HeaderInfo);
+
+  const LangOptions &getLangOpts() const { return LangOpts; }
 
   /// \brief Destroy the module map.
   ~ModuleMap();
@@ -654,8 +664,8 @@ public:
   ///
   /// \returns true if an error occurred, false otherwise.
   bool parseModuleMapFile(const FileEntry *File, bool IsSystem,
-                          const DirectoryEntry *HomeDir,
-                          FileID ID = FileID(), unsigned *Offset = nullptr,
+                          const DirectoryEntry *HomeDir, FileID ID = FileID(),
+                          unsigned *Offset = nullptr,
                           SourceLocation ExternModuleLoc = SourceLocation());
 
   /// \brief Dump the contents of the module map, for debugging purposes.

@@ -1,4 +1,4 @@
-//===- Tooling.h - Framework for standalone Clang tools ---------*- C++ -*-===//
+//===--- Tooling.h - Framework for standalone Clang tools -------*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -31,41 +31,33 @@
 #define LLVM_CLANG_TOOLING_TOOLING_H
 
 #include "clang/AST/ASTConsumer.h"
+#include "clang/Basic/Diagnostic.h"
 #include "clang/Basic/FileManager.h"
 #include "clang/Basic/LLVM.h"
-#include "clang/Basic/VirtualFileSystem.h"
+#include "clang/Driver/Util.h"
 #include "clang/Frontend/FrontendAction.h"
 #include "clang/Frontend/PCHContainerOperations.h"
+#include "clang/Lex/ModuleLoader.h"
 #include "clang/Tooling/ArgumentsAdjusters.h"
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/IntrusiveRefCntPtr.h"
+#include "clang/Tooling/CompilationDatabase.h"
 #include "llvm/ADT/StringMap.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Option/Option.h"
 #include <memory>
 #include <string>
-#include <utility>
 #include <vector>
 
 namespace clang {
 
-class CompilerInstance;
-class CompilerInvocation;
-class DiagnosticConsumer;
-class DiagnosticsEngine;
-class SourceManager;
-
 namespace driver {
-
 class Compilation;
+} // end namespace driver
 
-} // namespace driver
+class CompilerInvocation;
+class SourceManager;
+class FrontendAction;
 
 namespace tooling {
-
-class CompilationDatabase;
 
 /// \brief Interface to process a clang::CompilerInvocation.
 ///
@@ -77,7 +69,7 @@ public:
 
   /// \brief Perform an action for an invocation.
   virtual bool
-  runInvocation(std::shared_ptr<CompilerInvocation> Invocation,
+  runInvocation(std::shared_ptr<clang::CompilerInvocation> Invocation,
                 FileManager *Files,
                 std::shared_ptr<PCHContainerOperations> PCHContainerOps,
                 DiagnosticConsumer *DiagConsumer) = 0;
@@ -94,7 +86,7 @@ public:
   ~FrontendActionFactory() override;
 
   /// \brief Invokes the compiler with a FrontendAction created by create().
-  bool runInvocation(std::shared_ptr<CompilerInvocation> Invocation,
+  bool runInvocation(std::shared_ptr<clang::CompilerInvocation> Invocation,
                      FileManager *Files,
                      std::shared_ptr<PCHContainerOperations> PCHContainerOps,
                      DiagnosticConsumer *DiagConsumer) override;
@@ -102,7 +94,7 @@ public:
   /// \brief Returns a new clang::FrontendAction.
   ///
   /// The caller takes ownership of the returned action.
-  virtual FrontendAction *create() = 0;
+  virtual clang::FrontendAction *create() = 0;
 };
 
 /// \brief Returns a new FrontendActionFactory for a given type.
@@ -120,7 +112,7 @@ std::unique_ptr<FrontendActionFactory> newFrontendActionFactory();
 /// newFrontendActionFactory.
 class SourceFileCallbacks {
 public:
-  virtual ~SourceFileCallbacks() = default;
+  virtual ~SourceFileCallbacks() {}
 
   /// \brief Called before a source file is processed by a FrontEndAction.
   /// \see clang::FrontendAction::BeginSourceFileAction
@@ -157,14 +149,14 @@ inline std::unique_ptr<FrontendActionFactory> newFrontendActionFactory(
 ///                         clang modules.
 ///
 /// \return - True if 'ToolAction' was successfully executed.
-bool runToolOnCode(FrontendAction *ToolAction, const Twine &Code,
+bool runToolOnCode(clang::FrontendAction *ToolAction, const Twine &Code,
                    const Twine &FileName = "input.cc",
                    std::shared_ptr<PCHContainerOperations> PCHContainerOps =
                        std::make_shared<PCHContainerOperations>());
 
 /// The first part of the pair is the filename, the second part the
 /// file-content.
-using FileContentMappings = std::vector<std::pair<std::string, std::string>>;
+typedef std::vector<std::pair<std::string, std::string>> FileContentMappings;
 
 /// \brief Runs (and deletes) the tool on 'Code' with the -fsyntax-only flag and
 ///        with additional other flags.
@@ -180,7 +172,7 @@ using FileContentMappings = std::vector<std::pair<std::string, std::string>>;
 ///
 /// \return - True if 'ToolAction' was successfully executed.
 bool runToolOnCodeWithArgs(
-    FrontendAction *ToolAction, const Twine &Code,
+    clang::FrontendAction *ToolAction, const Twine &Code,
     const std::vector<std::string> &Args, const Twine &FileName = "input.cc",
     const Twine &ToolName = "clang-tool",
     std::shared_ptr<PCHContainerOperations> PCHContainerOps =
@@ -273,8 +265,8 @@ public:
   void addFileMappingsTo(SourceManager &SourceManager);
 
   bool runInvocation(const char *BinaryName,
-                     driver::Compilation *Compilation,
-                     std::shared_ptr<CompilerInvocation> Invocation,
+                     clang::driver::Compilation *Compilation,
+                     std::shared_ptr<clang::CompilerInvocation> Invocation,
                      std::shared_ptr<PCHContainerOperations> PCHContainerOps);
 
   std::vector<std::string> CommandLine;
@@ -284,7 +276,7 @@ public:
   std::shared_ptr<PCHContainerOperations> PCHContainerOps;
   // Maps <file name> -> <file content>.
   llvm::StringMap<StringRef> MappedFileContents;
-  DiagnosticConsumer *DiagConsumer = nullptr;
+  DiagnosticConsumer *DiagConsumer;
 };
 
 /// \brief Utility to run a FrontendAction over a set of files.
@@ -295,7 +287,7 @@ public:
 /// a frontend action. One could install an additional command line
 /// arguments adjuster by calling the appendArgumentsAdjuster() method.
 class ClangTool {
-public:
+ public:
   /// \brief Constructs a clang tool to run over a list of files.
   ///
   /// \param Compilations The CompilationDatabase which contains the compile
@@ -304,14 +296,10 @@ public:
   ///        not found in Compilations, it is skipped.
   /// \param PCHContainerOps The PCHContainerOperations for loading and creating
   /// clang modules.
-  /// \param BaseFS VFS used for all underlying file accesses when running the
-  /// tool.
   ClangTool(const CompilationDatabase &Compilations,
             ArrayRef<std::string> SourcePaths,
             std::shared_ptr<PCHContainerOperations> PCHContainerOps =
-                std::make_shared<PCHContainerOperations>(),
-            IntrusiveRefCntPtr<vfs::FileSystem> BaseFS =
-                vfs::getRealFileSystem());
+                std::make_shared<PCHContainerOperations>());
 
   ~ClangTool();
 
@@ -338,9 +326,6 @@ public:
   /// Runs an action over all files specified in the command line.
   ///
   /// \param Action Tool action.
-  ///
-  /// \returns 0 on success; 1 if any error occurred; 2 if there is no error but
-  /// some files are skipped due to missing compile commands.
   int run(ToolAction *Action);
 
   /// \brief Create an AST for each file specified in the command line and
@@ -362,22 +347,20 @@ private:
   llvm::IntrusiveRefCntPtr<vfs::OverlayFileSystem> OverlayFileSystem;
   llvm::IntrusiveRefCntPtr<vfs::InMemoryFileSystem> InMemoryFileSystem;
   llvm::IntrusiveRefCntPtr<FileManager> Files;
-
   // Contains a list of pairs (<file name>, <file content>).
-  std::vector<std::pair<StringRef, StringRef>> MappedFileContents;
-
+  std::vector< std::pair<StringRef, StringRef> > MappedFileContents;
   llvm::StringSet<> SeenWorkingDirectories;
 
   ArgumentsAdjuster ArgsAdjuster;
 
-  DiagnosticConsumer *DiagConsumer = nullptr;
+  DiagnosticConsumer *DiagConsumer;
 };
 
 template <typename T>
 std::unique_ptr<FrontendActionFactory> newFrontendActionFactory() {
   class SimpleFrontendActionFactory : public FrontendActionFactory {
   public:
-    FrontendAction *create() override { return new T; }
+    clang::FrontendAction *create() override { return new T; }
   };
 
   return std::unique_ptr<FrontendActionFactory>(
@@ -391,37 +374,36 @@ inline std::unique_ptr<FrontendActionFactory> newFrontendActionFactory(
   public:
     explicit FrontendActionFactoryAdapter(FactoryT *ConsumerFactory,
                                           SourceFileCallbacks *Callbacks)
-        : ConsumerFactory(ConsumerFactory), Callbacks(Callbacks) {}
+      : ConsumerFactory(ConsumerFactory), Callbacks(Callbacks) {}
 
-    FrontendAction *create() override {
+    clang::FrontendAction *create() override {
       return new ConsumerFactoryAdaptor(ConsumerFactory, Callbacks);
     }
 
   private:
-    class ConsumerFactoryAdaptor : public ASTFrontendAction {
+    class ConsumerFactoryAdaptor : public clang::ASTFrontendAction {
     public:
       ConsumerFactoryAdaptor(FactoryT *ConsumerFactory,
                              SourceFileCallbacks *Callbacks)
-          : ConsumerFactory(ConsumerFactory), Callbacks(Callbacks) {}
+        : ConsumerFactory(ConsumerFactory), Callbacks(Callbacks) {}
 
-      std::unique_ptr<ASTConsumer>
-      CreateASTConsumer(CompilerInstance &, StringRef) override {
+      std::unique_ptr<clang::ASTConsumer>
+      CreateASTConsumer(clang::CompilerInstance &, StringRef) override {
         return ConsumerFactory->newASTConsumer();
       }
 
     protected:
       bool BeginSourceFileAction(CompilerInstance &CI) override {
-        if (!ASTFrontendAction::BeginSourceFileAction(CI))
+        if (!clang::ASTFrontendAction::BeginSourceFileAction(CI))
           return false;
         if (Callbacks)
           return Callbacks->handleBeginSource(CI);
         return true;
       }
-
       void EndSourceFileAction() override {
         if (Callbacks)
           Callbacks->handleEndSource();
-        ASTFrontendAction::EndSourceFileAction();
+        clang::ASTFrontendAction::EndSourceFileAction();
       }
 
     private:
@@ -474,11 +456,11 @@ void addTargetAndModeForProgramName(std::vector<std::string> &CommandLine,
                                     StringRef InvokedAs);
 
 /// \brief Creates a \c CompilerInvocation.
-CompilerInvocation *newInvocation(DiagnosticsEngine *Diagnostics,
-                                  const llvm::opt::ArgStringList &CC1Args);
+clang::CompilerInvocation *newInvocation(
+    clang::DiagnosticsEngine *Diagnostics,
+    const llvm::opt::ArgStringList &CC1Args);
 
-} // namespace tooling
-
-} // namespace clang
+} // end namespace tooling
+} // end namespace clang
 
 #endif // LLVM_CLANG_TOOLING_TOOLING_H

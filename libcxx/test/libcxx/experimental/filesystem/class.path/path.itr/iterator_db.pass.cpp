@@ -10,15 +10,13 @@
 // UNSUPPORTED: c++98, c++03
 // UNSUPPORTED: libcpp-no-exceptions
 
-// MODULES_DEFINES: _LIBCPP_DEBUG_USE_EXCEPTIONS
-// MODULES_DEFINES: _LIBCPP_DEBUG=0
-
 // <experimental/filesystem>
 
 // class path
 
 #define _LIBCPP_DEBUG 0
-#define _LIBCPP_DEBUG_USE_EXCEPTIONS
+#define _LIBCPP_ASSERT(cond, msg) ((cond) ? ((void)0) : throw 42)
+
 #include <experimental/filesystem>
 #include <iterator>
 #include <type_traits>
@@ -31,18 +29,17 @@ namespace fs = std::experimental::filesystem;
 
 int main() {
   using namespace fs;
-  using ExType = std::__libcpp_debug_exception;
   // Test incrementing/decrementing a singular iterator
   {
     path::iterator singular;
     try {
       ++singular;
       assert(false);
-    } catch (ExType const&) {}
+    } catch (int) {}
     try {
       --singular;
       assert(false);
-    } catch (ExType const&) {}
+    } catch (int) {}
   }
   // Test decrementing the begin iterator
   {
@@ -51,13 +48,13 @@ int main() {
     try {
       --it;
       assert(false);
-    } catch (ExType const&) {}
+    } catch (int) {}
     ++it;
     ++it;
     try {
       ++it;
       assert(false);
-    } catch (ExType const&) {}
+    } catch (int) {}
   }
   // Test incrementing the end iterator
   {
@@ -66,12 +63,12 @@ int main() {
     try {
       ++it;
       assert(false);
-    } catch (ExType const&) {}
+    } catch (int) {}
     --it;
     --it;
     try {
       --it;
       assert(false);
-    } catch (ExType const&) {}
+    } catch (int) {}
   }
 }

@@ -53,9 +53,7 @@ void* operator new(std::size_t s, std::align_val_t a) TEST_THROW_SPEC(std::bad_a
     assert(s <= sizeof(DummyData));
     assert(static_cast<std::size_t>(a) == OverAligned);
     ++new_called;
-    void *Ret = DummyData;
-    DoNotOptimize(Ret);
-    return Ret;
+    return DummyData;
 }
 
 void  operator delete(void* p, std::align_val_t) TEST_NOEXCEPT
@@ -63,7 +61,6 @@ void  operator delete(void* p, std::align_val_t) TEST_NOEXCEPT
     assert(new_called == 1);
     --new_called;
     assert(p == DummyData);
-    DoNotOptimize(DummyData);
 }
 
 

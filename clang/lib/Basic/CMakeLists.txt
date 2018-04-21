@@ -84,7 +84,6 @@ add_clang_library(clangBasic
   Targets/OSTargets.cpp
   Targets/PNaCl.cpp
   Targets/PPC.cpp
-  Targets/RISCV.cpp
   Targets/SPIR.cpp
   Targets/Sparc.cpp
   Targets/SystemZ.cpp
@@ -97,7 +96,6 @@ add_clang_library(clangBasic
   VersionTuple.cpp
   VirtualFileSystem.cpp
   Warnings.cpp
-  XRayInstr.cpp
   XRayLists.cpp
   ${version_inc}
   )

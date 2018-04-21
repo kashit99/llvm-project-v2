@@ -577,9 +577,7 @@ void Preprocessor::SkipExcludedConditionalBlock(SourceLocation HashTokenLoc,
   // the #if block.
   CurPPLexer->LexingRawMode = false;
 
-  // The last skipped range isn't actually skipped yet if it's truncated
-  // by the end of the preamble; we'll resume parsing after the preamble.
-  if (Callbacks && (Tok.isNot(tok::eof) || !isRecordingPreamble()))
+  if (Callbacks)
     Callbacks->SourceRangeSkipped(
         SourceRange(HashTokenLoc, CurPPLexer->getSourceLocation()),
         Tok.getLocation());
@@ -1364,7 +1362,7 @@ void Preprocessor::HandleUserDiagnosticDirective(Token &Tok,
   // Read the rest of the line raw.  We do this because we don't want macros
   // to be expanded and we don't require that the tokens be valid preprocessing
   // tokens.  For example, this is allowed: "#warning `   'foo".  GCC does
-  // collapse multiple consecutive white space between tokens, but this isn't
+  // collapse multiple consequtive white space between tokens, but this isn't
   // specified by the standard.
   SmallString<128> Message;
   CurLexer->ReadToEndOfLine(&Message);
@@ -2053,15 +2051,6 @@ void Preprocessor::HandleIncludeDirective(SourceLocation HashLoc,
 
   // Determine if we're switching to building a new submodule, and which one.
   if (auto *M = SuggestedModule.getModule()) {
-    if (M->getTopLevelModule()->ShadowingModule) {
-      // We are building a submodule that belongs to a shadowed module. This
-      // means we find header files in the shadowed module.
-      Diag(M->DefinitionLoc, diag::err_module_build_shadowed_submodule)
-        << M->getFullModuleName();
-      Diag(M->getTopLevelModule()->ShadowingModule->DefinitionLoc,
-           diag::note_previous_definition);
-      return;
-    }
     // When building a pch, -fmodule-name tells the compiler to textually
     // include headers in the specified module. We are not building the
     // specified module.

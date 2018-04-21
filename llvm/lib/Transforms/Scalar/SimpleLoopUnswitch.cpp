@@ -17,11 +17,9 @@
 #include "llvm/ADT/Statistic.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Analysis/AssumptionCache.h"
-#include "llvm/Analysis/CFG.h"
 #include "llvm/Analysis/CodeMetrics.h"
 #include "llvm/Analysis/LoopAnalysisManager.h"
 #include "llvm/Analysis/LoopInfo.h"
-#include "llvm/Analysis/LoopIterator.h"
 #include "llvm/Analysis/LoopPass.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constant.h"
@@ -639,7 +637,7 @@ static bool unswitchTrivialSwitch(Loop &L, SwitchInst &SI, DominatorTree &DT,
     BranchInst::Create(CommonSuccBB, BB);
   }
 
-  assert(DT.verify(DominatorTree::VerificationLevel::Fast));
+  DT.verifyDomTree();
   ++NumTrivial;
   ++NumSwitches;
   return true;
@@ -1130,12 +1128,11 @@ static Loop *buildClonedLoops(Loop &OrigL, ArrayRef<BasicBlock *> ExitBlocks,
   // matter as we're just trying to build up the map from inside-out; we use
   // the map in a more stably ordered way below.
   auto OrderedClonedExitsInLoops = ClonedExitsInLoops;
-  llvm::sort(OrderedClonedExitsInLoops.begin(),
-             OrderedClonedExitsInLoops.end(),
-             [&](BasicBlock *LHS, BasicBlock *RHS) {
-               return ExitLoopMap.lookup(LHS)->getLoopDepth() <
-                      ExitLoopMap.lookup(RHS)->getLoopDepth();
-             });
+  std::sort(OrderedClonedExitsInLoops.begin(), OrderedClonedExitsInLoops.end(),
+            [&](BasicBlock *LHS, BasicBlock *RHS) {
+              return ExitLoopMap.lookup(LHS)->getLoopDepth() <
+                     ExitLoopMap.lookup(RHS)->getLoopDepth();
+            });
 
   // Populate the existing ExitLoopMap with everything reachable from each
   // exit, starting from the inner most exit.
@@ -1940,17 +1937,6 @@ unswitchLoop(Loop &L, DominatorTree &DT, LoopInfo &LI, AssumptionCache &AC,
   if (UnswitchCandidates.empty())
     return Changed;
 
-  // Check if there are irreducible CFG cycles in this loop. If so, we cannot
-  // easily unswitch non-trivial edges out of the loop. Doing so might turn the
-  // irreducible control flow into reducible control flow and introduce new
-  // loops "out of thin air". If we ever discover important use cases for doing
-  // this, we can add support to loop unswitch, but it is a lot of complexity
-  // for what seems little or no real world benifit.
-  LoopBlocksRPO RPOT(&L);
-  RPOT.perform(&LI);
-  if (containsIrreducibleCFG<const BasicBlock *>(RPOT, LI))
-    return Changed;
-
   DEBUG(dbgs() << "Considering " << UnswitchCandidates.size()
                << " non-trivial loop invariant conditions for unswitching.\n");
 
@@ -2093,9 +2079,11 @@ PreservedAnalyses SimpleLoopUnswitchPass::run(Loop &L, LoopAnalysisManager &AM,
                     NonTrivialUnswitchCB))
     return PreservedAnalyses::all();
 
+#ifndef NDEBUG
   // Historically this pass has had issues with the dominator tree so verify it
   // in asserts builds.
-  assert(AR.DT.verify(DominatorTree::VerificationLevel::Fast));
+  AR.DT.verifyDomTree();
+#endif
   return getLoopPassPreservedAnalyses();
 }
 
@@ -2159,10 +2147,11 @@ bool SimpleLoopUnswitchLegacyPass::runOnLoop(Loop *L, LPPassManager &LPM) {
   // loop.
   LPM.deleteSimpleAnalysisLoop(L);
 
+#ifndef NDEBUG
   // Historically this pass has had issues with the dominator tree so verify it
   // in asserts builds.
-  assert(DT.verify(DominatorTree::VerificationLevel::Fast));
-
+  DT.verifyDomTree();
+#endif
   return Changed;
 }
 

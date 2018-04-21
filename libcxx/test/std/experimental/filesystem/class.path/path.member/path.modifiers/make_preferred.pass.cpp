@@ -15,7 +15,7 @@
 
 // path& make_preferred()
 
-#include "filesystem_include.hpp"
+#include <experimental/filesystem>
 #include <type_traits>
 #include <cassert>
 
@@ -24,6 +24,7 @@
 #include "count_new.hpp"
 #include "filesystem_test_helper.hpp"
 
+namespace fs = std::experimental::filesystem;
 
 struct MakePreferredTestcase {
   const char* value;

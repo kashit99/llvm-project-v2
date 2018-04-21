@@ -33,7 +33,7 @@ int main()
         Myconv myconv;
         try
         {
-            TEST_IGNORE_NODISCARD myconv.to_bytes(L"\xDA83");
+            myconv.to_bytes(L"\xDA83");
             assert(false);
         }
         catch (const std::range_error&)
@@ -41,7 +41,7 @@ int main()
         }
         try
         {
-            TEST_IGNORE_NODISCARD myconv.from_bytes('\xA5');
+            myconv.from_bytes('\xA5');
             assert(false);
         }
         catch (const std::range_error&)
@@ -56,7 +56,7 @@ int main()
 #ifndef TEST_HAS_NO_EXCEPTIONS
         try
         {
-            TEST_IGNORE_NODISCARD myconv.from_bytes('\xA5');
+            myconv.from_bytes('\xA5');
             assert(false);
         }
         catch (const std::range_error&)

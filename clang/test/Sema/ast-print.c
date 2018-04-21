@@ -15,10 +15,6 @@ struct blah {
   };
 };
 
-// This used to crash clang.
-struct {
-}(s1);
-
 int foo(const struct blah *b) {
   // CHECK: return b->b;
   return b->b;

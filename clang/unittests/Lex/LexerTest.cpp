@@ -474,7 +474,8 @@ TEST_F(LexerTest, GetBeginningOfTokenWithEscapedNewLine) {
 }
 
 TEST_F(LexerTest, AvoidPastEndOfStringDereference) {
-  EXPECT_TRUE(Lex("  //  \\\n").empty());
+  std::vector<Token> LexedTokens = Lex("  //  \\\n");
+  EXPECT_TRUE(LexedTokens.empty());
   EXPECT_TRUE(Lex("#include <\\\\").empty());
   EXPECT_TRUE(Lex("#include <\\\\\n").empty());
 }

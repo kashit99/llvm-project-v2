@@ -470,7 +470,7 @@ DiagnosticIDs::getDiagnosticSeverity(unsigned DiagID, SourceLocation Loc,
       Result = diag::Severity::Error;
   }
 
-  // If -Wfatal-errors is enabled, map errors to fatal unless explicitly
+  // If -Wfatal-errors is enabled, map errors to fatal unless explicity
   // disabled.
   if (Result == diag::Severity::Error) {
     if (State->ErrorsAsFatal && !Mapping.hasNoErrorAsFatal())

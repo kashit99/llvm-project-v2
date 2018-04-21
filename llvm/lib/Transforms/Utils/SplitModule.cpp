@@ -180,14 +180,12 @@ static void findPartitions(Module *M, ClusterIDMapType &ClusterIDMap,
           std::make_pair(std::distance(GVtoClusterMap.member_begin(I),
                                        GVtoClusterMap.member_end()), I));
 
-  llvm::sort(Sets.begin(), Sets.end(),
-             [](const SortType &a, const SortType &b) {
-               if (a.first == b.first)
-                 return a.second->getData()->getName() >
-                        b.second->getData()->getName();
-               else
-                 return a.first > b.first;
-             });
+  std::sort(Sets.begin(), Sets.end(), [](const SortType &a, const SortType &b) {
+    if (a.first == b.first)
+      return a.second->getData()->getName() > b.second->getData()->getName();
+    else
+      return a.first > b.first;
+  });
 
   for (auto &I : Sets) {
     unsigned CurrentClusterID = BalancinQueue.top().first;
@@ -272,7 +270,7 @@ void llvm::SplitModule(
   for (unsigned I = 0; I < N; ++I) {
     ValueToValueMapTy VMap;
     std::unique_ptr<Module> MPart(
-        CloneModule(*M, VMap, [&](const GlobalValue *GV) {
+        CloneModule(M.get(), VMap, [&](const GlobalValue *GV) {
           if (ClusterIDMap.count(GV))
             return (ClusterIDMap[GV] == I);
           else

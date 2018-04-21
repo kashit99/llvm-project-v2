@@ -216,7 +216,6 @@ void InitHeaderSearch::AddDefaultCIncludePaths(const llvm::Triple &triple,
     case llvm::Triple::NaCl:
     case llvm::Triple::PS4:
     case llvm::Triple::ELFIAMCU:
-    case llvm::Triple::Fuchsia:
       break;
     case llvm::Triple::Win32:
       if (triple.getEnvironment() != llvm::Triple::Cygnus)
@@ -256,7 +255,6 @@ void InitHeaderSearch::AddDefaultCIncludePaths(const llvm::Triple &triple,
 
   switch (os) {
   case llvm::Triple::Linux:
-  case llvm::Triple::Solaris:
     llvm_unreachable("Include management is handled in the driver.");
 
   case llvm::Triple::CloudABI: {
@@ -323,7 +321,6 @@ void InitHeaderSearch::AddDefaultCIncludePaths(const llvm::Triple &triple,
   case llvm::Triple::RTEMS:
   case llvm::Triple::NaCl:
   case llvm::Triple::ELFIAMCU:
-  case llvm::Triple::Fuchsia:
     break;
   case llvm::Triple::PS4: {
     // <isysroot> gets prepended later in AddPath().
@@ -399,7 +396,6 @@ AddDefaultCPlusPlusIncludePaths(const llvm::Triple &triple, const HeaderSearchOp
 
   switch (os) {
   case llvm::Triple::Linux:
-  case llvm::Triple::Solaris:
     llvm_unreachable("Include management is handled in the driver.");
     break;
   case llvm::Triple::Win32:
@@ -447,7 +443,6 @@ void InitHeaderSearch::AddDefaultIncludePaths(const LangOptions &Lang,
     break; // Everything else continues to use this routine's logic.
 
   case llvm::Triple::Linux:
-  case llvm::Triple::Solaris:
     return;
 
   case llvm::Triple::Win32:

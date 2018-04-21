@@ -31,7 +31,6 @@
 #include "ObjCARC.h"
 #include "ProvenanceAnalysis.h"
 #include "llvm/ADT/Statistic.h"
-#include "llvm/Analysis/EHPersonalities.h"
 #include "llvm/IR/Dominators.h"
 #include "llvm/IR/InlineAsm.h"
 #include "llvm/IR/Operator.h"
@@ -75,12 +74,11 @@ namespace {
     SmallPtrSet<CallInst *, 8> StoreStrongCalls;
 
     /// Returns true if we eliminated Inst.
-    bool tryToPeepholeInstruction(
-        Function &F, Instruction *Inst, inst_iterator &Iter,
-        SmallPtrSetImpl<Instruction *> &DepInsts,
-        SmallPtrSetImpl<const BasicBlock *> &Visited,
-        bool &TailOkForStoreStrong,
-        const DenseMap<BasicBlock *, ColorVector> &BlockColors);
+    bool tryToPeepholeInstruction(Function &F, Instruction *Inst,
+                                  inst_iterator &Iter,
+                                  SmallPtrSetImpl<Instruction *> &DepInsts,
+                                  SmallPtrSetImpl<const BasicBlock *> &Visited,
+                                  bool &TailOkForStoreStrong);
 
     bool optimizeRetainCall(Function &F, Instruction *Retain);
 
@@ -90,9 +88,8 @@ namespace {
                         SmallPtrSetImpl<Instruction *> &DependingInstructions,
                         SmallPtrSetImpl<const BasicBlock *> &Visited);
 
-    void tryToContractReleaseIntoStoreStrong(
-        Instruction *Release, inst_iterator &Iter,
-        const DenseMap<BasicBlock *, ColorVector> &BlockColors);
+    void tryToContractReleaseIntoStoreStrong(Instruction *Release,
+                                             inst_iterator &Iter);
 
     void getAnalysisUsage(AnalysisUsage &AU) const override;
     bool doInitialization(Module &M) override;
@@ -306,24 +303,6 @@ findRetainForStoreStrongContraction(Value *New, StoreInst *Store,
   return Retain;
 }
 
-/// Create a call instruction with the correct funclet token. Should be used
-/// instead of calling CallInst::Create directly.
-static CallInst *
-createCallInst(Value *Func, ArrayRef<Value *> Args, const Twine &NameStr,
-               Instruction *InsertBefore,
-               const DenseMap<BasicBlock *, ColorVector> &BlockColors) {
-  SmallVector<OperandBundleDef, 1> OpBundles;
-  if (!BlockColors.empty()) {
-    const ColorVector &CV = BlockColors.find(InsertBefore->getParent())->second;
-    assert(CV.size() == 1 && "non-unique color for block!");
-    Instruction *EHPad = CV.front()->getFirstNonPHI();
-    if (EHPad->isEHPad())
-      OpBundles.emplace_back("funclet", EHPad);
-  }
-
-  return CallInst::Create(Func, Args, OpBundles, NameStr, InsertBefore);
-}
-
 /// Attempt to merge an objc_release with a store, load, and objc_retain to form
 /// an objc_storeStrong. An objc_storeStrong:
 ///
@@ -351,9 +330,8 @@ createCallInst(Value *Func, ArrayRef<Value *> Args, const Twine &NameStr,
 ///     (4).
 ///  2. We need to make sure that any re-orderings of (1), (2), (3), (4) are
 ///     safe.
-void ObjCARCContract::tryToContractReleaseIntoStoreStrong(
-    Instruction *Release, inst_iterator &Iter,
-    const DenseMap<BasicBlock *, ColorVector> &BlockColors) {
+void ObjCARCContract::tryToContractReleaseIntoStoreStrong(Instruction *Release,
+                                                          inst_iterator &Iter) {
   // See if we are releasing something that we just loaded.
   auto *Load = dyn_cast<LoadInst>(GetArgRCIdentityRoot(Release));
   if (!Load || !Load->isSimple())
@@ -405,7 +383,7 @@ void ObjCARCContract::tryToContractReleaseIntoStoreStrong(
   if (Args[1]->getType() != I8X)
     Args[1] = new BitCastInst(Args[1], I8X, "", Store);
   Constant *Decl = EP.get(ARCRuntimeEntryPointKind::StoreStrong);
-  CallInst *StoreStrong = createCallInst(Decl, Args, "", Store, BlockColors);
+  CallInst *StoreStrong = CallInst::Create(Decl, Args, "", Store);
   StoreStrong->setDoesNotThrow();
   StoreStrong->setDebugLoc(Store->getDebugLoc());
 
@@ -429,8 +407,7 @@ bool ObjCARCContract::tryToPeepholeInstruction(
   Function &F, Instruction *Inst, inst_iterator &Iter,
   SmallPtrSetImpl<Instruction *> &DependingInsts,
   SmallPtrSetImpl<const BasicBlock *> &Visited,
-  bool &TailOkForStoreStrongs,
-  const DenseMap<BasicBlock *, ColorVector> &BlockColors) {
+  bool &TailOkForStoreStrongs) {
     // Only these library routines return their argument. In particular,
     // objc_retainBlock does not necessarily return its argument.
   ARCInstKind Class = GetBasicARCInstKind(Inst);
@@ -480,8 +457,7 @@ bool ObjCARCContract::tryToPeepholeInstruction(
                               /*isVarArg=*/false),
             RVInstMarker->getString(),
             /*Constraints=*/"", /*hasSideEffects=*/true);
-
-        createCallInst(IA, None, "", Inst, BlockColors);
+        CallInst::Create(IA, "", Inst);
       }
     decline_rv_optimization:
       return false;
@@ -506,7 +482,7 @@ bool ObjCARCContract::tryToPeepholeInstruction(
     case ARCInstKind::Release:
       // Try to form an objc store strong from our release. If we fail, there is
       // nothing further to do below, so continue.
-      tryToContractReleaseIntoStoreStrong(Inst, Iter, BlockColors);
+      tryToContractReleaseIntoStoreStrong(Inst, Iter);
       return true;
     case ARCInstKind::User:
       // Be conservative if the function has any alloca instructions.
@@ -542,11 +518,6 @@ bool ObjCARCContract::runOnFunction(Function &F) {
 
   PA.setAA(&getAnalysis<AAResultsWrapperPass>().getAAResults());
 
-  DenseMap<BasicBlock *, ColorVector> BlockColors;
-  if (F.hasPersonalityFn() &&
-      isFuncletEHPersonality(classifyEHPersonality(F.getPersonalityFn())))
-    BlockColors = colorEHFunclets(F);
-
   DEBUG(llvm::dbgs() << "**** ObjCARC Contract ****\n");
 
   // Track whether it's ok to mark objc_storeStrong calls with the "tail"
@@ -570,7 +541,7 @@ bool ObjCARCContract::runOnFunction(Function &F) {
     // First try to peephole Inst. If there is nothing further we can do in
     // terms of undoing objc-arc-expand, process the next inst.
     if (tryToPeepholeInstruction(F, Inst, I, DependingInstructions, Visited,
-                                 TailOkForStoreStrongs, BlockColors))
+                                 TailOkForStoreStrongs))
       continue;
 
     // Otherwise, try to undo objc-arc-expand.
@@ -647,17 +618,8 @@ bool ObjCARCContract::runOnFunction(Function &F) {
       else if (isa<GlobalAlias>(Arg) &&
                !cast<GlobalAlias>(Arg)->isInterposable())
         Arg = cast<GlobalAlias>(Arg)->getAliasee();
-      else {
-        // If Arg is a PHI node, get PHIs that are equivalent to it and replace
-        // their uses.
-        if (PHINode *PN = dyn_cast<PHINode>(Arg)) {
-          SmallVector<Value *, 1> PHIList;
-          getEquivalentPHIs(*PN, PHIList);
-          for (Value *PHI : PHIList)
-            ReplaceArgUses(PHI);
-        }
+      else
         break;
-      }
     }
 
     // Replace bitcast users of Arg that are dominated by Inst.

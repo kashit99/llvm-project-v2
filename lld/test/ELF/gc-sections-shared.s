@@ -125,7 +125,7 @@
 .section .text.foo, "ax"
 .globl foo
 foo:
-.long bar - .
+call bar
 
 .section .text.bar, "ax"
 .globl bar
@@ -136,9 +136,9 @@ ret
 .globl _start
 .weak qux
 _start:
-.long baz - .
-.long qux - .
+call baz
+call qux
 ret
 
 .section .text.unused, "ax"
-.long bar2 - .
+call bar2

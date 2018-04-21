@@ -33,7 +33,7 @@ class BufferQueue {
   };
 
   struct Buffer {
-    void *Data = nullptr;
+    void *Buffer = nullptr;
     size_t Size = 0;
     BufferExtents* Extents;
   };

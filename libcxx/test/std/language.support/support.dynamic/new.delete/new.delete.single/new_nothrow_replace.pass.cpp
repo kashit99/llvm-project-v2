@@ -44,15 +44,15 @@ struct A
     ~A() {A_constructed = false;}
 };
 
+A* volatile ap;
+
 int main()
 {
-    A *ap = new (std::nothrow) A;
-    DoNotOptimize(ap);
+    ap = new (std::nothrow) A;
     assert(ap);
     assert(A_constructed);
     assert(new_called);
     delete ap;
-    DoNotOptimize(ap);
     assert(!A_constructed);
     assert(!new_called);
 }

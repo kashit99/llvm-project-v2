@@ -54,11 +54,10 @@ static llvm::SmallBitVector getNonNullAttrs(const CallEvent &Call) {
       AttrNonNull.set(0, NumArgs);
       break;
     }
-    for (const ParamIdx &Idx : NonNull->args()) {
-      unsigned IdxAST = Idx.getASTIndex();
-      if (IdxAST >= NumArgs)
+    for (unsigned Val : NonNull->args()) {
+      if (Val >= NumArgs)
         continue;
-      AttrNonNull.set(IdxAST);
+      AttrNonNull.set(Val);
     }
   }
   return AttrNonNull;

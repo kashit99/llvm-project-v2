@@ -141,7 +141,7 @@ static void *MsanAllocate(StackTrace *stack, uptr size, uptr alignment,
   if (size > kMaxAllowedMallocSize) {
     Report("WARNING: MemorySanitizer failed to allocate %p bytes\n",
            (void *)size);
-    return ReturnNullOrDieOnFailure::OnBadRequest();
+    return Allocator::FailureHandler::OnBadRequest();
   }
   MsanThread *t = GetCurrentThread();
   void *allocated;
@@ -153,8 +153,6 @@ static void *MsanAllocate(StackTrace *stack, uptr size, uptr alignment,
     AllocatorCache *cache = &fallback_allocator_cache;
     allocated = allocator.Allocate(cache, size, alignment);
   }
-  if (UNLIKELY(!allocated))
-    return ReturnNullOrDieOnFailure::OnOOM();
   Metadata *meta =
       reinterpret_cast<Metadata *>(allocator.GetMetaData(allocated));
   meta->requested_size = size;
@@ -238,7 +236,7 @@ void *msan_malloc(uptr size, StackTrace *stack) {
 
 void *msan_calloc(uptr nmemb, uptr size, StackTrace *stack) {
   if (UNLIKELY(CheckForCallocOverflow(size, nmemb)))
-    return SetErrnoOnNull(ReturnNullOrDieOnFailure::OnBadRequest());
+    return SetErrnoOnNull(Allocator::FailureHandler::OnBadRequest());
   return SetErrnoOnNull(MsanAllocate(stack, nmemb * size, sizeof(u64), true));
 }
 
@@ -260,7 +258,7 @@ void *msan_pvalloc(uptr size, StackTrace *stack) {
   uptr PageSize = GetPageSizeCached();
   if (UNLIKELY(CheckForPvallocOverflow(size, PageSize))) {
     errno = errno_ENOMEM;
-    return ReturnNullOrDieOnFailure::OnBadRequest();
+    return Allocator::FailureHandler::OnBadRequest();
   }
   // pvalloc(0) should allocate one page.
   size = size ? RoundUpTo(size, PageSize) : PageSize;
@@ -270,7 +268,7 @@ void *msan_pvalloc(uptr size, StackTrace *stack) {
 void *msan_aligned_alloc(uptr alignment, uptr size, StackTrace *stack) {
   if (UNLIKELY(!CheckAlignedAllocAlignmentAndSize(alignment, size))) {
     errno = errno_EINVAL;
-    return ReturnNullOrDieOnFailure::OnBadRequest();
+    return Allocator::FailureHandler::OnBadRequest();
   }
   return SetErrnoOnNull(MsanAllocate(stack, size, alignment, false));
 }
@@ -278,7 +276,7 @@ void *msan_aligned_alloc(uptr alignment, uptr size, StackTrace *stack) {
 void *msan_memalign(uptr alignment, uptr size, StackTrace *stack) {
   if (UNLIKELY(!IsPowerOfTwo(alignment))) {
     errno = errno_EINVAL;
-    return ReturnNullOrDieOnFailure::OnBadRequest();
+    return Allocator::FailureHandler::OnBadRequest();
   }
   return SetErrnoOnNull(MsanAllocate(stack, size, alignment, false));
 }
@@ -286,7 +284,7 @@ void *msan_memalign(uptr alignment, uptr size, StackTrace *stack) {
 int msan_posix_memalign(void **memptr, uptr alignment, uptr size,
                         StackTrace *stack) {
   if (UNLIKELY(!CheckPosixMemalignAlignment(alignment))) {
-    ReturnNullOrDieOnFailure::OnBadRequest();
+    Allocator::FailureHandler::OnBadRequest();
     return errno_EINVAL;
   }
   void *ptr = MsanAllocate(stack, size, alignment, false);

@@ -10,7 +10,6 @@
 // C Includes
 // C++ Includes
 #include <algorithm>
-#include <csignal>
 #include <fstream>
 #include <vector>
 
@@ -1540,7 +1539,10 @@ lldb_private::Status OptionGroupPlatformCaching::SetOptionValue(
   return error;
 }
 
-Environment Platform::GetEnvironment() { return Environment(); }
+size_t Platform::GetEnvironment(StringList &environment) {
+  environment.Clear();
+  return false;
+}
 
 const std::vector<ConstString> &Platform::GetTrapHandlerSymbolNames() {
   if (!m_calculated_trap_handlers) {

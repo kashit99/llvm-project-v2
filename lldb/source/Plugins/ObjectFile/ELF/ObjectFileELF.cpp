@@ -21,6 +21,7 @@
 #include "lldb/Symbol/DWARFCallFrameInfo.h"
 #include "lldb/Symbol/SymbolContext.h"
 #include "lldb/Target/SectionLoadList.h"
+#include "lldb/Target/SwiftLanguageRuntime.h"
 #include "lldb/Target/Target.h"
 #include "lldb/Utility/ArchSpec.h"
 #include "lldb/Utility/DataBufferHeap.h"
@@ -674,16 +675,29 @@ size_t ObjectFileELF::GetModuleSpecifications(
                           __FUNCTION__, file.GetPath().c_str());
           }
 
-          data_sp = MapFileData(file, -1, file_offset);
-          if (data_sp)
-            data.SetData(data_sp);
           // In case there is header extension in the section #0, the header
           // we parsed above could have sentinel values for e_phnum, e_shnum,
           // and e_shstrndx.  In this case we need to reparse the header
           // with a bigger data source to get the actual values.
-          if (header.HasHeaderExtension()) {
-            lldb::offset_t header_offset = data_offset;
-            header.Parse(data, &header_offset);
+          size_t section_header_end = header.e_shoff + header.e_shentsize;
+          if (header.HasHeaderExtension() &&
+            section_header_end > data_sp->GetByteSize()) {
+            data_sp = MapFileData(file, section_header_end, file_offset);
+            if (data_sp) {
+              data.SetData(data_sp);
+              lldb::offset_t header_offset = data_offset;
+              header.Parse(data, &header_offset);
+            }
+          }
+
+          // Try to get the UUID from the section list. Usually that's at the
+          // end, so map the file in if we don't have it already.
+          section_header_end =
+              header.e_shoff + header.e_shnum * header.e_shentsize;
+          if (section_header_end > data_sp->GetByteSize()) {
+            data_sp = MapFileData(file, section_header_end, file_offset);
+            if (data_sp)
+              data.SetData(data_sp);
           }
 
           uint32_t gnu_debuglink_crc = 0;
@@ -720,14 +734,39 @@ size_t ObjectFileELF::GetModuleSpecifications(
               // contents crc32 would be too much of luxury.  Thus we will need
               // to fallback to something simpler.
               if (header.e_type == llvm::ELF::ET_CORE) {
+                size_t program_headers_end =
+                    header.e_phoff + header.e_phnum * header.e_phentsize;
+                if (program_headers_end > data_sp->GetByteSize()) {
+                  data_sp = MapFileData(file, program_headers_end, file_offset);
+                  if (data_sp)
+                    data.SetData(data_sp);
+                }
                 ProgramHeaderColl program_headers;
                 GetProgramHeaderInfo(program_headers, data, header);
+
+                size_t segment_data_end = 0;
+                for (ProgramHeaderCollConstIter I = program_headers.begin();
+                     I != program_headers.end(); ++I) {
+                  segment_data_end = std::max<unsigned long long>(
+                      I->p_offset + I->p_filesz, segment_data_end);
+                }
+
+                if (segment_data_end > data_sp->GetByteSize()) {
+                  data_sp = MapFileData(file, segment_data_end, file_offset);
+                  if (data_sp)
+                    data.SetData(data_sp);
+                }
 
                 core_notes_crc =
                     CalculateELFNotesSegmentsCRC32(program_headers, data);
               } else {
-                gnu_debuglink_crc = calc_gnu_debuglink_crc32(
-                    data.GetDataStart(), data.GetByteSize());
+                // Need to map entire file into memory to calculate the crc.
+                data_sp = MapFileData(file, -1, file_offset);
+                if (data_sp) {
+                  data.SetData(data_sp);
+                  gnu_debuglink_crc = calc_gnu_debuglink_crc32(
+                      data.GetDataStart(), data.GetByteSize());
+                }
               }
             }
             if (gnu_debuglink_crc) {
@@ -1820,6 +1859,7 @@ void ObjectFileELF::CreateSections(SectionList &unified_section_list) {
       static ConstString g_sect_name_dwarf_debug_str_offsets_dwo(
           ".debug_str_offsets.dwo");
       static ConstString g_sect_name_eh_frame(".eh_frame");
+      static ConstString g_sect_name_swift_ast(".swift_ast");
       static ConstString g_sect_name_arm_exidx(".ARM.exidx");
       static ConstString g_sect_name_arm_extab(".ARM.extab");
       static ConstString g_sect_name_go_symtab(".gosymtab");
@@ -1907,6 +1947,8 @@ void ObjectFileELF::CreateSections(SectionList &unified_section_list) {
         sect_type = eSectionTypeDWARFDebugStrOffsets;
       else if (name == g_sect_name_eh_frame)
         sect_type = eSectionTypeEHFrame;
+      else if (name == g_sect_name_swift_ast)
+        sect_type = eSectionTypeSwiftModules;
       else if (name == g_sect_name_arm_exidx)
         sect_type = eSectionTypeARMexidx;
       else if (name == g_sect_name_arm_extab)
@@ -1986,10 +2028,38 @@ void ObjectFileELF::CreateSections(SectionList &unified_section_list) {
     }
   }
 
-  // For eTypeDebugInfo files, the Symbol Vendor will take care of updating the
-  // unified section list.
-  if (GetType() != eTypeDebugInfo)
-    unified_section_list = *m_sections_ap;
+  if (m_sections_ap.get()) {
+    if (GetType() == eTypeDebugInfo) {
+      static const SectionType g_sections[] = {
+          eSectionTypeDWARFDebugAbbrev,   eSectionTypeDWARFDebugAddr,
+          eSectionTypeDWARFDebugAranges,  eSectionTypeDWARFDebugCuIndex,
+          eSectionTypeDWARFDebugFrame,    eSectionTypeDWARFDebugInfo,
+          eSectionTypeDWARFDebugLine,     eSectionTypeDWARFDebugLoc,
+          eSectionTypeDWARFDebugMacInfo,  eSectionTypeDWARFDebugPubNames,
+          eSectionTypeDWARFDebugPubTypes, eSectionTypeDWARFDebugRanges,
+          eSectionTypeDWARFDebugStr,      eSectionTypeDWARFDebugStrOffsets,
+          eSectionTypeELFSymbolTable,
+      };
+      SectionList *elf_section_list = m_sections_ap.get();
+      for (size_t idx = 0; idx < sizeof(g_sections) / sizeof(g_sections[0]);
+           ++idx) {
+        SectionType section_type = g_sections[idx];
+        SectionSP section_sp(
+            elf_section_list->FindSectionByType(section_type, true));
+        if (section_sp) {
+          SectionSP module_section_sp(
+              unified_section_list.FindSectionByType(section_type, true));
+          if (module_section_sp)
+            unified_section_list.ReplaceSection(module_section_sp->GetID(),
+                                                section_sp);
+          else
+            unified_section_list.AddSection(section_sp);
+        }
+      }
+    } else {
+      unified_section_list = *m_sections_ap;
+    }
+  }
 }
 
 // Find the arm/aarch64 mapping symbol character in the given symbol name.
@@ -2311,7 +2381,8 @@ unsigned ObjectFileELF::ParseSymbols(Symtab *symtab, user_id_t start_id,
 
     bool is_global = symbol.getBinding() == STB_GLOBAL;
     uint32_t flags = symbol.st_other << 8 | symbol.st_info | additional_flags;
-    bool is_mangled = (symbol_name[0] == '_' && symbol_name[1] == 'Z');
+    bool is_mangled =
+        (symbol_name && symbol_name[0] == '_' && symbol_name[1] == 'Z');
 
     llvm::StringRef symbol_ref(symbol_name);
 
@@ -2320,6 +2391,12 @@ unsigned ObjectFileELF::ParseSymbols(Symtab *symtab, user_id_t start_id,
     size_t version_pos = symbol_ref.find('@');
     bool has_suffix = version_pos != llvm::StringRef::npos;
     llvm::StringRef symbol_bare = symbol_ref.substr(0, version_pos);
+
+    Mangled guess_the_language(ConstString(symbol_bare), true);
+    if (guess_the_language.GuessLanguage() != lldb::eLanguageTypeUnknown) {
+      is_mangled = true;
+    }
+
     Mangled mangled(ConstString(symbol_bare), is_mangled);
 
     // Now append the suffix back to mangled and unmangled names. Only do it if
@@ -3425,9 +3502,9 @@ size_t ObjectFileELF::ReadSectionData(Section *section,
        size_t(section_data.GetByteSize())},
       GetByteOrder() == eByteOrderLittle, GetAddressByteSize() == 8);
   if (!Decompressor) {
-    LLDB_LOG_ERROR(log, Decompressor.takeError(),
-                   "Unable to initialize decompressor for section {0}",
-                   section->GetName());
+    LLDB_LOG(log, "Unable to initialize decompressor for section {0}: {1}",
+             section->GetName(), llvm::toString(Decompressor.takeError()));
+    consumeError(Decompressor.takeError());
     return result;
   }
   auto buffer_sp =
@@ -3435,45 +3512,11 @@ size_t ObjectFileELF::ReadSectionData(Section *section,
   if (auto Error = Decompressor->decompress(
           {reinterpret_cast<char *>(buffer_sp->GetBytes()),
            size_t(buffer_sp->GetByteSize())})) {
-    LLDB_LOG_ERROR(log, std::move(Error), "Decompression of section {0} failed",
-                   section->GetName());
+    LLDB_LOG(log, "Decompression of section {0} failed: {1}",
+             section->GetName(), llvm::toString(std::move(Error)));
+    consumeError(std::move(Error));
     return result;
   }
   section_data.SetData(buffer_sp);
   return buffer_sp->GetByteSize();
-}
-
-bool ObjectFileELF::AnySegmentHasPhysicalAddress() {
-  size_t header_count = ParseProgramHeaders();
-  for (size_t i = 1; i <= header_count; ++i) {
-    auto header = GetProgramHeaderByIndex(i);
-    if (header->p_paddr != 0)
-      return true;
-  }
-  return false;
-}
-
-std::vector<ObjectFile::LoadableData>
-ObjectFileELF::GetLoadableData(Target &target) {
-  // Create a list of loadable data from loadable segments,
-  // using physical addresses if they aren't all null
-  std::vector<LoadableData> loadables;
-  size_t header_count = ParseProgramHeaders();
-  bool should_use_paddr = AnySegmentHasPhysicalAddress();
-  for (size_t i = 1; i <= header_count; ++i) {
-    LoadableData loadable;
-    auto header = GetProgramHeaderByIndex(i);
-    if (header->p_type != llvm::ELF::PT_LOAD)
-      continue;
-    loadable.Dest = should_use_paddr ? header->p_paddr : header->p_vaddr;
-    if (loadable.Dest == LLDB_INVALID_ADDRESS)
-      continue;
-    if (header->p_filesz == 0)
-      continue;
-    auto segment_data = GetSegmentDataByIndex(i);
-    loadable.Contents = llvm::ArrayRef<uint8_t>(segment_data.GetDataStart(),
-                                                segment_data.GetByteSize());
-    loadables.push_back(loadable);
-  }
-  return loadables;
 }

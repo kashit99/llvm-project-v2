@@ -11,7 +11,7 @@
 
 // template<class T>
 //   complex<T>
-//   polar(const T& rho, const T& theta = T());  // changed from '0' by LWG#2870
+//   polar(const T& rho, const T& theta = 0);
 
 #include <complex>
 #include <cassert>

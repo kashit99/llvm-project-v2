@@ -152,15 +152,11 @@ endif()
 
 if (SANITIZER_CXX_ABI_LIBNAME STREQUAL "libcxxabi")
   if (SANITIZER_CXX_ABI_INTREE)
-    if (NOT LIBCXXABI_ENABLE_STATIC_UNWINDER AND (TARGET unwind_shared OR HAVE_LIBUNWIND))
+    if (TARGET unwind_shared OR HAVE_LIBUNWIND)
       list(APPEND SANITIZER_CXX_ABI_LIBRARY unwind_shared)
-    elseif (LIBCXXABI_ENABLE_STATIC_UNWINDER AND (TARGET unwind_static OR HAVE_LIBUNWIND))
-      list(APPEND SANITIZER_CXX_ABI_LIBRARY unwind_static)
     endif()
-    if (NOT LIBCXX_ENABLE_STATIC_ABI_LIBRARY AND (TARGET cxxabi_shared OR HAVE_LIBCXXABI))
+    if (TARGET cxxabi_shared OR HAVE_LIBCXXABI)
       list(APPEND SANITIZER_CXX_ABI_LIBRARY cxxabi_shared)
-    elseif (LIBCXX_ENABLE_STATIC_ABI_LIBRARY AND (TARGET cxxabi_static OR HAVE_LIBCXXABI))
-      list(APPEND SANITIZER_CXX_ABI_LIBRARY cxxabi_static)
     endif()
   else()
     list(APPEND SANITIZER_CXX_ABI_LIBRARY "c++abi")
@@ -343,7 +339,7 @@ if (CMAKE_LINKER MATCHES "link.exe$")
   # it, but CMake doesn't seem to have a way to set linker flags for
   # individual static libraries, so we enable the suppression flag for
   # the whole compiler-rt project.
-  set(CMAKE_STATIC_LINKER_FLAGS "${CMAKE_STATIC_LINKER_FLAGS} /IGNORE:4221")
+  append("/IGNORE:4221" CMAKE_STATIC_LINKER_FLAGS)
 endif()
 
 add_subdirectory(include)

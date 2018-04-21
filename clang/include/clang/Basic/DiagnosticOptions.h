@@ -1,4 +1,4 @@
-//===- DiagnosticOptions.h --------------------------------------*- C++ -*-===//
+//===--- DiagnosticOptions.h ------------------------------------*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -21,11 +21,8 @@ namespace clang {
 /// \brief Specifies which overload candidates to display when overload
 /// resolution fails.
 enum OverloadsShown : unsigned {
-  /// Show all overloads.
-  Ovl_All,
-
-  /// Show just the "best" overload candidates.
-  Ovl_Best
+  Ovl_All,  ///< Show all overloads.
+  Ovl_Best  ///< Show just the "best" overload candidates.
 };
 
 /// \brief A bitmask representing the diagnostic levels used by
@@ -122,8 +119,8 @@ public:
   }
 };
 
-using TextDiagnosticFormat = DiagnosticOptions::TextDiagnosticFormat;
+typedef DiagnosticOptions::TextDiagnosticFormat TextDiagnosticFormat;
 
-} // namespace clang
+}  // end namespace clang
 
-#endif // LLVM_CLANG_BASIC_DIAGNOSTICOPTIONS_H
+#endif

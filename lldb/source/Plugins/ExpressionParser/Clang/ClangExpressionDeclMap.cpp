@@ -686,6 +686,7 @@ addr_t ClangExpressionDeclMap::GetSymbolAddress(Target &target,
     case eSymbolTypeObjCClass:
     case eSymbolTypeObjCMetaClass:
     case eSymbolTypeObjCIVar:
+    case eSymbolTypeASTFile:
       symbol_load_addr = sym_address.GetLoadAddress(&target);
       break;
     }
@@ -1587,6 +1588,22 @@ bool ClangExpressionDeclMap::GetVariableValue(VariableSP &var,
     return false;
   }
 
+  if (llvm::isa<SwiftASTContext>(var_clang_type.GetTypeSystem())) {
+#ifdef CAN_IMPORT_SWIFT_CLANG_TYPES // <rdar://problem/16102770> ASTImporter
+                                    // can't import Swift-generated types
+    // Try to get a Clang type for the Swift type.
+
+    if (!var_clang_type.IsImportedType(&var_clang_type)) {
+      if (log)
+        log->PutCString("Skipped a definition because it has a Swift type and "
+                        "we can't get a Clang type for it");
+      return false;
+    }
+#else
+    return false;
+#endif
+  }
+
   ClangASTContext *clang_ast = llvm::dyn_cast_or_null<ClangASTContext>(
       var_type->GetForwardCompilerType().GetTypeSystem());
 
@@ -2116,8 +2133,7 @@ void ClangExpressionDeclMap::AddOneFunction(NameSearchContext &context,
   parser_vars->m_llvm_value = NULL;
 
   if (log) {
-    std::string function_str =
-        function_decl ? ASTDumper(function_decl).GetCString() : "nullptr";
+    ASTDumper ast_dumper(function_decl);
 
     StreamString ss;
 
@@ -2128,7 +2144,7 @@ void ClangExpressionDeclMap::AddOneFunction(NameSearchContext &context,
     log->Printf(
         "  CEDM::FEVD[%u] Found %s function %s (description %s), returned %s",
         current_id, (function ? "specific" : "generic"), decl_name.c_str(),
-        ss.GetData(), function_str.c_str());
+        ss.GetData(), ast_dumper.GetCString());
   }
 }
 
@@ -2166,7 +2182,7 @@ void ClangExpressionDeclMap::AddThisType(NameSearchContext &context,
     CXXMethodDecl *method_decl =
         ClangASTContext::GetASTContext(m_ast_context)
             ->AddMethodToCXXRecordType(
-                copied_clang_type.GetOpaqueQualType(), "$__lldb_expr", NULL,
+                copied_clang_type.GetOpaqueQualType(), "$__lldb_expr",
                 method_type, lldb::eAccessPublic, is_virtual, is_static,
                 is_inline, is_explicit, is_attr_used, is_artificial);
 

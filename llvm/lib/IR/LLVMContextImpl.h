@@ -354,17 +354,13 @@ template <> struct MDNodeKeyImpl<DISubrange> {
 template <> struct MDNodeKeyImpl<DIEnumerator> {
   int64_t Value;
   MDString *Name;
-  bool IsUnsigned;
 
-  MDNodeKeyImpl(int64_t Value, bool IsUnsigned, MDString *Name)
-      : Value(Value), Name(Name), IsUnsigned(IsUnsigned) {}
+  MDNodeKeyImpl(int64_t Value, MDString *Name) : Value(Value), Name(Name) {}
   MDNodeKeyImpl(const DIEnumerator *N)
-      : Value(N->getValue()), Name(N->getRawName()),
-        IsUnsigned(N->isUnsigned()) {}
+      : Value(N->getValue()), Name(N->getRawName()) {}
 
   bool isKeyOf(const DIEnumerator *RHS) const {
-    return Value == RHS->getValue() && IsUnsigned == RHS->isUnsigned() &&
-           Name == RHS->getRawName();
+    return Value == RHS->getValue() && Name == RHS->getRawName();
   }
 
   unsigned getHashValue() const { return hash_combine(Value, Name); }
@@ -574,29 +570,26 @@ template <> struct MDNodeKeyImpl<DISubroutineType> {
 template <> struct MDNodeKeyImpl<DIFile> {
   MDString *Filename;
   MDString *Directory;
-  Optional<DIFile::ChecksumInfo<MDString *>> Checksum;
-  Optional<MDString *> Source;
+  DIFile::ChecksumKind CSKind;
+  MDString *Checksum;
 
   MDNodeKeyImpl(MDString *Filename, MDString *Directory,
-                Optional<DIFile::ChecksumInfo<MDString *>> Checksum,
-                Optional<MDString *> Source)
-      : Filename(Filename), Directory(Directory), Checksum(Checksum),
-        Source(Source) {}
+                DIFile::ChecksumKind CSKind, MDString *Checksum)
+      : Filename(Filename), Directory(Directory), CSKind(CSKind),
+        Checksum(Checksum) {}
   MDNodeKeyImpl(const DIFile *N)
       : Filename(N->getRawFilename()), Directory(N->getRawDirectory()),
-        Checksum(N->getRawChecksum()), Source(N->getRawSource()) {}
+        CSKind(N->getChecksumKind()), Checksum(N->getRawChecksum()) {}
 
   bool isKeyOf(const DIFile *RHS) const {
     return Filename == RHS->getRawFilename() &&
            Directory == RHS->getRawDirectory() &&
-           Checksum == RHS->getRawChecksum() &&
-           Source == RHS->getRawSource();
+           CSKind == RHS->getChecksumKind() &&
+           Checksum == RHS->getRawChecksum();
   }
 
   unsigned getHashValue() const {
-    return hash_combine(
-        Filename, Directory, Checksum ? Checksum->Kind : 0,
-        Checksum ? Checksum->Value : nullptr, Source.getValueOr(nullptr));
+    return hash_combine(Filename, Directory, CSKind, Checksum);
   }
 };
 
@@ -1355,18 +1348,9 @@ public:
   /// Destroy the ConstantArrays if they are not used.
   void dropTriviallyDeadConstantArrays();
 
-  mutable OptPassGate *OPG = nullptr;
-
-  /// \brief Access the object which can disable optional passes and individual
-  /// optimizations at compile time.
-  OptPassGate &getOptPassGate() const;
-
-  /// \brief Set the object which can disable optional passes and individual
-  /// optimizations at compile time.
-  ///
-  /// The lifetime of the object must be guaranteed to extend as long as the
-  /// LLVMContext is used by compilation.
-  void setOptPassGate(OptPassGate&);
+  /// \brief Access the object which manages optimization bisection for failure
+  /// analysis.
+  OptBisect &getOptBisect();
 };
 
 } // end namespace llvm

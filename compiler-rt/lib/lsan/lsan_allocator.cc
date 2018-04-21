@@ -76,11 +76,9 @@ void *Allocate(const StackTrace &stack, uptr size, uptr alignment,
     size = 1;
   if (size > kMaxAllowedMallocSize) {
     Report("WARNING: LeakSanitizer failed to allocate %zu bytes\n", size);
-    return ReturnNullOrDieOnFailure::OnBadRequest();
+    return Allocator::FailureHandler::OnBadRequest();
   }
   void *p = allocator.Allocate(GetAllocatorCache(), size, alignment);
-  if (UNLIKELY(!p))
-    return ReturnNullOrDieOnFailure::OnOOM();
   // Do not rely on the allocator to clear the memory (it's slow).
   if (cleared && allocator.FromPrimary(p))
     memset(p, 0, size);
@@ -92,7 +90,7 @@ void *Allocate(const StackTrace &stack, uptr size, uptr alignment,
 
 static void *Calloc(uptr nmemb, uptr size, const StackTrace &stack) {
   if (UNLIKELY(CheckForCallocOverflow(size, nmemb)))
-    return ReturnNullOrDieOnFailure::OnBadRequest();
+    return Allocator::FailureHandler::OnBadRequest();
   size *= nmemb;
   return Allocate(stack, size, 1, true);
 }
@@ -110,7 +108,7 @@ void *Reallocate(const StackTrace &stack, void *p, uptr new_size,
   if (new_size > kMaxAllowedMallocSize) {
     Report("WARNING: LeakSanitizer failed to allocate %zu bytes\n", new_size);
     allocator.Deallocate(GetAllocatorCache(), p);
-    return ReturnNullOrDieOnFailure::OnBadRequest();
+    return Allocator::FailureHandler::OnBadRequest();
   }
   p = allocator.Reallocate(GetAllocatorCache(), p, new_size, alignment);
   RegisterAllocation(stack, p, new_size);
@@ -128,25 +126,10 @@ uptr GetMallocUsableSize(const void *p) {
   return m->requested_size;
 }
 
-int lsan_posix_memalign(void **memptr, uptr alignment, uptr size,
-                        const StackTrace &stack) {
-  if (UNLIKELY(!CheckPosixMemalignAlignment(alignment))) {
-    ReturnNullOrDieOnFailure::OnBadRequest();
-    return errno_EINVAL;
-  }
-  void *ptr = Allocate(stack, size, alignment, kAlwaysClearMemory);
-  if (UNLIKELY(!ptr))
-    // OOM error is already taken care of by Allocate.
-    return errno_ENOMEM;
-  CHECK(IsAligned((uptr)ptr, alignment));
-  *memptr = ptr;
-  return 0;
-}
-
 void *lsan_memalign(uptr alignment, uptr size, const StackTrace &stack) {
   if (UNLIKELY(!IsPowerOfTwo(alignment))) {
     errno = errno_EINVAL;
-    return ReturnNullOrDieOnFailure::OnBadRequest();
+    return Allocator::FailureHandler::OnBadRequest();
   }
   return SetErrnoOnNull(Allocate(stack, size, alignment, kAlwaysClearMemory));
 }

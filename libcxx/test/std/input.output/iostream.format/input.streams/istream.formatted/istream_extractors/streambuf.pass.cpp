@@ -45,7 +45,7 @@ protected:
         {
             if (ch != base::traits_type::eof())
             {
-                std::size_t n = str_.size();
+                int n = str_.size();
                 str_.push_back(static_cast<CharT>(ch));
                 str_.resize(str_.capacity());
                 base::setp(const_cast<CharT*>(str_.data()),

@@ -17,7 +17,7 @@
 #include "lldb/Utility/Status.h"
 #include "lldb/Utility/StringList.h" // for StringList
 
-#if defined(_WIN32)
+#if defined(LLVM_ON_WIN32)
 #include "lldb/Host/windows/PosixApi.h" // for PATH_MAX
 #endif
 

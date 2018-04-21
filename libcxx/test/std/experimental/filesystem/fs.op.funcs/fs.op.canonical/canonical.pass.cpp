@@ -11,10 +11,11 @@
 
 // <experimental/filesystem>
 
-// path canonical(const path& p);
+// path canonical(const path& p, const path& base = current_path());
 // path canonical(const path& p, error_code& ec);
+// path canonical(const path& p, const path& base, error_code& ec);
 
-#include "filesystem_include.hpp"
+#include <experimental/filesystem>
 #include <type_traits>
 #include <cassert>
 
@@ -22,16 +23,7 @@
 #include "rapid-cxx-test.hpp"
 #include "filesystem_test_helper.hpp"
 
-using namespace fs;
-
-struct CWDGuard {
-  path OldCWD;
-  CWDGuard() : OldCWD(fs::current_path()) { }
-  ~CWDGuard() { fs::current_path(OldCWD); }
-
-  CWDGuard(CWDGuard const&) = delete;
-  CWDGuard& operator=(CWDGuard const&) = delete;
-};
+using namespace std::experimental::filesystem;
 
 TEST_SUITE(filesystem_canonical_path_test_suite)
 
@@ -40,14 +32,15 @@ TEST_CASE(signature_test)
     const path p; ((void)p);
     std::error_code ec; ((void)ec);
     ASSERT_NOT_NOEXCEPT(canonical(p));
+    ASSERT_NOT_NOEXCEPT(canonical(p, p));
     ASSERT_NOT_NOEXCEPT(canonical(p, ec));
+    ASSERT_NOT_NOEXCEPT(canonical(p, p, ec));
 }
 
 // There are 4 cases is the proposal for absolute path.
 // Each scope tests one of the cases.
 TEST_CASE(test_canonical)
 {
-    CWDGuard guard;
     // has_root_name() && has_root_directory()
     const path Root = StaticEnv::Root;
     const path RootName = Root.filename();
@@ -72,51 +65,54 @@ TEST_CASE(test_canonical)
         { SymlinkName, StaticEnv::File, StaticEnv::Root}
     };
     for (auto& TC : testCases) {
-        std::error_code ec = GetTestEC();
-        fs::current_path(TC.base);
-        const path ret = canonical(TC.p, ec);
+        std::error_code ec;
+        const path ret = canonical(TC.p, TC.base, ec);
         TEST_REQUIRE(!ec);
-        const path ret2 = canonical(TC.p);
-        TEST_CHECK(PathEq(ret, TC.expect));
-        TEST_CHECK(PathEq(ret, ret2));
+        const path ret2 = canonical(TC.p, TC.base);
+        TEST_CHECK(ret == TC.expect);
+        TEST_CHECK(ret == ret2);
         TEST_CHECK(ret.is_absolute());
     }
 }
 
 TEST_CASE(test_dne_path)
 {
-    std::error_code ec = GetTestEC();
+    std::error_code ec;
     {
         const path ret = canonical(StaticEnv::DNE, ec);
-        TEST_CHECK(ec != GetTestEC());
+        TEST_REQUIRE(ec);
+        TEST_CHECK(ret == path{});
+    }
+    ec.clear();
+    {
+        const path ret = canonical(StaticEnv::DNE, StaticEnv::Root, ec);
         TEST_REQUIRE(ec);
         TEST_CHECK(ret == path{});
     }
     {
         TEST_CHECK_THROW(filesystem_error, canonical(StaticEnv::DNE));
+        TEST_CHECK_THROW(filesystem_error, canonical(StaticEnv::DNE, StaticEnv::Root));
     }
 }
 
 TEST_CASE(test_exception_contains_paths)
 {
 #ifndef TEST_HAS_NO_EXCEPTIONS
-    CWDGuard guard;
     const path p = "blabla/dne";
+    const path base = StaticEnv::Root;
     try {
-        canonical(p);
+        canonical(p, base);
         TEST_REQUIRE(false);
     } catch (filesystem_error const& err) {
         TEST_CHECK(err.path1() == p);
-        // libc++ provides the current path as the second path in the exception
-        LIBCPP_ONLY(TEST_CHECK(err.path2() == current_path()));
+        TEST_CHECK(err.path2() == base);
     }
-    fs::current_path(StaticEnv::Dir);
     try {
         canonical(p);
         TEST_REQUIRE(false);
     } catch (filesystem_error const& err) {
         TEST_CHECK(err.path1() == p);
-        LIBCPP_ONLY(TEST_CHECK(err.path2() == StaticEnv::Dir));
+        TEST_CHECK(err.path2() == current_path());
     }
 #endif
 }

@@ -62,7 +62,6 @@
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/CodeGen/MachineOptimizationRemarkEmitter.h"
-#include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/Passes.h"
 #include "llvm/CodeGen/TargetInstrInfo.h"
 #include "llvm/CodeGen/TargetRegisterInfo.h"
@@ -71,7 +70,6 @@
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Mangler.h"
 #include "llvm/Support/Allocator.h"
-#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 #include <functional>
@@ -87,17 +85,6 @@ using namespace ore;
 
 STATISTIC(NumOutlined, "Number of candidates outlined");
 STATISTIC(FunctionsCreated, "Number of functions created");
-
-// Set to true if the user wants the outliner to run on linkonceodr linkage
-// functions. This is false by default because the linker can dedupe linkonceodr
-// functions. Since the outliner is confined to a single module (modulo LTO),
-// this is off by default. It should, however, be the default behaviour in
-// LTO.
-static cl::opt<bool> EnableLinkOnceODROutlining(
-    "enable-linkonceodr-outlining",
-    cl::Hidden,
-    cl::desc("Enable the machine outliner on linkonceodr functions"),
-    cl::init(false));
 
 namespace {
 
@@ -825,7 +812,8 @@ struct MachineOutliner : public ModulePass {
     ModulePass::getAnalysisUsage(AU);
   }
 
-  MachineOutliner() : ModulePass(ID) {
+  MachineOutliner(bool OutlineFromLinkOnceODRs = false)
+      : ModulePass(ID), OutlineFromLinkOnceODRs(OutlineFromLinkOnceODRs) {
     initializeMachineOutlinerPass(*PassRegistry::getPassRegistry());
   }
 
@@ -921,8 +909,8 @@ struct MachineOutliner : public ModulePass {
 char MachineOutliner::ID = 0;
 
 namespace llvm {
-ModulePass *createMachineOutlinerPass() {
-  return new MachineOutliner();
+ModulePass *createMachineOutlinerPass(bool OutlineFromLinkOnceODRs) {
+  return new MachineOutliner(OutlineFromLinkOnceODRs);
 }
 
 } // namespace llvm
@@ -1164,7 +1152,7 @@ void MachineOutliner::pruneOverlaps(
     if (C1.getStartIdx() > MaxCandidateLen)
       FarthestPossibleIdx = C1.getStartIdx() - MaxCandidateLen;
 
-    // Compare against the candidates in the list that start at most
+    // Compare against the candidates in the list that start at at most
     // FarthestPossibleIdx indices away from C1. There are at most
     // MaxCandidateLen of these.
     for (auto Sit = It + 1; Sit != Et; Sit++) {
@@ -1323,7 +1311,6 @@ MachineOutliner::createOutlinedFunction(Module &M, const OutlinedFunction &OF,
     DB.finalize();
   }
 
-  MF.getRegInfo().freezeReservedRegs(MF);
   return &MF;
 }
 
@@ -1435,10 +1422,6 @@ bool MachineOutliner::runOnModule(Module &M) {
           << "Skipping pass: Target does not support the MachineOutliner.\n");
     return false;
   }
-
-  // If the user specifies that they want to outline from linkonceodrs, set
-  // it here.
-  OutlineFromLinkOnceODRs = EnableLinkOnceODROutlining;
 
   InstructionMapper Mapper;
 

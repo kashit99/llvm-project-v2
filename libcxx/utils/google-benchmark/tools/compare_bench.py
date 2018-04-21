@@ -39,20 +39,21 @@ def main():
     parser.add_argument(
         'test2', metavar='test2', type=str, nargs=1,
         help='A benchmark executable or JSON output file')
+    # FIXME this is a dummy argument which will never actually match
+    # any --benchmark flags but it helps generate a better usage message
     parser.add_argument(
-        'benchmark_options', metavar='benchmark_options', nargs=argparse.REMAINDER,
+        'benchmark_options', metavar='benchmark_option', nargs='*',
         help='Arguments to pass when running benchmark executables'
     )
     args, unknown_args = parser.parse_known_args()
     # Parse the command line flags
     test1 = args.test1[0]
     test2 = args.test2[0]
-    if unknown_args:
-        # should never happen
+    if args.benchmark_options:
         print("Unrecognized positional argument arguments: '%s'"
-              % unknown_args)
+              % args.benchmark_options)
         exit(1)
-    benchmark_options = args.benchmark_options
+    benchmark_options = unknown_args
     check_inputs(test1, test2, benchmark_options)
     # Run the benchmarks and report the results
     json1 = gbench.util.run_or_load_benchmark(test1, benchmark_options)

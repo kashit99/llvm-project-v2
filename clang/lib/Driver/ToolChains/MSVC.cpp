@@ -752,8 +752,6 @@ static const char *llvmArchToWindowsSDKArch(llvm::Triple::ArchType Arch) {
     return "x64";
   case ArchType::arm:
     return "arm";
-  case ArchType::aarch64:
-    return "arm64";
   default:
     return "";
   }
@@ -771,8 +769,6 @@ static const char *llvmArchToLegacyVCArch(llvm::Triple::ArchType Arch) {
     return "amd64";
   case ArchType::arm:
     return "arm";
-  case ArchType::aarch64:
-    return "arm64";
   default:
     return "";
   }
@@ -788,8 +784,6 @@ static const char *llvmArchToDevDivInternalArch(llvm::Triple::ArchType Arch) {
     return "amd64";
   case ArchType::arm:
     return "arm";
-  case ArchType::aarch64:
-    return "arm64";
   default:
     return "";
   }

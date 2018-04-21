@@ -30,15 +30,11 @@
 // RUN: %env_lsan_opts=allocator_may_return_null=0 not %run %t new 2>&1 \
 // RUN:   | FileCheck %s --check-prefix=CHECK-nCRASH
 // RUN: %env_lsan_opts=allocator_may_return_null=1 not %run %t new 2>&1 \
-// RUN:   | FileCheck %s --check-prefix=CHECK-nCRASH-OOM
+// RUN:   | FileCheck %s --check-prefix=CHECK-nCRASH
 // RUN: %env_lsan_opts=allocator_may_return_null=0 not %run %t new-nothrow 2>&1 \
 // RUN:   | FileCheck %s --check-prefix=CHECK-nnCRASH
 // RUN: %env_lsan_opts=allocator_may_return_null=1     %run %t new-nothrow 2>&1 \
 // RUN:   | FileCheck %s --check-prefix=CHECK-nnNULL
-
-// TODO(alekseyshl): Enable it back for standalone LSan mode when CHECK(0) in
-// LSan allocator are converted to proper errors (see D44404 for the reference).
-// REQUIRES: asan
 
 #include <assert.h>
 #include <errno.h>
@@ -102,21 +98,19 @@ int main(int argc, char **argv) {
 }
 
 // CHECK-mCRASH: malloc:
-// CHECK-mCRASH: SUMMARY: AddressSanitizer: allocation-size-too-big
+// CHECK-mCRASH: Sanitizer's allocator is terminating the process
 // CHECK-cCRASH: calloc:
-// CHECK-cCRASH: SUMMARY: AddressSanitizer: allocation-size-too-big
+// CHECK-cCRASH: Sanitizer's allocator is terminating the process
 // CHECK-coCRASH: calloc-overflow:
-// CHECK-coCRASH: SUMMARY: AddressSanitizer: calloc-overflow
+// CHECK-coCRASH: Sanitizer's allocator is terminating the process
 // CHECK-rCRASH: realloc:
-// CHECK-rCRASH: SUMMARY: AddressSanitizer: allocation-size-too-big
+// CHECK-rCRASH: Sanitizer's allocator is terminating the process
 // CHECK-mrCRASH: realloc-after-malloc:
-// CHECK-mrCRASH: SUMMARY: AddressSanitizer: allocation-size-too-big
+// CHECK-mrCRASH: Sanitizer's allocator is terminating the process
 // CHECK-nCRASH: new:
-// CHECK-nCRASH: SUMMARY: AddressSanitizer: allocation-size-too-big
-// CHECK-nCRASH-OOM: new:
-// CHECK-nCRASH-OOM: SUMMARY: AddressSanitizer: out-of-memory
+// CHECK-nCRASH: Sanitizer's allocator is terminating the process
 // CHECK-nnCRASH: new-nothrow:
-// CHECK-nnCRASH: SUMMARY: AddressSanitizer: allocation-size-too-big
+// CHECK-nnCRASH: Sanitizer's allocator is terminating the process
 
 // CHECK-mNULL: malloc:
 // CHECK-mNULL: errno: 12

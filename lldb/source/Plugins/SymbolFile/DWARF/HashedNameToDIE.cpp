@@ -122,17 +122,20 @@ const char *DWARFMappedHash::GetAtomTypeName(uint16_t atom) {
     return "type-flags";
   case eAtomTypeQualNameHash:
     return "qualified-name-hash";
+  case eAtomTypeString:
+    return "strp";
   }
   return "<invalid>";
 }
 
 DWARFMappedHash::DIEInfo::DIEInfo()
     : cu_offset(DW_INVALID_OFFSET), offset(DW_INVALID_OFFSET), tag(0),
-      type_flags(0), qualified_name_hash(0) {}
+      type_flags(0), qualified_name_hash(0), strp(UINT64_MAX) {}
 
 DWARFMappedHash::DIEInfo::DIEInfo(dw_offset_t c, dw_offset_t o, dw_tag_t t,
-                                  uint32_t f, uint32_t h)
-    : cu_offset(c), offset(o), tag(t), type_flags(f), qualified_name_hash(h) {}
+                                  uint32_t f, uint32_t h, uint64_t s)
+    : cu_offset(c), offset(o), tag(t), type_flags(f), qualified_name_hash(h),
+      strp(s) {}
 
 DWARFMappedHash::Prologue::Prologue(dw_offset_t _die_base_offset)
     : die_base_offset(_die_base_offset), atoms(), atom_mask(0),
@@ -379,8 +382,7 @@ bool DWARFMappedHash::MemoryTable::ReadHashData(uint32_t hash_data_offset,
 
 DWARFMappedHash::MemoryTable::Result
 DWARFMappedHash::MemoryTable::GetHashDataForName(
-    llvm::StringRef name, lldb::offset_t *hash_data_offset_ptr,
-    Pair &pair) const {
+    const char *name, lldb::offset_t *hash_data_offset_ptr, Pair &pair) const {
   pair.key = m_data.GetU32(hash_data_offset_ptr);
   pair.value.clear();
 
@@ -407,7 +409,7 @@ DWARFMappedHash::MemoryTable::GetHashDataForName(
     // data to parse at least "count" HashData entries.
 
     // First make sure the entire C string matches...
-    const bool match = name == strp_cstr;
+    const bool match = strcmp(name, strp_cstr) == 0;
 
     if (!match && m_header.header_data.HashDataHasFixedByteSize()) {
       // If the string doesn't match and we have fixed size data,
@@ -574,9 +576,9 @@ size_t DWARFMappedHash::MemoryTable::AppendAllDIEsInRange(
   return die_info_array.size();
 }
 
-size_t DWARFMappedHash::MemoryTable::FindByName(llvm::StringRef name,
+size_t DWARFMappedHash::MemoryTable::FindByName(const char *name,
                                                 DIEArray &die_offsets) {
-  if (name.empty())
+  if (!name || !name[0])
     return 0;
 
   DIEInfoArray die_info_array;
@@ -585,7 +587,7 @@ size_t DWARFMappedHash::MemoryTable::FindByName(llvm::StringRef name,
   return die_info_array.size();
 }
 
-size_t DWARFMappedHash::MemoryTable::FindByNameAndTag(llvm::StringRef name,
+size_t DWARFMappedHash::MemoryTable::FindByNameAndTag(const char *name,
                                                       const dw_tag_t tag,
                                                       DIEArray &die_offsets) {
   DIEInfoArray die_info_array;
@@ -595,8 +597,8 @@ size_t DWARFMappedHash::MemoryTable::FindByNameAndTag(llvm::StringRef name,
 }
 
 size_t DWARFMappedHash::MemoryTable::FindByNameAndTagAndQualifiedNameHash(
-    llvm::StringRef name, const dw_tag_t tag,
-    const uint32_t qualified_name_hash, DIEArray &die_offsets) {
+    const char *name, const dw_tag_t tag, const uint32_t qualified_name_hash,
+    DIEArray &die_offsets) {
   DIEInfoArray die_info_array;
   if (FindByName(name, die_info_array))
     DWARFMappedHash::ExtractDIEArray(die_info_array, tag, qualified_name_hash,
@@ -605,7 +607,7 @@ size_t DWARFMappedHash::MemoryTable::FindByNameAndTagAndQualifiedNameHash(
 }
 
 size_t DWARFMappedHash::MemoryTable::FindCompleteObjCClassByName(
-    llvm::StringRef name, DIEArray &die_offsets, bool must_be_implementation) {
+    const char *name, DIEArray &die_offsets, bool must_be_implementation) {
   DIEInfoArray die_info_array;
   if (FindByName(name, die_info_array)) {
     if (must_be_implementation &&
@@ -629,9 +631,9 @@ size_t DWARFMappedHash::MemoryTable::FindCompleteObjCClassByName(
   return die_offsets.size();
 }
 
-size_t DWARFMappedHash::MemoryTable::FindByName(llvm::StringRef name,
+size_t DWARFMappedHash::MemoryTable::FindByName(const char *name,
                                                 DIEInfoArray &die_info_array) {
-  if (name.empty())
+  if (!name || !name[0])
     return 0;
 
   Pair kv_pair;

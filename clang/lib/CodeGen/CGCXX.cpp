@@ -205,7 +205,7 @@ bool CodeGenModule::TryEmitDefinitionAsAlias(GlobalDecl AliasDecl,
   }
 
   // Finally, set up the alias with its proper name and attributes.
-  SetCommonAttributes(AliasDecl, Alias);
+  setAliasAttributes(cast<NamedDecl>(AliasDecl.getDecl()), Alias);
 
   return false;
 }
@@ -227,9 +227,10 @@ llvm::Function *CodeGenModule::codegenCXXStructor(const CXXMethodDecl *MD,
   }
 
   setFunctionLinkage(GD, Fn);
+  setFunctionDLLStorageClass(GD, Fn);
 
   CodeGenFunction(*this).GenerateCode(GD, Fn, FnInfo);
-  setNonAliasAttributes(GD, Fn);
+  setFunctionDefinitionAttributes(MD, Fn);
   SetLLVMFunctionAttributesForDefinition(MD, Fn);
   return Fn;
 }
@@ -242,11 +243,6 @@ llvm::Constant *CodeGenModule::getAddrOfCXXStructor(
   if (auto *CD = dyn_cast<CXXConstructorDecl>(MD)) {
     GD = GlobalDecl(CD, toCXXCtorType(Type));
   } else {
-    // Always alias equivalent complete destructors to base destructors in the
-    // MS ABI.
-    if (getTarget().getCXXABI().isMicrosoft() &&
-        Type == StructorType::Complete && MD->getParent()->getNumVBases() == 0)
-      Type = StructorType::Base;
     GD = GlobalDecl(cast<CXXDestructorDecl>(MD), toCXXDtorType(Type));
   }
 

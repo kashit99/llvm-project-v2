@@ -15,7 +15,7 @@
 
 // path& remove_filename()
 
-#include "filesystem_include.hpp"
+#include <experimental/filesystem>
 #include <type_traits>
 #include <cassert>
 
@@ -23,7 +23,8 @@
 #include "test_iterators.h"
 #include "count_new.hpp"
 #include "filesystem_test_helper.hpp"
-#include "verbose_assert.h"
+
+namespace fs = std::experimental::filesystem;
 
 struct RemoveFilenameTestcase {
   const char* value;
@@ -33,29 +34,27 @@ struct RemoveFilenameTestcase {
 const RemoveFilenameTestcase TestCases[] =
   {
       {"", ""}
-    , {"/", "/"}
-    , {"//", "//"}
-    , {"///", "///"}
+    , {"/", ""}
+    , {"//", ""}
+    , {"///", ""}
     , {"\\", ""}
     , {".", ""}
     , {"..", ""}
     , {"/foo", "/"}
-    , {"foo/bar", "foo/"}
-    , {"foo/", "foo/"}
-    , {"//foo", "//"}
-    , {"//foo/", "//foo/"}
-    , {"//foo///", "//foo///"}
-    , {"///foo", "///"}
-    , {"///foo/", "///foo/"}
-    , {"/foo/", "/foo/"}
-    , {"/foo/.", "/foo/"}
-    , {"/foo/..", "/foo/"}
-    , {"/foo/////", "/foo/////"}
+    , {"//foo", ""}
+    , {"//foo/", ""}
+    , {"//foo///", ""}
+    , {"///foo", "/"}
+    , {"///foo/", "///foo"}
+    , {"/foo/", "/foo"}
+    , {"/foo/.", "/foo"}
+    , {"/foo/..", "/foo"}
+    , {"/foo/////", "/foo"}
     , {"/foo\\\\", "/"}
-    , {"/foo//\\/", "/foo//\\/"}
-    , {"///foo", "///"}
+    , {"/foo//\\/", "/foo//\\"}
+    , {"///foo", "/"}
     , {"file.txt", ""}
-    , {"bar/../baz/./file.txt", "bar/../baz/./"}
+    , {"bar/../baz/./file.txt", "bar/../baz/."}
   };
 
 int main()
@@ -66,8 +65,16 @@ int main()
     path p(p_orig);
     assert(p == TC.value);
     path& Ref = (p.remove_filename());
-    ASSERT_EQ(p, TC.expect) << DISPLAY(p_orig);
+    assert(p == TC.expect);
     assert(&Ref == &p);
-    assert(!p.has_filename());
+    {
+      const path parentp = p_orig.parent_path();
+      if (parentp == p_orig.root_name()) {
+
+        assert(p.empty());
+      } else {
+        assert(p == parentp);
+      }
+    }
   }
 }

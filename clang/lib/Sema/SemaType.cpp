@@ -31,7 +31,6 @@
 #include "clang/Sema/ScopeInfo.h"
 #include "clang/Sema/SemaInternal.h"
 #include "clang/Sema/Template.h"
-#include "clang/Sema/TemplateInstCallback.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringSwitch.h"
@@ -125,7 +124,6 @@ static void diagnoseBadTypeAttribute(Sema &S, const AttributeList &attr,
   case AttributeList::AT_NoReturn: \
   case AttributeList::AT_Regparm: \
   case AttributeList::AT_AnyX86NoCallerSavedRegisters: \
-  case AttributeList::AT_AnyX86NoCfCheck: \
     CALLING_CONV_ATTRS_CASELIST
 
 // Microsoft-specific type qualifiers.
@@ -2839,14 +2837,6 @@ static QualType GetDeclSpecTypeForDeclarator(TypeProcessingState &state,
     case DeclaratorContext::BlockLiteralContext:
       Error = 9; // Block literal
       break;
-    case DeclaratorContext::TemplateArgContext:
-      // Within a template argument list, a deduced template specialization
-      // type will be reinterpreted as a template template argument.
-      if (isa<DeducedTemplateSpecializationType>(Deduced) &&
-          !D.getNumTypeObjects() &&
-          D.getDeclSpec().getParsedSpecifiers() == DeclSpec::PQ_TypeSpecifier)
-        break;
-      LLVM_FALLTHROUGH;
     case DeclaratorContext::TemplateTypeArgContext:
       Error = 10; // Template type argument
       break;
@@ -2855,7 +2845,6 @@ static QualType GetDeclSpecTypeForDeclarator(TypeProcessingState &state,
       Error = 12; // Type alias
       break;
     case DeclaratorContext::TrailingReturnContext:
-    case DeclaratorContext::TrailingReturnVarContext:
       if (!SemaRef.getLangOpts().CPlusPlus14 || !IsCXXAutoType)
         Error = 13; // Function return type
       break;
@@ -2958,7 +2947,6 @@ static QualType GetDeclSpecTypeForDeclarator(TypeProcessingState &state,
     unsigned DiagID = 0;
     switch (D.getContext()) {
     case DeclaratorContext::TrailingReturnContext:
-    case DeclaratorContext::TrailingReturnVarContext:
       // Class and enumeration definitions are syntactically not allowed in
       // trailing return types.
       llvm_unreachable("parser should not have allowed this");
@@ -2986,7 +2974,6 @@ static QualType GetDeclSpecTypeForDeclarator(TypeProcessingState &state,
     case DeclaratorContext::CXXNewContext:
     case DeclaratorContext::CXXCatchContext:
     case DeclaratorContext::ObjCCatchContext:
-    case DeclaratorContext::TemplateArgContext:
     case DeclaratorContext::TemplateTypeArgContext:
       DiagID = diag::err_type_defined_in_type_specifier;
       break;
@@ -3917,7 +3904,6 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
     case DeclaratorContext::ObjCResultContext:
     case DeclaratorContext::PrototypeContext:
     case DeclaratorContext::TrailingReturnContext:
-    case DeclaratorContext::TrailingReturnVarContext:
       isFunctionOrMethod = true;
       LLVM_FALLTHROUGH;
 
@@ -4011,7 +3997,6 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
     case DeclaratorContext::LambdaExprParameterContext:
     case DeclaratorContext::ObjCCatchContext:
     case DeclaratorContext::TemplateParamContext:
-    case DeclaratorContext::TemplateArgContext:
     case DeclaratorContext::TemplateTypeArgContext:
     case DeclaratorContext::TypeNameContext:
     case DeclaratorContext::FunctionalCastContext:
@@ -4833,7 +4818,6 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
         !(Kind == Member &&
           D.getDeclSpec().getStorageClassSpec() != DeclSpec::SCS_static) &&
         !IsTypedefName &&
-        D.getContext() != DeclaratorContext::TemplateArgContext &&
         D.getContext() != DeclaratorContext::TemplateTypeArgContext) {
       SourceLocation Loc = D.getLocStart();
       SourceRange RemovalRange;
@@ -4851,8 +4835,8 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
         if (Chunk.Fun.TypeQuals & Qualifiers::Restrict)
           RemovalLocs.push_back(Chunk.Fun.getRestrictQualifierLoc());
         if (!RemovalLocs.empty()) {
-          llvm::sort(RemovalLocs.begin(), RemovalLocs.end(),
-                     BeforeThanCompare<SourceLocation>(S.getSourceManager()));
+          std::sort(RemovalLocs.begin(), RemovalLocs.end(),
+                    BeforeThanCompare<SourceLocation>(S.getSourceManager()));
           RemovalRange = SourceRange(RemovalLocs.front(), RemovalLocs.back());
           Loc = RemovalLocs.front();
         }
@@ -4960,8 +4944,6 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
     case DeclaratorContext::LambdaExprContext:
     case DeclaratorContext::ConversionIdContext:
     case DeclaratorContext::TrailingReturnContext:
-    case DeclaratorContext::TrailingReturnVarContext:
-    case DeclaratorContext::TemplateArgContext:
     case DeclaratorContext::TemplateTypeArgContext:
       // FIXME: We may want to allow parameter packs in block-literal contexts
       // in the future.
@@ -5135,8 +5117,6 @@ static AttributeList::Kind getAttrListKind(AttributedType::Kind kind) {
     return AttributeList::AT_ObjCOwnership;
   case AttributedType::attr_noreturn:
     return AttributeList::AT_NoReturn;
-  case AttributedType::attr_nocf_check:
-    return AttributeList::AT_AnyX86NoCfCheck;
   case AttributedType::attr_cdecl:
     return AttributeList::AT_CDecl;
   case AttributedType::attr_fastcall:
@@ -6626,7 +6606,7 @@ static bool handleFunctionTypeAttr(TypeProcessingState &state,
   FunctionTypeUnwrapper unwrapped(S, type);
 
   if (attr.getKind() == AttributeList::AT_NoReturn) {
-    if (S.CheckAttrNoArgs(attr))
+    if (S.CheckNoReturnAttr(attr))
       return true;
 
     // Delay if this is not a function type.
@@ -6666,7 +6646,7 @@ static bool handleFunctionTypeAttr(TypeProcessingState &state,
   }
 
   if (attr.getKind() == AttributeList::AT_AnyX86NoCallerSavedRegisters) {
-    if (S.CheckAttrTarget(attr) || S.CheckAttrNoArgs(attr))
+    if (S.CheckNoCallerSavedRegsAttr(attr))
       return true;
 
     // Delay if this is not a function type.
@@ -6675,27 +6655,6 @@ static bool handleFunctionTypeAttr(TypeProcessingState &state,
 
     FunctionType::ExtInfo EI =
         unwrapped.get()->getExtInfo().withNoCallerSavedRegs(true);
-    type = unwrapped.wrap(S, S.Context.adjustFunctionType(unwrapped.get(), EI));
-    return true;
-  }
-
-  if (attr.getKind() == AttributeList::AT_AnyX86NoCfCheck) {
-    if (!S.getLangOpts().CFProtectionBranch) {
-      S.Diag(attr.getLoc(), diag::warn_nocf_check_attribute_ignored);
-      attr.setInvalid();
-      return true;
-    }
-
-    if (S.CheckAttrTarget(attr) || S.CheckAttrNoArgs(attr))
-      return true;
-
-    // If this is not a function type, warning will be asserted by subject 
-    // check.
-    if (!unwrapped.isFunctionType())
-      return true;
-
-    FunctionType::ExtInfo EI =
-      unwrapped.get()->getExtInfo().withNoCfCheck(true);
     type = unwrapped.wrap(S, S.Context.adjustFunctionType(unwrapped.get(), EI));
     return true;
   }
@@ -7094,12 +7053,12 @@ static void deduceOpenCLImplicitAddrSpace(TypeProcessingState &State,
 
   // Handle the cases where address space should not be deduced.
   //
-  // The pointee type of a pointer type is always deduced since a pointer always
+  // The pointee type of a pointer type is alwasy deduced since a pointer always
   // points to some memory location which should has an address space.
   //
   // There are situations that at the point of certain declarations, the address
   // space may be unknown and better to be left as default. For example, when
-  // defining a typedef or struct type, they are not associated with any
+  // definining a typedef or struct type, they are not associated with any
   // specific address space. Later on, they may be used with any address space
   // to declare a variable.
   //
@@ -7616,14 +7575,6 @@ bool Sema::RequireCompleteTypeImpl(SourceLocation Loc, QualType T,
         diagnoseMissingImport(Loc, SuggestedDef, MissingImportKind::Definition,
                               /*Recover*/TreatAsComplete);
       return !TreatAsComplete;
-    } else if (Def && !TemplateInstCallbacks.empty()) {
-      CodeSynthesisContext TempInst;
-      TempInst.Kind = CodeSynthesisContext::Memoization;
-      TempInst.Template = Def;
-      TempInst.Entity = Def;
-      TempInst.PointOfInstantiation = Loc;
-      atTemplateBegin(TemplateInstCallbacks, *this, TempInst);
-      atTemplateEnd(TemplateInstCallbacks, *this, TempInst);
     }
 
     return false;
@@ -7915,12 +7866,11 @@ static QualType getDecltypeForExpr(Sema &S, Expr *E) {
   //
   // We apply the same rules for Objective-C ivar and property references.
   if (const DeclRefExpr *DRE = dyn_cast<DeclRefExpr>(E)) {
-    const ValueDecl *VD = DRE->getDecl();
-    return VD->getType();
+    if (const ValueDecl *VD = dyn_cast<ValueDecl>(DRE->getDecl()))
+      return VD->getType();
   } else if (const MemberExpr *ME = dyn_cast<MemberExpr>(E)) {
-    if (const ValueDecl *VD = ME->getMemberDecl())
-      if (isa<FieldDecl>(VD) || isa<VarDecl>(VD))
-        return VD->getType();
+    if (const FieldDecl *FD = dyn_cast<FieldDecl>(ME->getMemberDecl()))
+      return FD->getType();
   } else if (const ObjCIvarRefExpr *IR = dyn_cast<ObjCIvarRefExpr>(E)) {
     return IR->getDecl()->getType();
   } else if (const ObjCPropertyRefExpr *PR = dyn_cast<ObjCPropertyRefExpr>(E)) {

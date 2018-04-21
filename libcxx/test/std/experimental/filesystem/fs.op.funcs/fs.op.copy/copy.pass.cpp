@@ -17,7 +17,7 @@
 // void copy(const path& from, const path& to, copy_options options,
 //           error_code& ec);
 
-#include "filesystem_include.hpp"
+#include <experimental/filesystem>
 #include <type_traits>
 #include <cstddef>
 #include <cassert>
@@ -26,7 +26,8 @@
 #include "rapid-cxx-test.hpp"
 #include "filesystem_test_helper.hpp"
 
-using namespace fs;
+using namespace std::experimental::filesystem;
+namespace fs = std::experimental::filesystem;
 
 using CO = fs::copy_options;
 

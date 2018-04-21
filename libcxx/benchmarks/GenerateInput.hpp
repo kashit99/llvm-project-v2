@@ -29,16 +29,14 @@ inline std::default_random_engine& getRandomEngine() {
     return RandEngine;
 }
 
-
 inline char getRandomChar() {
     std::uniform_int_distribution<> LettersDist(0, LettersSize-1);
     return Letters[LettersDist(getRandomEngine())];
 }
 
 template <class IntT>
-inline IntT getRandomInteger(IntT Min = 0,
-                             IntT Max = std::numeric_limits<IntT>::max()) {
-    std::uniform_int_distribution<IntT> dist(Min, Max);
+inline IntT getRandomInteger() {
+    std::uniform_int_distribution<IntT> dist;
     return dist(getRandomEngine());
 }
 

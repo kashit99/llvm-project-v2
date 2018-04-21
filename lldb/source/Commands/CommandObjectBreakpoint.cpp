@@ -22,7 +22,6 @@
 #include "lldb/Interpreter/CommandCompletions.h"
 #include "lldb/Interpreter/CommandInterpreter.h"
 #include "lldb/Interpreter/CommandReturnObject.h"
-#include "lldb/Interpreter/OptionArgParser.h"
 #include "lldb/Interpreter/OptionValueBoolean.h"
 #include "lldb/Interpreter/OptionValueString.h"
 #include "lldb/Interpreter/OptionValueUInt64.h"
@@ -101,7 +100,7 @@ public:
       break;
     case 'G': {
       bool value, success;
-      value = OptionArgParser::ToBoolean(option_arg, false, &success);
+      value = Args::StringToBoolean(option_arg, false, &success);
       if (success) {
         m_bp_opts.SetAutoContinue(value);
       } else
@@ -122,7 +121,7 @@ public:
     break;
     case 'o': {
       bool value, success;
-      value = OptionArgParser::ToBoolean(option_arg, false, &success);
+      value = Args::StringToBoolean(option_arg, false, &success);
       if (success) {
         m_bp_opts.SetOneShot(value);
       } else
@@ -304,11 +303,11 @@ static OptionDefinition g_breakpoint_set_options[] = {
   "options, on throw but not catch.)" },
   { LLDB_OPT_SET_10,               false, "on-throw",               'w', OptionParser::eRequiredArgument, nullptr, nullptr, 0,                                         eArgTypeBoolean,             "Set the breakpoint on exception throW." },
   { LLDB_OPT_SET_10,               false, "on-catch",               'h', OptionParser::eRequiredArgument, nullptr, nullptr, 0,                                         eArgTypeBoolean,             "Set the breakpoint on exception catcH." },
-
-  //  Don't add this option till it actually does something useful...
-  //    { LLDB_OPT_SET_10, false, "exception-typename", 'O', OptionParser::eRequiredArgument, nullptr, nullptr, 0, eArgTypeTypeName,
-  //        "The breakpoint will only stop if an exception Object of this type is thrown.  Can be repeated multiple times to stop for multiple object types" },
-
+  { LLDB_OPT_SET_10,               false, "exception-typename",     'O', OptionParser::eRequiredArgument, nullptr, nullptr, 0, eArgTypeTypeName,
+    "The breakpoint will only stop if an exception Object of this type is thrown.  Can be repeated multiple times to stop "
+    "for multiple object types.  If you just specify the type's base name it will match against that type in all modules,"
+    " or you can specify the full type name including modules.  Other submatches are not supported at present."
+    "Only supported for Swift at present."},
   { LLDB_OPT_EXPR_LANGUAGE,        false, "language",               'L', OptionParser::eRequiredArgument, nullptr, nullptr, 0,                                         eArgTypeLanguage,            "Specifies the Language to use when interpreting the breakpoint's expression "
   "(note: currently only implemented for setting breakpoints on identifiers).  "
   "If not set the target.language setting is used." },
@@ -378,8 +377,8 @@ public:
 
       switch (short_option) {
       case 'a': {
-        m_load_addr = OptionArgParser::ToAddress(execution_context, option_arg,
-                                                 LLDB_INVALID_ADDRESS, &error);
+        m_load_addr = Args::StringToAddress(execution_context, option_arg,
+                                            LLDB_INVALID_ADDRESS, &error);
       } break;
 
       case 'A':
@@ -420,6 +419,9 @@ public:
           error.SetErrorStringWithFormat(
               "Set exception breakpoints separately for c++ and objective-c");
           break;
+        case eLanguageTypeSwift:
+          m_exception_language = eLanguageTypeSwift;
+          break;
         case eLanguageTypeUnknown:
           error.SetErrorStringWithFormat(
               "Unknown language type: '%s' for exception breakpoint",
@@ -443,7 +445,7 @@ public:
         
       case 'h': {
         bool success;
-        m_catch_bp = OptionArgParser::ToBoolean(option_arg, true, &success);
+        m_catch_bp = Args::StringToBoolean(option_arg, true, &success);
         if (!success)
           error.SetErrorStringWithFormat(
               "Invalid boolean value for on-catch option: '%s'",
@@ -457,7 +459,7 @@ public:
       case 'K': {
         bool success;
         bool value;
-        value = OptionArgParser::ToBoolean(option_arg, true, &success);
+        value = Args::StringToBoolean(option_arg, true, &success);
         if (value)
           m_skip_prologue = eLazyBoolYes;
         else
@@ -486,7 +488,7 @@ public:
       case 'm': {
         bool success;
         bool value;
-        value = OptionArgParser::ToBoolean(option_arg, true, &success);
+        value = Args::StringToBoolean(option_arg, true, &success);
         if (value)
           m_move_to_nearest_code = eLazyBoolYes;
         else
@@ -520,8 +522,8 @@ public:
 
       case 'R': {
         lldb::addr_t tmp_offset_addr;
-        tmp_offset_addr = OptionArgParser::ToAddress(execution_context,
-                                                     option_arg, 0, &error);
+        tmp_offset_addr =
+            Args::StringToAddress(execution_context, option_arg, 0, &error);
         if (error.Success())
           m_offset_addr = tmp_offset_addr;
       } break;
@@ -550,7 +552,7 @@ public:
 
       case 'w': {
         bool success;
-        m_throw_bp = OptionArgParser::ToBoolean(option_arg, true, &success);
+        m_throw_bp = Args::StringToBoolean(option_arg, true, &success);
         if (!success)
           error.SetErrorStringWithFormat(
               "Invalid boolean value for on-throw option: '%s'",
@@ -584,6 +586,7 @@ public:
       m_catch_bp = false;
       m_throw_bp = true;
       m_hardware = false;
+      m_language = eLanguageTypeUnknown;
       m_exception_language = eLanguageTypeUnknown;
       m_language = lldb::eLanguageTypeUnknown;
       m_skip_prologue = eLazyBoolCalculate;
@@ -1784,7 +1787,7 @@ public:
     switch (short_option) {
       case 'L': {
         bool value, success;
-        value = OptionArgParser::ToBoolean(option_arg, false, &success);
+        value = Args::StringToBoolean(option_arg, false, &success);
         if (success) {
           m_permissions.SetAllowList(value);
         } else
@@ -1794,7 +1797,7 @@ public:
       } break;
       case 'A': {
         bool value, success;
-        value = OptionArgParser::ToBoolean(option_arg, false, &success);
+        value = Args::StringToBoolean(option_arg, false, &success);
         if (success) {
           m_permissions.SetAllowDisable(value);
         } else
@@ -1804,7 +1807,7 @@ public:
       } break;
       case 'D': {
         bool value, success;
-        value = OptionArgParser::ToBoolean(option_arg, false, &success);
+        value = Args::StringToBoolean(option_arg, false, &success);
         if (success) {
           m_permissions.SetAllowDelete(value);
         } else

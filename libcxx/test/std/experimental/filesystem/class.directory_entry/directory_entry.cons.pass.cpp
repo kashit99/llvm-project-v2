@@ -18,10 +18,11 @@
 //          directory_entry(directory_entry&&) noexcept = default;
 // explicit directory_entry(const path);
 
-#include "filesystem_include.hpp"
+#include <experimental/filesystem>
 #include <type_traits>
 #include <cassert>
 
+namespace fs = std::experimental::filesystem;
 
 void test_default_ctor()
 {

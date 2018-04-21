@@ -24,6 +24,7 @@
 #include "IntegerTypesCheck.h"
 #include "NonConstReferences.h"
 #include "OverloadedUnaryAndCheck.h"
+#include "StringReferenceMemberCheck.h"
 #include "TodoCommentCheck.h"
 #include "UnnamedNamespaceInHeaderCheck.h"
 #include "UsingNamespaceDirectiveCheck.h"
@@ -59,6 +60,8 @@ class GoogleModule : public ClangTidyModule {
         "google-runtime-operator");
     CheckFactories.registerCheck<runtime::NonConstReferences>(
         "google-runtime-references");
+    CheckFactories.registerCheck<runtime::StringReferenceMemberCheck>(
+        "google-runtime-member-string-references");
     CheckFactories.registerCheck<readability::AvoidCStyleCastsCheck>(
         "google-readability-casting");
     CheckFactories.registerCheck<readability::TodoCommentCheck>(

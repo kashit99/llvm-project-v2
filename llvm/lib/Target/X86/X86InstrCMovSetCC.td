@@ -16,43 +16,46 @@
 // CMOV instructions.
 multiclass CMOV<bits<8> opc, string Mnemonic, PatLeaf CondNode> {
   let Uses = [EFLAGS], Predicates = [HasCMov], Constraints = "$src1 = $dst",
-      isCommutable = 1, SchedRW = [WriteCMOV] in {
+      isCommutable = 1, SchedRW = [WriteALU] in {
     def NAME#16rr
       : I<opc, MRMSrcReg, (outs GR16:$dst), (ins GR16:$src1, GR16:$src2),
           !strconcat(Mnemonic, "{w}\t{$src2, $dst|$dst, $src2}"),
           [(set GR16:$dst,
-                (X86cmov GR16:$src1, GR16:$src2, CondNode, EFLAGS))]>,
-                TB, OpSize16;
+                (X86cmov GR16:$src1, GR16:$src2, CondNode, EFLAGS))],
+                IIC_CMOV16_RR>, TB, OpSize16;
     def NAME#32rr
       : I<opc, MRMSrcReg, (outs GR32:$dst), (ins GR32:$src1, GR32:$src2),
           !strconcat(Mnemonic, "{l}\t{$src2, $dst|$dst, $src2}"),
           [(set GR32:$dst,
-                (X86cmov GR32:$src1, GR32:$src2, CondNode, EFLAGS))]>,
-                TB, OpSize32;
+                (X86cmov GR32:$src1, GR32:$src2, CondNode, EFLAGS))],
+                IIC_CMOV32_RR>, TB, OpSize32;
     def NAME#64rr
       :RI<opc, MRMSrcReg, (outs GR64:$dst), (ins GR64:$src1, GR64:$src2),
           !strconcat(Mnemonic, "{q}\t{$src2, $dst|$dst, $src2}"),
           [(set GR64:$dst,
-                (X86cmov GR64:$src1, GR64:$src2, CondNode, EFLAGS))]>, TB;
+                (X86cmov GR64:$src1, GR64:$src2, CondNode, EFLAGS))],
+                IIC_CMOV32_RR>, TB;
   }
 
   let Uses = [EFLAGS], Predicates = [HasCMov], Constraints = "$src1 = $dst",
-      SchedRW = [WriteCMOVLd, ReadAfterLd] in {
+      SchedRW = [WriteALULd, ReadAfterLd] in {
     def NAME#16rm
       : I<opc, MRMSrcMem, (outs GR16:$dst), (ins GR16:$src1, i16mem:$src2),
           !strconcat(Mnemonic, "{w}\t{$src2, $dst|$dst, $src2}"),
           [(set GR16:$dst, (X86cmov GR16:$src1, (loadi16 addr:$src2),
-                                    CondNode, EFLAGS))]>, TB, OpSize16;
+                                    CondNode, EFLAGS))], IIC_CMOV16_RM>,
+                                    TB, OpSize16;
     def NAME#32rm
       : I<opc, MRMSrcMem, (outs GR32:$dst), (ins GR32:$src1, i32mem:$src2),
           !strconcat(Mnemonic, "{l}\t{$src2, $dst|$dst, $src2}"),
           [(set GR32:$dst, (X86cmov GR32:$src1, (loadi32 addr:$src2),
-                                    CondNode, EFLAGS))]>, TB, OpSize32;
+                                    CondNode, EFLAGS))], IIC_CMOV32_RM>,
+                                    TB, OpSize32;
     def NAME#64rm
       :RI<opc, MRMSrcMem, (outs GR64:$dst), (ins GR64:$src1, i64mem:$src2),
           !strconcat(Mnemonic, "{q}\t{$src2, $dst|$dst, $src2}"),
           [(set GR64:$dst, (X86cmov GR64:$src1, (loadi64 addr:$src2),
-                                    CondNode, EFLAGS))]>, TB;
+                                    CondNode, EFLAGS))], IIC_CMOV32_RM>, TB;
   } // Uses = [EFLAGS], Predicates = [HasCMov], Constraints = "$src1 = $dst"
 } // end multiclass
 
@@ -81,12 +84,12 @@ multiclass SETCC<bits<8> opc, string Mnemonic, PatLeaf OpNode> {
   let Uses = [EFLAGS] in {
     def r    : I<opc, MRMXr,  (outs GR8:$dst), (ins),
                      !strconcat(Mnemonic, "\t$dst"),
-                     [(set GR8:$dst, (X86setcc OpNode, EFLAGS))]>,
-                     TB, Sched<[WriteSETCC]>;
+                     [(set GR8:$dst, (X86setcc OpNode, EFLAGS))],
+                     IIC_SET_R>, TB, Sched<[WriteALU]>;
     def m    : I<opc, MRMXm,  (outs), (ins i8mem:$dst),
                      !strconcat(Mnemonic, "\t$dst"),
-                     [(store (X86setcc OpNode, EFLAGS), addr:$dst)]>,
-                     TB, Sched<[WriteSETCCStore]>;
+                     [(store (X86setcc OpNode, EFLAGS), addr:$dst)],
+                     IIC_SET_M>, TB, Sched<[WriteALU, WriteStore]>;
   } // Uses = [EFLAGS]
 }
 
@@ -111,5 +114,5 @@ defm SETG  : SETCC<0x9F, "setg",  X86_COND_G>;   // signed greater than
 // here http://www.rcollins.org/secrets/opcodes/SALC.html
 // Set AL if carry. 
 let Uses = [EFLAGS], Defs = [AL], SchedRW = [WriteALU] in {
-  def SALC : I<0xD6, RawFrm, (outs), (ins), "salc", []>, Requires<[Not64BitMode]>;
+  def SALC : I<0xD6, RawFrm, (outs), (ins), "salc", [], IIC_AHF>, Requires<[Not64BitMode]>;
 }

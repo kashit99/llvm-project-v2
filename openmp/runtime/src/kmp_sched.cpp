@@ -35,7 +35,6 @@ char const *traits_t<int>::spec = "d";
 char const *traits_t<unsigned int>::spec = "u";
 char const *traits_t<long long>::spec = "lld";
 char const *traits_t<unsigned long long>::spec = "llu";
-char const *traits_t<long>::spec = "ld";
 //-------------------------------------------------------------------------
 #endif
 

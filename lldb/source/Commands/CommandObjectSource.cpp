@@ -22,7 +22,6 @@
 #include "lldb/Interpreter/CommandCompletions.h"
 #include "lldb/Interpreter/CommandInterpreter.h"
 #include "lldb/Interpreter/CommandReturnObject.h"
-#include "lldb/Interpreter/OptionArgParser.h"
 #include "lldb/Interpreter/Options.h"
 #include "lldb/Symbol/CompileUnit.h"
 #include "lldb/Symbol/Function.h"
@@ -92,8 +91,8 @@ class CommandObjectSourceInfo : public CommandObjectParsed {
         break;
 
       case 'a': {
-        address = OptionArgParser::ToAddress(execution_context, option_arg,
-                                             LLDB_INVALID_ADDRESS, &error);
+        address = Args::StringToAddress(execution_context, option_arg,
+                                        LLDB_INVALID_ADDRESS, &error);
       } break;
       case 's':
         modules.push_back(std::string(option_arg));
@@ -710,8 +709,8 @@ class CommandObjectSourceList : public CommandObjectParsed {
         break;
 
       case 'a': {
-        address = OptionArgParser::ToAddress(execution_context, option_arg,
-                                             LLDB_INVALID_ADDRESS, &error);
+        address = Args::StringToAddress(execution_context, option_arg,
+                                        LLDB_INVALID_ADDRESS, &error);
       } break;
       case 's':
         modules.push_back(std::string(option_arg));

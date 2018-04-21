@@ -118,7 +118,7 @@ public:
   /// \param Fragment The fragment to relax.
   /// \param Layout Code layout information.
   ///
-  /// \returns true iff any relaxation occurred.
+  /// \returns true iff any relaxation occured.
   bool relaxFragment(MCPaddingFragment *Fragment, MCAsmLayout &Layout);
 };
 

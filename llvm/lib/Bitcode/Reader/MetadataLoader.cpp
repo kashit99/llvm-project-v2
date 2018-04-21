@@ -165,7 +165,7 @@ public:
   /// necessary.
   Metadata *getMetadataFwdRef(unsigned Idx);
 
-  /// Return the given metadata only if it is fully resolved.
+  /// Return the the given metadata only if it is fully resolved.
   ///
   /// Gives the same result as \a lookup(), unless \a MDNode::isResolved()
   /// would give \c false.
@@ -1216,11 +1216,10 @@ Error MetadataLoader::MetadataLoaderImpl::parseOneMetadata(
     if (Record.size() != 3)
       return error("Invalid record");
 
-    IsDistinct = Record[0] & 1;
-    bool IsUnsigned = Record[0] & 2;
+    IsDistinct = Record[0];
     MetadataList.assignValue(
         GET_OR_DISTINCT(DIEnumerator, (Context, unrotateSign(Record[1]),
-                                       IsUnsigned, getMDString(Record[2]))),
+                                       getMDString(Record[2]))),
         NextMetadataNo);
     NextMetadataNo++;
     break;
@@ -1366,25 +1365,17 @@ Error MetadataLoader::MetadataLoaderImpl::parseOneMetadata(
   }
 
   case bitc::METADATA_FILE: {
-    if (Record.size() != 3 && Record.size() != 5 && Record.size() != 6)
+    if (Record.size() != 3 && Record.size() != 5)
       return error("Invalid record");
 
     IsDistinct = Record[0];
-    Optional<DIFile::ChecksumInfo<MDString *>> Checksum;
-    // The BitcodeWriter writes null bytes into Record[3:4] when the Checksum
-    // is not present. This matches up with the old internal representation,
-    // and the old encoding for CSK_None in the ChecksumKind. The new
-    // representation reserves the value 0 in the ChecksumKind to continue to
-    // encode None in a backwards-compatible way.
-    if (Record.size() > 4 && Record[3] && Record[4])
-      Checksum.emplace(static_cast<DIFile::ChecksumKind>(Record[3]),
-                       getMDString(Record[4]));
     MetadataList.assignValue(
         GET_OR_DISTINCT(
             DIFile,
-            (Context, getMDString(Record[1]), getMDString(Record[2]), Checksum,
-             Record.size() > 5 ? Optional<MDString *>(getMDString(Record[5]))
-                               : None)),
+            (Context, getMDString(Record[1]), getMDString(Record[2]),
+             Record.size() == 3 ? DIFile::CSK_None
+                                : static_cast<DIFile::ChecksumKind>(Record[3]),
+             Record.size() == 3 ? nullptr : getMDString(Record[4]))),
         NextMetadataNo);
     NextMetadataNo++;
     break;

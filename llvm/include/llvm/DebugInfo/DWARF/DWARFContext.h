@@ -34,7 +34,6 @@
 #include "llvm/DebugInfo/DWARF/DWARFUnitIndex.h"
 #include "llvm/Object/Binary.h"
 #include "llvm/Object/ObjectFile.h"
-#include "llvm/Support/DataExtractor.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/Host.h"
 #include <cstdint>
@@ -44,6 +43,7 @@
 
 namespace llvm {
 
+class DataExtractor;
 class MCRegisterInfo;
 class MemoryBuffer;
 class raw_ostream;
@@ -260,13 +260,6 @@ public:
 
   /// Get a pointer to a parsed line table corresponding to a compile unit.
   const DWARFDebugLine::LineTable *getLineTableForUnit(DWARFUnit *cu);
-
-  DataExtractor getStringExtractor() const {
-    return DataExtractor(DObj->getStringSection(), false, 0);
-  }
-  DataExtractor getLineStringExtractor() const {
-    return DataExtractor(DObj->getLineStringSection(), false, 0);
-  }
 
   /// Wraps the returned DIEs for a given address.
   struct DIEsForAddress {

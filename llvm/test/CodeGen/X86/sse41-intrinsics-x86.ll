@@ -364,27 +364,6 @@ define <8 x i16> @test_x86_sse41_pminuw(<8 x i16> %a0, <8 x i16> %a1) {
 declare <8 x i16> @llvm.x86.sse41.pminuw(<8 x i16>, <8 x i16>) nounwind readnone
 
 
-define <2 x i64> @test_x86_sse41_pmuldq(<4 x i32> %a0, <4 x i32> %a1) {
-; SSE41-LABEL: test_x86_sse41_pmuldq:
-; SSE41:       ## %bb.0:
-; SSE41-NEXT:    pmuldq %xmm1, %xmm0 ## encoding: [0x66,0x0f,0x38,0x28,0xc1]
-; SSE41-NEXT:    retl ## encoding: [0xc3]
-;
-; AVX2-LABEL: test_x86_sse41_pmuldq:
-; AVX2:       ## %bb.0:
-; AVX2-NEXT:    vpmuldq %xmm1, %xmm0, %xmm0 ## encoding: [0xc4,0xe2,0x79,0x28,0xc1]
-; AVX2-NEXT:    retl ## encoding: [0xc3]
-;
-; SKX-LABEL: test_x86_sse41_pmuldq:
-; SKX:       ## %bb.0:
-; SKX-NEXT:    vpmuldq %xmm1, %xmm0, %xmm0 ## EVEX TO VEX Compression encoding: [0xc4,0xe2,0x79,0x28,0xc1]
-; SKX-NEXT:    retl ## encoding: [0xc3]
-  %res = call <2 x i64> @llvm.x86.sse41.pmuldq(<4 x i32> %a0, <4 x i32> %a1) ; <<2 x i64>> [#uses=1]
-  ret <2 x i64> %res
-}
-declare <2 x i64> @llvm.x86.sse41.pmuldq(<4 x i32>, <4 x i32>) nounwind readnone
-
-
 define i32 @test_x86_sse41_ptestc(<2 x i64> %a0, <2 x i64> %a1) {
 ; SSE41-LABEL: test_x86_sse41_ptestc:
 ; SSE41:       ## %bb.0:
@@ -458,7 +437,7 @@ define <2 x double> @test_x86_sse41_round_pd(<2 x double> %a0) {
 ;
 ; SKX-LABEL: test_x86_sse41_round_pd:
 ; SKX:       ## %bb.0:
-; SKX-NEXT:    vrndscalepd $7, %xmm0, %xmm0 ## encoding: [0x62,0xf3,0xfd,0x08,0x09,0xc0,0x07]
+; SKX-NEXT:    vroundpd $7, %xmm0, %xmm0 ## EVEX TO VEX Compression encoding: [0xc4,0xe3,0x79,0x09,0xc0,0x07]
 ; SKX-NEXT:    retl ## encoding: [0xc3]
   %res = call <2 x double> @llvm.x86.sse41.round.pd(<2 x double> %a0, i32 7) ; <<2 x double>> [#uses=1]
   ret <2 x double> %res
@@ -479,7 +458,7 @@ define <4 x float> @test_x86_sse41_round_ps(<4 x float> %a0) {
 ;
 ; SKX-LABEL: test_x86_sse41_round_ps:
 ; SKX:       ## %bb.0:
-; SKX-NEXT:    vrndscaleps $7, %xmm0, %xmm0 ## encoding: [0x62,0xf3,0x7d,0x08,0x08,0xc0,0x07]
+; SKX-NEXT:    vroundps $7, %xmm0, %xmm0 ## EVEX TO VEX Compression encoding: [0xc4,0xe3,0x79,0x08,0xc0,0x07]
 ; SKX-NEXT:    retl ## encoding: [0xc3]
   %res = call <4 x float> @llvm.x86.sse41.round.ps(<4 x float> %a0, i32 7) ; <<4 x float>> [#uses=1]
   ret <4 x float> %res
@@ -500,7 +479,7 @@ define <2 x double> @test_x86_sse41_round_sd(<2 x double> %a0, <2 x double> %a1)
 ;
 ; SKX-LABEL: test_x86_sse41_round_sd:
 ; SKX:       ## %bb.0:
-; SKX-NEXT:    vrndscalesd $7, %xmm1, %xmm0, %xmm0 ## encoding: [0x62,0xf3,0xfd,0x08,0x0b,0xc1,0x07]
+; SKX-NEXT:    vroundsd $7, %xmm1, %xmm0, %xmm0 ## EVEX TO VEX Compression encoding: [0xc4,0xe3,0x79,0x0b,0xc1,0x07]
 ; SKX-NEXT:    retl ## encoding: [0xc3]
   %res = call <2 x double> @llvm.x86.sse41.round.sd(<2 x double> %a0, <2 x double> %a1, i32 7) ; <<2 x double>> [#uses=1]
   ret <2 x double> %res
@@ -524,7 +503,7 @@ define <2 x double> @test_x86_sse41_round_sd_load(<2 x double> %a0, <2 x double>
 ; SKX-LABEL: test_x86_sse41_round_sd_load:
 ; SKX:       ## %bb.0:
 ; SKX-NEXT:    movl {{[0-9]+}}(%esp), %eax ## encoding: [0x8b,0x44,0x24,0x04]
-; SKX-NEXT:    vrndscalesd $7, (%eax), %xmm0, %xmm0 ## encoding: [0x62,0xf3,0xfd,0x08,0x0b,0x00,0x07]
+; SKX-NEXT:    vroundsd $7, (%eax), %xmm0, %xmm0 ## EVEX TO VEX Compression encoding: [0xc4,0xe3,0x79,0x0b,0x00,0x07]
 ; SKX-NEXT:    retl ## encoding: [0xc3]
   %a1b = load <2 x double>, <2 x double>* %a1
   %res = call <2 x double> @llvm.x86.sse41.round.sd(<2 x double> %a0, <2 x double> %a1b, i32 7) ; <<2 x double>> [#uses=1]
@@ -545,7 +524,7 @@ define <4 x float> @test_x86_sse41_round_ss(<4 x float> %a0, <4 x float> %a1) {
 ;
 ; SKX-LABEL: test_x86_sse41_round_ss:
 ; SKX:       ## %bb.0:
-; SKX-NEXT:    vrndscaless $7, %xmm1, %xmm0, %xmm0 ## encoding: [0x62,0xf3,0x7d,0x08,0x0a,0xc1,0x07]
+; SKX-NEXT:    vroundss $7, %xmm1, %xmm0, %xmm0 ## EVEX TO VEX Compression encoding: [0xc4,0xe3,0x79,0x0a,0xc1,0x07]
 ; SKX-NEXT:    retl ## encoding: [0xc3]
   %res = call <4 x float> @llvm.x86.sse41.round.ss(<4 x float> %a0, <4 x float> %a1, i32 7) ; <<4 x float>> [#uses=1]
   ret <4 x float> %res

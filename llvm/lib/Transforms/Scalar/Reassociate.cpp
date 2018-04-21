@@ -31,6 +31,7 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/GlobalsModRef.h"
+#include "llvm/Analysis/Utils/Local.h"
 #include "llvm/Analysis/ValueTracking.h"
 #include "llvm/IR/Argument.h"
 #include "llvm/IR/BasicBlock.h"
@@ -55,7 +56,6 @@
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Scalar.h"
-#include "llvm/Transforms/Utils/Local.h"
 #include <algorithm>
 #include <cassert>
 #include <utility>
@@ -200,14 +200,13 @@ unsigned ReassociatePass::getRank(Value *V) {
   // for PHI nodes, we cannot have infinite recursion here, because there
   // cannot be loops in the value graph that do not go through PHI nodes.
   unsigned Rank = 0, MaxRank = RankMap[I->getParent()];
-  for (unsigned i = 0, e = I->getNumOperands();
-       i != e && Rank != MaxRank; ++i)
+  for (unsigned i = 0, e = I->getNumOperands(); i != e && Rank != MaxRank; ++i)
     Rank = std::max(Rank, getRank(I->getOperand(i)));
 
   // If this is a not or neg instruction, do not count it for rank.  This
   // assures us that X and ~X will have the same rank.
-  if  (!BinaryOperator::isNot(I) && !BinaryOperator::isNeg(I) &&
-       !BinaryOperator::isFNeg(I))
+  if (!BinaryOperator::isNot(I) && !BinaryOperator::isNeg(I) &&
+      !BinaryOperator::isFNeg(I))
     ++Rank;
 
   DEBUG(dbgs() << "Calculated Rank[" << V->getName() << "] = " << Rank << "\n");

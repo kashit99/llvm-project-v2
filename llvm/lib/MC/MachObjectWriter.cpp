@@ -593,8 +593,8 @@ void MachObjectWriter::computeSymbolTable(
   }
 
   // External and undefined symbols are required to be in lexicographic order.
-  std::sort(ExternalSymbolData.begin(), ExternalSymbolData.end());
-  std::sort(UndefinedSymbolData.begin(), UndefinedSymbolData.end());
+  llvm::sort(ExternalSymbolData.begin(), ExternalSymbolData.end());
+  llvm::sort(UndefinedSymbolData.begin(), UndefinedSymbolData.end());
 
   // Set the symbol indices.
   Index = 0;
@@ -945,7 +945,13 @@ void MachObjectWriter::writeObject(MCAssembler &Asm,
          it != ie; ++it) {
     const DataRegionData *Data = &(*it);
     uint64_t Start = getSymbolAddress(*Data->Start, Layout);
-    uint64_t End = getSymbolAddress(*Data->End, Layout);
+    uint64_t End;
+    if (Data->End) 
+      End = getSymbolAddress(*Data->End, Layout);
+    else
+      report_fatal_error("Data region not terminated");
+
+
     DEBUG(dbgs() << "data in code region-- kind: " << Data->Kind
                  << "  start: " << Start << "(" << Data->Start->getName() << ")"
                  << "  end: " << End << "(" << Data->End->getName() << ")"

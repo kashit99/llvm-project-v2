@@ -2799,7 +2799,7 @@ ExprResult Sema::BuildInstanceMessage(Expr *Receiver,
               // to select a better one.
               Method = Methods[0];
 
-              // If we find an instance method, emit waring.
+              // If we find an instance method, emit warning.
               if (Method->isInstanceMethod()) {
                 if (const ObjCInterfaceDecl *ID =
                     dyn_cast<ObjCInterfaceDecl>(Method->getDeclContext())) {
@@ -4283,9 +4283,9 @@ Expr *Sema::stripARCUnbridgedCast(Expr *e) {
   } else if (UnaryOperator *uo = dyn_cast<UnaryOperator>(e)) {
     assert(uo->getOpcode() == UO_Extension);
     Expr *sub = stripARCUnbridgedCast(uo->getSubExpr());
-    return new (Context) UnaryOperator(sub, UO_Extension, sub->getType(),
-                                   sub->getValueKind(), sub->getObjectKind(),
-                                       uo->getOperatorLoc());
+    return new (Context)
+        UnaryOperator(sub, UO_Extension, sub->getType(), sub->getValueKind(),
+                      sub->getObjectKind(), uo->getOperatorLoc(), false);
   } else if (GenericSelectionExpr *gse = dyn_cast<GenericSelectionExpr>(e)) {
     assert(!gse->isResultDependent());
 

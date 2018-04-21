@@ -1,4 +1,4 @@
-# RUN: not llvm-mc %s -triple=mips -show-encoding -mcpu=mips32r6 -mattr=micromips 2>%t1
+# RUN: not llvm-mc %s -triple=mips -show-encoding -mcpu=mips32r6 -mattr=+micromips,+eva 2>%t1
 # RUN: FileCheck %s < %t1
 
   addiur1sp $7, 260        # CHECK: :[[@LINE]]:17: error: expected both 8-bit unsigned immediate and multiple of 4
@@ -363,6 +363,12 @@
   tltu $8, $9, -1          # CHECK: :[[@LINE]]:16: error: expected 4-bit unsigned immediate
   tne $8, $9, $2           # CHECK: :[[@LINE]]:15: error: expected 4-bit unsigned immediate
   tne $8, $9, -1           # CHECK: :[[@LINE]]:15: error: expected 4-bit unsigned immediate
+  teqi $4, 5               # CHECK: :[[@LINE]]:{{[0-9]+}}: error: instruction requires a CPU feature not currently enabled
+  tgei $4, 5               # CHECK: :[[@LINE]]:{{[0-9]+}}: error: instruction requires a CPU feature not currently enabled
+  tgeiu $4, 5              # CHECK: :[[@LINE]]:{{[0-9]+}}: error: instruction requires a CPU feature not currently enabled
+  tlti $4, 5               # CHECK: :[[@LINE]]:{{[0-9]+}}: error: instruction requires a CPU feature not currently enabled
+  tltiu $4, 5              # CHECK: :[[@LINE]]:{{[0-9]+}}: error: instruction requires a CPU feature not currently enabled
+  tnei $4, 5               # CHECK: :[[@LINE]]:{{[0-9]+}}: error: instruction requires a CPU feature not currently enabled
   syscall -1               # CHECK: :[[@LINE]]:11: error: expected 10-bit unsigned immediate
   syscall $4               # CHECK: :[[@LINE]]:11: error: expected 10-bit unsigned immediate
   ldc2 $1, 1023($32)       # CHECK: :[[@LINE]]:12: error: expected memory with 11-bit signed offset

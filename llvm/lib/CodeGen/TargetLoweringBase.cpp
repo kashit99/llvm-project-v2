@@ -28,7 +28,6 @@
 #include "llvm/CodeGen/MachineMemOperand.h"
 #include "llvm/CodeGen/MachineOperand.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
-#include "llvm/CodeGen/MachineValueType.h"
 #include "llvm/CodeGen/RuntimeLibcalls.h"
 #include "llvm/CodeGen/StackMaps.h"
 #include "llvm/CodeGen/TargetLowering.h"
@@ -50,6 +49,7 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/MachineValueType.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Target/TargetMachine.h"
 #include <algorithm>
@@ -192,6 +192,9 @@ RTLIB::Libcall RTLIB::getFPEXT(EVT OpVT, EVT RetVT) {
       return FPEXT_F64_F128;
     else if (RetVT == MVT::ppcf128)
       return FPEXT_F64_PPCF128;
+  } else if (OpVT == MVT::f80) {
+    if (RetVT == MVT::f128)
+      return FPEXT_F80_F128;
   }
 
   return UNKNOWN_LIBCALL;
@@ -227,6 +230,9 @@ RTLIB::Libcall RTLIB::getFPROUND(EVT OpVT, EVT RetVT) {
       return FPROUND_F128_F64;
     if (OpVT == MVT::ppcf128)
       return FPROUND_PPCF128_F64;
+  } else if (RetVT == MVT::f80) {
+    if (OpVT == MVT::f128)
+      return FPROUND_F128_F80;
   }
 
   return UNKNOWN_LIBCALL;
@@ -679,12 +685,13 @@ MVT TargetLoweringBase::getScalarShiftAmountTy(const DataLayout &DL,
   return MVT::getIntegerVT(8 * DL.getPointerSize(0));
 }
 
-EVT TargetLoweringBase::getShiftAmountTy(EVT LHSTy,
-                                         const DataLayout &DL) const {
+EVT TargetLoweringBase::getShiftAmountTy(EVT LHSTy, const DataLayout &DL,
+                                         bool LegalTypes) const {
   assert(LHSTy.isInteger() && "Shift amount is not an integer type!");
   if (LHSTy.isVector())
     return LHSTy;
-  return getScalarShiftAmountTy(DL, LHSTy);
+  return LegalTypes ? getScalarShiftAmountTy(DL, LHSTy)
+                    : getPointerTy(DL);
 }
 
 bool TargetLoweringBase::canOpTrap(unsigned Op, EVT VT) const {
@@ -976,6 +983,36 @@ TargetLoweringBase::emitPatchPoint(MachineInstr &InitialMI,
     MI->eraseFromParent();
     MI = MIB;
   }
+  return MBB;
+}
+
+MachineBasicBlock *
+TargetLoweringBase::emitXRayCustomEvent(MachineInstr &MI,
+                                        MachineBasicBlock *MBB) const {
+  assert(MI.getOpcode() == TargetOpcode::PATCHABLE_EVENT_CALL &&
+         "Called emitXRayCustomEvent on the wrong MI!");
+  auto &MF = *MI.getMF();
+  auto MIB = BuildMI(MF, MI.getDebugLoc(), MI.getDesc());
+  for (unsigned OpIdx = 0; OpIdx != MI.getNumOperands(); ++OpIdx)
+    MIB.add(MI.getOperand(OpIdx));
+
+  MBB->insert(MachineBasicBlock::iterator(MI), MIB);
+  MI.eraseFromParent();
+  return MBB;
+}
+
+MachineBasicBlock *
+TargetLoweringBase::emitXRayTypedEvent(MachineInstr &MI,
+                                       MachineBasicBlock *MBB) const {
+  assert(MI.getOpcode() == TargetOpcode::PATCHABLE_TYPED_EVENT_CALL &&
+         "Called emitXRayTypedEvent on the wrong MI!");
+  auto &MF = *MI.getMF();
+  auto MIB = BuildMI(MF, MI.getDebugLoc(), MI.getDesc());
+  for (unsigned OpIdx = 0; OpIdx != MI.getNumOperands(); ++OpIdx)
+    MIB.add(MI.getOperand(OpIdx));
+
+  MBB->insert(MachineBasicBlock::iterator(MI), MIB);
+  MI.eraseFromParent();
   return MBB;
 }
 
@@ -1587,13 +1624,16 @@ Value *TargetLoweringBase::getIRStackGuard(IRBuilder<> &IRB) const {
 // Currently only support "standard" __stack_chk_guard.
 // TODO: add LOAD_STACK_GUARD support.
 void TargetLoweringBase::insertSSPDeclarations(Module &M) const {
-  M.getOrInsertGlobal("__stack_chk_guard", Type::getInt8PtrTy(M.getContext()));
+  if (!M.getNamedValue("__stack_chk_guard"))
+    new GlobalVariable(M, Type::getInt8PtrTy(M.getContext()), false,
+                       GlobalVariable::ExternalLinkage,
+                       nullptr, "__stack_chk_guard");
 }
 
 // Currently only support "standard" __stack_chk_guard.
 // TODO: add LOAD_STACK_GUARD support.
 Value *TargetLoweringBase::getSDagStackGuard(const Module &M) const {
-  return M.getGlobalVariable("__stack_chk_guard", true);
+  return M.getNamedValue("__stack_chk_guard");
 }
 
 Value *TargetLoweringBase::getSSPStackGuardCheck(const Module &M) const {

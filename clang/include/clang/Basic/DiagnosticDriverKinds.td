@@ -11,6 +11,8 @@ let Component = "Driver" in {
 
 def err_drv_no_such_file : Error<"no such file or directory: '%0'">;
 def err_drv_unsupported_opt : Error<"unsupported option '%0'">;
+def err_drv_unsupported_opt_with_suggestion
+  : Error<"unsupported option '%0', did you mean '%1'?">;
 def err_drv_unsupported_opt_for_target : Error<
   "unsupported option '%0' for target '%1'">;
 def err_drv_unsupported_option_argument : Error<
@@ -135,8 +137,13 @@ def err_arch_unsupported_isa
 def err_drv_I_dash_not_supported : Error<
   "'%0' not supported, please use -iquote instead">;
 def err_drv_unknown_argument : Error<"unknown argument: '%0'">;
+def err_drv_unknown_argument_with_suggestion
+  : Error<"unknown argument '%0', did you mean '%1'?">;
 def warn_drv_unknown_argument_clang_cl : Warning<
   "unknown argument ignored in clang-cl: '%0'">,
+  InGroup<UnknownArgument>;
+def warn_drv_unknown_argument_clang_cl_with_suggestion : Warning<
+  "unknown argument ignored in clang-cl '%0' (did you mean '%1'?)">,
   InGroup<UnknownArgument>;
 
 def warn_drv_ycyu_no_arg_clang_cl : Warning<
@@ -195,6 +202,9 @@ def err_drv_expecting_fopenmp_with_fopenmp_targets : Error<
   "The option -fopenmp-targets must be used in conjunction with a -fopenmp option compatible with offloading, please use -fopenmp=libomp or -fopenmp=libiomp5.">;
 def warn_drv_omp_offload_target_duplicate : Warning<
   "The OpenMP offloading target '%0' is similar to target '%1' already specified - will be ignored.">, 
+  InGroup<OpenMPTarget>;
+def warn_drv_omp_offload_target_missingbcruntime : Warning<
+  "No library '%0' found in the default clang lib directory or in LIBRARY_PATH. Expect degraded performance due to no inlining of runtime functions on target devices.">,
   InGroup<OpenMPTarget>;
 def err_drv_bitcode_unsupported_on_toolchain : Error<
   "-fembed-bitcode is not supported on versions of iOS prior to 6.0">;
@@ -278,6 +288,9 @@ def err_analyzer_config_multiple_values : Error<
 
 def err_drv_invalid_hvx_length : Error<
   "-mhvx-length is not supported without a -mhvx/-mhvx= flag">;
+def warn_drv_vectorize_needs_hvx : Warning<
+  "auto-vectorization requires HVX, use -mhvx to enable it">,
+  InGroup<OptionIgnored>;
 
 def err_drv_modules_validate_once_requires_timestamp : Error<
   "option '-fmodules-validate-once-per-build-session' requires "

@@ -25,6 +25,7 @@
 #include "llvm/DebugInfo/DWARF/DWARFDebugMacro.h"
 #include "llvm/DebugInfo/DWARF/DWARFDebugPubTable.h"
 #include "llvm/DebugInfo/DWARF/DWARFDebugRangeList.h"
+#include "llvm/DebugInfo/DWARF/DWARFDebugRnglists.h"
 #include "llvm/DebugInfo/DWARF/DWARFDie.h"
 #include "llvm/DebugInfo/DWARF/DWARFFormValue.h"
 #include "llvm/DebugInfo/DWARF/DWARFGdbIndex.h"
@@ -43,6 +44,7 @@
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/TargetRegistry.h"
+#include "llvm/Support/WithColor.h"
 #include "llvm/Support/raw_ostream.h"
 #include <algorithm>
 #include <cstdint>
@@ -107,12 +109,12 @@ collectContributionData(DWARFContext::cu_iterator_range CUs,
   // Sort the contributions so that any invalid ones are placed at
   // the start of the contributions vector. This way they are reported
   // first.
-  std::sort(Contributions.begin(), Contributions.end(),
-            [](const Optional<StrOffsetsContributionDescriptor> &L,
-               const Optional<StrOffsetsContributionDescriptor> &R) {
-              if (L && R) return L->Base < R->Base;
-              return R.hasValue();
-            });
+  llvm::sort(Contributions.begin(), Contributions.end(),
+             [](const Optional<StrOffsetsContributionDescriptor> &L,
+                const Optional<StrOffsetsContributionDescriptor> &R) {
+               if (L && R) return L->Base < R->Base;
+               return R.hasValue();
+             });
 
   // Uniquify contributions, as it is possible that units (specifically
   // type units in dwo or dwp files) share contributions. We don't want
@@ -348,11 +350,11 @@ void DWARFContext::dump(
 
   if (shouldDump(Explicit, ".debug_frame", DIDT_ID_DebugFrame,
                  DObj->getDebugFrameSection()))
-    getDebugFrame()->dump(OS, DumpOffset);
+    getDebugFrame()->dump(OS, getRegisterInfo(), DumpOffset);
 
   if (shouldDump(Explicit, ".eh_frame", DIDT_ID_DebugFrame,
                  DObj->getEHFrameSection()))
-    getEHFrame()->dump(OS, DumpOffset);
+    getEHFrame()->dump(OS, getRegisterInfo(), DumpOffset);
 
   if (DumpType & DIDT_DebugMacro) {
     if (Explicit || !getDebugMacro()->empty()) {
@@ -387,7 +389,7 @@ void DWARFContext::dump(
       if (DumpOffset && Offset != *DumpOffset) {
         // Find the size of this part of the line table section and skip it.
         unsigned OldOffset = Offset;
-        LineTable.Prologue.parse(LineData, &Offset, U);
+        LineTable.Prologue.parse(LineData, &Offset, *this, U);
         Offset = OldOffset + LineTable.Prologue.TotalLength +
                  LineTable.Prologue.sizeofTotalLength();
         continue;
@@ -397,10 +399,10 @@ void DWARFContext::dump(
       OS << "debug_line[" << format("0x%8.8x", Offset) << "]\n";
       unsigned OldOffset = Offset;
       if (DumpOpts.Verbose) {
-        LineTable.parse(LineData, &Offset, U, &OS);
+        LineTable.parse(LineData, &Offset, *this, U, &OS);
       } else {
-        LineTable.parse(LineData, &Offset, U);
-        LineTable.dump(OS);
+        LineTable.parse(LineData, &Offset, *this, U);
+        LineTable.dump(OS, DIDumpOptions());
       }
       // Check for unparseable prologue, to avoid infinite loops.
       if (OldOffset == Offset)
@@ -422,10 +424,10 @@ void DWARFContext::dump(
         U = It->second;
       DWARFDebugLine::LineTable LineTable;
       unsigned OldOffset = Offset;
-      if (!LineTable.Prologue.parse(LineData, &Offset, U))
+      if (!LineTable.Prologue.parse(LineData, &Offset, *this, U))
         break;
       if (!DumpOffset || OldOffset == *DumpOffset)
-        LineTable.dump(OS);
+        LineTable.dump(OS, DumpOpts);
     }
   }
 
@@ -459,6 +461,18 @@ void DWARFContext::dump(
       strDWOOffset = offset;
     }
   }
+  if (shouldDump(Explicit, ".debug_line_str", DIDT_ID_DebugLineStr,
+                 DObj->getLineStringSection())) {
+    DataExtractor strData(DObj->getLineStringSection(), isLittleEndian(), 0);
+    uint32_t offset = 0;
+    uint32_t strOffset = 0;
+    while (const char *s = strData.getCStr(&offset)) {
+      OS << format("0x%8.8x: \"", strOffset);
+      OS.write_escaped(s);
+      OS << "\"\n";
+      strOffset = offset;
+    }
+  }
 
   if (shouldDump(Explicit, ".debug_ranges", DIDT_ID_DebugRanges,
                  DObj->getRangeSection().Data)) {
@@ -478,6 +492,28 @@ void DWARFContext::dump(
     DWARFDebugRangeList rangeList;
     while (rangeList.extract(rangesData, &offset))
       rangeList.dump(OS);
+  }
+
+  if (shouldDump(Explicit, ".debug_rnglists", DIDT_ID_DebugRnglists,
+                 DObj->getRnglistsSection().Data)) {
+    DWARFDataExtractor rnglistData(*DObj, DObj->getRnglistsSection(),
+                                   isLittleEndian(), 0);
+    uint32_t Offset = 0;
+    while (rnglistData.isValidOffset(Offset)) {
+      DWARFDebugRnglistTable Rnglists;
+      uint32_t TableOffset = Offset;
+      if (Error Err = Rnglists.extract(rnglistData, &Offset)) {
+        WithColor::error() << toString(std::move(Err)) << '\n';
+        uint64_t Length = Rnglists.length();
+        // Keep going after an error, if we can, assuming that the length field
+        // could be read. If it couldn't, stop reading the section.
+        if (Length == 0)
+          break;
+        Offset = TableOffset + Length;
+      } else {
+        Rnglists.dump(OS, DumpOpts);
+      }
+    }
   }
 
   if (shouldDump(Explicit, ".debug_pubnames", DIDT_ID_DebugPubnames,
@@ -637,7 +673,7 @@ const DWARFDebugLoc *DWARFContext::getDebugLoc() {
     return Loc.get();
 
   Loc.reset(new DWARFDebugLoc);
-  // assume all compile units have the same address byte size
+  // Assume all compile units have the same address byte size.
   if (getNumCompileUnits()) {
     DWARFDataExtractor LocData(*DObj, DObj->getLocSection(), isLittleEndian(),
                                getCompileUnitAtIndex(0)->getAddressByteSize());
@@ -650,9 +686,13 @@ const DWARFDebugLocDWO *DWARFContext::getDebugLocDWO() {
   if (LocDWO)
     return LocDWO.get();
 
-  DataExtractor LocData(DObj->getLocDWOSection().Data, isLittleEndian(), 0);
   LocDWO.reset(new DWARFDebugLocDWO());
-  LocDWO->parse(LocData);
+  // Assume all compile units have the same address byte size.
+  if (getNumCompileUnits()) {
+    DataExtractor LocData(DObj->getLocDWOSection().Data, isLittleEndian(),
+                          getCompileUnitAtIndex(0)->getAddressByteSize());
+    LocDWO->parse(LocData);
+  }
   return LocDWO.get();
 }
 
@@ -678,8 +718,8 @@ const DWARFDebugFrame *DWARFContext::getDebugFrame() {
   // provides this information). This problem is fixed in DWARFv4
   // See this dwarf-discuss discussion for more details:
   // http://lists.dwarfstd.org/htdig.cgi/dwarf-discuss-dwarfstd.org/2011-December/001173.html
-  DataExtractor debugFrameData(DObj->getDebugFrameSection(), isLittleEndian(),
-                               DObj->getAddressSize());
+  DWARFDataExtractor debugFrameData(DObj->getDebugFrameSection(),
+                                    isLittleEndian(), DObj->getAddressSize());
   DebugFrame.reset(new DWARFDebugFrame(false /* IsEH */));
   DebugFrame->parse(debugFrameData);
   return DebugFrame.get();
@@ -689,8 +729,8 @@ const DWARFDebugFrame *DWARFContext::getEHFrame() {
   if (EHFrame)
     return EHFrame.get();
 
-  DataExtractor debugFrameData(DObj->getEHFrameSection(), isLittleEndian(),
-                               DObj->getAddressSize());
+  DWARFDataExtractor debugFrameData(DObj->getEHFrameSection(), isLittleEndian(),
+                                    DObj->getAddressSize());
   DebugFrame.reset(new DWARFDebugFrame(true /* IsEH */));
   DebugFrame->parse(debugFrameData);
   return DebugFrame.get();
@@ -771,7 +811,7 @@ DWARFContext::getLineTableForUnit(DWARFUnit *U) {
   // We have to parse it first.
   DWARFDataExtractor lineData(*DObj, U->getLineSection(), isLittleEndian(),
                               U->getAddressByteSize());
-  return Line->getOrParseLineTable(lineData, stmtOffset, U);
+  return Line->getOrParseLineTable(lineData, stmtOffset, *this, U);
 }
 
 void DWARFContext::parseCompileUnits() {
@@ -1128,7 +1168,7 @@ static bool isRelocScattered(const object::ObjectFile &Obj,
 }
 
 ErrorPolicy DWARFContext::defaultErrorHandler(Error E) {
-  errs() << "error: " + toString(std::move(E)) << '\n';
+  WithColor::error() << toString(std::move(E)) << '\n';
   return ErrorPolicy::Continue;
 }
 
@@ -1154,6 +1194,7 @@ class DWARFObjInMemory final : public DWARFObject {
   DWARFSectionMap LocSection;
   DWARFSectionMap LineSection;
   DWARFSectionMap RangeSection;
+  DWARFSectionMap RnglistsSection;
   DWARFSectionMap StringOffsetSection;
   DWARFSectionMap InfoDWOSection;
   DWARFSectionMap LineDWOSection;
@@ -1174,6 +1215,7 @@ class DWARFObjInMemory final : public DWARFObject {
         .Case("debug_line", &LineSection)
         .Case("debug_str_offsets", &StringOffsetSection)
         .Case("debug_ranges", &RangeSection)
+        .Case("debug_rnglists", &RnglistsSection)
         .Case("debug_info.dwo", &InfoDWOSection)
         .Case("debug_loc.dwo", &LocDWOSection)
         .Case("debug_line.dwo", &LineDWOSection)
@@ -1203,6 +1245,7 @@ class DWARFObjInMemory final : public DWARFObject {
   StringRef CUIndexSection;
   StringRef GdbIndexSection;
   StringRef TUIndexSection;
+  StringRef LineStringSection;
 
   SmallVector<SmallString<32>, 4> UncompressedSections;
 
@@ -1225,6 +1268,7 @@ class DWARFObjInMemory final : public DWARFObject {
         .Case("debug_cu_index", &CUIndexSection)
         .Case("debug_tu_index", &TUIndexSection)
         .Case("gdb_index", &GdbIndexSection)
+        .Case("debug_line_str", &LineStringSection)
         // Any more debug info sections go here.
         .Default(nullptr);
   }
@@ -1443,6 +1487,7 @@ public:
   const DWARFSection &getStringOffsetSection() const override {
     return StringOffsetSection;
   }
+  StringRef getLineStringSection() const override { return LineStringSection; }
 
   // Sections for DWARF5 split dwarf proposal.
   const DWARFSection &getInfoDWOSection() const override {
@@ -1462,6 +1507,9 @@ public:
   const DWARFSection &getLineSection() const override { return LineSection; }
   StringRef getStringSection() const override { return StringSection; }
   const DWARFSection &getRangeSection() const override { return RangeSection; }
+  const DWARFSection &getRnglistsSection() const override {
+    return RnglistsSection;
+  }
   StringRef getMacinfoSection() const override { return MacinfoSection; }
   StringRef getPubNamesSection() const override { return PubNamesSection; }
   StringRef getPubTypesSection() const override { return PubTypesSection; }

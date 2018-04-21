@@ -11,6 +11,7 @@
 #define LLVM_MC_MCCONTEXT_H
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/SmallVector.h"
@@ -24,6 +25,8 @@
 #include "llvm/MC/SectionKind.h"
 #include "llvm/Support/Allocator.h"
 #include "llvm/Support/Compiler.h"
+#include "llvm/Support/Error.h"
+#include "llvm/Support/MD5.h"
 #include "llvm/Support/raw_ostream.h"
 #include <algorithm>
 #include <cassert>
@@ -492,8 +495,10 @@ namespace llvm {
     void setMainFileName(StringRef S) { MainFileName = S; }
 
     /// Creates an entry in the dwarf file and directory tables.
-    unsigned getDwarfFile(StringRef Directory, StringRef FileName,
-                          unsigned FileNumber, unsigned CUID);
+    Expected<unsigned> getDwarfFile(StringRef Directory, StringRef FileName,
+                                    unsigned FileNumber,
+                                    MD5::MD5Result *Checksum,
+                                    Optional<StringRef> Source, unsigned CUID);
 
     bool isValidDwarfFileNumber(unsigned FileNumber, unsigned CUID = 0);
 
@@ -532,8 +537,13 @@ namespace llvm {
       DwarfCompileUnitID = CUIndex;
     }
 
-    void setMCLineTableCompilationDir(unsigned CUID, StringRef CompilationDir) {
-      getMCDwarfLineTable(CUID).setCompilationDir(CompilationDir);
+    /// Specifies the "root" file and directory of the compilation unit.
+    /// These are "file 0" and "directory 0" in DWARF v5.
+    void setMCLineTableRootFile(unsigned CUID, StringRef CompilationDir,
+                                StringRef Filename, MD5::MD5Result *Checksum,
+                                Optional<StringRef> Source) {
+      getMCDwarfLineTable(CUID).setRootFile(CompilationDir, Filename, Checksum,
+                                            Source);
     }
 
     /// Saves the information from the currently parsed dwarf .loc directive

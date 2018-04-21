@@ -679,6 +679,10 @@ TARGET_BUILTIN(__builtin_ia32_clflushopt, "vvC*", "", "clflushopt")
 //CLWB
 TARGET_BUILTIN(__builtin_ia32_clwb, "vvC*", "", "clwb")
 
+//WB[NO]INVD
+TARGET_BUILTIN(__builtin_ia32_wbinvd, "v", "", "")
+TARGET_BUILTIN(__builtin_ia32_wbnoinvd, "v", "", "wbnoinvd")
+
 // ADX
 TARGET_BUILTIN(__builtin_ia32_addcarryx_u32, "UcUcUiUiUi*", "", "adx")
 TARGET_BUILTIN(__builtin_ia32_addcarry_u32, "UcUcUiUiUi*", "", "")
@@ -894,6 +898,9 @@ BUILTIN(__builtin_ia32_rdpmc, "ULLii", "")
 BUILTIN(__builtin_ia32_rdtsc, "ULLi", "")
 BUILTIN(__rdtsc, "ULLi", "")
 BUILTIN(__builtin_ia32_rdtscp, "ULLiUi*", "")
+
+TARGET_BUILTIN(__builtin_ia32_rdpid, "Ui", "", "rdpid")
+
 // PKU
 TARGET_BUILTIN(__builtin_ia32_rdpkru, "Ui", "", "pku")
 TARGET_BUILTIN(__builtin_ia32_wrpkru, "vUi", "", "pku")
@@ -1135,9 +1142,9 @@ TARGET_BUILTIN(__builtin_ia32_vpermt2varhi128_maskz, "V8sV8sV8sV8sUc", "", "avx5
 TARGET_BUILTIN(__builtin_ia32_vpermt2varhi256_mask, "V16sV16sV16sV16sUs", "", "avx512vl,avx512bw")
 TARGET_BUILTIN(__builtin_ia32_vpermt2varhi256_maskz, "V16sV16sV16sV16sUs", "", "avx512vl,avx512bw")
 
-TARGET_BUILTIN(__builtin_ia32_pmulhrsw512_mask, "V32sV32sV32sV32sUi", "", "avx512bw")
-TARGET_BUILTIN(__builtin_ia32_pmulhuw512_mask, "V32sV32sV32sV32sUi", "", "avx512bw")
-TARGET_BUILTIN(__builtin_ia32_pmulhw512_mask, "V32sV32sV32sV32sUi", "", "avx512bw")
+TARGET_BUILTIN(__builtin_ia32_pmulhrsw512, "V32sV32sV32s", "", "avx512bw")
+TARGET_BUILTIN(__builtin_ia32_pmulhuw512, "V32sV32sV32s", "", "avx512bw")
+TARGET_BUILTIN(__builtin_ia32_pmulhw512, "V32sV32sV32s", "", "avx512bw")
 
 TARGET_BUILTIN(__builtin_ia32_addpd512_mask, "V8dV8dV8dV8dUcIi", "", "avx512f")
 TARGET_BUILTIN(__builtin_ia32_addps512_mask, "V16fV16fV16fV16fUsIi", "", "avx512f")
@@ -1148,8 +1155,8 @@ TARGET_BUILTIN(__builtin_ia32_mulps512_mask, "V16fV16fV16fV16fUsIi", "", "avx512
 TARGET_BUILTIN(__builtin_ia32_subpd512_mask, "V8dV8dV8dV8dUcIi", "", "avx512f")
 TARGET_BUILTIN(__builtin_ia32_subps512_mask, "V16fV16fV16fV16fUsIi", "", "avx512f")
 
-TARGET_BUILTIN(__builtin_ia32_pmaddubsw512_mask, "V32sV64cV64cV32sUi", "", "avx512bw")
-TARGET_BUILTIN(__builtin_ia32_pmaddwd512_mask, "V16iV32sV32sV16iUs", "", "avx512bw")
+TARGET_BUILTIN(__builtin_ia32_pmaddubsw512, "V32sV64cV64c", "", "avx512bw")
+TARGET_BUILTIN(__builtin_ia32_pmaddwd512, "V16iV32sV32s", "", "avx512bw")
 
 TARGET_BUILTIN(__builtin_ia32_addss_round_mask, "V4fV4fV4fV4fUcIi", "", "avx512f")
 TARGET_BUILTIN(__builtin_ia32_divss_round_mask, "V4fV4fV4fV4fUcIi", "", "avx512f")
@@ -1192,26 +1199,15 @@ TARGET_BUILTIN(__builtin_ia32_compressstoresf128_mask, "vV4f*V4fUc", "", "avx512
 TARGET_BUILTIN(__builtin_ia32_compressstoresf256_mask, "vV8f*V8fUc", "", "avx512vl")
 TARGET_BUILTIN(__builtin_ia32_compressstoresi128_mask, "vV4i*V4iUc", "", "avx512vl")
 TARGET_BUILTIN(__builtin_ia32_compressstoresi256_mask, "vV8i*V8iUc", "", "avx512vl")
-TARGET_BUILTIN(__builtin_ia32_cvtdq2ps128_mask, "V4fV4iV4fUc", "", "avx512vl")
-TARGET_BUILTIN(__builtin_ia32_cvtdq2ps256_mask, "V8fV8iV8fUc", "", "avx512vl")
 TARGET_BUILTIN(__builtin_ia32_cvtpd2dq128_mask, "V4iV2dV4iUc", "", "avx512vl")
-TARGET_BUILTIN(__builtin_ia32_cvtpd2dq256_mask, "V4iV4dV4iUc", "", "avx512vl")
 TARGET_BUILTIN(__builtin_ia32_cvtpd2ps_mask, "V4fV2dV4fUc", "", "avx512vl")
-TARGET_BUILTIN(__builtin_ia32_cvtpd2ps256_mask, "V4fV4dV4fUc", "", "avx512vl")
 TARGET_BUILTIN(__builtin_ia32_cvtpd2udq128_mask, "V4iV2dV4iUc", "", "avx512vl")
 TARGET_BUILTIN(__builtin_ia32_cvtpd2udq256_mask, "V4iV4dV4iUc", "", "avx512vl")
-TARGET_BUILTIN(__builtin_ia32_cvtps2dq128_mask, "V4iV4fV4iUc", "", "avx512vl")
-TARGET_BUILTIN(__builtin_ia32_cvtps2dq256_mask, "V8iV8fV8iUc", "", "avx512vl")
-TARGET_BUILTIN(__builtin_ia32_cvtps2pd128_mask, "V2dV4fV2dUc", "", "avx512vl")
-TARGET_BUILTIN(__builtin_ia32_cvtps2pd256_mask, "V4dV4fV4dUc", "", "avx512vl")
 TARGET_BUILTIN(__builtin_ia32_cvtps2udq128_mask, "V4iV4fV4iUc", "", "avx512vl")
 TARGET_BUILTIN(__builtin_ia32_cvtps2udq256_mask, "V8iV8fV8iUc", "", "avx512vl")
 TARGET_BUILTIN(__builtin_ia32_cvttpd2dq128_mask, "V4iV2dV4iUc", "", "avx512vl")
-TARGET_BUILTIN(__builtin_ia32_cvttpd2dq256_mask, "V4iV4dV4iUc", "", "avx512vl")
 TARGET_BUILTIN(__builtin_ia32_cvttpd2udq128_mask, "V4iV2dV4iUc", "", "avx512vl")
 TARGET_BUILTIN(__builtin_ia32_cvttpd2udq256_mask, "V4iV4dV4iUc", "", "avx512vl")
-TARGET_BUILTIN(__builtin_ia32_cvttps2dq128_mask, "V4iV4fV4iUc", "", "avx512vl")
-TARGET_BUILTIN(__builtin_ia32_cvttps2dq256_mask, "V8iV8fV8iUc", "", "avx512vl")
 TARGET_BUILTIN(__builtin_ia32_cvttps2udq128_mask, "V4iV4fV4iUc", "", "avx512vl")
 TARGET_BUILTIN(__builtin_ia32_cvttps2udq256_mask, "V8iV8fV8iUc", "", "avx512vl")
 TARGET_BUILTIN(__builtin_ia32_cvtudq2ps128_mask, "V4fV4iV4fUc", "", "avx512vl")
@@ -1796,8 +1792,6 @@ TARGET_BUILTIN(__builtin_ia32_permvarhi128_mask, "V8sV8sV8sV8sUc","","avx512bw,a
 TARGET_BUILTIN(__builtin_ia32_permvarhi256_mask, "V16sV16sV16sV16sUs","","avx512bw,avx512vl")
 TARGET_BUILTIN(__builtin_ia32_permvardf256_mask, "V4dV4dV4LLiV4dUc","","avx512vl")
 TARGET_BUILTIN(__builtin_ia32_permvardi256_mask, "V4LLiV4LLiV4LLiV4LLiUc","","avx512vl")
-TARGET_BUILTIN(__builtin_ia32_permvarsf256_mask, "V8fV8fV8iV8fUc","","avx512vl")
-TARGET_BUILTIN(__builtin_ia32_permvarsi256_mask, "V8iV8iV8iV8iUc","","avx512vl")
 TARGET_BUILTIN(__builtin_ia32_fpclasspd128_mask, "UcV2dIiUc","","avx512dq,avx512vl")
 TARGET_BUILTIN(__builtin_ia32_fpclasspd256_mask, "UcV4dIiUc","","avx512dq,avx512vl")
 TARGET_BUILTIN(__builtin_ia32_fpclassps128_mask, "UcV4fIiUc","","avx512dq,avx512vl")
@@ -1886,8 +1880,16 @@ TARGET_BUILTIN(__builtin_ia32_selectpd_512, "V8dUcV8dV8d", "", "")
 TARGET_BUILTIN(__builtin_ia32_monitorx, "vv*UiUi", "", "mwaitx")
 TARGET_BUILTIN(__builtin_ia32_mwaitx, "vUiUiUi", "", "mwaitx")
 
+// WAITPKG
+TARGET_BUILTIN(__builtin_ia32_umonitor, "vv*", "", "waitpkg")
+TARGET_BUILTIN(__builtin_ia32_umwait, "UcUiUiUi", "", "waitpkg")
+TARGET_BUILTIN(__builtin_ia32_tpause, "UcUiUiUi", "", "waitpkg")
+
 // CLZERO
 TARGET_BUILTIN(__builtin_ia32_clzero, "vv*", "", "clzero")
+
+// CLDEMOTE
+TARGET_BUILTIN(__builtin_ia32_cldemote, "vvC*", "", "cldemote")
 
 // MSVC
 TARGET_HEADER_BUILTIN(_BitScanForward, "UcUNi*UNi", "nh", "intrin.h", ALL_MS_LANGUAGES, "")

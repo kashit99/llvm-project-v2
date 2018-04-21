@@ -14,8 +14,8 @@
 
 #include "sanitizer_platform.h"
 
-#if SANITIZER_FREEBSD || SANITIZER_LINUX || SANITIZER_NETBSD || \
-    SANITIZER_SOLARIS
+#if SANITIZER_FREEBSD || SANITIZER_LINUX || SANITIZER_NETBSD ||                \
+    SANITIZER_OPENBSD || SANITIZER_SOLARIS
 
 #include "sanitizer_allocator_internal.h"
 #include "sanitizer_atomic.h"
@@ -26,7 +26,6 @@
 #include "sanitizer_linux.h"
 #include "sanitizer_placement_new.h"
 #include "sanitizer_procmaps.h"
-#include "sanitizer_stacktrace.h"
 
 #include <dlfcn.h>  // for dlsym()
 #include <link.h>
@@ -40,6 +39,11 @@
 #include <osreldate.h>
 #include <sys/sysctl.h>
 #define pthread_getattr_np pthread_attr_get_np
+#endif
+
+#if SANITIZER_OPENBSD
+#include <pthread_np.h>
+#include <sys/sysctl.h>
 #endif
 
 #if SANITIZER_NETBSD
@@ -127,7 +131,12 @@ void GetThreadStackTopAndBottom(bool at_initialization, uptr *stack_top,
   CHECK_EQ(thr_stksegment(&ss), 0);
   stacksize = ss.ss_size;
   stackaddr = (char *)ss.ss_sp - stacksize;
-#else // !SANITIZER_SOLARIS
+#elif SANITIZER_OPENBSD
+  stack_t sattr;
+  CHECK_EQ(pthread_stackseg_np(pthread_self(), &sattr), 0);
+  stackaddr = sattr.ss_sp;
+  stacksize = sattr.ss_size;
+#else  // !SANITIZER_SOLARIS
   pthread_attr_t attr;
   pthread_attr_init(&attr);
   CHECK_EQ(pthread_getattr_np(pthread_self(), &attr), 0);
@@ -173,8 +182,8 @@ bool SanitizerGetThreadName(char *name, int max_len) {
 #endif
 }
 
-#if !SANITIZER_FREEBSD && !SANITIZER_ANDROID && !SANITIZER_GO && \
-    !SANITIZER_NETBSD && !SANITIZER_SOLARIS
+#if !SANITIZER_FREEBSD && !SANITIZER_ANDROID && !SANITIZER_GO &&               \
+    !SANITIZER_NETBSD && !SANITIZER_OPENBSD && !SANITIZER_SOLARIS
 static uptr g_tls_size;
 
 #ifdef __i386__
@@ -184,7 +193,7 @@ static uptr g_tls_size;
 #endif
 
 void InitTlsSize() {
-// all current supported platforms have 16 bytes stack alignment
+  // all current supported platforms have 16 bytes stack alignment
   const size_t kStackAlign = 16;
   typedef void (*get_tls_func)(size_t*, size_t*) DL_INTERNAL_FUNCTION;
   get_tls_func get_tls;
@@ -205,14 +214,15 @@ void InitTlsSize() { }
 #endif  // !SANITIZER_FREEBSD && !SANITIZER_ANDROID && !SANITIZER_GO &&
         // !SANITIZER_NETBSD && !SANITIZER_SOLARIS
 
-#if (defined(__x86_64__) || defined(__i386__) || defined(__mips__) \
-    || defined(__aarch64__) || defined(__powerpc64__) || defined(__s390__) \
-    || defined(__arm__)) && SANITIZER_LINUX && !SANITIZER_ANDROID
+#if (defined(__x86_64__) || defined(__i386__) || defined(__mips__) ||          \
+     defined(__aarch64__) || defined(__powerpc64__) || defined(__s390__) ||    \
+     defined(__arm__)) &&                                                      \
+    SANITIZER_LINUX && !SANITIZER_ANDROID
 // sizeof(struct pthread) from glibc.
-static atomic_uintptr_t kThreadDescriptorSize;
+static atomic_uintptr_t thread_descriptor_size;
 
 uptr ThreadDescriptorSize() {
-  uptr val = atomic_load(&kThreadDescriptorSize, memory_order_relaxed);
+  uptr val = atomic_load_relaxed(&thread_descriptor_size);
   if (val)
     return val;
 #if defined(__x86_64__) || defined(__i386__) || defined(__arm__)
@@ -251,31 +261,22 @@ uptr ThreadDescriptorSize() {
       else
         val = FIRST_32_SECOND_64(1216, 2304);
     }
-    if (val)
-      atomic_store(&kThreadDescriptorSize, val, memory_order_relaxed);
-    return val;
   }
 #endif
 #elif defined(__mips__)
   // TODO(sagarthakur): add more values as per different glibc versions.
   val = FIRST_32_SECOND_64(1152, 1776);
-  if (val)
-    atomic_store(&kThreadDescriptorSize, val, memory_order_relaxed);
-  return val;
 #elif defined(__aarch64__)
   // The sizeof (struct pthread) is the same from GLIBC 2.17 to 2.22.
   val = 1776;
-  atomic_store(&kThreadDescriptorSize, val, memory_order_relaxed);
-  return val;
 #elif defined(__powerpc64__)
   val = 1776; // from glibc.ppc64le 2.20-8.fc21
-  atomic_store(&kThreadDescriptorSize, val, memory_order_relaxed);
-  return val;
 #elif defined(__s390__)
   val = FIRST_32_SECOND_64(1152, 1776); // valid for glibc 2.22
-  atomic_store(&kThreadDescriptorSize, val, memory_order_relaxed);
 #endif
-  return 0;
+  if (val)
+    atomic_store_relaxed(&thread_descriptor_size, val);
+  return val;
 }
 
 // The offset at which pointer to self is located in the thread descriptor.
@@ -432,6 +433,9 @@ static void GetTls(uptr *addr, uptr *size) {
       *addr = (uptr)tcb->tcb_dtv[1];
     }
   }
+#elif SANITIZER_OPENBSD
+  *addr = 0;
+  *size = 0;
 #elif SANITIZER_ANDROID
   *addr = 0;
   *size = 0;
@@ -447,8 +451,8 @@ static void GetTls(uptr *addr, uptr *size) {
 
 #if !SANITIZER_GO
 uptr GetTlsSize() {
-#if SANITIZER_FREEBSD || SANITIZER_ANDROID || SANITIZER_NETBSD || \
-    SANITIZER_SOLARIS
+#if SANITIZER_FREEBSD || SANITIZER_ANDROID || SANITIZER_NETBSD ||              \
+    SANITIZER_OPENBSD || SANITIZER_SOLARIS
   uptr addr, size;
   GetTls(&addr, &size);
   return size;
@@ -485,13 +489,13 @@ void GetThreadStackAndTls(bool main, uptr *stk_addr, uptr *stk_size,
 #endif
 }
 
-# if !SANITIZER_FREEBSD
+#if !SANITIZER_FREEBSD && !SANITIZER_OPENBSD
 typedef ElfW(Phdr) Elf_Phdr;
-# elif SANITIZER_WORDSIZE == 32 && __FreeBSD_version <= 902001  // v9.2
-#  define Elf_Phdr XElf32_Phdr
-#  define dl_phdr_info xdl_phdr_info
-#  define dl_iterate_phdr(c, b) xdl_iterate_phdr((c), (b))
-# endif
+#elif SANITIZER_WORDSIZE == 32 && __FreeBSD_version <= 902001 // v9.2
+#define Elf_Phdr XElf32_Phdr
+#define dl_phdr_info xdl_phdr_info
+#define dl_iterate_phdr(c, b) xdl_iterate_phdr((c), (b))
+#endif // !SANITIZER_FREEBSD && !SANITIZER_OPENBSD
 
 struct DlIteratePhdrData {
   InternalMmapVectorNoCtor<LoadedModule> *modules;
@@ -611,7 +615,7 @@ uptr GetRSS() {
 // sysconf(_SC_NPROCESSORS_{CONF,ONLN}) cannot be used on most platforms as
 // they allocate memory.
 u32 GetNumberOfCPUs() {
-#if SANITIZER_FREEBSD || SANITIZER_NETBSD
+#if SANITIZER_FREEBSD || SANITIZER_NETBSD || SANITIZER_OPENBSD
   u32 ncpu;
   int req[2];
   size_t len = sizeof(ncpu);
@@ -770,4 +774,4 @@ u64 MonotonicNanoTime() {
 
 } // namespace __sanitizer
 
-#endif  // SANITIZER_FREEBSD || SANITIZER_LINUX || SANITIZER_NETBSD
+#endif

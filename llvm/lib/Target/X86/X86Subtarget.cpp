@@ -157,8 +157,11 @@ X86Subtarget::classifyGlobalFunctionReference(const GlobalValue *GV,
       // In Regcall calling convention those registers are used for passing
       // parameters. Thus we need to prevent lazy binding in Regcall.
       return X86II::MO_GOTPCREL;
-    if (F && F->hasFnAttribute(Attribute::NonLazyBind) && is64Bit())
-      return X86II::MO_GOTPCREL;
+    // If PLT must be avoided then the call should be via GOTPCREL.
+    if (((F && F->hasFnAttribute(Attribute::NonLazyBind)) ||
+         (!F && M.getRtLibUseGOT())) &&
+        is64Bit())
+       return X86II::MO_GOTPCREL;
     return X86II::MO_PLT;
   }
 
@@ -216,8 +219,6 @@ void X86Subtarget::initSubtargetFeatures(StringRef CPU, StringRef FS) {
   // micro-architectures respectively.
   if (hasSSE42() || hasSSE4A())
     IsUAMem16Slow = false;
-  
-  InstrItins = getInstrItineraryForCPU(CPUName);
 
   // It's important to keep the MCSubtargetInfo feature bits in sync with
   // target data structure which is shared with MC code emitter, etc.
@@ -254,12 +255,19 @@ void X86Subtarget::initSubtargetFeatures(StringRef CPU, StringRef FS) {
     GatherOverhead = 2;
   if (hasAVX512())
     ScatterOverhead = 2;
+
+  // Consume the vector width attribute or apply any target specific limit.
+  if (PreferVectorWidthOverride)
+    PreferVectorWidth = PreferVectorWidthOverride;
+  else if (Prefer256Bit)
+    PreferVectorWidth = 256;
 }
 
 void X86Subtarget::initializeEnvironment() {
   X86SSELevel = NoSSE;
   X863DNowLevel = NoThreeDNow;
   HasX87 = false;
+  HasNOPL = false;
   HasCMov = false;
   HasX86_64 = false;
   HasPOPCNT = false;
@@ -308,12 +316,16 @@ void X86Subtarget::initializeEnvironment() {
   HasLAHFSAHF = false;
   HasMWAITX = false;
   HasCLZERO = false;
+  HasCLDEMOTE = false;
   HasMPX = false;
   HasSHSTK = false;
   HasIBT = false;
   HasSGX = false;
   HasCLFLUSHOPT = false;
   HasCLWB = false;
+  HasWBNOINVD = false;
+  HasRDPID = false;
+  HasWAITPKG = false;
   UseRetpoline = false;
   UseRetpolineExternalThunk = false;
   IsPMULLDSlow = false;
@@ -323,8 +335,12 @@ void X86Subtarget::initializeEnvironment() {
   HasSSEUnalignedMem = false;
   HasCmpxchg16b = false;
   UseLeaForSP = false;
+  HasPOPCNTFalseDeps = false;
+  HasLZCNTFalseDeps = false;
   HasFastVariableShuffle = false;
   HasFastPartialYMMorZMMWrite = false;
+  HasFast11ByteNOP = false;
+  HasFast15ByteNOP = false;
   HasFastGather = false;
   HasFastScalarFSQRT = false;
   HasFastVectorFSQRT = false;
@@ -347,6 +363,8 @@ void X86Subtarget::initializeEnvironment() {
   X86ProcFamily = Others;
   GatherOverhead = 1024;
   ScatterOverhead = 1024;
+  PreferVectorWidth = UINT32_MAX;
+  Prefer256Bit = false;
 }
 
 X86Subtarget &X86Subtarget::initializeSubtargetDependencies(StringRef CPU,
@@ -358,10 +376,14 @@ X86Subtarget &X86Subtarget::initializeSubtargetDependencies(StringRef CPU,
 
 X86Subtarget::X86Subtarget(const Triple &TT, StringRef CPU, StringRef FS,
                            const X86TargetMachine &TM,
-                           unsigned StackAlignOverride)
+                           unsigned StackAlignOverride,
+                           unsigned PreferVectorWidthOverride,
+                           unsigned RequiredVectorWidth)
     : X86GenSubtargetInfo(TT, CPU, FS), X86ProcFamily(Others),
       PICStyle(PICStyles::None), TM(TM), TargetTriple(TT),
       StackAlignOverride(StackAlignOverride),
+      PreferVectorWidthOverride(PreferVectorWidthOverride),
+      RequiredVectorWidth(RequiredVectorWidth),
       In64BitMode(TargetTriple.getArch() == Triple::x86_64),
       In32BitMode(TargetTriple.getArch() == Triple::x86 &&
                   TargetTriple.getEnvironment() != Triple::CODE16),

@@ -285,6 +285,19 @@ static bool isObjectSize(const Value *V, uint64_t Size, const DataLayout &DL,
       case Instruction::Shl:
         V = GetLinearExpression(BOp->getOperand(0), Scale, Offset, ZExtBits,
                                 SExtBits, DL, Depth + 1, AC, DT, NSW, NUW);
+
+        // We're trying to linearize an expression of the kind:
+        //   shl i8 -128, 36
+        // where the shift count exceeds the bitwidth of the type.
+        // We can't decompose this further (the expression would return
+        // a poison value).
+        if (Offset.getBitWidth() < RHS.getLimitedValue() ||
+            Scale.getBitWidth() < RHS.getLimitedValue()) {
+          Scale = 1;
+          Offset = 0;
+          return V;
+        }
+
         Offset <<= RHS.getLimitedValue();
         Scale <<= RHS.getLimitedValue();
         // the semantics of nsw and nuw for left shifts don't match those of
@@ -489,6 +502,13 @@ bool BasicAAResult::DecomposeGEPExpression(const Value *V,
       bool NSW = true, NUW = true;
       Index = GetLinearExpression(Index, IndexScale, IndexOffset, ZExtBits,
                                   SExtBits, DL, 0, AC, DT, NSW, NUW);
+
+      // All GEP math happens in the width of the pointer type,
+      // so we can truncate the value to 64-bits as we don't handle
+      // currently pointers larger than 64 bits and we would crash
+      // later. TODO: Make `Scale` an APInt to avoid this problem.
+      if (IndexScale.getBitWidth() > 64)
+        IndexScale = IndexScale.sextOrTrunc(64);
 
       // The GEP index scale ("Scale") scales C1*V+C2, yielding (C1*V+C2)*Scale.
       // This gives us an aggregate computation of (C1*Scale)*V + C2*Scale.
@@ -832,8 +852,11 @@ ModRefInfo BasicAAResult::getModRefInfo(ImmutableCallSite CS,
       IsMustAlias = false;
 
     // Early return if we improved mod ref information
-    if (!isModAndRefSet(Result))
+    if (!isModAndRefSet(Result)) {
+      if (isNoModRef(Result))
+        return ModRefInfo::NoModRef;
       return IsMustAlias ? setMust(Result) : clearMust(Result);
+    }
   }
 
   // If the CallSite is to malloc or calloc, we can assume that it doesn't
@@ -1153,13 +1176,13 @@ bool BasicAAResult::isGEPBaseAtNegativeOffset(const GEPOperator *GEPOp,
                              DecompObject.OtherOffset;
 
   // If the GEP has no variable indices, we know the precise offset
-  // from the base, then use it. If the GEP has variable indices, we're in
-  // a bit more trouble: we can't count on the constant offsets that come
-  // from non-struct sources, since these can be "rewound" by a negative
-  // variable offset. So use only offsets that came from structs.
+  // from the base, then use it. If the GEP has variable indices,
+  // we can't get exact GEP offset to identify pointer alias. So return
+  // false in that case.
+  if (!DecompGEP.VarIndices.empty())
+    return false;
   int64_t GEPBaseOffset = DecompGEP.StructOffset;
-  if (DecompGEP.VarIndices.empty())
-    GEPBaseOffset += DecompGEP.OtherOffset;
+  GEPBaseOffset += DecompGEP.OtherOffset;
 
   return (GEPBaseOffset >= ObjectBaseOffset + (int64_t)ObjectAccessSize);
 }

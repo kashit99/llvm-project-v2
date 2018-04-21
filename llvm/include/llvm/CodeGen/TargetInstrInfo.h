@@ -635,8 +635,8 @@ public:
     return true;
   }
 
-  /// Generate code to reduce the loop iteration by one and check if the loop is
-  /// finished.  Return the value/register of the the new loop count.  We need
+  /// Generate code to reduce the loop iteration by one and check if the loop
+  /// is finished.  Return the value/register of the new loop count.  We need
   /// this function when peeling off one or more iterations of a loop. This
   /// function assumes the nth iteration is peeled first.
   virtual unsigned reduceLoopCount(MachineBasicBlock &MBB, MachineInstr *IndVar,
@@ -956,6 +956,11 @@ public:
   /// Return true if the given SDNode can be copied during scheduling
   /// even if it has glue.
   virtual bool canCopyGluedNodeDuringSchedule(SDNode *N) const { return false; }
+
+  /// Remember what registers the specified instruction uses and modifies.
+  virtual void trackRegDefsUses(const MachineInstr &MI, BitVector &ModifiedRegs,
+                                BitVector &UsedRegs,
+                                const TargetRegisterInfo *TRI) const;
 
 protected:
   /// Target-dependent implementation for foldMemoryOperand.
@@ -1606,7 +1611,7 @@ public:
           std::pair<MachineBasicBlock::iterator, MachineBasicBlock::iterator>>
           &RepeatedSequenceLocs) const {
     llvm_unreachable(
-        "Target didn't implement TargetInstrInfo::getOutliningOverhead!");
+        "Target didn't implement TargetInstrInfo::getOutliningCandidateInfo!");
   }
 
   /// Represents how an instruction should be mapped by the outliner.

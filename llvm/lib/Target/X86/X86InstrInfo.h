@@ -29,6 +29,12 @@ class X86RegisterInfo;
 class X86Subtarget;
 
 namespace X86 {
+
+enum AsmComments {
+  // For instr that was compressed from EVEX to VEX.
+  AC_EVEX_2_VEX = MachineInstr::TAsmComments
+};
+
 // X86 specific condition code. These correspond to X86_*_COND in
 // X86InstrInfo.td. They must be kept in synch.
 enum CondCode {
@@ -77,12 +83,25 @@ unsigned getSETFromCond(CondCode CC, bool HasMemoryOperand = false);
 unsigned getCMovFromCond(CondCode CC, unsigned RegBytes,
                          bool HasMemoryOperand = false);
 
+// Turn jCC opcode into condition code.
+CondCode getCondFromBranchOpc(unsigned Opc);
+
+// Turn setCC opcode into condition code.
+CondCode getCondFromSETOpc(unsigned Opc);
+
 // Turn CMov opcode into condition code.
 CondCode getCondFromCMovOpc(unsigned Opc);
 
 /// GetOppositeBranchCondition - Return the inverse of the specified cond,
 /// e.g. turning COND_E to COND_NE.
 CondCode GetOppositeBranchCondition(CondCode CC);
+
+/// \brief Get the VPCMP immediate if the opcodes are swapped.
+unsigned getSwappedVPCMPImm(unsigned Imm);
+
+/// \brief Get the VPCOM immediate if the opcodes are swapped.
+unsigned getSwappedVPCOMImm(unsigned Imm);
+
 } // namespace X86
 
 /// isGlobalStubReference - Return true if the specified TargetFlag operand is
@@ -490,7 +509,11 @@ public:
   std::pair<uint16_t, uint16_t>
   getExecutionDomain(const MachineInstr &MI) const override;
 
+  uint16_t getExecutionDomainCustom(const MachineInstr &MI) const;
+
   void setExecutionDomain(MachineInstr &MI, unsigned Domain) const override;
+
+  bool setExecutionDomainCustom(MachineInstr &MI, unsigned Domain) const;
 
   unsigned
   getPartialRegUpdateClearance(const MachineInstr &MI, unsigned OpNum,

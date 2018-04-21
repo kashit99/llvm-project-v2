@@ -133,7 +133,7 @@ void Driver::ParseDriverMode(StringRef ProgramName,
   setDriverModeFromOption(ClangNameParts.DriverMode);
 
   for (const char *ArgPtr : Args) {
-    // Ingore nullptrs, they are response file's EOL markers
+    // Ignore nullptrs, they are the response file's EOL markers.
     if (ArgPtr == nullptr)
       continue;
     const StringRef Arg = ArgPtr;
@@ -148,15 +148,13 @@ void Driver::setDriverModeFromOption(StringRef Opt) {
     return;
   StringRef Value = Opt.drop_front(OptName.size());
 
-  const unsigned M = llvm::StringSwitch<unsigned>(Value)
-                         .Case("gcc", GCCMode)
-                         .Case("g++", GXXMode)
-                         .Case("cpp", CPPMode)
-                         .Case("cl", CLMode)
-                         .Default(~0U);
-
-  if (M != ~0U)
-    Mode = static_cast<DriverMode>(M);
+  if (auto M = llvm::StringSwitch<llvm::Optional<DriverMode>>(Value)
+                   .Case("gcc", GCCMode)
+                   .Case("g++", GXXMode)
+                   .Case("cpp", CPPMode)
+                   .Case("cl", CLMode)
+                   .Default(None))
+    Mode = *M;
   else
     Diag(diag::err_drv_unsupported_option_argument) << OptName << Value;
 }
@@ -188,9 +186,19 @@ InputArgList Driver::ParseArgStrings(ArrayRef<const char *> ArgStrings,
   // Check for unsupported options.
   for (const Arg *A : Args) {
     if (A->getOption().hasFlag(options::Unsupported)) {
-      Diag(diag::err_drv_unsupported_opt) << A->getAsString(Args);
-      ContainsError |= Diags.getDiagnosticLevel(diag::err_drv_unsupported_opt,
-                                                SourceLocation()) >
+      unsigned DiagID;
+      auto ArgString = A->getAsString(Args);
+      std::string Nearest;
+      if (getOpts().findNearest(
+            ArgString, Nearest, IncludedFlagsBitmask,
+            ExcludedFlagsBitmask | options::Unsupported) > 1) {
+        DiagID = diag::err_drv_unsupported_opt;
+        Diag(DiagID) << ArgString;
+      } else {
+        DiagID = diag::err_drv_unsupported_opt_with_suggestion;
+        Diag(DiagID) << ArgString << Nearest;
+      }
+      ContainsError |= Diags.getDiagnosticLevel(DiagID, SourceLocation()) >
                        DiagnosticsEngine::Warning;
       continue;
     }
@@ -205,11 +213,20 @@ InputArgList Driver::ParseArgStrings(ArrayRef<const char *> ArgStrings,
   }
 
   for (const Arg *A : Args.filtered(options::OPT_UNKNOWN)) {
-    auto ID = IsCLMode() ? diag::warn_drv_unknown_argument_clang_cl
-                         : diag::err_drv_unknown_argument;
-
-    Diags.Report(ID) << A->getAsString(Args);
-    ContainsError |= Diags.getDiagnosticLevel(ID, SourceLocation()) >
+    unsigned DiagID;
+    auto ArgString = A->getAsString(Args);
+    std::string Nearest;
+    if (getOpts().findNearest(
+          ArgString, Nearest, IncludedFlagsBitmask, ExcludedFlagsBitmask) > 1) {
+      DiagID = IsCLMode() ? diag::warn_drv_unknown_argument_clang_cl
+                          : diag::err_drv_unknown_argument;
+      Diags.Report(DiagID) << ArgString;
+    } else {
+      DiagID = IsCLMode() ? diag::warn_drv_unknown_argument_clang_cl_with_suggestion
+                          : diag::err_drv_unknown_argument_with_suggestion;
+      Diags.Report(DiagID) << ArgString << Nearest;
+    }
+    ContainsError |= Diags.getDiagnosticLevel(DiagID, SourceLocation()) >
                      DiagnosticsEngine::Warning;
   }
 
@@ -379,7 +396,7 @@ static llvm::Triple computeTargetTriple(const Driver &D,
 
   // Handle Apple-specific options available here.
   if (Target.isOSBinFormatMachO()) {
-    // If an explict Darwin arch name is given, that trumps all.
+    // If an explicit Darwin arch name is given, that trumps all.
     if (!DarwinArchName.empty()) {
       tools::darwin::setTripleTypeForMachOArchName(Target, DarwinArchName);
       return Target;
@@ -1412,53 +1429,66 @@ static void PrintDiagnosticCategories(raw_ostream &OS) {
     OS << i << ',' << DiagnosticIDs::getCategoryNameFromID(i) << '\n';
 }
 
-void Driver::handleAutocompletions(StringRef PassedFlags) const {
+void Driver::HandleAutocompletions(StringRef PassedFlags) const {
+  if (PassedFlags == "")
+    return;
   // Print out all options that start with a given argument. This is used for
   // shell autocompletion.
   std::vector<std::string> SuggestedCompletions;
+  std::vector<std::string> Flags;
 
   unsigned short DisableFlags =
       options::NoDriverOption | options::Unsupported | options::Ignored;
-  // We want to show cc1-only options only when clang is invoked as "clang
-  // -cc1". When clang is invoked as "clang -cc1", we add "#" to the beginning
-  // of an --autocomplete  option so that the clang driver can distinguish
-  // whether it is requested to show cc1-only options or not.
-  if (PassedFlags.size() > 0 && PassedFlags[0] == '#') {
-    DisableFlags &= ~options::NoDriverOption;
-    PassedFlags = PassedFlags.substr(1);
+
+  // Parse PassedFlags by "," as all the command-line flags are passed to this
+  // function separated by ","
+  StringRef TargetFlags = PassedFlags;
+  while (TargetFlags != "") {
+    StringRef CurFlag;
+    std::tie(CurFlag, TargetFlags) = TargetFlags.split(",");
+    Flags.push_back(std::string(CurFlag));
   }
 
-  if (PassedFlags.find(',') == StringRef::npos) {
+  // We want to show cc1-only options only when clang is invoked with -cc1 or
+  // -Xclang.
+  if (std::find(Flags.begin(), Flags.end(), "-Xclang") != Flags.end() ||
+      std::find(Flags.begin(), Flags.end(), "-cc1") != Flags.end())
+    DisableFlags &= ~options::NoDriverOption;
+
+  StringRef Cur;
+  Cur = Flags.at(Flags.size() - 1);
+  StringRef Prev;
+  if (Flags.size() >= 2) {
+    Prev = Flags.at(Flags.size() - 2);
+    SuggestedCompletions = Opts->suggestValueCompletions(Prev, Cur);
+  }
+
+  if (SuggestedCompletions.empty())
+    SuggestedCompletions = Opts->suggestValueCompletions(Cur, "");
+
+  if (SuggestedCompletions.empty()) {
     // If the flag is in the form of "--autocomplete=-foo",
     // we were requested to print out all option names that start with "-foo".
     // For example, "--autocomplete=-fsyn" is expanded to "-fsyntax-only".
-    SuggestedCompletions = Opts->findByPrefix(PassedFlags, DisableFlags);
+    SuggestedCompletions = Opts->findByPrefix(Cur, DisableFlags);
 
     // We have to query the -W flags manually as they're not in the OptTable.
     // TODO: Find a good way to add them to OptTable instead and them remove
     // this code.
     for (StringRef S : DiagnosticIDs::getDiagnosticFlags())
-      if (S.startswith(PassedFlags))
+      if (S.startswith(Cur))
         SuggestedCompletions.push_back(S);
-  } else {
-    // If the flag is in the form of "--autocomplete=foo,bar", we were
-    // requested to print out all option values for "-foo" that start with
-    // "bar". For example,
-    // "--autocomplete=-stdlib=,l" is expanded to "libc++" and "libstdc++".
-    StringRef Option, Arg;
-    std::tie(Option, Arg) = PassedFlags.split(',');
-    SuggestedCompletions = Opts->suggestValueCompletions(Option, Arg);
   }
 
   // Sort the autocomplete candidates so that shells print them out in a
   // deterministic order. We could sort in any way, but we chose
   // case-insensitive sorting for consistency with the -help option
   // which prints out options in the case-insensitive alphabetical order.
-  std::sort(SuggestedCompletions.begin(), SuggestedCompletions.end(),
-            [](StringRef A, StringRef B) {
-              if (int X = A.compare_lower(B))
-                return X < 0;
-              return A.compare(B) > 0;
+  llvm::sort(SuggestedCompletions.begin(), SuggestedCompletions.end(),
+             [](StringRef A, StringRef B) {
+               if (int X = A.compare_lower(B))
+                 return X < 0;
+               return A.compare(B) > 0;
             });
 
   llvm::outs() << llvm::join(SuggestedCompletions, "\n") << '\n';
@@ -1567,7 +1597,7 @@ bool Driver::HandleImmediateArgs(const Compilation &C) {
 
   if (Arg *A = C.getArgs().getLastArg(options::OPT_autocomplete)) {
     StringRef PassedFlags = A->getValue();
-    handleAutocompletions(PassedFlags);
+    HandleAutocompletions(PassedFlags);
     return false;
   }
 
@@ -2151,7 +2181,7 @@ class OffloadingActionBuilder final {
               break;
 
             CudaDeviceActions[I] = C.getDriver().ConstructPhaseAction(
-                C, Args, Ph, CudaDeviceActions[I]);
+                C, Args, Ph, CudaDeviceActions[I], Action::OFK_Cuda);
 
             if (Ph == phases::Assemble)
               break;
@@ -2229,9 +2259,10 @@ class OffloadingActionBuilder final {
         assert(!GpuArchList.empty() &&
                "We should have at least one GPU architecture.");
 
-        // If the host input is not CUDA, we don't need to bother about this
-        // input.
-        if (IA->getType() != types::TY_CUDA) {
+        // If the host input is not CUDA or HIP, we don't need to bother about
+        // this input.
+        if (IA->getType() != types::TY_CUDA &&
+            IA->getType() != types::TY_HIP) {
           // The builder will ignore this input.
           IsActive = false;
           return ABRT_Inactive;
@@ -2244,9 +2275,12 @@ class OffloadingActionBuilder final {
           return ABRT_Success;
 
         // Replicate inputs for each GPU architecture.
-        for (unsigned I = 0, E = GpuArchList.size(); I != E; ++I)
-          CudaDeviceActions.push_back(C.MakeAction<InputAction>(
-              IA->getInputArg(), types::TY_CUDA_DEVICE));
+        auto Ty = IA->getType() == types::TY_HIP ? types::TY_HIP_DEVICE
+                                                 : types::TY_CUDA_DEVICE;
+        for (unsigned I = 0, E = GpuArchList.size(); I != E; ++I) {
+          CudaDeviceActions.push_back(
+              C.MakeAction<InputAction>(IA->getInputArg(), Ty));
+        }
 
         return ABRT_Success;
       }
@@ -2991,8 +3025,9 @@ void Driver::BuildActions(Compilation &C, DerivedArgList &Args,
   Args.ClaimAllArgs(options::OPT_cuda_compile_host_device);
 }
 
-Action *Driver::ConstructPhaseAction(Compilation &C, const ArgList &Args,
-                                     phases::ID Phase, Action *Input) const {
+Action *Driver::ConstructPhaseAction(
+    Compilation &C, const ArgList &Args, phases::ID Phase, Action *Input,
+    Action::OffloadKind TargetDeviceOffloadKind) const {
   llvm::PrettyStackTraceString CrashInfo("Constructing phase actions");
 
   // Some types skip the assembler phase (e.g., llvm-bc), but we can't
@@ -3054,7 +3089,7 @@ Action *Driver::ConstructPhaseAction(Compilation &C, const ArgList &Args,
     return C.MakeAction<CompileJobAction>(Input, types::TY_LLVM_BC);
   }
   case phases::Backend: {
-    if (isUsingLTO()) {
+    if (isUsingLTO() && TargetDeviceOffloadKind == Action::OFK_None) {
       types::ID Output =
           Args.hasArg(options::OPT_S) ? types::TY_LTO_IR : types::TY_LTO_BC;
       return C.MakeAction<BackendJobAction>(Input, Output);
@@ -3350,11 +3385,26 @@ class ToolSelector final {
   const Tool *combineBackendCompile(ArrayRef<JobActionInfo> ActionInfo,
                                     const ActionList *&Inputs,
                                     ActionList &CollapsedOffloadAction) {
-    if (ActionInfo.size() < 2 || !canCollapsePreprocessorAction())
+    if (ActionInfo.size() < 2)
       return nullptr;
     auto *BJ = dyn_cast<BackendJobAction>(ActionInfo[0].JA);
     auto *CJ = dyn_cast<CompileJobAction>(ActionInfo[1].JA);
     if (!BJ || !CJ)
+      return nullptr;
+
+    // Check if the initial input (to the compile job or its predessor if one
+    // exists) is LLVM bitcode. In that case, no preprocessor step is required
+    // and we can still collapse the compile and backend jobs when we have
+    // -save-temps. I.e. there is no need for a separate compile job just to
+    // emit unoptimized bitcode.
+    bool InputIsBitcode = true;
+    for (size_t i = 1; i < ActionInfo.size(); i++)
+      if (ActionInfo[i].JA->getType() != types::TY_LLVM_BC &&
+          ActionInfo[i].JA->getType() != types::TY_LTO_BC) {
+        InputIsBitcode = false;
+        break;
+      }
+    if (!InputIsBitcode && !canCollapsePreprocessorAction())
       return nullptr;
 
     // Get compiler tool.
@@ -3362,7 +3412,7 @@ class ToolSelector final {
     if (!T)
       return nullptr;
 
-    if (T->canEmitIR() && (SaveTemps || EmbedBitcode))
+    if (T->canEmitIR() && ((SaveTemps && !InputIsBitcode) || EmbedBitcode))
       return nullptr;
 
     Inputs = &CJ->getInputs();

@@ -16,29 +16,23 @@ set(SANITIZER_SOURCES_NOTERMINATION
   sanitizer_linux.cc
   sanitizer_linux_s390.cc
   sanitizer_mac.cc
+  sanitizer_openbsd.cc
   sanitizer_persistent_allocator.cc
   sanitizer_platform_limits_linux.cc
   sanitizer_platform_limits_netbsd.cc
+  sanitizer_platform_limits_openbsd.cc
   sanitizer_platform_limits_posix.cc
   sanitizer_platform_limits_solaris.cc
   sanitizer_posix.cc
   sanitizer_printf.cc
   sanitizer_procmaps_common.cc
-  sanitizer_procmaps_freebsd.cc
+  sanitizer_procmaps_bsd.cc
   sanitizer_procmaps_linux.cc
   sanitizer_procmaps_mac.cc
   sanitizer_procmaps_solaris.cc
   sanitizer_solaris.cc
-  sanitizer_stackdepot.cc
-  sanitizer_stacktrace.cc
-  sanitizer_stacktrace_printer.cc
   sanitizer_stoptheworld_mac.cc
   sanitizer_suppressions.cc
-  sanitizer_symbolizer.cc
-  sanitizer_symbolizer_fuchsia.cc
-  sanitizer_symbolizer_libbacktrace.cc
-  sanitizer_symbolizer_mac.cc
-  sanitizer_symbolizer_win.cc
   sanitizer_tls_get_addr.cc
   sanitizer_thread_registry.cc
   sanitizer_win.cc)
@@ -62,18 +56,32 @@ set(SANITIZER_NOLIBC_SOURCES
 set(SANITIZER_LIBCDEP_SOURCES
   sanitizer_common_libcdep.cc
   sanitizer_allocator_checks.cc
-  sancov_flags.cc
-  sanitizer_coverage_fuchsia.cc
-  sanitizer_coverage_libcdep_new.cc
-  sanitizer_coverage_win_sections.cc
   sanitizer_linux_libcdep.cc
   sanitizer_mac_libcdep.cc
   sanitizer_posix_libcdep.cc
+  sanitizer_stoptheworld_linux_libcdep.cc)
+
+set(SANITIZER_COVERAGE_SOURCES
+  sancov_flags.cc
+  sanitizer_coverage_fuchsia.cc
+  sanitizer_coverage_libcdep_new.cc
+  sanitizer_coverage_win_sections.cc)
+
+set(SANITIZER_SYMBOLIZER_SOURCES
+  sanitizer_stackdepot.cc
+  sanitizer_stacktrace.cc
   sanitizer_stacktrace_libcdep.cc
-  sanitizer_stoptheworld_linux_libcdep.cc
+  sanitizer_stacktrace_printer.cc
+  sanitizer_symbolizer.cc
+  sanitizer_symbolizer_fuchsia.cc
+  sanitizer_symbolizer_libbacktrace.cc
   sanitizer_symbolizer_libcdep.cc
+  sanitizer_symbolizer_mac.cc
   sanitizer_symbolizer_posix_libcdep.cc
-  sanitizer_unwind_linux_libcdep.cc)
+  sanitizer_symbolizer_report.cc
+  sanitizer_symbolizer_win.cc
+  sanitizer_unwind_linux_libcdep.cc
+  sanitizer_unwind_win.cc)
 
 # Explicitly list all sanitizer_common headers. Not all of these are
 # included in sanitizer_common source files, but we need to depend on
@@ -110,6 +118,7 @@ set(SANITIZER_HEADERS
   sanitizer_flags.h
   sanitizer_flags.inc
   sanitizer_fuchsia.h
+  sanitizer_interceptors_ioctl_netbsd.inc
   sanitizer_interface_internal.h
   sanitizer_internal_defs.h
   sanitizer_lfstack.h
@@ -143,6 +152,7 @@ set(SANITIZER_HEADERS
   sanitizer_syscall_generic.inc
   sanitizer_syscall_linux_x86_64.inc
   sanitizer_syscall_linux_aarch64.inc
+  sanitizer_syscalls_netbsd.inc
   sanitizer_thread_registry.h
   sanitizer_vector.h
   sanitizer_win.h)
@@ -204,6 +214,18 @@ add_compiler_rt_object_libraries(RTSanitizerCommonLibc
   SOURCES ${SANITIZER_LIBCDEP_SOURCES}
   CFLAGS ${SANITIZER_CFLAGS}
   DEFS ${SANITIZER_COMMON_DEFINITIONS})
+add_compiler_rt_object_libraries(RTSanitizerCommonCoverage
+  ${OS_OPTION}
+  ARCHS ${SANITIZER_COMMON_SUPPORTED_ARCH}
+  SOURCES ${SANITIZER_COVERAGE_SOURCES}
+  CFLAGS ${SANITIZER_CFLAGS}
+  DEFS ${SANITIZER_COMMON_DEFINITIONS})
+add_compiler_rt_object_libraries(RTSanitizerCommonSymbolizer
+  ${OS_OPTION}
+  ARCHS ${SANITIZER_COMMON_SUPPORTED_ARCH}
+  SOURCES ${SANITIZER_SYMBOLIZER_SOURCES}
+  CFLAGS ${SANITIZER_CFLAGS}
+  DEFS ${SANITIZER_COMMON_DEFINITIONS})
 
 set(SANITIZER_NO_WEAK_HOOKS_CFLAGS ${SANITIZER_CFLAGS})
 list(APPEND SANITIZER_NO_WEAK_HOOKS_CFLAGS "-DSANITIZER_SUPPORTS_WEAK_HOOKS=0")
@@ -217,6 +239,12 @@ add_compiler_rt_object_libraries(RTSanitizerCommonLibcNoHooks
   ${OS_OPTION}
   ARCHS ${SANITIZER_COMMON_SUPPORTED_ARCH}
   SOURCES ${SANITIZER_LIBCDEP_SOURCES}
+  CFLAGS ${SANITIZER_NO_WEAK_HOOKS_CFLAGS}
+  DEFS ${SANITIZER_COMMON_DEFINITIONS})
+add_compiler_rt_object_libraries(RTSanitizerCommonSymbolizerNoHooks
+  ${OS_OPTION}
+  ARCHS ${SANITIZER_COMMON_SUPPORTED_ARCH}
+  SOURCES ${SANITIZER_SYMBOLIZER_SOURCES}
   CFLAGS ${SANITIZER_NO_WEAK_HOOKS_CFLAGS}
   DEFS ${SANITIZER_COMMON_DEFINITIONS})
 

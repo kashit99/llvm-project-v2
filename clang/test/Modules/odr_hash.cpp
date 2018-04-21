@@ -2286,6 +2286,127 @@ Invalid1 i1;
 #undef DECLS
 }  // namespace BaseClass
 
+namespace PointersAndReferences {
+#if defined(FIRST) || defined(SECOND)
+template<typename> struct Wrapper{};
+#endif
+
+#if defined(FIRST)
+struct S1 {
+  Wrapper<int*> x;
+};
+#elif defined(SECOND)
+struct S1 {
+  Wrapper<float*> x;
+};
+#else
+S1 s1;
+// expected-error@first.h:* {{PointersAndReferences::S1::x' from module 'FirstModule' is not present in definition of 'PointersAndReferences::S1' in module 'SecondModule'}}
+// expected-note@second.h:* {{declaration of 'x' does not match}}
+#endif
+
+#if defined(FIRST)
+struct S2 {
+  Wrapper<int &&> x;
+};
+#elif defined(SECOND)
+struct S2 {
+  Wrapper<float &&> x;
+};
+#else
+S2 s2;
+// expected-error@first.h:* {{PointersAndReferences::S2::x' from module 'FirstModule' is not present in definition of 'PointersAndReferences::S2' in module 'SecondModule'}}
+// expected-note@second.h:* {{declaration of 'x' does not match}}
+#endif
+
+#if defined(FIRST)
+struct S3 {
+  Wrapper<int *> x;
+};
+#elif defined(SECOND)
+struct S3 {
+  Wrapper<float *> x;
+};
+#else
+S3 s3;
+// expected-error@first.h:* {{PointersAndReferences::S3::x' from module 'FirstModule' is not present in definition of 'PointersAndReferences::S3' in module 'SecondModule'}}
+// expected-note@second.h:* {{declaration of 'x' does not match}}
+#endif
+
+#if defined(FIRST)
+struct S4 {
+  Wrapper<int &> x;
+};
+#elif defined(SECOND)
+struct S4 {
+  Wrapper<float &> x;
+};
+#else
+S4 s4;
+// expected-error@first.h:* {{PointersAndReferences::S4::x' from module 'FirstModule' is not present in definition of 'PointersAndReferences::S4' in module 'SecondModule'}}
+// expected-note@second.h:* {{declaration of 'x' does not match}}
+#endif
+
+#if defined(FIRST)
+struct S5 {
+  Wrapper<S5 *> x;
+};
+#elif defined(SECOND)
+struct S5 {
+  Wrapper<const S5 *> x;
+};
+#else
+S5 s5;
+// expected-error@second.h:* {{'PointersAndReferences::S5::x' from module 'SecondModule' is not present in definition of 'PointersAndReferences::S5' in module 'FirstModule'}}
+// expected-note@first.h:* {{declaration of 'x' does not match}}
+#endif
+
+#if defined(FIRST)
+struct S6 {
+  Wrapper<int &> x;
+};
+#elif defined(SECOND)
+struct S6 {
+  Wrapper<const int &> x;
+};
+#else
+S6 s6;
+// expected-error@first.h:* {{PointersAndReferences::S6::x' from module 'FirstModule' is not present in definition of 'PointersAndReferences::S6' in module 'SecondModule'}}
+// expected-note@second.h:* {{declaration of 'x' does not match}}
+#endif
+
+#define DECLS                \
+  Wrapper<int *> x1;         \
+  Wrapper<float *> x2;       \
+  Wrapper<const float *> x3; \
+  Wrapper<int &> x4;         \
+  Wrapper<int &&> x5;        \
+  Wrapper<const int &> x6;   \
+  Wrapper<S1 *> x7;          \
+  Wrapper<S1 &> x8;          \
+  Wrapper<S1 &&> x9;
+
+#if defined(FIRST) || defined(SECOND)
+struct Valid1 {
+  DECLS
+};
+#else
+Valid1 v1;
+#endif
+
+#if defined(FIRST) || defined(SECOND)
+struct Invalid1 {
+  DECLS
+  ACCESS
+};
+#else
+Invalid1 i1;
+// expected-error@second.h:* {{'PointersAndReferences::Invalid1' has different definitions in different modules; first difference is definition in module 'SecondModule' found private access specifier}}
+// expected-note@first.h:* {{but in 'FirstModule' found public access specifier}}
+#endif
+#undef DECLS
+}  // namespace PointersAndReferences
+
 
 // Collection of interesting cases below.
 
@@ -2744,6 +2865,38 @@ struct S3 {
 #else
 S3 s3;
 #endif
+
+#if defined(FIRST)
+using A4 = int;
+using B4 = A4;
+struct S4 {
+  B4 x;
+};
+#elif defined(SECOND)
+using A4 = int;
+using B4 = ::MultipleTypedefs::A4;
+struct S4 {
+  B4 x;
+};
+#else
+S4 s4;
+#endif
+
+#if defined(FIRST)
+using A5 = int;
+using B5 = MultipleTypedefs::A5;
+struct S5 {
+  B5 x;
+};
+#elif defined(SECOND)
+using A5 = int;
+using B5 = ::MultipleTypedefs::A5;
+struct S5 {
+  B5 x;
+};
+#else
+S5 s5;
+#endif
 }  // MultipleTypedefs
 
 namespace DefaultArguments {
@@ -2923,6 +3076,21 @@ int I10 = F10();
 // expected-error@second.h:* {{'FunctionDecl::F10' has different definitions in different modules; definition in module 'SecondModule' first difference is function body}}
 // expected-note@first.h:* {{but in 'FirstModule' found a different body}}
 }  // namespace FunctionDecl
+
+namespace DeclTemplateArguments {
+#if defined(FIRST)
+int foo() { return 1; }
+int bar() { return foo(); }
+#elif defined(SECOND)
+template <class T = int>
+int foo() { return 2; }
+int bar() { return foo<>(); }
+#else
+int num = bar();
+// expected-error@second.h:* {{'DeclTemplateArguments::bar' has different definitions in different modules; definition in module 'SecondModule' first difference is function body}}
+// expected-note@first.h:* {{but in 'FirstModule' found a different body}}
+#endif
+}
 
 // Keep macros contained to one file.
 #ifdef FIRST

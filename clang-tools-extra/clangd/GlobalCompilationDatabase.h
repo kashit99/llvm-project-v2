@@ -52,6 +52,7 @@ class DirectoryBasedGlobalCompilationDatabase
 public:
   DirectoryBasedGlobalCompilationDatabase(
       llvm::Optional<Path> CompileCommandsDir);
+  ~DirectoryBasedGlobalCompilationDatabase() override;
 
   /// Scans File's parents looking for compilation databases.
   /// Any extra flags will be added.
@@ -60,6 +61,9 @@ public:
 
   /// Uses the default fallback command, adding any extra flags.
   tooling::CompileCommand getFallbackCommand(PathRef File) const override;
+
+  /// Set the compile commands directory to \p P.
+  void setCompileCommandsDir(Path P);
 
   /// Sets the extra flags that should be added to a file.
   void setExtraFlagsForFile(PathRef File, std::vector<std::string> ExtraFlags);

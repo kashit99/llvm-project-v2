@@ -33,11 +33,10 @@
 #include "llvm/Bitcode/LLVMBitCodes.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Format.h"
+#include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/MemoryBuffer.h"
-#include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/SHA1.h"
-#include "llvm/Support/Signals.h"
 #include "llvm/Support/raw_ostream.h"
 using namespace llvm;
 
@@ -306,6 +305,7 @@ static const char *GetCodeName(unsigned CodeID, unsigned BlockID,
       return nullptr;
       STRINGIFY_CODE(FS, PERMODULE)
       STRINGIFY_CODE(FS, PERMODULE_PROFILE)
+      STRINGIFY_CODE(FS, PERMODULE_RELBF)
       STRINGIFY_CODE(FS, PERMODULE_GLOBALVAR_INIT_REFS)
       STRINGIFY_CODE(FS, COMBINED)
       STRINGIFY_CODE(FS, COMBINED_PROFILE)
@@ -314,6 +314,7 @@ static const char *GetCodeName(unsigned CodeID, unsigned BlockID,
       STRINGIFY_CODE(FS, COMBINED_ALIAS)
       STRINGIFY_CODE(FS, COMBINED_ORIGINAL_NAME)
       STRINGIFY_CODE(FS, VERSION)
+      STRINGIFY_CODE(FS, FLAGS)
       STRINGIFY_CODE(FS, TYPE_TESTS)
       STRINGIFY_CODE(FS, TYPE_TEST_ASSUME_VCALLS)
       STRINGIFY_CODE(FS, TYPE_CHECKED_LOAD_VCALLS)
@@ -322,6 +323,7 @@ static const char *GetCodeName(unsigned CodeID, unsigned BlockID,
       STRINGIFY_CODE(FS, VALUE_GUID)
       STRINGIFY_CODE(FS, CFI_FUNCTION_DEFS)
       STRINGIFY_CODE(FS, CFI_FUNCTION_DECLS)
+      STRINGIFY_CODE(FS, TYPE_ID)
     }
   case bitc::METADATA_ATTACHMENT_ID:
     switch(CodeID) {
@@ -961,11 +963,7 @@ static int AnalyzeBitcode() {
 
 
 int main(int argc, char **argv) {
-  // Print a stack trace if we signal out.
-  sys::PrintStackTraceOnErrorSignal(argv[0]);
-  PrettyStackTraceProgram X(argc, argv);
-  llvm_shutdown_obj Y;  // Call llvm_shutdown() on exit.
+  InitLLVM X(argc, argv);
   cl::ParseCommandLineOptions(argc, argv, "llvm-bcanalyzer file analyzer\n");
-
   return AnalyzeBitcode();
 }

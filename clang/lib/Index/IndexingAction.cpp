@@ -29,20 +29,21 @@ void IndexDataConsumer::_anchor() {}
 
 bool IndexDataConsumer::handleDeclOccurence(const Decl *D, SymbolRoleSet Roles,
                                             ArrayRef<SymbolRelation> Relations,
-                                            FileID FID, unsigned Offset,
+                                            SourceLocation Loc,
                                             ASTNodeInfo ASTNode) {
   return true;
 }
 
 bool IndexDataConsumer::handleMacroOccurence(const IdentifierInfo *Name,
-                                             const MacroInfo *MI, SymbolRoleSet Roles,
-                                             FileID FID, unsigned Offset) {
+                                             const MacroInfo *MI,
+                                             SymbolRoleSet Roles,
+                                             SourceLocation Loc) {
   return true;
 }
 
 bool IndexDataConsumer::handleModuleOccurence(const ImportDecl *ImportD,
                                               SymbolRoleSet Roles,
-                                              FileID FID, unsigned Offset) {
+                                              SourceLocation Loc) {
   return true;
 }
 
@@ -242,8 +243,20 @@ public:
 private:
   bool handleDeclOccurence(const Decl *D, SymbolRoleSet Roles,
                            ArrayRef<SymbolRelation> Relations,
-                           FileID FID, unsigned Offset,
+                           SourceLocation Loc,
                            ASTNodeInfo ASTNode) override {
+    SourceManager &SM = PP->getSourceManager();
+    Loc = SM.getFileLoc(Loc);
+    if (Loc.isInvalid())
+      return true;
+  
+    FileID FID;
+    unsigned Offset;
+    std::tie(FID, Offset) = SM.getDecomposedLoc(Loc);
+
+    if (FID.isInvalid())
+     return true;
+
     // Ignore the predefines buffer.
     const FileEntry *FE = PP->getSourceManager().getFileEntryForID(FID);
     if (!FE)

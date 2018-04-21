@@ -629,7 +629,7 @@ ComplexPairTy ComplexExprEmitter::EmitComplexBinOpLibCall(StringRef LibCallName,
 
   llvm::Instruction *Call;
   RValue Res = CGF.EmitCall(FuncInfo, Callee, ReturnValueSlot(), Args, &Call);
-  cast<llvm::CallInst>(Call)->setCallingConv(CGF.CGM.getBuiltinCC());
+  cast<llvm::CallInst>(Call)->setCallingConv(CGF.CGM.getRuntimeCC());
   return Res.getComplexVal();
 }
 
@@ -1056,7 +1056,7 @@ ComplexPairTy ComplexExprEmitter::VisitInitListExpr(InitListExpr *E) {
     return Visit(E->getInit(0));
   }
 
-  // Empty init list intializes to null
+  // Empty init list initializes to null
   assert(E->getNumInits() == 0 && "Unexpected number of inits");
   QualType Ty = E->getType()->castAs<ComplexType>()->getElementType();
   llvm::Type* LTy = CGF.ConvertType(Ty);

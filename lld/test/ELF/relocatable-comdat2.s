@@ -13,8 +13,6 @@
 # CHECK-NEXT:   Group {
 # CHECK-NEXT:     Name: .group
 # CHECK-NEXT:     Index: 2
-# CHECK-NEXT:     Link: 7
-# CHECK-NEXT:     Info: 1
 # CHECK-NEXT:     Type: COMDAT
 # CHECK-NEXT:     Signature: bar
 # CHECK-NEXT:     Section(s) in group [
@@ -24,8 +22,6 @@
 # CHECK-NEXT:   Group {
 # CHECK-NEXT:     Name: .group
 # CHECK-NEXT:     Index: 4
-# CHECK-NEXT:     Link: 7
-# CHECK-NEXT:     Info: 2
 # CHECK-NEXT:     Type: COMDAT
 # CHECK-NEXT:     Signature: zed
 # CHECK-NEXT:     Section(s) in group [

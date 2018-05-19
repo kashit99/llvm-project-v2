@@ -67,7 +67,6 @@ endif()
 
 # Build offloading plugins and device RTLs if they are available.
 add_subdirectory(plugins)
-add_subdirectory(deviceRTLs)
 
 # Add tests.
 add_subdirectory(test)

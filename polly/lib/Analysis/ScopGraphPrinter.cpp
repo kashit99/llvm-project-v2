@@ -197,6 +197,7 @@ struct DOTGraphTraits<ScopDetectionWrapperPass *>
                        O, 4);
   }
 };
+
 } // end namespace llvm
 
 struct ScopViewer

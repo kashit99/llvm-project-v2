@@ -73,18 +73,16 @@ public:
 
   bool runOnScop(Scop &S) override {
     if (PollyProcessUnprofitable) {
-      LLVM_DEBUG(
-          dbgs() << "NOTE: -polly-process-unprofitable active, won't prune "
-                    "anything\n");
+      DEBUG(dbgs() << "NOTE: -polly-process-unprofitable active, won't prune "
+                      "anything\n");
       return false;
     }
 
     ScopsProcessed++;
 
     if (!S.isProfitable(true)) {
-      LLVM_DEBUG(
-          dbgs() << "SCoP pruned because it probably cannot be optimized in "
-                    "a significant way\n");
+      DEBUG(dbgs() << "SCoP pruned because it probably cannot be optimized in "
+                      "a significant way\n");
       S.invalidate(PROFITABLE, DebugLoc());
       updateStatistics(S, true);
     } else {
@@ -94,6 +92,7 @@ public:
     return false;
   }
 };
+
 } // namespace
 
 char PruneUnprofitable::ID;

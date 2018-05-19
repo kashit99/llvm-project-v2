@@ -310,6 +310,7 @@ private:
   /// Scop to Dependence map for the current function.
   ScopToDepsMapTy ScopToDepsMap;
 };
+
 } // namespace polly
 
 namespace llvm {

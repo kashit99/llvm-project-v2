@@ -7,7 +7,11 @@
 
 /* A complete schedule tree.
  *
- * "root" is the root of the schedule tree.
+ * band_forest points to a band forest representation of the schedule
+ * and may be NULL if the forest hasn't been created yet.
+ *
+ * "root" is the root of the schedule tree and may be NULL if we
+ * have created a band forest corresponding to the schedule.
  *
  * "leaf" may be used to represent a leaf of the schedule.
  * It should not appear as a child to any other isl_schedule_tree objects,
@@ -17,6 +21,7 @@
 struct isl_schedule {
 	int ref;
 
+	isl_band_list *band_forest;
 	isl_schedule_tree *root;
 
 	struct isl_schedule_tree *leaf;

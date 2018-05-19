@@ -42,7 +42,6 @@
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/Passes/PassBuilder.h"
-#include "llvm/Passes/PassPlugin.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Transforms/IPO.h"
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
@@ -704,10 +703,3 @@ void RegisterPollyPasses(PassBuilder &PB) {
   // FIXME else Error?
 }
 } // namespace polly
-
-// Plugin Entrypoint:
-extern "C" ::llvm::PassPluginLibraryInfo LLVM_ATTRIBUTE_WEAK LLVM_PLUGIN_EXPORT
-llvmGetPassPluginInfo() {
-  return {LLVM_PLUGIN_API_VERSION, "Polly", LLVM_VERSION_STRING,
-          polly::RegisterPollyPasses};
-}

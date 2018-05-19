@@ -725,11 +725,8 @@ int isl_stream_eat(__isl_keep isl_stream *s, int type)
 	struct isl_token *tok;
 
 	tok = isl_stream_next_token(s);
-	if (!tok) {
-		if (s->eof)
-			isl_stream_error(s, NULL, "unexpected EOF");
+	if (!tok)
 		return -1;
-	}
 	if (tok->type == type) {
 		isl_token_free(tok);
 		return 0;

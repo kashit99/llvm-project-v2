@@ -62,8 +62,8 @@ public:
     if (!F)
       return false;
     if (F->isDeclaration()) {
-      LLVM_DEBUG(dbgs() << "Skipping " << F->getName()
-                        << "because it is a declaration.\n");
+      DEBUG(dbgs() << "Skipping " << F->getName()
+                   << "because it is a declaration.\n");
       return false;
     }
 
@@ -79,8 +79,8 @@ public:
         SD.ValidRegions.count(RI.getTopLevelRegion()) > 0;
 
     if (HasScopAsTopLevelRegion) {
-      LLVM_DEBUG(dbgs() << "Skipping " << F->getName()
-                        << " has scop as top level region");
+      DEBUG(dbgs() << "Skipping " << F->getName()
+                   << " has scop as top level region");
       F->addFnAttr(llvm::Attribute::AlwaysInline);
 
       ModuleAnalysisManager MAM;
@@ -91,8 +91,8 @@ public:
       assert(M && "Function has illegal module");
       MPM.run(*M, MAM);
     } else {
-      LLVM_DEBUG(dbgs() << F->getName()
-                        << " does NOT have scop as top level region\n");
+      DEBUG(dbgs() << F->getName()
+                   << " does NOT have scop as top level region\n");
     }
 
     return false;
@@ -102,6 +102,7 @@ public:
     CallGraphSCCPass::getAnalysisUsage(AU);
   }
 };
+
 } // namespace
 char ScopInliner::ID;
 

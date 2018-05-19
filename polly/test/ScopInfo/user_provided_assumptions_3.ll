@@ -10,7 +10,7 @@
 ; SCOP:      Assumed Context:
 ; SCOP-NEXT: [N, M] -> { : }
 ; SCOP:      Invalid Context:
-; SCOP-NEXT: [N, M] -> { : false }
+; SCOP-NEXT: [N, M] -> { : 1 = 0 }
 ;
 ;    int f(int *A, int N, int M) {
 ;      __builtin_assume(M > 0 && N > M);

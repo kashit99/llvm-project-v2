@@ -63,7 +63,7 @@ public:
     } else {
       Dumpfile = Filename;
     }
-    LLVM_DEBUG(dbgs() << "Dumping module to " << Dumpfile << '\n');
+    DEBUG(dbgs() << "Dumping module to " << Dumpfile << '\n');
 
     std::unique_ptr<ToolOutputFile> Out;
     std::error_code EC;

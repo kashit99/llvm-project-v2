@@ -11,4 +11,4 @@
 .section .bar,"awx"
 .global _start
 _start:
-        .long foo - .
+        call foo

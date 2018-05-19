@@ -14,6 +14,7 @@
 #include <cassert>
 #include <cstddef>
 #include <cuda.h>
+#include <cuda_runtime_api.h>
 #include <list>
 #include <string>
 #include <vector>
@@ -78,12 +79,6 @@ struct KernelTy {
 
   KernelTy(CUfunction _Func, int8_t _ExecutionMode)
       : Func(_Func), ExecutionMode(_ExecutionMode) {}
-};
-
-/// Device envrionment data
-/// Manually sync with the deviceRTL side for now, move to a dedicated header file later.
-struct omptarget_device_environmentTy {
-  int32_t debug_level;
 };
 
 /// List that contains all the kernels.
@@ -285,9 +280,9 @@ int32_t __tgt_rtl_init_device(int32_t device_id) {
   }
 
   // scan properties to determine number of threads/block and blocks/grid.
-  CUdevprop Properties;
-  err = cuDeviceGetProperties(&Properties, cuDevice);
-  if (err != CUDA_SUCCESS) {
+  struct cudaDeviceProp Properties;
+  cudaError_t error = cudaGetDeviceProperties(&Properties, device_id);
+  if (error != cudaSuccess) {
     DP("Error getting device Properties, use defaults\n");
     DeviceInfo.BlocksPerGrid[device_id] = RTLDeviceInfoTy::DefaultNumTeams;
     DeviceInfo.ThreadsPerBlock[device_id] = RTLDeviceInfoTy::DefaultNumThreads;
@@ -319,8 +314,8 @@ int32_t __tgt_rtl_init_device(int32_t device_id) {
           RTLDeviceInfoTy::HardThreadLimit);
     }
 
-    // According to the documentation, SIMDWidth is "Warp size in threads".
-    DeviceInfo.WarpSize[device_id] = Properties.SIMDWidth;
+    // Get warp size
+    DeviceInfo.WarpSize[device_id] = Properties.warpSize;
   }
 
   // Adjust teams to the env variables
@@ -490,48 +485,6 @@ __tgt_target_table *__tgt_rtl_load_binary(int32_t device_id,
     __tgt_offload_entry entry = *e;
     entry.addr = (void *)&KernelsList.back();
     DeviceInfo.addOffloadEntry(device_id, entry);
-  }
-
-  // send device environment data to the device
-  {
-    omptarget_device_environmentTy device_env;
-
-    device_env.debug_level = 0;
-
-#ifdef OMPTARGET_DEBUG
-    if (char *envStr = getenv("LIBOMPTARGET_DEVICE_RTL_DEBUG")) {
-      device_env.debug_level = std::stoi(envStr);
-    }
-#endif
-
-    const char * device_env_Name="omptarget_device_environment";
-    CUdeviceptr device_env_Ptr;
-    size_t cusize;
-
-    err = cuModuleGetGlobal(&device_env_Ptr, &cusize, cumod, device_env_Name);
-
-    if (err == CUDA_SUCCESS) {
-      if ((size_t)cusize != sizeof(device_env)) {
-        DP("Global device_environment '%s' - size mismatch (%zu != %zu)\n",
-            device_env_Name, cusize, sizeof(int32_t));
-        CUDA_ERR_STRING(err);
-        return NULL;
-      }
-
-      err = cuMemcpyHtoD(device_env_Ptr, &device_env, cusize);
-      if (err != CUDA_SUCCESS) {
-        DP("Error when copying data from host to device. Pointers: "
-            "host = " DPxMOD ", device = " DPxMOD ", size = %zu\n",
-            DPxPTR(&device_env), DPxPTR(device_env_Ptr), cusize);
-        CUDA_ERR_STRING(err);
-        return NULL;
-      }
-
-      DP("Sending global device environment data %zu bytes\n", (size_t)cusize);
-    } else {
-      DP("Finding global device environment '%s' - symbol missing.\n", device_env_Name);
-      DP("Continue, considering this is a device RTL which does not accept envrionment setting.\n");
-    }
   }
 
   return DeviceInfo.getOffloadEntriesTable(device_id);
@@ -725,16 +678,17 @@ int32_t __tgt_rtl_run_target_team_region(int32_t device_id, void *tgt_entry_ptr,
   if (err != CUDA_SUCCESS) {
     DP("Device kernel launch failed!\n");
     CUDA_ERR_STRING(err);
+    assert(err == CUDA_SUCCESS && "Unable to launch target execution!");
     return OFFLOAD_FAIL;
   }
 
   DP("Launch of entry point at " DPxMOD " successful!\n",
       DPxPTR(tgt_entry_ptr));
 
-  CUresult sync_err = cuCtxSynchronize();
-  if (sync_err != CUDA_SUCCESS) {
-    DP("Kernel execution error at " DPxMOD "!\n", DPxPTR(tgt_entry_ptr));
-    CUDA_ERR_STRING(sync_err);
+  cudaError_t sync_error = cudaDeviceSynchronize();
+  if (sync_error != cudaSuccess) {
+  DP("Kernel execution error at " DPxMOD ", %s.\n", DPxPTR(tgt_entry_ptr),
+      cudaGetErrorString(sync_error));
     return OFFLOAD_FAIL;
   } else {
     DP("Kernel execution at " DPxMOD " successful!\n", DPxPTR(tgt_entry_ptr));

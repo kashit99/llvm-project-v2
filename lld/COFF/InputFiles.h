@@ -110,9 +110,6 @@ public:
   MachineTypes getMachineType() override;
   ArrayRef<Chunk *> getChunks() { return Chunks; }
   ArrayRef<SectionChunk *> getDebugChunks() { return DebugChunks; }
-  ArrayRef<SectionChunk *> getSXDataChunks() { return SXDataChunks; }
-  ArrayRef<SectionChunk *> getGuardFidChunks() { return GuardFidChunks; }
-  ArrayRef<SectionChunk *> getGuardLJmpChunks() { return GuardLJmpChunks; }
   ArrayRef<Symbol *> getSymbols() { return Symbols; }
 
   // Returns a Symbol object for the SymbolIndex'th symbol in the
@@ -126,17 +123,13 @@ public:
 
   static std::vector<ObjFile *> Instances;
 
-  // Flags in the absolute @feat.00 symbol if it is present. These usually
-  // indicate if an object was compiled with certain security features enabled
-  // like stack guard, safeseh, /guard:cf, or other things.
-  uint32_t Feat00Flags = 0;
+  // True if this object file is compatible with SEH.
+  // COFF-specific and x86-only.
+  bool SEHCompat = false;
 
-  // True if this object file is compatible with SEH.  COFF-specific and
-  // x86-only. COFF spec 5.10.1. The .sxdata section.
-  bool hasSafeSEH() { return Feat00Flags & 0x1; }
-
-  // True if this file was compiled with /guard:cf.
-  bool hasGuardCF() { return Feat00Flags & 0x800; }
+  // The symbol table indexes of the safe exception handlers.
+  // COFF-specific and x86-only.
+  ArrayRef<llvm::support::ulittle32_t> SXData;
 
   // Pointer to the PDB module descriptor builder. Various debug info records
   // will reference object files by "module index", which is here. Things like
@@ -150,8 +143,7 @@ private:
 
   SectionChunk *
   readSection(uint32_t SectionNumber,
-              const llvm::object::coff_aux_section_definition *Def,
-              StringRef LeaderName);
+              const llvm::object::coff_aux_section_definition *Def);
 
   void readAssociativeDefinition(
       COFFSymbolRef COFFSym,
@@ -173,15 +165,6 @@ private:
   // CodeView debug info sections.
   std::vector<SectionChunk *> DebugChunks;
 
-  // Chunks containing symbol table indices of exception handlers. Only used for
-  // 32-bit x86.
-  std::vector<SectionChunk *> SXDataChunks;
-
-  // Chunks containing symbol table indices of address taken symbols and longjmp
-  // targets.  These are not linked into the final binary when /guard:cf is set.
-  std::vector<SectionChunk *> GuardFidChunks;
-  std::vector<SectionChunk *> GuardLJmpChunks;
-
   // This vector contains the same chunks as Chunks, but they are
   // indexed such that you can get a SectionChunk by section index.
   // Nonexistent section indices are filled with null pointers.
@@ -201,7 +184,8 @@ private:
 // for details about the format.
 class ImportFile : public InputFile {
 public:
-  explicit ImportFile(MemoryBufferRef M) : InputFile(ImportKind, M) {}
+  explicit ImportFile(MemoryBufferRef M)
+      : InputFile(ImportKind, M), Live(!Config->DoGC) {}
 
   static bool classof(const InputFile *F) { return F->kind() == ImportKind; }
 
@@ -220,15 +204,12 @@ public:
   Chunk *Location = nullptr;
 
   // We want to eliminate dllimported symbols if no one actually refers them.
-  // These "Live" bits are used to keep track of which import library members
+  // This "Live" bit is used to keep track of which import library members
   // are actually in use.
   //
   // If the Live bit is turned off by MarkLive, Writer will ignore dllimported
-  // symbols provided by this import library member. We also track whether the
-  // imported symbol is used separately from whether the thunk is used in order
-  // to avoid creating unnecessary thunks.
-  bool Live = !Config->DoGC;
-  bool ThunkLive = !Config->DoGC;
+  // symbols provided by this import library member.
+  bool Live;
 };
 
 // Used for LTO.
@@ -236,7 +217,7 @@ class BitcodeFile : public InputFile {
 public:
   explicit BitcodeFile(MemoryBufferRef M) : InputFile(BitcodeKind, M) {}
   static bool classof(const InputFile *F) { return F->kind() == BitcodeKind; }
-  ArrayRef<Symbol *> getSymbols() { return Symbols; }
+  ArrayRef<Symbol *> getSymbols() { return SymbolBodies; }
   MachineTypes getMachineType() override;
   static std::vector<BitcodeFile *> Instances;
   std::unique_ptr<llvm::lto::InputFile> Obj;
@@ -244,7 +225,7 @@ public:
 private:
   void parse() override;
 
-  std::vector<Symbol *> Symbols;
+  std::vector<Symbol *> SymbolBodies;
 };
 } // namespace coff
 

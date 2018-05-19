@@ -11,7 +11,6 @@
  * and Ecole Normale Superieure, 45 rue d’Ulm, 75230 Paris, France
  */
 
-#include <isl/id.h>
 #include <isl/aff.h>
 #include <isl_sort.h>
 #include <isl_val_private.h>
@@ -101,41 +100,6 @@ error:
 	return NULL;
 }
 
-/* Does the space of "set" correspond to that of the domain of "el".
- */
-static isl_bool FN(PW,compatible_domain)(__isl_keep EL *el,
-	__isl_keep isl_set *set)
-{
-	isl_bool ok;
-	isl_space *el_space, *set_space;
-
-	if (!set || !el)
-		return isl_bool_error;
-	set_space = isl_set_get_space(set);
-	el_space = FN(EL,get_space)(el);
-	ok = isl_space_is_domain_internal(set_space, el_space);
-	isl_space_free(el_space);
-	isl_space_free(set_space);
-	return ok;
-}
-
-/* Check that the space of "set" corresponds to that of the domain of "el".
- */
-static isl_stat FN(PW,check_compatible_domain)(__isl_keep EL *el,
-	__isl_keep isl_set *set)
-{
-	isl_bool ok;
-
-	ok = FN(PW,compatible_domain)(el, set);
-	if (ok < 0)
-		return isl_stat_error;
-	if (!ok)
-		isl_die(isl_set_get_ctx(set), isl_error_invalid,
-			"incompatible spaces", return isl_stat_error);
-
-	return isl_stat_ok;
-}
-
 #ifdef HAS_TYPE
 __isl_give PW *FN(PW,alloc)(enum isl_fold type,
 	__isl_take isl_set *set, __isl_take EL *el)
@@ -145,7 +109,7 @@ __isl_give PW *FN(PW,alloc)(__isl_take isl_set *set, __isl_take EL *el)
 {
 	PW *pw;
 
-	if (FN(PW,check_compatible_domain)(el, set) < 0)
+	if (!set || !el)
 		goto error;
 
 #ifdef HAS_TYPE
@@ -300,14 +264,6 @@ error:
 	return NULL;
 }
 
-/* Check that "pw" has only named parameters, reporting an error
- * if it does not.
- */
-isl_stat FN(PW,check_named_params)(__isl_keep PW *pw)
-{
-	return isl_space_check_named_params(FN(PW,peek_space)(pw));
-}
-
 /* Align the parameters of "pw" to those of "model".
  */
 __isl_give PW *FN(PW,align_params)(__isl_take PW *pw, __isl_take isl_space *model)
@@ -322,8 +278,9 @@ __isl_give PW *FN(PW,align_params)(__isl_take PW *pw, __isl_take isl_space *mode
 	if (!isl_space_has_named_params(model))
 		isl_die(ctx, isl_error_invalid,
 			"model has unnamed parameters", goto error);
-	if (FN(PW,check_named_params)(pw) < 0)
-		goto error;
+	if (!isl_space_has_named_params(pw->dim))
+		isl_die(ctx, isl_error_invalid,
+			"input has unnamed parameters", goto error);
 	equal_params = isl_space_has_equal_params(pw->dim, model);
 	if (equal_params < 0)
 		goto error;
@@ -363,9 +320,10 @@ static __isl_give PW *FN(PW,align_params_pw_pw_and)(__isl_take PW *pw1,
 	if (equal_params)
 		return fn(pw1, pw2);
 	ctx = FN(PW,get_ctx)(pw1);
-	if (FN(PW,check_named_params)(pw1) < 0 ||
-	    FN(PW,check_named_params)(pw2) < 0)
-		goto error;
+	if (!isl_space_has_named_params(pw1->dim) ||
+	    !isl_space_has_named_params(pw2->dim))
+		isl_die(ctx, isl_error_invalid,
+			"unaligned unnamed parameters", goto error);
 	pw1 = FN(PW,align_params)(pw1, FN(PW,get_space)(pw2));
 	pw2 = FN(PW,align_params)(pw2, FN(PW,get_space)(pw1));
 	return fn(pw1, pw2);
@@ -390,9 +348,8 @@ static __isl_give PW *FN(PW,align_params_pw_set_and)(__isl_take PW *pw,
 	if (aligned)
 		return fn(pw, set);
 	ctx = FN(PW,get_ctx)(pw);
-	if (FN(PW,check_named_params)(pw) < 0)
-		goto error;
-	if (!isl_space_has_named_params(set->dim))
+	if (!isl_space_has_named_params(pw->dim) ||
+	    !isl_space_has_named_params(set->dim))
 		isl_die(ctx, isl_error_invalid,
 			"unaligned unnamed parameters", goto error);
 	pw = FN(PW,align_params)(pw, isl_set_get_space(set));
@@ -704,6 +661,46 @@ __isl_give PW *FN(PW,neg)(__isl_take PW *pw)
 __isl_give PW *FN(PW,sub)(__isl_take PW *pw1, __isl_take PW *pw2)
 {
 	return FN(PW,add)(pw1, FN(PW,neg)(pw2));
+}
+#endif
+
+#ifndef NO_EVAL
+__isl_give isl_val *FN(PW,eval)(__isl_take PW *pw, __isl_take isl_point *pnt)
+{
+	int i;
+	int found = 0;
+	isl_ctx *ctx;
+	isl_space *pnt_dim = NULL;
+	isl_val *v;
+
+	if (!pw || !pnt)
+		goto error;
+	ctx = isl_point_get_ctx(pnt);
+	pnt_dim = isl_point_get_space(pnt);
+	isl_assert(ctx, isl_space_is_domain_internal(pnt_dim, pw->dim),
+		    goto error);
+
+	for (i = 0; i < pw->n; ++i) {
+		found = isl_set_contains_point(pw->p[i].set, pnt);
+		if (found < 0)
+			goto error;
+		if (found)
+			break;
+	}
+	if (found)
+		v = FN(EL,eval)(FN(EL,copy)(pw->p[i].FIELD),
+					    isl_point_copy(pnt));
+	else
+		v = isl_val_zero(ctx);
+	FN(PW,free)(pw);
+	isl_space_free(pnt_dim);
+	isl_point_free(pnt);
+	return v;
+error:
+	FN(PW,free)(pw);
+	isl_space_free(pnt_dim);
+	isl_point_free(pnt);
+	return NULL;
 }
 #endif
 
@@ -1148,6 +1145,7 @@ isl_ctx *FN(PW,get_ctx)(__isl_keep PW *pw)
 	return pw ? isl_space_get_ctx(pw->dim) : NULL;
 }
 
+#ifndef NO_INVOLVES_DIMS
 isl_bool FN(PW,involves_dims)(__isl_keep PW *pw, enum isl_dim_type type,
 	unsigned first, unsigned n)
 {
@@ -1173,6 +1171,7 @@ isl_bool FN(PW,involves_dims)(__isl_keep PW *pw, enum isl_dim_type type,
 	}
 	return isl_bool_false;
 }
+#endif
 
 __isl_give PW *FN(PW,set_dim_name)(__isl_take PW *pw,
 	enum isl_dim_type type, unsigned pos, const char *s)
@@ -1206,6 +1205,7 @@ error:
 	return NULL;
 }
 
+#ifndef NO_DROP_DIMS
 __isl_give PW *FN(PW,drop_dims)(__isl_take PW *pw,
 	enum isl_dim_type type, unsigned first, unsigned n)
 {
@@ -1296,28 +1296,7 @@ __isl_give PW *FN(PW,project_domain_on_params)(__isl_take PW *pw)
 	pw = FN(PW,reset_domain_space)(pw, space);
 	return pw;
 }
-
-/* Drop all parameters not referenced by "pw".
- */
-__isl_give PW *FN(PW,drop_unused_params)(__isl_take PW *pw)
-{
-	int i;
-
-	if (FN(PW,check_named_params)(pw) < 0)
-		return FN(PW,free)(pw);
-
-	for (i = FN(PW,dim)(pw, isl_dim_param) - 1; i >= 0; i--) {
-		isl_bool involves;
-
-		involves = FN(PW,involves_dims)(pw, isl_dim_param, i, 1);
-		if (involves < 0)
-			return FN(PW,free)(pw);
-		if (!involves)
-			pw = FN(PW,drop_dims)(pw, isl_dim_param, i, 1);
-	}
-
-	return pw;
-}
+#endif
 
 #ifndef NO_INSERT_DIMS
 __isl_give PW *FN(PW,insert_dims)(__isl_take PW *pw, enum isl_dim_type type,
@@ -1485,16 +1464,9 @@ __isl_give isl_val *FN(PW,min)(__isl_take PW *pw)
 }
 #endif
 
-/* Return the space of "pw".
- */
-__isl_keep isl_space *FN(PW,peek_space)(__isl_keep PW *pw)
-{
-	return pw ? pw->dim : NULL;
-}
-
 __isl_give isl_space *FN(PW,get_space)(__isl_keep PW *pw)
 {
-	return isl_space_copy(FN(PW,peek_space)(pw));
+	return pw ? isl_space_copy(pw->dim) : NULL;
 }
 
 __isl_give isl_space *FN(PW,get_domain_space)(__isl_keep PW *pw)
@@ -2098,9 +2070,8 @@ static __isl_give PW *FN(PW,align_params_pw_multi_aff_and)(__isl_take PW *pw,
 		return fn(pw, ma);
 	}
 	ctx = FN(PW,get_ctx)(pw);
-	if (FN(PW,check_named_params)(pw) < 0)
-		goto error;
-	if (!isl_space_has_named_params(ma_space))
+	if (!isl_space_has_named_params(pw->dim) ||
+	    !isl_space_has_named_params(ma_space))
 		isl_die(ctx, isl_error_invalid,
 			"unaligned unnamed parameters", goto error);
 	pw = FN(PW,align_params)(pw, ma_space);
@@ -2133,9 +2104,10 @@ static __isl_give PW *FN(PW,align_params_pw_pw_multi_aff_and)(__isl_take PW *pw,
 		return fn(pw, pma);
 	}
 	ctx = FN(PW,get_ctx)(pw);
-	if (FN(PW,check_named_params)(pw) < 0 ||
-	    isl_pw_multi_aff_check_named_params(pma) < 0)
-		goto error;
+	if (!isl_space_has_named_params(pw->dim) ||
+	    !isl_space_has_named_params(pma_space))
+		isl_die(ctx, isl_error_invalid,
+			"unaligned unnamed parameters", goto error);
 	pw = FN(PW,align_params)(pw, pma_space);
 	pma = isl_pw_multi_aff_align_params(pma, FN(PW,get_space)(pw));
 	return fn(pw, pma);

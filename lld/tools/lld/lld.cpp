@@ -20,9 +20,10 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/ADT/Twine.h"
-#include "llvm/Support/InitLLVM.h"
+#include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/Path.h"
-#include <cstdlib>
+#include "llvm/Support/PrettyStackTrace.h"
+#include "llvm/Support/Signals.h"
 
 using namespace lld;
 using namespace llvm;
@@ -101,33 +102,28 @@ static Flavor parseFlavor(std::vector<const char *> &V) {
   return parseProgname(Arg0);
 }
 
-// If this function returns true, lld calls _exit() so that it quickly
-// exits without invoking destructors of globally allocated objects.
-//
-// We don't want to do that if we are running tests though, because
-// doing that breaks leak sanitizer. So, lit sets this environment variable,
-// and we use it to detect whether we are running tests or not.
-static bool canExitEarly() { return StringRef(getenv("LLD_IN_TEST")) != "1"; }
-
 /// Universal linker main(). This linker emulates the gnu, darwin, or
 /// windows linker based on the argv[0] or -flavor option.
 int main(int Argc, const char **Argv) {
-  InitLLVM X(Argc, Argv);
+  // Standard set up, so program fails gracefully.
+  sys::PrintStackTraceOnErrorSignal(Argv[0]);
+  PrettyStackTraceProgram StackPrinter(Argc, Argv);
+  llvm_shutdown_obj Shutdown;
 
   std::vector<const char *> Args(Argv, Argv + Argc);
   switch (parseFlavor(Args)) {
   case Gnu:
     if (isPETarget(Args))
       return !mingw::link(Args);
-    return !elf::link(Args, canExitEarly());
+    return !elf::link(Args, true);
   case WinLink:
-    return !coff::link(Args, canExitEarly());
+    return !coff::link(Args, true);
   case Darwin:
     return !mach_o::link(Args);
   case Wasm:
-    return !wasm::link(Args, canExitEarly());
+    return !wasm::link(Args, true);
   default:
     die("lld is a generic driver.\n"
-        "Invoke ld.lld (Unix), ld64.lld (macOS) or lld-link (Windows) instead.");
+        "Invoke ld.lld (Unix), ld (macOS) or lld-link (Windows) instead.");
   }
 }

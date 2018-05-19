@@ -4,10 +4,8 @@
 # RUN: lld-link /out:%t.exe /entry:main %t.obj /force >& %t.log
 # RUN: FileCheck -check-prefix=WARN %s < %t.log
 
-# ERROR: error: undefined symbol: foo
-# ERROR-NEXT: >>> referenced by {{.*}}.obj
-# WARN: warning: undefined symbol: foo
-# WARN-NEXT: >>> referenced by {{.*}}.obj
+# ERROR: error: {{.*}}.obj: undefined symbol: foo
+# WARN: warning: {{.*}}.obj: undefined symbol: foo
 
 --- !COFF
 header:

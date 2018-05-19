@@ -8,6 +8,7 @@
  * 91893 Orsay, France 
  */
 
+#define ISL_DIM_H
 #include <isl_map_private.h>
 #include <isl_union_map_private.h>
 #include <isl_polynomial_private.h>
@@ -19,6 +20,7 @@
 #include <isl_val_private.h>
 #include <isl_vec_private.h>
 #include <isl_config.h>
+#include <isl/deprecated/polynomial_int.h>
 
 enum isl_fold isl_fold_type_negate(enum isl_fold type)
 {
@@ -684,7 +686,6 @@ __isl_give isl_qpolynomial_fold *isl_qpolynomial_fold_gist_params(
 #define NO_PULLBACK
 
 #include <isl_pw_templ.c>
-#include <isl_pw_eval.c>
 
 #undef UNION
 #define UNION isl_union_pw_qpolynomial_fold

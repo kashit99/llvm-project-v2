@@ -124,8 +124,8 @@ static void expandConstantExpr(ConstantExpr *Cur, PollyIRBuilder &Builder,
   Instruction *I = Cur->getAsInstruction();
   assert(I && "unable to convert ConstantExpr to Instruction");
 
-  LLVM_DEBUG(dbgs() << "Expanding ConstantExpression: (" << *Cur
-                    << ") in Instruction: (" << *I << ")\n";);
+  DEBUG(dbgs() << "Expanding ConstantExpression: (" << *Cur
+               << ") in Instruction: (" << *I << ")\n";);
 
   // Invalidate `Cur` so that no one after this point uses `Cur`. Rather,
   // they should mutate `I`.
@@ -209,20 +209,19 @@ replaceGlobalArray(Module &M, const DataLayout &DL, GlobalVariable &Array,
                                        Array.hasInternalLinkage() ||
                                        IgnoreLinkageForGlobals;
   if (!OnlyVisibleInsideModule) {
-    LLVM_DEBUG(
-        dbgs() << "Not rewriting (" << Array
-               << ") to managed memory "
-                  "because it could be visible externally. To force rewrite, "
-                  "use -polly-acc-rewrite-ignore-linkage-for-globals.\n");
+    DEBUG(dbgs() << "Not rewriting (" << Array
+                 << ") to managed memory "
+                    "because it could be visible externally. To force rewrite, "
+                    "use -polly-acc-rewrite-ignore-linkage-for-globals.\n");
     return;
   }
 
   if (!Array.hasInitializer() ||
       !isa<ConstantAggregateZero>(Array.getInitializer())) {
-    LLVM_DEBUG(dbgs() << "Not rewriting (" << Array
-                      << ") to managed memory "
-                         "because it has an initializer which is "
-                         "not a zeroinitializer.\n");
+    DEBUG(dbgs() << "Not rewriting (" << Array
+                 << ") to managed memory "
+                    "because it has an initializer which is "
+                    "not a zeroinitializer.\n");
     return;
   }
 
@@ -289,14 +288,14 @@ static void getAllocasToBeManaged(Function &F,
       auto *Alloca = dyn_cast<AllocaInst>(&I);
       if (!Alloca)
         continue;
-      LLVM_DEBUG(dbgs() << "Checking if (" << *Alloca << ") may be captured: ");
+      DEBUG(dbgs() << "Checking if (" << *Alloca << ") may be captured: ");
 
       if (PointerMayBeCaptured(Alloca, /* ReturnCaptures */ false,
                                /* StoreCaptures */ true)) {
         Allocas.insert(Alloca);
-        LLVM_DEBUG(dbgs() << "YES (captured).\n");
+        DEBUG(dbgs() << "YES (captured).\n");
       } else {
-        LLVM_DEBUG(dbgs() << "NO (not captured).\n");
+        DEBUG(dbgs() << "NO (not captured).\n");
       }
     }
   }
@@ -304,7 +303,7 @@ static void getAllocasToBeManaged(Function &F,
 
 static void rewriteAllocaAsManagedMemory(AllocaInst *Alloca,
                                          const DataLayout &DL) {
-  LLVM_DEBUG(dbgs() << "rewriting: (" << *Alloca << ") to managed mem.\n");
+  DEBUG(dbgs() << "rewriting: (" << *Alloca << ") to managed mem.\n");
   Module *M = Alloca->getModule();
   assert(M && "Alloca does not have a module");
 
@@ -414,6 +413,7 @@ public:
     return true;
   }
 };
+
 } // namespace
 char ManagedMemoryRewritePass::ID = 42;
 

@@ -21,7 +21,7 @@ class Symbol;
 class InputSection;
 class InputSectionBase;
 class OutputSection;
-class OutputSection;
+class SectionBase;
 
 // Represents a relocation type, such as R_X86_64_PC32 or R_ARM_THM_CALL.
 typedef uint32_t RelType;
@@ -32,6 +32,7 @@ typedef uint32_t RelType;
 enum RelExpr {
   R_INVALID,
   R_ABS,
+  R_ADDEND,
   R_ARM_SBREL,
   R_GOT,
   R_GOTONLY_PC,
@@ -58,8 +59,8 @@ enum RelExpr {
   R_PLT,
   R_PLT_PAGE_PC,
   R_PLT_PC,
-  R_PPC_OPD,
-  R_PPC_PLT_OPD,
+  R_PPC_CALL,
+  R_PPC_CALL_PLT,
   R_PPC_TOC,
   R_RELAX_GOT_PC,
   R_RELAX_GOT_PC_NOPIC,
@@ -160,6 +161,8 @@ private:
   bool normalizeExistingThunk(Relocation &Rel, uint64_t Src);
 
   // Record all the available Thunks for a Symbol
+  llvm::DenseMap<std::pair<SectionBase *, uint64_t>, std::vector<Thunk *>>
+      ThunkedSymbolsBySection;
   llvm::DenseMap<Symbol *, std::vector<Thunk *>> ThunkedSymbols;
 
   // Find a Thunk from the Thunks symbol definition, we can use this to find

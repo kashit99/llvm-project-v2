@@ -23,7 +23,6 @@
 #include <isl/map_type.h>
 #include <isl/val.h>
 #include <isl/stdint.h>
-#include <isl/stride_info.h>
 
 #if defined(__cplusplus)
 extern "C" {
@@ -120,8 +119,8 @@ __isl_give isl_basic_map *isl_basic_map_less_at(__isl_take isl_space *dim,
 	unsigned pos);
 __isl_give isl_basic_map *isl_basic_map_more_at(__isl_take isl_space *dim,
 	unsigned pos);
-__isl_give isl_basic_map *isl_basic_map_empty(__isl_take isl_space *space);
-__isl_give isl_basic_map *isl_basic_map_universe(__isl_take isl_space *space);
+__isl_give isl_basic_map *isl_basic_map_empty(__isl_take isl_space *dim);
+__isl_give isl_basic_map *isl_basic_map_universe(__isl_take isl_space *dim);
 __isl_give isl_basic_map *isl_basic_map_nat_universe(__isl_take isl_space *dim);
 __isl_give isl_basic_map *isl_basic_map_remove_redundancies(
 	__isl_take isl_basic_map *bmap);
@@ -282,9 +281,9 @@ isl_bool isl_basic_map_is_subset(__isl_keep isl_basic_map *bmap1,
 isl_bool isl_basic_map_is_strict_subset(__isl_keep isl_basic_map *bmap1,
 		__isl_keep isl_basic_map *bmap2);
 
-__isl_give isl_map *isl_map_universe(__isl_take isl_space *space);
+__isl_give isl_map *isl_map_universe(__isl_take isl_space *dim);
 __isl_give isl_map *isl_map_nat_universe(__isl_take isl_space *dim);
-__isl_give isl_map *isl_map_empty(__isl_take isl_space *space);
+__isl_give isl_map *isl_map_empty(__isl_take isl_space *dim);
 __isl_give isl_map *isl_map_identity(__isl_take isl_space *dim);
 __isl_give isl_map *isl_map_lex_lt_first(__isl_take isl_space *dim, unsigned n);
 __isl_give isl_map *isl_map_lex_le_first(__isl_take isl_space *dim, unsigned n);
@@ -605,9 +604,6 @@ __isl_give isl_map *isl_map_gist_params(__isl_take isl_map *map,
 __isl_give isl_map *isl_map_gist_basic_map(__isl_take isl_map *map,
 	__isl_take isl_basic_map *context);
 
-__isl_give isl_stride_info *isl_map_get_range_stride_info(
-	__isl_keep isl_map *map, int pos);
-
 __isl_export
 __isl_give isl_map *isl_map_coalesce(__isl_take isl_map *map);
 
@@ -642,9 +638,6 @@ __isl_give isl_basic_map *isl_basic_map_align_params(
 	__isl_take isl_basic_map *bmap, __isl_take isl_space *model);
 __isl_give isl_map *isl_map_align_params(__isl_take isl_map *map,
 	__isl_take isl_space *model);
-__isl_give isl_basic_map *isl_basic_map_drop_unused_params(
-	__isl_take isl_basic_map *bmap);
-__isl_give isl_map *isl_map_drop_unused_params(__isl_take isl_map *map);
 
 __isl_give isl_mat *isl_basic_map_equalities_matrix(
 		__isl_keep isl_basic_map *bmap, enum isl_dim_type c1,

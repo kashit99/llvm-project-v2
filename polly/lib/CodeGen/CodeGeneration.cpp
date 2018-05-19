@@ -94,13 +94,14 @@ void markBlockUnreachable(BasicBlock &Block, PollyIRBuilder &Builder) {
   Builder.CreateUnreachable();
   OrigTerminator->eraseFromParent();
 }
+
 } // namespace polly
 
 static void verifyGeneratedFunction(Scop &S, Function &F, IslAstInfo &AI) {
   if (!Verify || !verifyFunction(F, &errs()))
     return;
 
-  LLVM_DEBUG({
+  DEBUG({
     errs() << "== ISL Codegen created an invalid function ==\n\n== The "
               "SCoP ==\n";
     errs() << S;
@@ -196,7 +197,7 @@ static bool CodeGen(Scop &S, IslAstInfo &AI, LoopInfo &LI, DominatorTree &DT,
   // DependenceInfo or IslAstInfo around.
   IslAst &Ast = AI.getIslAst();
   if (Ast.getSharedIslCtx() != S.getSharedIslCtx()) {
-    LLVM_DEBUG(dbgs() << "Got an IstAst for a different Scop/isl_ctx\n");
+    DEBUG(dbgs() << "Got an IstAst for a different Scop/isl_ctx\n");
     return false;
   }
 
@@ -368,6 +369,7 @@ public:
     //        region tree.
   }
 };
+
 } // namespace
 
 PreservedAnalyses CodeGenerationPass::run(Scop &S, ScopAnalysisManager &SAM,

@@ -17,10 +17,8 @@
 #include "llvm/PassRegistry.h"
 #include "llvm/PassSupport.h"
 #include "llvm/Support/Debug.h"
-#include "llvm/Transforms/InstCombine/InstCombine.h"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Scalar/GVN.h"
-#include "llvm/Transforms/Utils.h"
 
 #define DEBUG_TYPE "polly-cleanup"
 
@@ -119,13 +117,12 @@ public:
 
   virtual bool runOnFunction(llvm::Function &F) override {
     if (!F.hasFnAttribute("polly-optimized")) {
-      LLVM_DEBUG(
-          dbgs() << F.getName()
-                 << ": Skipping cleanup because Polly did not optimize it.");
+      DEBUG(dbgs() << F.getName()
+                   << ": Skipping cleanup because Polly did not optimize it.");
       return false;
     }
 
-    LLVM_DEBUG(dbgs() << F.getName() << ": Running codegen cleanup...");
+    DEBUG(dbgs() << F.getName() << ": Running codegen cleanup...");
     return FPM->run(F);
   }
   //@}

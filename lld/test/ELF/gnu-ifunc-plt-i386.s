@@ -70,7 +70,7 @@ bar:
 
 .globl _start
 _start:
- call foo@plt
- call bar@plt
- call bar2@plt
- call zed2@plt
+ call foo
+ call bar
+ call bar2
+ call zed2

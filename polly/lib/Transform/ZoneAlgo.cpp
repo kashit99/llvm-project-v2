@@ -227,7 +227,7 @@ static isl::map computeScalarReachingDefinition(isl::union_map Schedule,
 }
 
 isl::union_map polly::makeUnknownForDomain(isl::union_set Domain) {
-  return isl::union_map::from_domain(Domain);
+  return give(isl_union_map_from_domain(Domain.take()));
 }
 
 /// Create a domain-to-unknown value mapping.
@@ -238,7 +238,7 @@ isl::union_map polly::makeUnknownForDomain(isl::union_set Domain) {
 ///
 /// @return { Domain[] -> ValInst[] }
 static isl::map makeUnknownForDomain(isl::set Domain) {
-  return isl::map::from_domain(Domain);
+  return give(isl_map_from_domain(Domain.take()));
 }
 
 /// Return whether @p Map maps to an unknown value.
@@ -267,8 +267,9 @@ ZoneAlgorithm::ZoneAlgorithm(const char *PassName, Scop *S, LoopInfo *LI)
       Schedule(S->getSchedule()) {
   auto Domains = S->getDomains();
 
-  Schedule = Schedule.intersect_domain(Domains);
-  ParamSpace = Schedule.get_space();
+  Schedule =
+      give(isl_union_map_intersect_domain(Schedule.take(), Domains.take()));
+  ParamSpace = give(isl_union_map_get_space(Schedule.keep()));
   ScatterSpace = getScatterSpace(Schedule);
 }
 
@@ -337,9 +338,8 @@ void ZoneAlgorithm::collectIncompatibleElts(ScopStmt *Stmt,
 
     if (MA->isRead()) {
       // Reject load after store to same location.
-      if (!Stores.is_disjoint(AccRel)) {
-        LLVM_DEBUG(
-            dbgs() << "Load after store of same element in same statement\n");
+      if (!isl_union_map_is_disjoint(Stores.keep(), AccRel.keep())) {
+        DEBUG(dbgs() << "Load after store of same element in same statement\n");
         OptimizationRemarkMissed R(PassName, "LoadAfterStore",
                                    MA->getAccessInstruction());
         R << "load after store of same element in same statement";
@@ -350,15 +350,16 @@ void ZoneAlgorithm::collectIncompatibleElts(ScopStmt *Stmt,
         IncompatibleElts = IncompatibleElts.add_set(ArrayElts);
       }
 
-      Loads = Loads.unite(AccRel);
+      Loads = give(isl_union_map_union(Loads.take(), AccRel.take()));
 
       continue;
     }
 
     // In region statements the order is less clear, eg. the load and store
     // might be in a boxed loop.
-    if (Stmt->isRegionStmt() && !Loads.is_disjoint(AccRel)) {
-      LLVM_DEBUG(dbgs() << "WRITE in non-affine subregion not supported\n");
+    if (Stmt->isRegionStmt() &&
+        !isl_union_map_is_disjoint(Loads.keep(), AccRel.keep())) {
+      DEBUG(dbgs() << "WRITE in non-affine subregion not supported\n");
       OptimizationRemarkMissed R(PassName, "StoreInSubregion",
                                  MA->getAccessInstruction());
       R << "store is in a non-affine subregion";
@@ -368,8 +369,9 @@ void ZoneAlgorithm::collectIncompatibleElts(ScopStmt *Stmt,
     }
 
     // Do not allow more than one store to the same location.
-    if (!Stores.is_disjoint(AccRel) && !onlySameValueWrites(Stmt)) {
-      LLVM_DEBUG(dbgs() << "WRITE after WRITE to same element\n");
+    if (!isl_union_map_is_disjoint(Stores.keep(), AccRel.keep()) &&
+        !onlySameValueWrites(Stmt)) {
+      DEBUG(dbgs() << "WRITE after WRITE to same element\n");
       OptimizationRemarkMissed R(PassName, "StoreAfterStore",
                                  MA->getAccessInstruction());
       R << "store after store of same element in same statement";
@@ -380,7 +382,7 @@ void ZoneAlgorithm::collectIncompatibleElts(ScopStmt *Stmt,
       IncompatibleElts = IncompatibleElts.add_set(ArrayElts);
     }
 
-    Stores = Stores.unite(AccRel);
+    Stores = give(isl_union_map_union(Stores.take(), AccRel.take()));
   }
 }
 
@@ -391,7 +393,7 @@ void ZoneAlgorithm::addArrayReadAccess(MemoryAccess *MA) {
 
   // { DomainRead[] -> Element[] }
   auto AccRel = intersectRange(getAccessRelationFor(MA), CompatibleElts);
-  AllReads = AllReads.add_map(AccRel);
+  AllReads = give(isl_union_map_add_map(AllReads.take(), AccRel.copy()));
 
   if (LoadInst *Load = dyn_cast_or_null<LoadInst>(MA->getAccessInstruction())) {
     // { DomainRead[] -> ValInst[] }
@@ -399,12 +401,15 @@ void ZoneAlgorithm::addArrayReadAccess(MemoryAccess *MA) {
         Load, Stmt, LI->getLoopFor(Load->getParent()), Stmt->isBlockStmt());
 
     // { DomainRead[] -> [Element[] -> DomainRead[]] }
-    isl::map IncludeElement = AccRel.domain_map().curry();
+    isl::map IncludeElement =
+        give(isl_map_curry(isl_map_domain_map(AccRel.take())));
 
     // { [Element[] -> DomainRead[]] -> ValInst[] }
-    isl::map EltLoadValInst = LoadValInst.apply_domain(IncludeElement);
+    isl::map EltLoadValInst =
+        give(isl_map_apply_domain(LoadValInst.take(), IncludeElement.take()));
 
-    AllReadValInst = AllReadValInst.add_map(EltLoadValInst);
+    AllReadValInst = give(
+        isl_union_map_add_map(AllReadValInst.take(), EltLoadValInst.take()));
   }
 }
 
@@ -550,11 +555,11 @@ isl::union_map ZoneAlgorithm::computePerPHI(const ScopArrayInfo *SAI) {
 }
 
 isl::union_set ZoneAlgorithm::makeEmptyUnionSet() const {
-  return isl::union_set::empty(ParamSpace);
+  return give(isl_union_set_empty(ParamSpace.copy()));
 }
 
 isl::union_map ZoneAlgorithm::makeEmptyUnionMap() const {
-  return isl::union_map::empty(ParamSpace);
+  return give(isl_union_map_empty(ParamSpace.copy()));
 }
 
 void ZoneAlgorithm::collectCompatibleElts() {
@@ -569,15 +574,15 @@ void ZoneAlgorithm::collectCompatibleElts() {
   for (auto &Stmt : *S)
     collectIncompatibleElts(&Stmt, IncompatibleElts, AllElts);
 
-  NumIncompatibleArrays += isl_union_set_n_set(IncompatibleElts.get());
+  NumIncompatibleArrays += isl_union_set_n_set(IncompatibleElts.keep());
   CompatibleElts = AllElts.subtract(IncompatibleElts);
-  NumCompatibleArrays += isl_union_set_n_set(CompatibleElts.get());
+  NumCompatibleArrays += isl_union_set_n_set(CompatibleElts.keep());
 }
 
 isl::map ZoneAlgorithm::getScatterFor(ScopStmt *Stmt) const {
-  isl::space ResultSpace =
-      Stmt->getDomainSpace().map_from_domain_and_range(ScatterSpace);
-  return Schedule.extract_map(ResultSpace);
+  isl::space ResultSpace = give(isl_space_map_from_domain_and_range(
+      Stmt->getDomainSpace().release(), ScatterSpace.copy()));
+  return give(isl_union_map_extract_map(Schedule.keep(), ResultSpace.take()));
 }
 
 isl::map ZoneAlgorithm::getScatterFor(MemoryAccess *MA) const {
@@ -585,15 +590,17 @@ isl::map ZoneAlgorithm::getScatterFor(MemoryAccess *MA) const {
 }
 
 isl::union_map ZoneAlgorithm::getScatterFor(isl::union_set Domain) const {
-  return Schedule.intersect_domain(Domain);
+  return give(isl_union_map_intersect_domain(Schedule.copy(), Domain.take()));
 }
 
 isl::map ZoneAlgorithm::getScatterFor(isl::set Domain) const {
-  auto ResultSpace = Domain.get_space().map_from_domain_and_range(ScatterSpace);
-  auto UDomain = isl::union_set(Domain);
+  auto ResultSpace = give(isl_space_map_from_domain_and_range(
+      isl_set_get_space(Domain.keep()), ScatterSpace.copy()));
+  auto UDomain = give(isl_union_set_from_set(Domain.copy()));
   auto UResult = getScatterFor(std::move(UDomain));
   auto Result = singleton(std::move(UResult), std::move(ResultSpace));
-  assert(!Result || Result.domain().is_equal(Domain) == isl_bool_true);
+  assert(!Result || isl_set_is_equal(give(isl_map_domain(Result.copy())).keep(),
+                                     Domain.keep()) == isl_bool_true);
   return Result;
 }
 
@@ -608,7 +615,7 @@ isl::set ZoneAlgorithm::getDomainFor(MemoryAccess *MA) const {
 isl::map ZoneAlgorithm::getAccessRelationFor(MemoryAccess *MA) const {
   auto Domain = getDomainFor(MA);
   auto AccRel = MA->getLatestAccessRelation();
-  return AccRel.intersect_domain(Domain);
+  return give(isl_map_intersect_domain(AccRel.take(), Domain.take()));
 }
 
 isl::map ZoneAlgorithm::getScalarReachingDefinition(ScopStmt *Stmt) {
@@ -624,12 +631,12 @@ isl::map ZoneAlgorithm::getScalarReachingDefinition(ScopStmt *Stmt) {
 }
 
 isl::map ZoneAlgorithm::getScalarReachingDefinition(isl::set DomainDef) {
-  auto DomId = DomainDef.get_tuple_id();
-  auto *Stmt = static_cast<ScopStmt *>(isl_id_get_user(DomId.get()));
+  auto DomId = give(isl_set_get_tuple_id(DomainDef.keep()));
+  auto *Stmt = static_cast<ScopStmt *>(isl_id_get_user(DomId.keep()));
 
   auto StmtResult = getScalarReachingDefinition(Stmt);
 
-  return StmtResult.intersect_range(DomainDef);
+  return give(isl_map_intersect_range(StmtResult.take(), DomainDef.take()));
 }
 
 isl::map ZoneAlgorithm::makeUnknownForDomain(ScopStmt *Stmt) const {
@@ -644,19 +651,20 @@ isl::id ZoneAlgorithm::makeValueId(Value *V) {
   if (Id.is_null()) {
     auto Name = getIslCompatibleName("Val_", V, ValueIds.size() - 1,
                                      std::string(), UseInstructionNames);
-    Id = isl::id::alloc(IslCtx.get(), Name.c_str(), V);
+    Id = give(isl_id_alloc(IslCtx.get(), Name.c_str(), V));
   }
   return Id;
 }
 
 isl::space ZoneAlgorithm::makeValueSpace(Value *V) {
-  auto Result = ParamSpace.set_from_params();
-  return Result.set_tuple_id(isl::dim::set, makeValueId(V));
+  auto Result = give(isl_space_set_from_params(ParamSpace.copy()));
+  return give(isl_space_set_tuple_id(Result.take(), isl_dim_set,
+                                     makeValueId(V).take()));
 }
 
 isl::set ZoneAlgorithm::makeValueSet(Value *V) {
   auto Space = makeValueSpace(V);
-  return isl::set::universe(Space);
+  return give(isl_set_universe(Space.take()));
 }
 
 isl::map ZoneAlgorithm::makeValInst(Value *Val, ScopStmt *UserStmt, Loop *Scope,
@@ -676,25 +684,26 @@ isl::map ZoneAlgorithm::makeValInst(Value *Val, ScopStmt *UserStmt, Loop *Scope,
   case VirtualUse::ReadOnly: {
     // The definition does not depend on the statement which uses it.
     auto ValSet = makeValueSet(Val);
-    return isl::map::from_domain_and_range(DomainUse, ValSet);
+    return give(isl_map_from_domain_and_range(DomainUse.take(), ValSet.take()));
   }
 
   case VirtualUse::Synthesizable: {
     auto *ScevExpr = VUse.getScevExpr();
-    auto UseDomainSpace = DomainUse.get_space();
+    auto UseDomainSpace = give(isl_set_get_space(DomainUse.keep()));
 
     // Construct the SCEV space.
     // TODO: Add only the induction variables referenced in SCEVAddRecExpr
     // expressions, not just all of them.
-    auto ScevId = isl::manage(isl_id_alloc(
-        UseDomainSpace.get_ctx().get(), nullptr, const_cast<SCEV *>(ScevExpr)));
-
-    auto ScevSpace = UseDomainSpace.drop_dims(isl::dim::set, 0, 0);
-    ScevSpace = ScevSpace.set_tuple_id(isl::dim::set, ScevId);
+    auto ScevId = give(isl_id_alloc(UseDomainSpace.get_ctx().get(), nullptr,
+                                    const_cast<SCEV *>(ScevExpr)));
+    auto ScevSpace =
+        give(isl_space_drop_dims(UseDomainSpace.copy(), isl_dim_set, 0, 0));
+    ScevSpace = give(
+        isl_space_set_tuple_id(ScevSpace.take(), isl_dim_set, ScevId.copy()));
 
     // { DomainUse[] -> ScevExpr[] }
-    auto ValInst =
-        isl::map::identity(UseDomainSpace.map_from_domain_and_range(ScevSpace));
+    auto ValInst = give(isl_map_identity(isl_space_map_from_domain_and_range(
+        UseDomainSpace.copy(), ScevSpace.copy())));
     return ValInst;
   }
 
@@ -706,10 +715,11 @@ isl::map ZoneAlgorithm::makeValInst(Value *Val, ScopStmt *UserStmt, Loop *Scope,
     auto ValSet = makeValueSet(Val);
 
     // {  UserDomain[] -> llvm::Value }
-    auto ValInstSet = isl::map::from_domain_and_range(DomainUse, ValSet);
+    auto ValInstSet =
+        give(isl_map_from_domain_and_range(DomainUse.take(), ValSet.take()));
 
     // { UserDomain[] -> [UserDomain[] - >llvm::Value] }
-    auto Result = ValInstSet.domain_map().reverse();
+    auto Result = give(isl_map_reverse(isl_map_domain_map(ValInstSet.take())));
     simplify(Result);
     return Result;
   }
@@ -736,16 +746,19 @@ isl::map ZoneAlgorithm::makeValInst(Value *Val, ScopStmt *UserStmt, Loop *Scope,
     auto UserSched = getScatterFor(DomainUse);
 
     // { DomainUse[] -> DomainDef[] }
-    auto UsedInstance = UserSched.apply_range(ReachDef);
+    auto UsedInstance =
+        give(isl_map_apply_range(UserSched.take(), ReachDef.take()));
 
     // { llvm::Value }
     auto ValSet = makeValueSet(Val);
 
     // { DomainUse[] -> llvm::Value[] }
-    auto ValInstSet = isl::map::from_domain_and_range(DomainUse, ValSet);
+    auto ValInstSet =
+        give(isl_map_from_domain_and_range(DomainUse.take(), ValSet.take()));
 
     // { DomainUse[] -> [DomainDef[] -> llvm::Value]  }
-    auto Result = UsedInstance.range_product(ValInstSet);
+    auto Result =
+        give(isl_map_range_product(UsedInstance.take(), ValInstSet.take()));
 
     simplify(Result);
     return Result;
@@ -898,7 +911,8 @@ void ZoneAlgorithm::computeCommon() {
   }
 
   // { DomainWrite[] -> Element[] }
-  AllWrites = AllMustWrites.unite(AllMayWrites);
+  AllWrites =
+      give(isl_union_map_union(AllMustWrites.copy(), AllMayWrites.copy()));
 
   // { [Element[] -> Zone[]] -> DomainWrite[] }
   WriteReachDefZone =

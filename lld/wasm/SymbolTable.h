@@ -12,11 +12,12 @@
 
 #include "InputFiles.h"
 #include "Symbols.h"
+
 #include "llvm/ADT/CachedHashString.h"
-#include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/raw_ostream.h"
 
-using llvm::wasm::WasmGlobalType;
+using llvm::object::WasmSymbol;
 using llvm::wasm::WasmSignature;
 
 namespace lld {
@@ -41,45 +42,25 @@ public:
   void addFile(InputFile *File);
 
   std::vector<ObjFile *> ObjectFiles;
-  std::vector<InputFunction *> SyntheticFunctions;
-  std::vector<InputGlobal *> SyntheticGlobals;
 
+  void reportDuplicate(Symbol *Existing, InputFile *NewFile);
   void reportRemainingUndefines();
 
   ArrayRef<Symbol *> getSymbols() const { return SymVector; }
   Symbol *find(StringRef Name);
 
-  Symbol *addDefinedFunction(StringRef Name, uint32_t Flags, InputFile *File,
-                             InputFunction *Function);
-  Symbol *addDefinedData(StringRef Name, uint32_t Flags, InputFile *File,
-                         InputSegment *Segment, uint32_t Address,
-                         uint32_t Size);
-  Symbol *addDefinedGlobal(StringRef Name, uint32_t Flags, InputFile *File,
-                           InputGlobal *G);
-
-  Symbol *addUndefinedFunction(StringRef Name, uint32_t Flags, InputFile *File,
-                               const WasmSignature *Signature);
-  Symbol *addUndefinedData(StringRef Name, uint32_t Flags, InputFile *File);
-  Symbol *addUndefinedGlobal(StringRef Name, uint32_t Flags, InputFile *File,
-                             const WasmGlobalType *Type);
-
+  Symbol *addDefined(InputFile *F, const WasmSymbol *Sym,
+                     const InputSegment *Segment = nullptr);
+  Symbol *addUndefined(InputFile *F, const WasmSymbol *Sym);
+  Symbol *addUndefinedFunction(StringRef Name, const WasmSignature *Type);
+  Symbol *addDefinedGlobal(StringRef Name);
   void addLazy(ArchiveFile *F, const Archive::Symbol *Sym);
-
-  bool addComdat(StringRef Name);
-
-  DefinedData *addSyntheticDataSymbol(StringRef Name, uint32_t Flags);
-  DefinedGlobal *addSyntheticGlobal(StringRef Name, uint32_t Flags,
-                                    InputGlobal *Global);
-  DefinedFunction *addSyntheticFunction(StringRef Name, uint32_t Flags,
-                                        InputFunction *Function);
 
 private:
   std::pair<Symbol *, bool> insert(StringRef Name);
 
   llvm::DenseMap<llvm::CachedHashStringRef, Symbol *> SymMap;
   std::vector<Symbol *> SymVector;
-
-  llvm::DenseSet<llvm::CachedHashStringRef> Comdats;
 };
 
 extern SymbolTable *Symtab;

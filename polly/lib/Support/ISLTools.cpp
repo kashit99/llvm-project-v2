@@ -31,12 +31,12 @@ namespace {
 ///
 /// @return An isl_multi_aff for the map with this shifted dimension.
 isl::multi_aff makeShiftDimAff(isl::space Space, int Pos, int Amount) {
-  auto Identity = isl::multi_aff::identity(Space);
+  auto Identity = give(isl_multi_aff_identity(Space.take()));
   if (Amount == 0)
     return Identity;
-  auto ShiftAff = Identity.get_aff(Pos);
-  ShiftAff = ShiftAff.set_constant_si(Amount);
-  return Identity.set_aff(Pos, ShiftAff);
+  auto ShiftAff = give(isl_multi_aff_get_aff(Identity.keep(), Pos));
+  ShiftAff = give(isl_aff_set_constant_si(ShiftAff.take(), Amount));
+  return give(isl_multi_aff_set_aff(Identity.take(), Pos, ShiftAff.take()));
 }
 
 /// Construct a map that swaps two nested tuples.
@@ -47,26 +47,26 @@ isl::multi_aff makeShiftDimAff(isl::space Space, int Pos, int Amount) {
 /// @return { [Space1[] -> Space2[]] -> [Space2[] -> Space1[]] }
 isl::basic_map makeTupleSwapBasicMap(isl::space FromSpace1,
                                      isl::space FromSpace2) {
-  // Fast-path on out-of-quota.
-  if (!FromSpace1 || !FromSpace2)
-    return {};
+  assert(isl_space_is_set(FromSpace1.keep()) != isl_bool_false);
+  assert(isl_space_is_set(FromSpace2.keep()) != isl_bool_false);
 
-  assert(FromSpace1.is_set());
-  assert(FromSpace2.is_set());
+  auto Dims1 = isl_space_dim(FromSpace1.keep(), isl_dim_set);
+  auto Dims2 = isl_space_dim(FromSpace2.keep(), isl_dim_set);
+  auto FromSpace = give(isl_space_wrap(isl_space_map_from_domain_and_range(
+      FromSpace1.copy(), FromSpace2.copy())));
+  auto ToSpace = give(isl_space_wrap(isl_space_map_from_domain_and_range(
+      FromSpace2.take(), FromSpace1.take())));
+  auto MapSpace = give(
+      isl_space_map_from_domain_and_range(FromSpace.take(), ToSpace.take()));
 
-  unsigned Dims1 = FromSpace1.dim(isl::dim::set);
-  unsigned Dims2 = FromSpace2.dim(isl::dim::set);
-
-  isl::space FromSpace =
-      FromSpace1.map_from_domain_and_range(FromSpace2).wrap();
-  isl::space ToSpace = FromSpace2.map_from_domain_and_range(FromSpace1).wrap();
-  isl::space MapSpace = FromSpace.map_from_domain_and_range(ToSpace);
-
-  isl::basic_map Result = isl::basic_map::universe(MapSpace);
-  for (auto i = Dims1 - Dims1; i < Dims1; i += 1)
-    Result = Result.equate(isl::dim::in, i, isl::dim::out, Dims2 + i);
+  auto Result = give(isl_basic_map_universe(MapSpace.take()));
+  for (auto i = Dims1 - Dims1; i < Dims1; i += 1) {
+    Result = give(isl_basic_map_equate(Result.take(), isl_dim_in, i,
+                                       isl_dim_out, Dims2 + i));
+  }
   for (auto i = Dims2 - Dims2; i < Dims2; i += 1) {
-    Result = Result.equate(isl::dim::in, Dims1 + i, isl::dim::out, i);
+    Result = give(isl_basic_map_equate(Result.take(), isl_dim_in, Dims1 + i,
+                                       isl_dim_out, i));
   }
 
   return Result;
@@ -75,40 +75,41 @@ isl::basic_map makeTupleSwapBasicMap(isl::space FromSpace1,
 /// Like makeTupleSwapBasicMap(isl::space,isl::space), but returns
 /// an isl_map.
 isl::map makeTupleSwapMap(isl::space FromSpace1, isl::space FromSpace2) {
-  isl::basic_map BMapResult = makeTupleSwapBasicMap(FromSpace1, FromSpace2);
-  return isl::map(BMapResult);
+  auto BMapResult =
+      makeTupleSwapBasicMap(std::move(FromSpace1), std::move(FromSpace2));
+  return give(isl_map_from_basic_map(BMapResult.take()));
 }
 } // anonymous namespace
 
 isl::map polly::beforeScatter(isl::map Map, bool Strict) {
-  isl::space RangeSpace = Map.get_space().range();
-  isl::map ScatterRel =
-      Strict ? isl::map::lex_gt(RangeSpace) : isl::map::lex_ge(RangeSpace);
-  return Map.apply_range(ScatterRel);
+  auto RangeSpace = give(isl_space_range(isl_map_get_space(Map.keep())));
+  auto ScatterRel = give(Strict ? isl_map_lex_gt(RangeSpace.take())
+                                : isl_map_lex_ge(RangeSpace.take()));
+  return give(isl_map_apply_range(Map.take(), ScatterRel.take()));
 }
 
 isl::union_map polly::beforeScatter(isl::union_map UMap, bool Strict) {
-  isl::union_map Result = isl::union_map::empty(UMap.get_space());
+  auto Result = give(isl_union_map_empty(isl_union_map_get_space(UMap.keep())));
   UMap.foreach_map([=, &Result](isl::map Map) -> isl::stat {
-    isl::map After = beforeScatter(Map, Strict);
-    Result = Result.add_map(After);
+    auto After = beforeScatter(Map, Strict);
+    Result = give(isl_union_map_add_map(Result.take(), After.take()));
     return isl::stat::ok;
   });
   return Result;
 }
 
 isl::map polly::afterScatter(isl::map Map, bool Strict) {
-  isl::space RangeSpace = Map.get_space().range();
-  isl::map ScatterRel =
-      Strict ? isl::map::lex_lt(RangeSpace) : isl::map::lex_le(RangeSpace);
-  return Map.apply_range(ScatterRel);
+  auto RangeSpace = give(isl_space_range(isl_map_get_space(Map.keep())));
+  auto ScatterRel = give(Strict ? isl_map_lex_lt(RangeSpace.take())
+                                : isl_map_lex_le(RangeSpace.take()));
+  return give(isl_map_apply_range(Map.take(), ScatterRel.take()));
 }
 
 isl::union_map polly::afterScatter(const isl::union_map &UMap, bool Strict) {
-  isl::union_map Result = isl::union_map::empty(UMap.get_space());
+  auto Result = give(isl_union_map_empty(isl_union_map_get_space(UMap.keep())));
   UMap.foreach_map([=, &Result](isl::map Map) -> isl::stat {
-    isl::map After = afterScatter(Map, Strict);
-    Result = Result.add_map(After);
+    auto After = afterScatter(Map, Strict);
+    Result = give(isl_union_map_add_map(Result.take(), After.take()));
     return isl::stat::ok;
   });
   return Result;
@@ -116,25 +117,25 @@ isl::union_map polly::afterScatter(const isl::union_map &UMap, bool Strict) {
 
 isl::map polly::betweenScatter(isl::map From, isl::map To, bool InclFrom,
                                bool InclTo) {
-  isl::map AfterFrom = afterScatter(From, !InclFrom);
-  isl::map BeforeTo = beforeScatter(To, !InclTo);
+  auto AfterFrom = afterScatter(From, !InclFrom);
+  auto BeforeTo = beforeScatter(To, !InclTo);
 
-  return AfterFrom.intersect(BeforeTo);
+  return give(isl_map_intersect(AfterFrom.take(), BeforeTo.take()));
 }
 
 isl::union_map polly::betweenScatter(isl::union_map From, isl::union_map To,
                                      bool InclFrom, bool InclTo) {
-  isl::union_map AfterFrom = afterScatter(From, !InclFrom);
-  isl::union_map BeforeTo = beforeScatter(To, !InclTo);
+  auto AfterFrom = afterScatter(From, !InclFrom);
+  auto BeforeTo = beforeScatter(To, !InclTo);
 
-  return AfterFrom.intersect(BeforeTo);
+  return give(isl_union_map_intersect(AfterFrom.take(), BeforeTo.take()));
 }
 
 isl::map polly::singleton(isl::union_map UMap, isl::space ExpectedSpace) {
   if (!UMap)
     return nullptr;
 
-  if (isl_union_map_n_map(UMap.get()) == 0)
+  if (isl_union_map_n_map(UMap.keep()) == 0)
     return isl::map::empty(ExpectedSpace);
 
   isl::map Result = isl::map::from_union_map(UMap);
@@ -147,7 +148,7 @@ isl::set polly::singleton(isl::union_set USet, isl::space ExpectedSpace) {
   if (!USet)
     return nullptr;
 
-  if (isl_union_set_n_set(USet.get()) == 0)
+  if (isl_union_set_n_set(USet.keep()) == 0)
     return isl::set::empty(ExpectedSpace);
 
   isl::set Result(USet);
@@ -159,7 +160,7 @@ isl::set polly::singleton(isl::union_set USet, isl::space ExpectedSpace) {
 unsigned polly::getNumScatterDims(const isl::union_map &Schedule) {
   unsigned Dims = 0;
   Schedule.foreach_map([&Dims](isl::map Map) -> isl::stat {
-    Dims = std::max(Dims, Map.dim(isl::dim::out));
+    Dims = std::max(Dims, isl_map_dim(Map.keep(), isl_dim_out));
     return isl::stat::ok;
   });
   return Dims;
@@ -168,59 +169,63 @@ unsigned polly::getNumScatterDims(const isl::union_map &Schedule) {
 isl::space polly::getScatterSpace(const isl::union_map &Schedule) {
   if (!Schedule)
     return nullptr;
-  unsigned Dims = getNumScatterDims(Schedule);
-  isl::space ScatterSpace = Schedule.get_space().set_from_params();
-  return ScatterSpace.add_dims(isl::dim::set, Dims);
+  auto Dims = getNumScatterDims(Schedule);
+  auto ScatterSpace =
+      give(isl_space_set_from_params(isl_union_map_get_space(Schedule.keep())));
+  return give(isl_space_add_dims(ScatterSpace.take(), isl_dim_set, Dims));
 }
 
 isl::union_map polly::makeIdentityMap(const isl::union_set &USet,
                                       bool RestrictDomain) {
-  isl::union_map Result = isl::union_map::empty(USet.get_space());
+  auto Result = give(isl_union_map_empty(isl_union_set_get_space(USet.keep())));
   USet.foreach_set([=, &Result](isl::set Set) -> isl::stat {
-    isl::map IdentityMap = isl::map::identity(Set.get_space().map_from_set());
+    auto IdentityMap = give(isl_map_identity(
+        isl_space_map_from_set(isl_set_get_space(Set.keep()))));
     if (RestrictDomain)
-      IdentityMap = IdentityMap.intersect_domain(Set);
-    Result = Result.add_map(IdentityMap);
+      IdentityMap =
+          give(isl_map_intersect_domain(IdentityMap.take(), Set.take()));
+    Result = give(isl_union_map_add_map(Result.take(), IdentityMap.take()));
     return isl::stat::ok;
   });
   return Result;
 }
 
 isl::map polly::reverseDomain(isl::map Map) {
-  isl::space DomSpace = Map.get_space().domain().unwrap();
-  isl::space Space1 = DomSpace.domain();
-  isl::space Space2 = DomSpace.range();
-  isl::map Swap = makeTupleSwapMap(Space1, Space2);
-  return Map.apply_domain(Swap);
+  auto DomSpace =
+      give(isl_space_unwrap(isl_space_domain(isl_map_get_space(Map.keep()))));
+  auto Space1 = give(isl_space_domain(DomSpace.copy()));
+  auto Space2 = give(isl_space_range(DomSpace.take()));
+  auto Swap = makeTupleSwapMap(std::move(Space1), std::move(Space2));
+  return give(isl_map_apply_domain(Map.take(), Swap.take()));
 }
 
 isl::union_map polly::reverseDomain(const isl::union_map &UMap) {
-  isl::union_map Result = isl::union_map::empty(UMap.get_space());
+  auto Result = give(isl_union_map_empty(isl_union_map_get_space(UMap.keep())));
   UMap.foreach_map([=, &Result](isl::map Map) -> isl::stat {
     auto Reversed = reverseDomain(std::move(Map));
-    Result = Result.add_map(Reversed);
+    Result = give(isl_union_map_add_map(Result.take(), Reversed.take()));
     return isl::stat::ok;
   });
   return Result;
 }
 
 isl::set polly::shiftDim(isl::set Set, int Pos, int Amount) {
-  int NumDims = Set.dim(isl::dim::set);
+  int NumDims = isl_set_dim(Set.keep(), isl_dim_set);
   if (Pos < 0)
     Pos = NumDims + Pos;
   assert(Pos < NumDims && "Dimension index must be in range");
-  isl::space Space = Set.get_space();
-  Space = Space.map_from_domain_and_range(Space);
-  isl::multi_aff Translator = makeShiftDimAff(Space, Pos, Amount);
-  isl::map TranslatorMap = isl::map::from_multi_aff(Translator);
-  return Set.apply(TranslatorMap);
+  auto Space = give(isl_set_get_space(Set.keep()));
+  Space = give(isl_space_map_from_domain_and_range(Space.copy(), Space.copy()));
+  auto Translator = makeShiftDimAff(std::move(Space), Pos, Amount);
+  auto TranslatorMap = give(isl_map_from_multi_aff(Translator.take()));
+  return give(isl_set_apply(Set.take(), TranslatorMap.take()));
 }
 
 isl::union_set polly::shiftDim(isl::union_set USet, int Pos, int Amount) {
-  isl::union_set Result = isl::union_set::empty(USet.get_space());
+  auto Result = give(isl_union_set_empty(isl_union_set_get_space(USet.keep())));
   USet.foreach_set([=, &Result](isl::set Set) -> isl::stat {
-    isl::set Shifted = shiftDim(Set, Pos, Amount);
-    Result = Result.add_set(Shifted);
+    auto Shifted = shiftDim(Set, Pos, Amount);
+    Result = give(isl_union_set_add_set(Result.take(), Shifted.take()));
     return isl::stat::ok;
   });
   return Result;
@@ -231,20 +236,20 @@ isl::map polly::shiftDim(isl::map Map, isl::dim Dim, int Pos, int Amount) {
   if (Pos < 0)
     Pos = NumDims + Pos;
   assert(Pos < NumDims && "Dimension index must be in range");
-  isl::space Space = Map.get_space();
+  auto Space = give(isl_map_get_space(Map.keep()));
   switch (Dim) {
   case isl::dim::in:
-    Space = Space.domain();
+    Space = std::move(Space).domain();
     break;
   case isl::dim::out:
-    Space = Space.range();
+    Space = give(isl_space_range(Space.take()));
     break;
   default:
     llvm_unreachable("Unsupported value for 'dim'");
   }
-  Space = Space.map_from_domain_and_range(Space);
-  isl::multi_aff Translator = makeShiftDimAff(Space, Pos, Amount);
-  isl::map TranslatorMap = isl::map::from_multi_aff(Translator);
+  Space = give(isl_space_map_from_domain_and_range(Space.copy(), Space.copy()));
+  auto Translator = makeShiftDimAff(std::move(Space), Pos, Amount);
+  auto TranslatorMap = give(isl_map_from_multi_aff(Translator.take()));
   switch (Dim) {
   case isl::dim::in:
     return Map.apply_domain(TranslatorMap);
@@ -257,38 +262,38 @@ isl::map polly::shiftDim(isl::map Map, isl::dim Dim, int Pos, int Amount) {
 
 isl::union_map polly::shiftDim(isl::union_map UMap, isl::dim Dim, int Pos,
                                int Amount) {
-  isl::union_map Result = isl::union_map::empty(UMap.get_space());
+  auto Result = isl::union_map::empty(UMap.get_space());
 
   UMap.foreach_map([=, &Result](isl::map Map) -> isl::stat {
-    isl::map Shifted = shiftDim(Map, Dim, Pos, Amount);
-    Result = Result.add_map(Shifted);
+    auto Shifted = shiftDim(Map, Dim, Pos, Amount);
+    Result = std::move(Result).add_map(Shifted);
     return isl::stat::ok;
   });
   return Result;
 }
 
 void polly::simplify(isl::set &Set) {
-  Set = isl::manage(isl_set_compute_divs(Set.copy()));
-  Set = Set.detect_equalities();
-  Set = Set.coalesce();
+  Set = give(isl_set_compute_divs(Set.take()));
+  Set = give(isl_set_detect_equalities(Set.take()));
+  Set = give(isl_set_coalesce(Set.take()));
 }
 
 void polly::simplify(isl::union_set &USet) {
-  USet = isl::manage(isl_union_set_compute_divs(USet.copy()));
-  USet = USet.detect_equalities();
-  USet = USet.coalesce();
+  USet = give(isl_union_set_compute_divs(USet.take()));
+  USet = give(isl_union_set_detect_equalities(USet.take()));
+  USet = give(isl_union_set_coalesce(USet.take()));
 }
 
 void polly::simplify(isl::map &Map) {
-  Map = isl::manage(isl_map_compute_divs(Map.copy()));
-  Map = Map.detect_equalities();
-  Map = Map.coalesce();
+  Map = give(isl_map_compute_divs(Map.take()));
+  Map = give(isl_map_detect_equalities(Map.take()));
+  Map = give(isl_map_coalesce(Map.take()));
 }
 
 void polly::simplify(isl::union_map &UMap) {
-  UMap = isl::manage(isl_union_map_compute_divs(UMap.copy()));
-  UMap = UMap.detect_equalities();
-  UMap = UMap.coalesce();
+  UMap = give(isl_union_map_compute_divs(UMap.take()));
+  UMap = give(isl_union_map_detect_equalities(UMap.take()));
+  UMap = give(isl_union_map_coalesce(UMap.take()));
 }
 
 isl::union_map polly::computeReachingWrite(isl::union_map Schedule,
@@ -348,28 +353,32 @@ polly::computeArrayUnused(isl::union_map Schedule, isl::union_map Writes,
                           isl::union_map Reads, bool ReadEltInSameInst,
                           bool IncludeLastRead, bool IncludeWrite) {
   // { Element[] -> Scatter[] }
-  isl::union_map ReadActions = Schedule.apply_domain(Reads);
-  isl::union_map WriteActions = Schedule.apply_domain(Writes);
+  auto ReadActions =
+      give(isl_union_map_apply_domain(Schedule.copy(), Reads.take()));
+  auto WriteActions =
+      give(isl_union_map_apply_domain(Schedule.copy(), Writes.copy()));
 
   // { [Element[] -> DomainWrite[]] -> Scatter[] }
-  isl::union_map EltDomWrites =
-      Writes.reverse().range_map().apply_range(Schedule);
+  auto EltDomWrites = give(isl_union_map_apply_range(
+      isl_union_map_range_map(isl_union_map_reverse(Writes.copy())),
+      Schedule.copy()));
 
   // { [Element[] -> Scatter[]] -> DomainWrite[] }
-  isl::union_map ReachingOverwrite = computeReachingWrite(
+  auto ReachingOverwrite = computeReachingWrite(
       Schedule, Writes, true, ReadEltInSameInst, !ReadEltInSameInst);
 
   // { [Element[] -> Scatter[]] -> DomainWrite[] }
-  isl::union_map ReadsOverwritten =
-      ReachingOverwrite.intersect_domain(ReadActions.wrap());
+  auto ReadsOverwritten = give(isl_union_map_intersect_domain(
+      ReachingOverwrite.take(), isl_union_map_wrap(ReadActions.take())));
 
   // { [Element[] -> DomainWrite[]] -> Scatter[] }
-  isl::union_map ReadsOverwrittenRotated =
-      reverseDomain(ReadsOverwritten).curry().reverse();
-  isl::union_map LastOverwrittenRead = ReadsOverwrittenRotated.lexmax();
+  auto ReadsOverwrittenRotated = give(isl_union_map_reverse(
+      isl_union_map_curry(reverseDomain(ReadsOverwritten).take())));
+  auto LastOverwrittenRead =
+      give(isl_union_map_lexmax(ReadsOverwrittenRotated.copy()));
 
   // { [Element[] -> DomainWrite[]] -> Scatter[] }
-  isl::union_map BetweenLastReadOverwrite = betweenScatter(
+  auto BetweenLastReadOverwrite = betweenScatter(
       LastOverwrittenRead, EltDomWrites, IncludeLastRead, IncludeWrite);
 
   // { [Element[] -> Scatter[]] -> DomainWrite[] }
@@ -397,10 +406,10 @@ isl::union_set polly::convertZoneToTimepoints(isl::union_set Zone,
   if (InclStart && !InclEnd)
     return ShiftedZone;
   else if (!InclStart && !InclEnd)
-    return Zone.intersect(ShiftedZone);
+    return give(isl_union_set_intersect(Zone.take(), ShiftedZone.take()));
 
   assert(InclStart && InclEnd);
-  return Zone.unite(ShiftedZone);
+  return give(isl_union_set_union(Zone.take(), ShiftedZone.take()));
 }
 
 isl::union_map polly::convertZoneToTimepoints(isl::union_map Zone, isl::dim Dim,
@@ -412,10 +421,10 @@ isl::union_map polly::convertZoneToTimepoints(isl::union_map Zone, isl::dim Dim,
   if (InclStart && !InclEnd)
     return ShiftedZone;
   else if (!InclStart && !InclEnd)
-    return Zone.intersect(ShiftedZone);
+    return give(isl_union_map_intersect(Zone.take(), ShiftedZone.take()));
 
   assert(InclStart && InclEnd);
-  return Zone.unite(ShiftedZone);
+  return give(isl_union_map_union(Zone.take(), ShiftedZone.take()));
 }
 
 isl::map polly::convertZoneToTimepoints(isl::map Zone, isl::dim Dim,
@@ -427,10 +436,10 @@ isl::map polly::convertZoneToTimepoints(isl::map Zone, isl::dim Dim,
   if (InclStart && !InclEnd)
     return ShiftedZone;
   else if (!InclStart && !InclEnd)
-    return Zone.intersect(ShiftedZone);
+    return give(isl_map_intersect(Zone.take(), ShiftedZone.take()));
 
   assert(InclStart && InclEnd);
-  return Zone.unite(ShiftedZone);
+  return give(isl_map_union(Zone.take(), ShiftedZone.take()));
 }
 
 isl::map polly::distributeDomain(isl::map Map) {
@@ -438,45 +447,52 @@ isl::map polly::distributeDomain(isl::map Map) {
   // Domain[] -> Range2[] } and combine again. We would loose any relation
   // between Range1[] and Range2[] that is not also a constraint to Domain[].
 
-  isl::space Space = Map.get_space();
-  isl::space DomainSpace = Space.domain();
-  unsigned DomainDims = DomainSpace.dim(isl::dim::set);
-  isl::space RangeSpace = Space.range().unwrap();
-  isl::space Range1Space = RangeSpace.domain();
-  unsigned Range1Dims = Range1Space.dim(isl::dim::set);
-  isl::space Range2Space = RangeSpace.range();
-  unsigned Range2Dims = Range2Space.dim(isl::dim::set);
+  auto Space = give(isl_map_get_space(Map.keep()));
+  auto DomainSpace = give(isl_space_domain(Space.copy()));
+  auto DomainDims = isl_space_dim(DomainSpace.keep(), isl_dim_set);
+  auto RangeSpace = give(isl_space_unwrap(isl_space_range(Space.copy())));
+  auto Range1Space = give(isl_space_domain(RangeSpace.copy()));
+  auto Range1Dims = isl_space_dim(Range1Space.keep(), isl_dim_set);
+  auto Range2Space = give(isl_space_range(RangeSpace.copy()));
+  auto Range2Dims = isl_space_dim(Range2Space.keep(), isl_dim_set);
 
-  isl::space OutputSpace =
-      DomainSpace.map_from_domain_and_range(Range1Space)
-          .wrap()
-          .map_from_domain_and_range(
-              DomainSpace.map_from_domain_and_range(Range2Space).wrap());
+  auto OutputSpace = give(isl_space_map_from_domain_and_range(
+      isl_space_wrap(isl_space_map_from_domain_and_range(DomainSpace.copy(),
+                                                         Range1Space.copy())),
+      isl_space_wrap(isl_space_map_from_domain_and_range(DomainSpace.copy(),
+                                                         Range2Space.copy()))));
 
-  isl::basic_map Translator = isl::basic_map::universe(
-      Space.wrap().map_from_domain_and_range(OutputSpace.wrap()));
+  auto Translator =
+      give(isl_basic_map_universe(isl_space_map_from_domain_and_range(
+          isl_space_wrap(Space.copy()), isl_space_wrap(OutputSpace.copy()))));
 
   for (unsigned i = 0; i < DomainDims; i += 1) {
-    Translator = Translator.equate(isl::dim::in, i, isl::dim::out, i);
-    Translator = Translator.equate(isl::dim::in, i, isl::dim::out,
-                                   DomainDims + Range1Dims + i);
+    Translator = give(
+        isl_basic_map_equate(Translator.take(), isl_dim_in, i, isl_dim_out, i));
+    Translator =
+        give(isl_basic_map_equate(Translator.take(), isl_dim_in, i, isl_dim_out,
+                                  DomainDims + Range1Dims + i));
   }
-  for (unsigned i = 0; i < Range1Dims; i += 1)
-    Translator = Translator.equate(isl::dim::in, DomainDims + i, isl::dim::out,
-                                   DomainDims + i);
-  for (unsigned i = 0; i < Range2Dims; i += 1)
-    Translator = Translator.equate(isl::dim::in, DomainDims + Range1Dims + i,
-                                   isl::dim::out,
-                                   DomainDims + Range1Dims + DomainDims + i);
+  for (unsigned i = 0; i < Range1Dims; i += 1) {
+    Translator =
+        give(isl_basic_map_equate(Translator.take(), isl_dim_in, DomainDims + i,
+                                  isl_dim_out, DomainDims + i));
+  }
+  for (unsigned i = 0; i < Range2Dims; i += 1) {
+    Translator = give(isl_basic_map_equate(
+        Translator.take(), isl_dim_in, DomainDims + Range1Dims + i, isl_dim_out,
+        DomainDims + Range1Dims + DomainDims + i));
+  }
 
-  return Map.wrap().apply(Translator).unwrap();
+  return give(isl_set_unwrap(isl_set_apply(
+      isl_map_wrap(Map.copy()), isl_map_from_basic_map(Translator.copy()))));
 }
 
 isl::union_map polly::distributeDomain(isl::union_map UMap) {
-  isl::union_map Result = isl::union_map::empty(UMap.get_space());
+  auto Result = give(isl_union_map_empty(isl_union_map_get_space(UMap.keep())));
   isl::stat Success = UMap.foreach_map([=, &Result](isl::map Map) {
     auto Distributed = distributeDomain(Map);
-    Result = Result.add_map(Distributed);
+    Result = give(isl_union_map_add_map(Result.take(), Distributed.copy()));
     return isl::stat::ok;
   });
   if (Success != isl::stat::ok)
@@ -487,9 +503,9 @@ isl::union_map polly::distributeDomain(isl::union_map UMap) {
 isl::union_map polly::liftDomains(isl::union_map UMap, isl::union_set Factor) {
 
   // { Factor[] -> Factor[] }
-  isl::union_map Factors = makeIdentityMap(Factor, true);
+  auto Factors = makeIdentityMap(std::move(Factor), true);
 
-  return Factors.product(UMap);
+  return std::move(Factors).product(std::move(UMap));
 }
 
 isl::union_map polly::applyDomainRange(isl::union_map UMap,
@@ -501,13 +517,13 @@ isl::union_map polly::applyDomainRange(isl::union_map UMap,
   // translator map for each piece.
 
   // { DomainDomain[] }
-  isl::union_set DomainDomain = UMap.domain().unwrap().domain();
+  auto DomainDomain = UMap.domain().unwrap().domain();
 
   // { [DomainDomain[] -> DomainRange[]] -> [DomainDomain[] -> NewDomainRange[]]
   // }
-  isl::union_map LifetedFunc = liftDomains(std::move(Func), DomainDomain);
+  auto LifetedFunc = liftDomains(std::move(Func), DomainDomain);
 
-  return UMap.apply_domain(LifetedFunc);
+  return std::move(UMap).apply_domain(std::move(LifetedFunc));
 }
 
 isl::map polly::intersectRange(isl::map Map, isl::union_set Range) {
@@ -558,15 +574,19 @@ isl::val polly::getConstant(isl::pw_aff PwAff, bool Max, bool Min) {
 #if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
 static void foreachPoint(const isl::set &Set,
                          const std::function<void(isl::point P)> &F) {
-  Set.foreach_point([&](isl::point P) -> isl::stat {
-    F(P);
-    return isl::stat::ok;
-  });
+  isl_set_foreach_point(
+      Set.keep(),
+      [](__isl_take isl_point *p, void *User) -> isl_stat {
+        auto &F = *static_cast<const std::function<void(isl::point)> *>(User);
+        F(give(p));
+        return isl_stat_ok;
+      },
+      const_cast<void *>(static_cast<const void *>(&F)));
 }
 
 static void foreachPoint(isl::basic_set BSet,
                          const std::function<void(isl::point P)> &F) {
-  foreachPoint(isl::set(BSet), F);
+  foreachPoint(give(isl_set_from_basic_set(BSet.take())), F);
 }
 
 /// Determine the sorting order of the sets @p A and @p B without considering
@@ -575,11 +595,11 @@ static void foreachPoint(isl::basic_set BSet,
 /// Ordering is based on the lower bounds of the set's dimensions. First
 /// dimensions are considered first.
 static int flatCompare(const isl::basic_set &A, const isl::basic_set &B) {
-  unsigned ALen = A.dim(isl::dim::set);
-  unsigned BLen = B.dim(isl::dim::set);
-  unsigned Len = std::min(ALen, BLen);
+  int ALen = A.dim(isl::dim::set);
+  int BLen = B.dim(isl::dim::set);
+  int Len = std::min(ALen, BLen);
 
-  for (unsigned i = 0; i < Len; i += 1) {
+  for (int i = 0; i < Len; i += 1) {
     isl::basic_set ADim =
         A.project_out(isl::dim::param, 0, A.dim(isl::dim::param))
             .project_out(isl::dim::set, i + 1, ALen - i - 1)
@@ -620,68 +640,45 @@ static int flatCompare(const isl::basic_set &A, const isl::basic_set &B) {
   return ALen - BLen;
 }
 
-/// Compare the sets @p A and @p B according to their nested space structure.
-/// Returns 0 if the structure is considered equal.
-/// If @p ConsiderTupleLen is false, the number of dimensions in a tuple are
-/// ignored, i.e. a tuple with the same name but different number of dimensions
-/// are considered equal.
-static int structureCompare(const isl::space &ASpace, const isl::space &BSpace,
-                            bool ConsiderTupleLen) {
+/// Compare the sets @p A and @p B according to their nested space structure. If
+/// the structure is the same, sort using the dimension lower bounds.
+static int recursiveCompare(const isl::basic_set &A, const isl::basic_set &B) {
+  isl::space ASpace = A.get_space();
+  isl::space BSpace = B.get_space();
+
   int WrappingCompare = bool(ASpace.is_wrapping()) - bool(BSpace.is_wrapping());
   if (WrappingCompare != 0)
     return WrappingCompare;
 
-  if (ASpace.is_wrapping() && BSpace.is_wrapping()) {
-    isl::space AMap = ASpace.unwrap();
-    isl::space BMap = BSpace.unwrap();
+  if (ASpace.is_wrapping() && B.is_wrapping()) {
+    isl::basic_map AMap = A.unwrap();
+    isl::basic_map BMap = B.unwrap();
 
-    int FirstResult =
-        structureCompare(AMap.domain(), BMap.domain(), ConsiderTupleLen);
+    int FirstResult = recursiveCompare(AMap.domain(), BMap.domain());
     if (FirstResult != 0)
       return FirstResult;
 
-    return structureCompare(AMap.range(), BMap.range(), ConsiderTupleLen);
+    return recursiveCompare(AMap.range(), BMap.range());
   }
 
-  std::string AName;
-  if (ASpace.has_tuple_name(isl::dim::set))
-    AName = ASpace.get_tuple_name(isl::dim::set);
-
-  std::string BName;
-  if (BSpace.has_tuple_name(isl::dim::set))
-    BName = BSpace.get_tuple_name(isl::dim::set);
+  std::string AName = ASpace.has_tuple_name(isl::dim::set)
+                          ? ASpace.get_tuple_name(isl::dim::set)
+                          : std::string();
+  std::string BName = BSpace.has_tuple_name(isl::dim::set)
+                          ? BSpace.get_tuple_name(isl::dim::set)
+                          : std::string();
 
   int NameCompare = AName.compare(BName);
   if (NameCompare != 0)
     return NameCompare;
 
-  if (ConsiderTupleLen) {
-    int LenCompare = BSpace.dim(isl::dim::set) - ASpace.dim(isl::dim::set);
-    if (LenCompare != 0)
-      return LenCompare;
-  }
-
-  return 0;
+  return flatCompare(A, B);
 }
 
-/// Compare the sets @p A and @p B according to their nested space structure. If
-/// the structure is the same, sort using the dimension lower bounds.
-/// Returns an std::sort compatible bool.
+/// Wrapper for recursiveCompare, convert a {-1,0,1} compare result to what
+/// std::sort expects.
 static bool orderComparer(const isl::basic_set &A, const isl::basic_set &B) {
-  isl::space ASpace = A.get_space();
-  isl::space BSpace = B.get_space();
-
-  // Ignoring number of dimensions first ensures that structures with same tuple
-  // names, but different number of dimensions are still sorted close together.
-  int TupleNestingCompare = structureCompare(ASpace, BSpace, false);
-  if (TupleNestingCompare != 0)
-    return TupleNestingCompare < 0;
-
-  int TupleCompare = structureCompare(ASpace, BSpace, true);
-  if (TupleCompare != 0)
-    return TupleCompare < 0;
-
-  return flatCompare(A, B) < 0;
+  return recursiveCompare(A, B) < 0;
 }
 
 /// Print a string representation of @p USet to @p OS.
@@ -724,7 +721,7 @@ static void printSortedPolyhedra(isl::union_set USet, llvm::raw_ostream &OS,
   }
 
   // Sort the polyhedra.
-  llvm::sort(BSets.begin(), BSets.end(), orderComparer);
+  std::sort(BSets.begin(), BSets.end(), orderComparer);
 
   // Print the polyhedra.
   bool First = true;
@@ -796,7 +793,8 @@ static isl::set expand(const isl::set &Set) {
 ///
 /// @see expand(const isl::set)
 static isl::union_set expand(const isl::union_set &USet) {
-  isl::union_set Expanded = isl::union_set::empty(USet.get_space());
+  isl::union_set Expanded =
+      give(isl_union_set_empty(isl_union_set_get_space(USet.keep())));
   USet.foreach_set([&](isl::set Set) -> isl::stat {
     isl::set SetExpanded = expand(Set);
     Expanded = Expanded.add_set(SetExpanded);
@@ -822,19 +820,19 @@ LLVM_DUMP_METHOD void polly::dumpPw(const isl::union_map &UMap) {
 }
 
 LLVM_DUMP_METHOD void polly::dumpPw(__isl_keep isl_set *Set) {
-  dumpPw(isl::manage_copy(Set));
+  dumpPw(isl::manage(isl_set_copy(Set)));
 }
 
 LLVM_DUMP_METHOD void polly::dumpPw(__isl_keep isl_map *Map) {
-  dumpPw(isl::manage_copy(Map));
+  dumpPw(isl::manage(isl_map_copy(Map)));
 }
 
 LLVM_DUMP_METHOD void polly::dumpPw(__isl_keep isl_union_set *USet) {
-  dumpPw(isl::manage_copy(USet));
+  dumpPw(isl::manage(isl_union_set_copy(USet)));
 }
 
 LLVM_DUMP_METHOD void polly::dumpPw(__isl_keep isl_union_map *UMap) {
-  dumpPw(isl::manage_copy(UMap));
+  dumpPw(isl::manage(isl_union_map_copy(UMap)));
 }
 
 LLVM_DUMP_METHOD void polly::dumpExpanded(const isl::set &Set) {
@@ -854,18 +852,18 @@ LLVM_DUMP_METHOD void polly::dumpExpanded(const isl::union_map &UMap) {
 }
 
 LLVM_DUMP_METHOD void polly::dumpExpanded(__isl_keep isl_set *Set) {
-  dumpExpanded(isl::manage_copy(Set));
+  dumpExpanded(isl::manage(isl_set_copy(Set)));
 }
 
 LLVM_DUMP_METHOD void polly::dumpExpanded(__isl_keep isl_map *Map) {
-  dumpExpanded(isl::manage_copy(Map));
+  dumpExpanded(isl::manage(isl_map_copy(Map)));
 }
 
 LLVM_DUMP_METHOD void polly::dumpExpanded(__isl_keep isl_union_set *USet) {
-  dumpExpanded(isl::manage_copy(USet));
+  dumpExpanded(isl::manage(isl_union_set_copy(USet)));
 }
 
 LLVM_DUMP_METHOD void polly::dumpExpanded(__isl_keep isl_union_map *UMap) {
-  dumpExpanded(isl::manage_copy(UMap));
+  dumpExpanded(isl::manage(isl_union_map_copy(UMap)));
 }
 #endif

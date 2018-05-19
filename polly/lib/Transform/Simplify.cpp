@@ -29,8 +29,8 @@ namespace {
 
 #define TWO_STATISTICS(VARNAME, DESC)                                          \
   static llvm::Statistic VARNAME[2] = {                                        \
-      {DEBUG_TYPE, #VARNAME "0", DESC " (first)", {0}, {false}},               \
-      {DEBUG_TYPE, #VARNAME "1", DESC " (second)", {0}, {false}}}
+      {DEBUG_TYPE, #VARNAME "0", DESC " (first)", {0}, false},                 \
+      {DEBUG_TYPE, #VARNAME "1", DESC " (second)", {0}, false}}
 
 /// Number of max disjuncts we allow in removeOverwrites(). This is to avoid
 /// that the analysis of accesses in a statement is becoming too complex. Chosen
@@ -194,8 +194,8 @@ private:
         // If all of a write's elements are overwritten, remove it.
         isl::union_map AccRelUnion = AccRel;
         if (AccRelUnion.is_subset(WillBeOverwritten)) {
-          LLVM_DEBUG(dbgs() << "Removing " << MA
-                            << " which will be overwritten anyway\n");
+          DEBUG(dbgs() << "Removing " << MA
+                       << " which will be overwritten anyway\n");
 
           Stmt.removeSingleMemoryAccess(MA);
           OverwritesRemoved++;
@@ -408,7 +408,7 @@ private:
           std::string Name =
               getIslCompatibleName("Val", V, ValueSets.size() - 1,
                                    std::string(), UseInstructionNames);
-          isl::id Id = isl::manage(isl_id_alloc(Ctx, Name.c_str(), V));
+          isl::id Id = give(isl_id_alloc(Ctx, Name.c_str(), V));
           Result = isl::set::universe(
               isl::space(Ctx, 0, 0).set_tuple_id(isl::dim::set, Id));
         }
@@ -453,9 +453,9 @@ private:
             isl::map AccRelStoredVal = isl::map::from_domain_and_range(
                 AccRelWrapped, makeValueSet(StoredVal));
             if (isl::union_map(AccRelStoredVal).is_subset(Known)) {
-              LLVM_DEBUG(dbgs() << "Cleanup of " << MA << ":\n");
-              LLVM_DEBUG(dbgs() << "      Scalar: " << *StoredVal << "\n");
-              LLVM_DEBUG(dbgs() << "      AccRel: " << AccRel << "\n");
+              DEBUG(dbgs() << "Cleanup of " << MA << ":\n");
+              DEBUG(dbgs() << "      Scalar: " << *StoredVal << "\n");
+              DEBUG(dbgs() << "      AccRel: " << AccRel << "\n");
 
               Stmt.removeSingleMemoryAccess(MA);
 
@@ -497,8 +497,8 @@ private:
     S->simplifySCoP(true);
     assert(NumStmtsBefore >= S->getSize());
     StmtsRemoved = NumStmtsBefore - S->getSize();
-    LLVM_DEBUG(dbgs() << "Removed " << StmtsRemoved << " (of " << NumStmtsBefore
-                      << ") statements\n");
+    DEBUG(dbgs() << "Removed " << StmtsRemoved << " (of " << NumStmtsBefore
+                 << ") statements\n");
     TotalStmtsRemoved[CallNo] += StmtsRemoved;
   }
 
@@ -516,9 +516,8 @@ private:
         if (!AccRel.is_empty().is_true())
           continue;
 
-        LLVM_DEBUG(
-            dbgs() << "Removing " << MA
-                   << " because it's a partial access that never occurs\n");
+        DEBUG(dbgs() << "Removing " << MA
+                     << " because it's a partial access that never occurs\n");
         DeferredRemove.push_back(MA);
       }
 
@@ -549,8 +548,7 @@ private:
     for (MemoryAccess *MA : AllMAs) {
       if (UsedMA.count(MA))
         continue;
-      LLVM_DEBUG(dbgs() << "Removing " << MA
-                        << " because its value is not used\n");
+      DEBUG(dbgs() << "Removing " << MA << " because its value is not used\n");
       ScopStmt *Stmt = MA->getStatement();
       Stmt->removeSingleMemoryAccess(MA);
 
@@ -571,8 +569,8 @@ private:
       for (Instruction *Inst : AllInsts) {
         auto It = UsedInsts.find({&Stmt, Inst});
         if (It == UsedInsts.end()) {
-          LLVM_DEBUG(dbgs() << "Removing "; Inst->print(dbgs());
-                     dbgs() << " because it is not used\n");
+          DEBUG(dbgs() << "Removing "; Inst->print(dbgs());
+                dbgs() << " because it is not used\n");
           DeadInstructionsRemoved++;
           TotalDeadInstructionsRemoved[CallNo]++;
           continue;
@@ -638,29 +636,29 @@ public:
     this->S = &S;
     ScopsProcessed[CallNo]++;
 
-    LLVM_DEBUG(dbgs() << "Removing partial writes that never happen...\n");
+    DEBUG(dbgs() << "Removing partial writes that never happen...\n");
     removeEmptyPartialAccesses();
 
-    LLVM_DEBUG(dbgs() << "Removing overwrites...\n");
+    DEBUG(dbgs() << "Removing overwrites...\n");
     removeOverwrites();
 
-    LLVM_DEBUG(dbgs() << "Coalesce partial writes...\n");
+    DEBUG(dbgs() << "Coalesce partial writes...\n");
     coalesceWrites();
 
-    LLVM_DEBUG(dbgs() << "Removing redundant writes...\n");
+    DEBUG(dbgs() << "Removing redundant writes...\n");
     removeRedundantWrites();
 
-    LLVM_DEBUG(dbgs() << "Cleanup unused accesses...\n");
+    DEBUG(dbgs() << "Cleanup unused accesses...\n");
     LoopInfo *LI = &getAnalysis<LoopInfoWrapperPass>().getLoopInfo();
     markAndSweep(LI);
 
-    LLVM_DEBUG(dbgs() << "Removing statements without side effects...\n");
+    DEBUG(dbgs() << "Removing statements without side effects...\n");
     removeUnnecessaryStmts();
 
     if (isModified())
       ScopsModified[CallNo]++;
-    LLVM_DEBUG(dbgs() << "\nFinal Scop:\n");
-    LLVM_DEBUG(dbgs() << S);
+    DEBUG(dbgs() << "\nFinal Scop:\n");
+    DEBUG(dbgs() << S);
 
     auto ScopStats = S.getStatistics();
     NumValueWrites[CallNo] += ScopStats.NumValueWrites;

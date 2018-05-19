@@ -10,7 +10,6 @@
 #ifndef LLD_ELF_CONFIG_H
 #define LLD_ELF_CONFIG_H
 
-#include "lld/Common/ErrorHandler.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSet.h"
@@ -18,13 +17,13 @@
 #include "llvm/Support/CachePruning.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/Endian.h"
+
 #include <vector>
 
 namespace lld {
 namespace elf {
 
 class InputFile;
-class InputSectionBase;
 
 enum ELFKind {
   ELFNoneKind,
@@ -86,20 +85,15 @@ struct Configuration {
   llvm::StringRef Init;
   llvm::StringRef LTOAAPipeline;
   llvm::StringRef LTONewPmPasses;
-  llvm::StringRef LTOObjPath;
-  llvm::StringRef LTOSampleProfile;
   llvm::StringRef MapFile;
   llvm::StringRef OutputFile;
   llvm::StringRef OptRemarksFilename;
-  llvm::StringRef ProgName;
   llvm::StringRef SoName;
   llvm::StringRef Sysroot;
   llvm::StringRef ThinLTOCacheDir;
-  llvm::StringRef ThinLTOIndexOnlyArg;
-  std::pair<llvm::StringRef, llvm::StringRef> ThinLTOObjectSuffixReplace;
-  std::pair<llvm::StringRef, llvm::StringRef> ThinLTOPrefixReplace;
   std::string Rpath;
   std::vector<VersionDefinition> VersionDefinitions;
+  std::vector<llvm::StringRef> Argv;
   std::vector<llvm::StringRef> AuxiliaryList;
   std::vector<llvm::StringRef> FilterList;
   std::vector<llvm::StringRef> SearchPaths;
@@ -109,9 +103,6 @@ struct Configuration {
   std::vector<SymbolVersion> VersionScriptGlobals;
   std::vector<SymbolVersion> VersionScriptLocals;
   std::vector<uint8_t> BuildIdVector;
-  llvm::MapVector<std::pair<const InputSectionBase *, const InputSectionBase *>,
-                  uint64_t>
-      CallGraphProfile;
   bool AllowMultipleDefinition;
   bool AndroidPackDynRelocs = false;
   bool ARMHasBlx = false;
@@ -120,9 +111,7 @@ struct Configuration {
   bool AsNeeded = false;
   bool Bsymbolic;
   bool BsymbolicFunctions;
-  bool CheckSections;
   bool CompressDebugSections;
-  bool Cref;
   bool DefineCommon;
   bool Demangle = true;
   bool DisableVerify;
@@ -134,16 +123,14 @@ struct Configuration {
   bool GcSections;
   bool GdbIndex;
   bool GnuHash = false;
-  bool GnuUnique;
   bool HasDynamicList = false;
   bool HasDynSymTab;
   bool ICF;
-  bool IgnoreDataAddressEquality;
-  bool IgnoreFunctionAddressEquality;
-  bool LTODebugPassManager;
-  bool LTONewPassManager;
+  bool ICFData;
   bool MergeArmExidx;
   bool MipsN32Abi = false;
+  bool NoGnuUnique;
+  bool NoUndefinedVersion;
   bool NoinhibitExec;
   bool Nostdlib;
   bool OFormatBinary;
@@ -151,7 +138,6 @@ struct Configuration {
   bool OptRemarksWithHotness;
   bool Pie;
   bool PrintGcSections;
-  bool PrintIcfSections;
   bool Relocatable;
   bool SaveTemps;
   bool SingleRoRx;
@@ -160,19 +146,13 @@ struct Configuration {
   bool SysvHash = false;
   bool Target1Rel;
   bool Trace;
-  bool ThinLTOEmitImportsFiles;
-  bool ThinLTOIndexOnly;
-  bool UndefinedVersion;
-  bool WarnBackrefs;
+  bool Verbose;
   bool WarnCommon;
   bool WarnMissingEntry;
-  bool WarnSymbolOrdering;
-  bool WriteAddends;
   bool ZCombreloc;
-  bool ZCopyreloc;
   bool ZExecstack;
   bool ZHazardplt;
-  bool ZKeepTextSectionPrefix;
+  bool ZNocopyreloc;
   bool ZNodelete;
   bool ZNodlopen;
   bool ZNow;
@@ -181,6 +161,7 @@ struct Configuration {
   bool ZRodynamic;
   bool ZText;
   bool ZRetpolineplt;
+  bool ExitEarly;
   bool ZWxneeded;
   DiscardPolicy Discard;
   OrphanHandlingPolicy OrphanHandling;
@@ -259,12 +240,6 @@ struct Configuration {
 // The only instance of Configuration struct.
 extern Configuration *Config;
 
-static inline void errorOrWarn(const Twine &Msg) {
-  if (!Config->NoinhibitExec)
-    error(Msg);
-  else
-    warn(Msg);
-}
 } // namespace elf
 } // namespace lld
 

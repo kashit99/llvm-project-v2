@@ -22,9 +22,6 @@
 // RUN: ld.lld -shared %t.o %t.dir/exc.a -o %t.exe --exclude-libs=ALL
 // RUN: llvm-readobj -dyn-symbols %t.exe | FileCheck --check-prefix=EXCLUDE %s
 
-// RUN: ld.lld -shared %t.o %t2.o %t.dir/exc.a -o %t.exe --exclude-libs=ALL
-// RUN: llvm-readobj -dyn-symbols %t.exe | FileCheck --check-prefix=DEFAULT %s
-
 // RUN: ld.lld -shared --whole-archive %t.o %t.dir/exc.a -o %t.exe --exclude-libs foo,bar,exc.a
 // RUN: llvm-readobj -dyn-symbols %t.exe | FileCheck --check-prefix=EXCLUDE %s
 
@@ -32,10 +29,8 @@
 // RUN: llvm-readobj -dyn-symbols %t.exe | FileCheck --check-prefix=EXCLUDE %s
 
 // DEFAULT: Name: fn
-// DEFAULT: Name: foo
 // EXCLUDE-NOT: Name: fn
-// EXCLUDE: Name: foo
 
-.globl fn, foo
+.globl fn
 foo:
   call fn@PLT

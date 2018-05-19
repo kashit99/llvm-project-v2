@@ -4,9 +4,8 @@ add_public_tablegen_target(WasmOptionsTableGen)
 
 add_lld_library(lldWasm
   Driver.cpp
-  InputChunks.cpp
   InputFiles.cpp
-  MarkLive.cpp
+  InputSegment.cpp
   OutputSections.cpp
   SymbolTable.cpp
   Symbols.cpp

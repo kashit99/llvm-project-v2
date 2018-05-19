@@ -519,9 +519,9 @@ void IslNodeBuilder::createForVector(__isl_take isl_ast_node *For,
 /// @param Node The band node to be modified.
 /// @return The modified schedule node.
 static bool IsLoopVectorizerDisabled(isl::ast_node Node) {
-  assert(isl_ast_node_get_type(Node.get()) == isl_ast_node_for);
+  assert(isl_ast_node_get_type(Node.keep()) == isl_ast_node_for);
   auto Body = Node.for_get_body();
-  if (isl_ast_node_get_type(Body.get()) != isl_ast_node_mark)
+  if (isl_ast_node_get_type(Body.keep()) != isl_ast_node_mark)
     return false;
   auto Id = Body.mark_get_id();
   if (strcmp(Id.get_name().c_str(), "Loop Vectorizer Disabled") == 0)
@@ -540,7 +540,8 @@ void IslNodeBuilder::createForSequential(__isl_take isl_ast_node *For,
   Value *IV;
   CmpInst::Predicate Predicate;
 
-  bool LoopVectorizerDisabled = IsLoopVectorizerDisabled(isl::manage_copy(For));
+  bool LoopVectorizerDisabled =
+      IsLoopVectorizerDisabled(isl::manage(isl_ast_node_copy(For)));
 
   Body = isl_ast_node_for_get_body(For);
 
@@ -757,13 +758,13 @@ static bool hasPartialAccesses(__isl_take isl_ast_node *Node) {
                if (isl_ast_node_get_type(Node) != isl_ast_node_user)
                  return isl_bool_true;
 
-               isl::ast_expr Expr =
-                   isl::manage(isl_ast_node_user_get_expr(Node));
-               isl::ast_expr StmtExpr = Expr.get_op_arg(0);
-               isl::id Id = StmtExpr.get_id();
+               isl::ast_expr Expr = give(isl_ast_node_user_get_expr(Node));
+               isl::ast_expr StmtExpr =
+                   give(isl_ast_expr_get_op_arg(Expr.keep(), 0));
+               isl::id Id = give(isl_ast_expr_get_id(StmtExpr.keep()));
 
                ScopStmt *Stmt =
-                   static_cast<ScopStmt *>(isl_id_get_user(Id.get()));
+                   static_cast<ScopStmt *>(isl_id_get_user(Id.keep()));
                isl::set StmtDom = Stmt->getDomain();
                for (auto *MA : *Stmt) {
                  if (MA->isLatestPartialAccess())
@@ -852,7 +853,7 @@ IslNodeBuilder::createNewAccesses(ScopStmt *Stmt,
 
   auto *Build = IslAstInfo::getBuild(Node);
   assert(Build && "Could not obtain isl_ast_build from user node");
-  Stmt->setAstBuild(isl::manage_copy(Build));
+  Stmt->setAstBuild(isl::manage(isl_ast_build_copy(Build)));
 
   for (auto *MA : *Stmt) {
     if (!MA->hasNewAccessRelation()) {
@@ -900,10 +901,10 @@ IslNodeBuilder::createNewAccesses(ScopStmt *Stmt,
 
     // isl cannot generate an index expression for access-nothing accesses.
     isl::set AccDomain =
-        isl::manage(isl_pw_multi_aff_domain(isl_pw_multi_aff_copy(PWAccRel)));
+        give(isl_pw_multi_aff_domain(isl_pw_multi_aff_copy(PWAccRel)));
     isl::set Context = S.getContext();
     AccDomain = AccDomain.intersect_params(Context);
-    if (AccDomain.is_empty()) {
+    if (isl_set_is_empty(AccDomain.keep()) == isl_bool_true) {
       isl_pw_multi_aff_free(PWAccRel);
       continue;
     }
@@ -1595,7 +1596,7 @@ Value *IslNodeBuilder::createRTC(isl_ast_expr *Condition) {
   // bits. These are -- in case wrapping intrinsics are used -- translated to
   // runtime library calls that are not available on all systems (e.g., Android)
   // and consequently will result in linker errors.
-  if (ExprBuilder.hasLargeInts(isl::manage_copy(Condition))) {
+  if (ExprBuilder.hasLargeInts(isl::manage(isl_ast_expr_copy(Condition)))) {
     isl_ast_expr_free(Condition);
     return Builder.getFalse();
   }

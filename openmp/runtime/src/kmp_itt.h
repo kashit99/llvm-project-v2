@@ -42,7 +42,6 @@ extern void __kmp_itt_fini_ittlib(void);
 
 void __kmp_itt_initialize();
 void __kmp_itt_destroy();
-void __kmp_itt_reset();
 
 // -----------------------------------------------------------------------------
 // New stuff for reporting high-level constructs.

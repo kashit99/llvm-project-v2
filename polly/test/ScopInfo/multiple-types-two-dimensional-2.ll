@@ -12,7 +12,7 @@
 ; We do not yet correctly handle multi-dimensional arrays which are accessed
 ; through different base types. Verify that we correctly bail out.
 ;
-; CHECK: Delinearization assumption:  {  : false }
+; CHECK: Delinearization assumption:  {  : 1 = 0 }
 ;
 target datalayout = "e-m:e-i64:64-f80:128-n8:16:32:64-S128"
 

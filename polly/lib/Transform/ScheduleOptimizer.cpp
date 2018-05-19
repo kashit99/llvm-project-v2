@@ -281,9 +281,9 @@ STATISTIC(NumBoxedLoopsOptimized, "Number of boxed loops optimized");
 
 #define THREE_STATISTICS(VARNAME, DESC)                                        \
   static Statistic VARNAME[3] = {                                              \
-      {DEBUG_TYPE, #VARNAME "0", DESC " (original)", {0}, {false}},            \
-      {DEBUG_TYPE, #VARNAME "1", DESC " (after scheduler)", {0}, {false}},     \
-      {DEBUG_TYPE, #VARNAME "2", DESC " (after optimizer)", {0}, {false}}}
+      {DEBUG_TYPE, #VARNAME "0", DESC " (original)", {0}, false},              \
+      {DEBUG_TYPE, #VARNAME "1", DESC " (after scheduler)", {0}, false},       \
+      {DEBUG_TYPE, #VARNAME "2", DESC " (after optimizer)", {0}, false}}
 
 THREE_STATISTICS(NumBands, "Number of bands");
 THREE_STATISTICS(NumBandMembers, "Number of band members");
@@ -470,10 +470,10 @@ isl::schedule_node ScheduleTreeOptimizer::applyRegisterTiling(
 }
 
 static bool isSimpleInnermostBand(const isl::schedule_node &Node) {
-  assert(isl_schedule_node_get_type(Node.get()) == isl_schedule_node_band);
-  assert(isl_schedule_node_n_children(Node.get()) == 1);
+  assert(isl_schedule_node_get_type(Node.keep()) == isl_schedule_node_band);
+  assert(isl_schedule_node_n_children(Node.keep()) == 1);
 
-  auto ChildType = isl_schedule_node_get_type(Node.child(0).get());
+  auto ChildType = isl_schedule_node_get_type(Node.child(0).keep());
 
   if (ChildType == isl_schedule_node_leaf)
     return true;
@@ -483,12 +483,12 @@ static bool isSimpleInnermostBand(const isl::schedule_node &Node) {
 
   auto Sequence = Node.child(0);
 
-  for (int c = 0, nc = isl_schedule_node_n_children(Sequence.get()); c < nc;
+  for (int c = 0, nc = isl_schedule_node_n_children(Sequence.keep()); c < nc;
        ++c) {
     auto Child = Sequence.child(c);
-    if (isl_schedule_node_get_type(Child.get()) != isl_schedule_node_filter)
+    if (isl_schedule_node_get_type(Child.keep()) != isl_schedule_node_filter)
       return false;
-    if (isl_schedule_node_get_type(Child.child(0).get()) !=
+    if (isl_schedule_node_get_type(Child.child(0).keep()) !=
         isl_schedule_node_leaf)
       return false;
   }
@@ -1101,7 +1101,7 @@ optimizeDataLayoutMatrMulPattern(isl::schedule_node Node, isl::map MapOldIndVar,
   // matrix B, the second operand of the matrix multiplication.
   Node = Node.parent().parent().parent().parent().parent().parent();
   Node = isl::manage(isl_schedule_node_band_split(Node.release(), 2)).child(0);
-  auto AccRel = getMatMulAccRel(MapOldIndVar, 3, 7);
+  auto AccRel = getMatMulAccRel(isl::manage(MapOldIndVar.copy()), 3, 7);
   unsigned FirstDimSize = MacroParams.Nc / MicroParams.Nr;
   unsigned SecondDimSize = MacroParams.Kc;
   unsigned ThirdDimSize = MicroParams.Nr;
@@ -1122,15 +1122,15 @@ optimizeDataLayoutMatrMulPattern(isl::schedule_node Node, isl::map MapOldIndVar,
   auto DomainId = Domain.get_tuple_id();
   auto *NewStmt = Stmt->getParent()->addScopStmt(
       OldAcc, MMI.B->getLatestAccessRelation(), Domain);
-  ExtMap = ExtMap.set_tuple_id(isl::dim::out, DomainId);
-  ExtMap = ExtMap.intersect_range(Domain);
+  ExtMap = ExtMap.set_tuple_id(isl::dim::out, isl::manage(DomainId.copy()));
+  ExtMap = ExtMap.intersect_range(isl::manage(Domain.copy()));
   ExtMap = ExtMap.set_tuple_id(isl::dim::out, NewStmt->getDomainId());
   Node = createExtensionNode(Node, ExtMap);
 
   // Create a copy statement that corresponds to the memory access
   // to the matrix A, the first operand of the matrix multiplication.
   Node = Node.child(0);
-  AccRel = getMatMulAccRel(MapOldIndVar, 4, 6);
+  AccRel = getMatMulAccRel(isl::manage(MapOldIndVar.copy()), 4, 6);
   FirstDimSize = MacroParams.Mc / MicroParams.Mr;
   ThirdDimSize = MicroParams.Mr;
   SAI = Stmt->getParent()->createScopArrayInfo(
@@ -1253,16 +1253,17 @@ static isl::schedule_node markLoopVectorizerDisabled(isl::schedule_node Node) {
 /// @return The modified schedule node.
 static isl::schedule_node
 getBandNodeWithOriginDimOrder(isl::schedule_node Node) {
-  assert(isl_schedule_node_get_type(Node.get()) == isl_schedule_node_band);
-  if (isl_schedule_node_get_type(Node.child(0).get()) != isl_schedule_node_leaf)
+  assert(isl_schedule_node_get_type(Node.keep()) == isl_schedule_node_band);
+  if (isl_schedule_node_get_type(Node.child(0).keep()) !=
+      isl_schedule_node_leaf)
     return Node;
   auto Domain = Node.get_universe_domain();
-  assert(isl_union_set_n_set(Domain.get()) == 1);
+  assert(isl_union_set_n_set(Domain.keep()) == 1);
   if (Node.get_schedule_depth() != 0 ||
-      (isl::set(Domain).dim(isl::dim::set) !=
-       isl_schedule_node_band_n_member(Node.get())))
+      (isl::set(isl::manage(Domain.copy())).dim(isl::dim::set) !=
+       isl_schedule_node_band_n_member(Node.keep())))
     return Node;
-  Node = isl::manage(isl_schedule_node_delete(Node.copy()));
+  Node = isl::manage(isl_schedule_node_delete(Node.take()));
   auto PartialSchedulePwAff = Domain.identity_union_pw_multi_aff();
   auto PartialScheduleMultiPwAff =
       isl::multi_union_pw_aff(PartialSchedulePwAff);
@@ -1328,7 +1329,7 @@ bool ScheduleTreeOptimizer::isMatrMultPattern(isl::schedule_node Node,
 __isl_give isl_schedule_node *
 ScheduleTreeOptimizer::optimizeBand(__isl_take isl_schedule_node *Node,
                                     void *User) {
-  if (!isTileableBandNode(isl::manage_copy(Node)))
+  if (!isTileableBandNode(isl::manage(isl_schedule_node_copy(Node))))
     return Node;
 
   const OptimizerAdditionalInfoTy *OAI =
@@ -1336,8 +1337,9 @@ ScheduleTreeOptimizer::optimizeBand(__isl_take isl_schedule_node *Node,
 
   MatMulInfoTy MMI;
   if (PMBasedOpts && User &&
-      isMatrMultPattern(isl::manage_copy(Node), OAI->D, MMI)) {
-    LLVM_DEBUG(dbgs() << "The matrix multiplication pattern was detected\n");
+      isMatrMultPattern(isl::manage(isl_schedule_node_copy(Node)), OAI->D,
+                        MMI)) {
+    DEBUG(dbgs() << "The matrix multiplication pattern was detected\n");
     MatMulOpts++;
     return optimizeMatMulPattern(isl::manage(Node), OAI->TTI, MMI).release();
   }
@@ -1410,6 +1412,7 @@ public:
 private:
   isl_schedule *LastSchedule = nullptr;
 };
+
 } // namespace
 
 char IslScheduleOptimizer::ID = 0;
@@ -1431,7 +1434,7 @@ static void walkScheduleTreeForStatistics(isl::schedule Schedule, int Version) {
   isl_schedule_node_foreach_descendant_top_down(
       Root.get(),
       [](__isl_keep isl_schedule_node *nodeptr, void *user) -> isl_bool {
-        isl::schedule_node Node = isl::manage_copy(nodeptr);
+        isl::schedule_node Node = isl::manage(isl_schedule_node_copy(nodeptr));
         int Version = *static_cast<int *>(user);
 
         switch (isl_schedule_node_get_type(Node.get())) {
@@ -1483,7 +1486,7 @@ bool IslScheduleOptimizer::runOnScop(Scop &S) {
       getAnalysis<DependenceInfo>().getDependences(Dependences::AL_Statement);
 
   if (D.getSharedIslCtx() != S.getSharedIslCtx()) {
-    LLVM_DEBUG(dbgs() << "DependenceInfo for another SCoP/isl_ctx\n");
+    DEBUG(dbgs() << "DependenceInfo for another SCoP/isl_ctx\n");
     return false;
   }
 
@@ -1518,8 +1521,8 @@ bool IslScheduleOptimizer::runOnScop(Scop &S) {
   ScopsProcessed++;
   walkScheduleTreeForStatistics(S.getScheduleTree(), 0);
 
-  isl::union_map Validity = isl::manage(D.getDependences(ValidityKinds));
-  isl::union_map Proximity = isl::manage(D.getDependences(ProximityKinds));
+  isl::union_map Validity = give(D.getDependences(ValidityKinds));
+  isl::union_map Proximity = give(D.getDependences(ProximityKinds));
 
   // Simplify the dependences by removing the constraints introduced by the
   // domains. This can speed up the scheduling time significantly, as large
@@ -1538,10 +1541,10 @@ bool IslScheduleOptimizer::runOnScop(Scop &S) {
               "or 'no'. Falling back to default: 'yes'\n";
   }
 
-  LLVM_DEBUG(dbgs() << "\n\nCompute schedule from: ");
-  LLVM_DEBUG(dbgs() << "Domain := " << Domain << ";\n");
-  LLVM_DEBUG(dbgs() << "Proximity := " << Proximity << ";\n");
-  LLVM_DEBUG(dbgs() << "Validity := " << Validity << ";\n");
+  DEBUG(dbgs() << "\n\nCompute schedule from: ");
+  DEBUG(dbgs() << "Domain := " << Domain << ";\n");
+  DEBUG(dbgs() << "Proximity := " << Proximity << ";\n");
+  DEBUG(dbgs() << "Validity := " << Validity << ";\n");
 
   unsigned IslSerializeSCCs;
 
@@ -1607,7 +1610,7 @@ bool IslScheduleOptimizer::runOnScop(Scop &S) {
 
   ScopsRescheduled++;
 
-  LLVM_DEBUG({
+  DEBUG({
     auto *P = isl_printer_to_str(Ctx);
     P = isl_printer_set_yaml_style(P, ISL_YAML_STYLE_BLOCK);
     P = isl_printer_print_schedule(P, Schedule.get());

@@ -298,12 +298,12 @@ public:
       Known = nullptr;
       Translator = nullptr;
       NormalizeMap = nullptr;
-      LLVM_DEBUG(dbgs() << "Known analysis exceeded max_operations\n");
+      DEBUG(dbgs() << "Known analysis exceeded max_operations\n");
       return false;
     }
 
     KnownAnalyzed++;
-    LLVM_DEBUG(dbgs() << "All known: " << Known << "\n");
+    DEBUG(dbgs() << "All known: " << Known << "\n");
 
     return true;
   }
@@ -491,13 +491,12 @@ public:
       return FD_CanForwardProfitably;
 
     if (Access) {
-      LLVM_DEBUG(
-          dbgs() << "    forwarded known load with preexisting MemoryAccess"
-                 << Access << "\n");
+      DEBUG(dbgs() << "    forwarded known load with preexisting MemoryAccess"
+                   << Access << "\n");
     } else {
       Access = makeReadArrayAccess(TargetStmt, LI, SameVal);
-      LLVM_DEBUG(dbgs() << "    forwarded known load with new MemoryAccess"
-                        << Access << "\n");
+      DEBUG(dbgs() << "    forwarded known load with new MemoryAccess" << Access
+                   << "\n");
 
       // { ValInst[] }
       isl::space ValInstSpace = ExpectedVal.get_space().range();
@@ -532,14 +531,13 @@ public:
         isl::map LocalTranslator = DefToTarget.reverse().product(ValToVal);
 
         Translator = Translator.add_map(LocalTranslator);
-        LLVM_DEBUG(dbgs() << "      local translator is " << LocalTranslator
-                          << "\n");
+        DEBUG(dbgs() << "      local translator is " << LocalTranslator
+                     << "\n");
       }
     }
-    LLVM_DEBUG(dbgs() << "      expected values where " << TargetExpectedVal
-                      << "\n");
-    LLVM_DEBUG(dbgs() << "      candidate elements where " << Candidates
-                      << "\n");
+    DEBUG(dbgs() << "      expected values where " << TargetExpectedVal
+                 << "\n");
+    DEBUG(dbgs() << "      candidate elements where " << Candidates << "\n");
     assert(Access);
 
     NumKnownLoadsForwarded++;
@@ -763,9 +761,8 @@ public:
       if (TargetUse.getKind() == VirtualUse::Synthesizable)
         return FD_CanForwardLeaf;
 
-      LLVM_DEBUG(
-          dbgs() << "    Synthesizable would not be synthesizable anymore: "
-                 << *UseVal << "\n");
+      DEBUG(dbgs() << "    Synthesizable would not be synthesizable anymore: "
+                   << *UseVal << "\n");
       return FD_CannotForward;
     }
 
@@ -837,7 +834,7 @@ public:
 
       // When no method is found to forward the operand tree, we effectively
       // cannot handle it.
-      LLVM_DEBUG(dbgs() << "    Cannot forward instruction: " << *Inst << "\n");
+      DEBUG(dbgs() << "    Cannot forward instruction: " << *Inst << "\n");
       return FD_CannotForward;
     }
 
@@ -847,7 +844,7 @@ public:
   /// Try to forward an operand tree rooted in @p RA.
   bool tryForwardTree(MemoryAccess *RA) {
     assert(RA->isLatestScalarKind());
-    LLVM_DEBUG(dbgs() << "Trying to forward operand tree " << RA << "...\n");
+    DEBUG(dbgs() << "Trying to forward operand tree " << RA << "...\n");
 
     ScopStmt *Stmt = RA->getStatement();
     Loop *InLoop = Stmt->getSurroundingLoop();
@@ -969,22 +966,22 @@ public:
       Impl = llvm::make_unique<ForwardOpTreeImpl>(&S, &LI, MaxOpGuard);
 
       if (AnalyzeKnown) {
-        LLVM_DEBUG(dbgs() << "Prepare forwarders...\n");
+        DEBUG(dbgs() << "Prepare forwarders...\n");
         Impl->computeKnownValues();
       }
 
-      LLVM_DEBUG(dbgs() << "Forwarding operand trees...\n");
+      DEBUG(dbgs() << "Forwarding operand trees...\n");
       Impl->forwardOperandTrees();
 
       if (MaxOpGuard.hasQuotaExceeded()) {
-        LLVM_DEBUG(dbgs() << "Not all operations completed because of "
-                             "max_operations exceeded\n");
+        DEBUG(dbgs() << "Not all operations completed because of "
+                        "max_operations exceeded\n");
         KnownOutOfQuota++;
       }
     }
 
-    LLVM_DEBUG(dbgs() << "\nFinal Scop:\n");
-    LLVM_DEBUG(dbgs() << S);
+    DEBUG(dbgs() << "\nFinal Scop:\n");
+    DEBUG(dbgs() << S);
 
     // Update statistics
     auto ScopStats = S.getStatistics();
@@ -1010,6 +1007,7 @@ public:
 }; // class ForwardOpTree
 
 char ForwardOpTree::ID;
+
 } // namespace
 
 ScopPass *polly::createForwardOpTreePass() { return new ForwardOpTree(); }

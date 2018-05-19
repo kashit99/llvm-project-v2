@@ -91,6 +91,7 @@ private:
   ScopInfo *SI;
   DependenceInfoWrapperPass *DI;
 };
+
 } // end namespace polly
 
 namespace llvm {

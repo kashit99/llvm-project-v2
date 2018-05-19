@@ -128,21 +128,6 @@ void parseVersion(StringRef Arg, uint32_t *Major, uint32_t *Minor) {
     fatal("invalid number: " + S2);
 }
 
-void parseGuard(StringRef FullArg) {
-  SmallVector<StringRef, 1> SplitArgs;
-  FullArg.split(SplitArgs, ",");
-  for (StringRef Arg : SplitArgs) {
-    if (Arg.equals_lower("no"))
-      Config->GuardCF = GuardCFLevel::Off;
-    else if (Arg.equals_lower("nolongjmp"))
-      Config->GuardCF = GuardCFLevel::NoLongJmp;
-    else if (Arg.equals_lower("cf") || Arg.equals_lower("longjmp"))
-      Config->GuardCF = GuardCFLevel::Full;
-    else
-      fatal("invalid argument to /guard: " + Arg);
-  }
-}
-
 // Parses a string in the form of "<subsystem>[,<integer>[.<integer>]]".
 void parseSubsystem(StringRef Arg, WindowsSubsystem *Sys, uint32_t *Major,
                     uint32_t *Minor) {
@@ -185,10 +170,6 @@ void parseMerge(StringRef S) {
   std::tie(From, To) = S.split('=');
   if (From.empty() || To.empty())
     fatal("/merge: invalid argument: " + S);
-  if (From == ".rsrc" || To == ".rsrc")
-    fatal("/merge: cannot merge '.rsrc' with any section");
-  if (From == ".reloc" || To == ".reloc")
-    fatal("/merge: cannot merge '.reloc' with any section");
   auto Pair = Config->Merge.insert(std::make_pair(From, To));
   bool Inserted = Pair.second;
   if (!Inserted) {
@@ -437,15 +418,15 @@ static std::string createManifestXml() {
   return createManifestXmlWithExternalMt(DefaultXml);
 }
 
-static std::unique_ptr<WritableMemoryBuffer>
+static std::unique_ptr<MemoryBuffer>
 createMemoryBufferForManifestRes(size_t ManifestSize) {
   size_t ResSize = alignTo(
       object::WIN_RES_MAGIC_SIZE + object::WIN_RES_NULL_ENTRY_SIZE +
           sizeof(object::WinResHeaderPrefix) + sizeof(object::WinResIDs) +
           sizeof(object::WinResHeaderSuffix) + ManifestSize,
       object::WIN_RES_DATA_ALIGNMENT);
-  return WritableMemoryBuffer::getNewMemBuffer(ResSize, Config->OutputFile +
-                                                            ".manifest.res");
+  return MemoryBuffer::getNewMemBuffer(ResSize,
+                                       Config->OutputFile + ".manifest.res");
 }
 
 static void writeResFileHeader(char *&Buf) {
@@ -484,16 +465,16 @@ static void writeResEntryHeader(char *&Buf, size_t ManifestSize) {
 std::unique_ptr<MemoryBuffer> createManifestRes() {
   std::string Manifest = createManifestXml();
 
-  std::unique_ptr<WritableMemoryBuffer> Res =
+  std::unique_ptr<MemoryBuffer> Res =
       createMemoryBufferForManifestRes(Manifest.size());
 
-  char *Buf = Res->getBufferStart();
+  char *Buf = const_cast<char *>(Res->getBufferStart());
   writeResFileHeader(Buf);
   writeResEntryHeader(Buf, Manifest.size());
 
   // Copy the manifest data into the .res file.
   std::copy(Manifest.begin(), Manifest.end(), Buf);
-  return std::move(Res);
+  return Res;
 }
 
 void createSideBySideManifest() {
@@ -576,12 +557,6 @@ err:
 
 static StringRef undecorate(StringRef Sym) {
   if (Config->Machine != I386)
-    return Sym;
-  // In MSVC mode, a fully decorated stdcall function is exported
-  // as-is with the leading underscore (with type IMPORT_NAME).
-  // In MinGW mode, a decorated stdcall function gets the underscore
-  // removed, just like normal cdecl functions.
-  if (Sym.startswith("_") && Sym.contains('@') && !Config->MinGW)
     return Sym;
   return Sym.startswith("_") ? Sym.substr(1) : Sym;
 }
@@ -756,28 +731,6 @@ static const llvm::opt::OptTable::Info InfoTable[] = {
 
 COFFOptTable::COFFOptTable() : OptTable(InfoTable, true) {}
 
-// Set color diagnostics according to --color-diagnostics={auto,always,never}
-// or --no-color-diagnostics flags.
-static void handleColorDiagnostics(opt::InputArgList &Args) {
-  auto *Arg = Args.getLastArg(OPT_color_diagnostics, OPT_color_diagnostics_eq,
-                              OPT_no_color_diagnostics);
-  if (!Arg)
-    return;
-  if (Arg->getOption().getID() == OPT_color_diagnostics) {
-    errorHandler().ColorDiagnostics = true;
-  } else if (Arg->getOption().getID() == OPT_no_color_diagnostics) {
-    errorHandler().ColorDiagnostics = false;
-  } else {
-    StringRef S = Arg->getValue();
-    if (S == "always")
-      errorHandler().ColorDiagnostics = true;
-    else if (S == "never")
-      errorHandler().ColorDiagnostics = false;
-    else if (S != "auto")
-      error("unknown option: --color-diagnostics=" + S);
-  }
-}
-
 static cl::TokenizerCallback getQuotingStyle(opt::InputArgList &Args) {
   if (auto *Arg = Args.getLastArg(OPT_rsp_quoting)) {
     StringRef S = Arg->getValue();
@@ -821,39 +774,25 @@ opt::InputArgList ArgParser::parse(ArrayRef<const char *> Argv) {
 
   if (MissingCount)
     fatal(Twine(Args.getArgString(MissingIndex)) + ": missing argument");
-
-  handleColorDiagnostics(Args);
-
   for (auto *Arg : Args.filtered(OPT_UNKNOWN))
     warn("ignoring unknown argument: " + Arg->getSpelling());
   return Args;
 }
 
 // Tokenizes and parses a given string as command line in .drective section.
-// /EXPORT options are processed in fastpath.
-std::pair<opt::InputArgList, std::vector<StringRef>>
-ArgParser::parseDirectives(StringRef S) {
-  std::vector<StringRef> Exports;
-  SmallVector<const char *, 16> Rest;
-
-  for (StringRef Tok : tokenize(S)) {
-    if (Tok.startswith_lower("/export:") || Tok.startswith_lower("-export:"))
-      Exports.push_back(Tok.substr(strlen("/export:")));
-    else
-      Rest.push_back(Tok.data());
-  }
-
-  // Make InputArgList from unparsed string vectors.
+opt::InputArgList ArgParser::parseDirectives(StringRef S) {
+  // Make InputArgList from string vectors.
   unsigned MissingIndex;
   unsigned MissingCount;
 
-  opt::InputArgList Args = Table.ParseArgs(Rest, MissingIndex, MissingCount);
+  opt::InputArgList Args =
+      Table.ParseArgs(tokenize(S), MissingIndex, MissingCount);
 
   if (MissingCount)
     fatal(Twine(Args.getArgString(MissingIndex)) + ": missing argument");
   for (auto *Arg : Args.filtered(OPT_UNKNOWN))
     warn("ignoring unknown argument: " + Arg->getSpelling());
-  return {std::move(Args), std::move(Exports)};
+  return Args;
 }
 
 // link.exe has an interesting feature. If LINK or _LINK_ environment

@@ -77,7 +77,6 @@
 #include "Config.h"
 #include "SymbolTable.h"
 #include "Symbols.h"
-#include "SyntheticSections.h"
 #include "lld/Common/Threads.h"
 #include "llvm/ADT/Hashing.h"
 #include "llvm/BinaryFormat/ELF.h"
@@ -162,27 +161,15 @@ template <class ELFT> static uint32_t getHash(InputSection *S) {
 
 // Returns true if section S is subject of ICF.
 static bool isEligible(InputSection *S) {
-  if (!S->Live || S->KeepUnique || !(S->Flags & SHF_ALLOC) ||
-      (S->Flags & SHF_WRITE))
+  // Don't merge read only data sections unless --icf-data was passed.
+  if (!(S->Flags & SHF_EXECINSTR) && !Config->ICFData)
     return false;
 
-  // Don't merge read only data sections unless
-  // --ignore-data-address-equality was passed.
-  if (!(S->Flags & SHF_EXECINSTR) && !Config->IgnoreDataAddressEquality)
-    return false;
-
-  // Don't merge synthetic sections as their Data member is not valid and empty.
-  // The Data member needs to be valid for ICF as it is used by ICF to determine
-  // the equality of section contents.
-  if (isa<SyntheticSection>(S))
-    return false;
-
-  // .init and .fini contains instructions that must be executed to initialize
-  // and finalize the process. They cannot and should not be merged.
-  if (S->Name == ".init" || S->Name == ".fini")
-    return false;
-
-  return true;
+  // .init and .fini contains instructions that must be executed to
+  // initialize and finalize the process. They cannot and should not
+  // be merged.
+  return S->Live && (S->Flags & SHF_ALLOC) && !(S->Flags & SHF_WRITE) &&
+         S->Name != ".init" && S->Name != ".fini";
 }
 
 // Split an equivalence class into smaller classes.
@@ -363,12 +350,17 @@ template <class ELFT> size_t ICF<ELFT>::findBoundary(size_t Begin, size_t End) {
 // vector. Therefore, Sections vector can be considered as contiguous
 // groups of sections, grouped by the class.
 //
-// This function calls Fn on every group within [Begin, End).
+// This function calls Fn on every group that starts within [Begin, End).
+// Note that a group must start in that range but doesn't necessarily
+// have to end before End.
 template <class ELFT>
 void ICF<ELFT>::forEachClassRange(size_t Begin, size_t End,
                                   std::function<void(size_t, size_t)> Fn) {
+  if (Begin > 0)
+    Begin = findBoundary(Begin - 1, End);
+
   while (Begin < End) {
-    size_t Mid = findBoundary(Begin, End);
+    size_t Mid = findBoundary(Begin, Sections.size());
     Fn(Begin, Mid);
     Begin = Mid;
   }
@@ -388,30 +380,14 @@ void ICF<ELFT>::forEachClass(std::function<void(size_t, size_t)> Fn) {
   Current = Cnt % 2;
   Next = (Cnt + 1) % 2;
 
-  // Shard into non-overlapping intervals, and call Fn in parallel.
-  // The sharding must be completed before any calls to Fn are made
-  // so that Fn can modify the Chunks in its shard without causing data
-  // races.
-  const size_t NumShards = 256;
+  // Split sections into 256 shards and call Fn in parallel.
+  size_t NumShards = 256;
   size_t Step = Sections.size() / NumShards;
-  size_t Boundaries[NumShards + 1];
-  Boundaries[0] = 0;
-  Boundaries[NumShards] = Sections.size();
-
-  parallelForEachN(1, NumShards, [&](size_t I) {
-    Boundaries[I] = findBoundary((I - 1) * Step, Sections.size());
-  });
-
-  parallelForEachN(1, NumShards + 1, [&](size_t I) {
-    if (Boundaries[I - 1] < Boundaries[I])
-      forEachClassRange(Boundaries[I - 1], Boundaries[I], Fn);
+  parallelForEachN(0, NumShards, [&](size_t I) {
+    size_t End = (I == NumShards - 1) ? Sections.size() : (I + 1) * Step;
+    forEachClassRange(I * Step, End, Fn);
   });
   ++Cnt;
-}
-
-static void print(const Twine &S) {
-  if (Config->PrintIcfSections)
-    message(S);
 }
 
 // The main function of ICF.
@@ -448,21 +424,25 @@ template <class ELFT> void ICF<ELFT>::run() {
   log("ICF needed " + Twine(Cnt) + " iterations");
 
   // Merge sections by the equivalence class.
-  forEachClassRange(0, Sections.size(), [&](size_t Begin, size_t End) {
+  forEachClass([&](size_t Begin, size_t End) {
     if (End - Begin == 1)
       return;
-    print("selected section " + toString(Sections[Begin]));
-    for (size_t I = Begin + 1; I < End; ++I) {
-      print("  removing identical section " + toString(Sections[I]));
-      Sections[Begin]->replace(Sections[I]);
 
-      // At this point we know sections merged are fully identical and hence
-      // we want to remove duplicate implicit dependencies such as link order
-      // and relocation sections.
-      for (InputSection *IS : Sections[I]->DependentSections)
-        IS->Live = false;
+    log("selected " + Sections[Begin]->Name);
+    for (size_t I = Begin + 1; I < End; ++I) {
+      log("  removed " + Sections[I]->Name);
+      Sections[Begin]->replace(Sections[I]);
     }
   });
+
+  // Mark ARM Exception Index table sections that refer to folded code
+  // sections as not live. These sections have an implict dependency
+  // via the link order dependency.
+  if (Config->EMachine == EM_ARM)
+    for (InputSectionBase *Sec : InputSections)
+      if (auto *S = dyn_cast<InputSection>(Sec))
+        if (S->Flags & SHF_LINK_ORDER)
+          S->Live = S->getLinkOrderDep()->Live;
 }
 
 // ICF entry point function.

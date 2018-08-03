@@ -657,7 +657,7 @@ ClangDocBitcodeReader::readBitcode() {
     case BI_FUNCTION_BLOCK_ID:
       if (std::unique_ptr<Info> I = readBlockToInfo(ID))
         Infos.emplace_back(std::move(I));
-      return Infos;
+      continue;
     case BI_VERSION_BLOCK_ID:
       if (readBlock(ID, VersionNumber))
         continue;
@@ -676,7 +676,7 @@ ClangDocBitcodeReader::readBitcode() {
         continue;
     }
   }
-  return Infos;
+  return std::move(Infos);
 }
 
 } // namespace doc

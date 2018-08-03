@@ -40,7 +40,7 @@ reduce(std::vector<std::unique_ptr<Info>> &Values) {
   T *Tmp = static_cast<T *>(Merged.get());
   for (auto &I : Values)
     Tmp->merge(std::move(*static_cast<T *>(I.get())));
-  return Merged;
+  return std::move(Merged);
 }
 
 // Return the index of the matching child in the vector, or -1 if merge is not

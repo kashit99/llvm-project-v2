@@ -23,6 +23,7 @@
 #include "polly/Options.h"
 #include "polly/ScopInfo.h"
 #include "polly/Support/GICHelper.h"
+#include "polly/Support/ISLTools.h"
 #include "polly/Support/SCEVValidator.h"
 #include "polly/Support/ScopHelper.h"
 #include "llvm/ADT/APInt.h"
@@ -242,8 +243,8 @@ static int findReferencesInBlock(struct SubtreeReferences &References,
   return 0;
 }
 
-isl_stat addReferencesFromStmt(const ScopStmt *Stmt, void *UserPtr,
-                               bool CreateScalarRefs) {
+void addReferencesFromStmt(const ScopStmt *Stmt, void *UserPtr,
+                           bool CreateScalarRefs) {
   auto &References = *static_cast<struct SubtreeReferences *>(UserPtr);
 
   if (Stmt->isBlockStmt())
@@ -275,8 +276,6 @@ isl_stat addReferencesFromStmt(const ScopStmt *Stmt, void *UserPtr,
     if (CreateScalarRefs)
       References.Values.insert(References.BlockGen.getOrCreateAlloca(*Access));
   }
-
-  return isl_stat_ok;
 }
 
 /// Extract the out-of-scop values and SCEVs referenced from a set describing
@@ -290,12 +289,10 @@ isl_stat addReferencesFromStmt(const ScopStmt *Stmt, void *UserPtr,
 /// @param Set     A set which references the ScopStmt we are interested in.
 /// @param UserPtr A void pointer that can be casted to a SubtreeReferences
 ///                structure.
-static isl_stat addReferencesFromStmtSet(__isl_take isl_set *Set,
-                                         void *UserPtr) {
-  isl_id *Id = isl_set_get_tuple_id(Set);
-  auto *Stmt = static_cast<const ScopStmt *>(isl_id_get_user(Id));
-  isl_id_free(Id);
-  isl_set_free(Set);
+static void addReferencesFromStmtSet(isl::set Set,
+                                     struct SubtreeReferences *UserPtr) {
+  isl::id Id = Set.get_tuple_id();
+  auto *Stmt = static_cast<const ScopStmt *>(Id.get_user());
   return addReferencesFromStmt(Stmt, UserPtr);
 }
 
@@ -313,10 +310,11 @@ static isl_stat addReferencesFromStmtSet(__isl_take isl_set *Set,
 ///                   results are returned and further information is
 ///                   provided.
 static void
-addReferencesFromStmtUnionSet(isl_union_set *USet,
+addReferencesFromStmtUnionSet(isl::union_set USet,
                               struct SubtreeReferences &References) {
-  isl_union_set_foreach_set(USet, addReferencesFromStmtSet, &References);
-  isl_union_set_free(USet);
+
+  for (isl::set Set : USet.get_set_list())
+    addReferencesFromStmtSet(Set, &References);
 }
 
 __isl_give isl_union_map *
@@ -338,7 +336,8 @@ void IslNodeBuilder::getReferencesInSubtree(__isl_keep isl_ast_node *For,
   for (const auto &I : OutsideLoopIterations)
     Values.insert(cast<SCEVUnknown>(I.second)->getValue());
 
-  isl_union_set *Schedule = isl_union_map_domain(getScheduleForAstNode(For));
+  isl::union_set Schedule =
+      isl::manage(isl_union_map_domain(getScheduleForAstNode(For)));
   addReferencesFromStmtUnionSet(Schedule, References);
 
   for (const SCEV *Expr : SCEVs) {
@@ -519,9 +518,9 @@ void IslNodeBuilder::createForVector(__isl_take isl_ast_node *For,
 /// @param Node The band node to be modified.
 /// @return The modified schedule node.
 static bool IsLoopVectorizerDisabled(isl::ast_node Node) {
-  assert(isl_ast_node_get_type(Node.keep()) == isl_ast_node_for);
+  assert(isl_ast_node_get_type(Node.get()) == isl_ast_node_for);
   auto Body = Node.for_get_body();
-  if (isl_ast_node_get_type(Body.keep()) != isl_ast_node_mark)
+  if (isl_ast_node_get_type(Body.get()) != isl_ast_node_mark)
     return false;
   auto Id = Body.mark_get_id();
   if (strcmp(Id.get_name().c_str(), "Loop Vectorizer Disabled") == 0)
@@ -540,8 +539,7 @@ void IslNodeBuilder::createForSequential(__isl_take isl_ast_node *For,
   Value *IV;
   CmpInst::Predicate Predicate;
 
-  bool LoopVectorizerDisabled =
-      IsLoopVectorizerDisabled(isl::manage(isl_ast_node_copy(For)));
+  bool LoopVectorizerDisabled = IsLoopVectorizerDisabled(isl::manage_copy(For));
 
   Body = isl_ast_node_for_get_body(For);
 
@@ -758,13 +756,13 @@ static bool hasPartialAccesses(__isl_take isl_ast_node *Node) {
                if (isl_ast_node_get_type(Node) != isl_ast_node_user)
                  return isl_bool_true;
 
-               isl::ast_expr Expr = give(isl_ast_node_user_get_expr(Node));
-               isl::ast_expr StmtExpr =
-                   give(isl_ast_expr_get_op_arg(Expr.keep(), 0));
-               isl::id Id = give(isl_ast_expr_get_id(StmtExpr.keep()));
+               isl::ast_expr Expr =
+                   isl::manage(isl_ast_node_user_get_expr(Node));
+               isl::ast_expr StmtExpr = Expr.get_op_arg(0);
+               isl::id Id = StmtExpr.get_id();
 
                ScopStmt *Stmt =
-                   static_cast<ScopStmt *>(isl_id_get_user(Id.keep()));
+                   static_cast<ScopStmt *>(isl_id_get_user(Id.get()));
                isl::set StmtDom = Stmt->getDomain();
                for (auto *MA : *Stmt) {
                  if (MA->isLatestPartialAccess())
@@ -853,7 +851,7 @@ IslNodeBuilder::createNewAccesses(ScopStmt *Stmt,
 
   auto *Build = IslAstInfo::getBuild(Node);
   assert(Build && "Could not obtain isl_ast_build from user node");
-  Stmt->setAstBuild(isl::manage(isl_ast_build_copy(Build)));
+  Stmt->setAstBuild(isl::manage_copy(Build));
 
   for (auto *MA : *Stmt) {
     if (!MA->hasNewAccessRelation()) {
@@ -901,10 +899,10 @@ IslNodeBuilder::createNewAccesses(ScopStmt *Stmt,
 
     // isl cannot generate an index expression for access-nothing accesses.
     isl::set AccDomain =
-        give(isl_pw_multi_aff_domain(isl_pw_multi_aff_copy(PWAccRel)));
+        isl::manage(isl_pw_multi_aff_domain(isl_pw_multi_aff_copy(PWAccRel)));
     isl::set Context = S.getContext();
     AccDomain = AccDomain.intersect_params(Context);
-    if (isl_set_is_empty(AccDomain.keep()) == isl_bool_true) {
+    if (AccDomain.is_empty()) {
       isl_pw_multi_aff_free(PWAccRel);
       continue;
     }
@@ -1596,7 +1594,7 @@ Value *IslNodeBuilder::createRTC(isl_ast_expr *Condition) {
   // bits. These are -- in case wrapping intrinsics are used -- translated to
   // runtime library calls that are not available on all systems (e.g., Android)
   // and consequently will result in linker errors.
-  if (ExprBuilder.hasLargeInts(isl::manage(isl_ast_expr_copy(Condition)))) {
+  if (ExprBuilder.hasLargeInts(isl::manage_copy(Condition))) {
     isl_ast_expr_free(Condition);
     return Builder.getFalse();
   }

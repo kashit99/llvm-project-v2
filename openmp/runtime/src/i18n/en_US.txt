@@ -209,7 +209,7 @@ AffStrideLessZero            "%1$s: range error (%2$d < %3$d & stride < 0), not 
 AffRangeTooBig               "%1$s: range error ((%2$d-%3$d)/%4$d too big), not using affinity."
 OBSOLETE                     "%1$s: %2$s is defined. %3$s will be ignored."
 AffNotSupported              "%1$s: affinity not supported, using \"disabled\"."
-OBSOLETE                     "%1$s: affinity only supported for Intel(R) processors."
+OBSOLETE                     "%1$s: affinity only supported for Intel(R) Architecture Processors."
 GetAffSysCallNotSupported    "%1$s: getaffinity system call not supported."
 SetAffSysCallNotSupported    "%1$s: setaffinity system call not supported."
 OBSOLETE                     "%1$s: pthread_aff_set_np call not found."
@@ -423,6 +423,7 @@ AffHWSubsetNoHWLOC           "KMP_HW_SUBSET ignored: unsupported item requested 
 AffHWSubsetManyNodes         "KMP_HW_SUBSET ignored: too many NUMA Nodes requested."
 AffHWSubsetManyTiles         "KMP_HW_SUBSET ignored: too many L2 Caches requested."
 AffHWSubsetManyProcs         "KMP_HW_SUBSET ignored: too many Procs requested."
+HierSchedInvalid             "Hierarchy ignored: unsupported level: %1$s."
 
 
 # --------------------------------------------------------------------------------------------------

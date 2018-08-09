@@ -4,7 +4,7 @@
 // __ubsan_on_report is not defined as weak. Redefining it here isn't supported
 // on Windows.
 //
-// UNSUPPORTED: windows-msvc
+// UNSUPPORTED: win32
 // Linkage issue
 // XFAIL: openbsd
 

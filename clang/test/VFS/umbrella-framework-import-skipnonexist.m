@@ -1,7 +1,7 @@
 // REQUIRES: crash-recovery, shell
 
 // FIXME: This XFAIL is cargo-culted from crash-report.c. Do we need it?
-// XFAIL: windows-gnu
+// XFAIL: mingw32
 
 // RUN: rm -rf %t
 // RUN: mkdir -p %t/vdir %t/outdir %t/cache

@@ -402,7 +402,7 @@ AppleObjCRuntimeV2::AppleObjCRuntimeV2(Process *process,
 bool AppleObjCRuntimeV2::GetDynamicTypeAndAddress(
     ValueObject &in_value, lldb::DynamicValueType use_dynamic,
     TypeAndOrName &class_type_or_name, Address &address,
-    Value::ValueType &value_type) {
+    Value::ValueType &value_type, bool allow_swift) {
   // We should never get here with a null process...
   assert(m_process != NULL);
 
@@ -421,7 +421,7 @@ bool AppleObjCRuntimeV2::GetDynamicTypeAndAddress(
   value_type = Value::ValueType::eValueTypeScalar;
 
   // Make sure we can have a dynamic value before starting...
-  if (CouldHaveDynamicValue(in_value)) {
+  if (CouldHaveDynamicValue(in_value, allow_swift)) {
     // First job, pull out the address at 0 offset from the object  That will
     // be the ISA pointer.
     ClassDescriptorSP objc_class_sp(GetNonKVOClassDescriptor(in_value));
@@ -453,6 +453,15 @@ bool AppleObjCRuntimeV2::GetDynamicTypeAndAddress(
     }
   }
   return class_type_or_name.IsEmpty() == false;
+}
+
+bool AppleObjCRuntimeV2::GetDynamicTypeAndAddress(
+    ValueObject &in_value, DynamicValueType use_dynamic,
+    TypeAndOrName &class_type_or_name, Address &address,
+    Value::ValueType &value_type) {
+  return GetDynamicTypeAndAddress(in_value, use_dynamic, class_type_or_name,
+                                  address, value_type,
+                                  /* allow_swift = */ false);
 }
 
 //------------------------------------------------------------------
@@ -2439,11 +2448,11 @@ bool AppleObjCRuntimeV2::NonPointerISACache::EvaluateNonPointerISA(
     ObjCISA isa, ObjCISA &ret_isa) {
   Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_TYPES));
 
-  if (log)
-    log->Printf("AOCRT::NPI Evalulate(isa = 0x%" PRIx64 ")", (uint64_t)isa);
-
   if ((isa & ~m_objc_debug_isa_class_mask) == 0)
     return false;
+
+  if (log)
+    log->Printf("AOCRT::NPI Evalulate(isa = 0x%" PRIx64 ")", (uint64_t)isa);
 
   // If all of the indexed ISA variables are set, then its possible that this
   // ISA is indexed, and we should first try to get its value using the index.

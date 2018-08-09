@@ -180,6 +180,7 @@ static cl::opt<bool>
 namespace {
 
 const Target *getTarget(const char *ProgName) {
+  TripleName = Triple::normalize(TripleName);
   if (TripleName.empty())
     TripleName = Triple::normalize(sys::getDefaultTargetTriple());
   Triple TheTriple(TripleName);

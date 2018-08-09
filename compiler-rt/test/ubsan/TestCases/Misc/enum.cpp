@@ -4,7 +4,7 @@
 
 // FIXME: UBSan fails to add the correct instrumentation code for some reason on
 // Windows.
-// XFAIL: windows-msvc
+// XFAIL: win32
 
 enum E { a = 1 } e;
 #undef E

@@ -31,6 +31,7 @@ add_lldb_library(lldbTarget
   StackID.cpp
   StopInfo.cpp
   StructuredDataPlugin.cpp
+  SwiftLanguageRuntime.cpp
   SystemRuntime.cpp
   Target.cpp
   TargetList.cpp
@@ -60,6 +61,10 @@ add_lldb_library(lldbTarget
   UnwindAssembly.cpp
 
   LINK_LIBS
+    swiftAST
+    swiftBasic
+    swiftFrontend
+    swiftRemoteAST
     lldbBreakpoint
     lldbCore
     lldbExpression
@@ -68,7 +73,9 @@ add_lldb_library(lldbTarget
     lldbSymbol
     lldbUtility
     lldbPluginExpressionParserClang
+    lldbPluginExpressionParserSwift
     lldbPluginObjCLanguage
+    lldbPluginSwiftLanguage
     lldbPluginProcessUtility
 
   LINK_COMPONENTS

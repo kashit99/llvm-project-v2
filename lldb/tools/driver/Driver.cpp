@@ -456,6 +456,8 @@ void Driver::OptionData::Clear() {
   m_print_python_path = false;
   m_use_external_editor = false;
   m_wait_for = false;
+  m_repl = false;
+  m_repl_options.erase();
   m_process_name.erase();
   m_batch = false;
   m_after_crash_commands.clear();

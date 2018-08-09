@@ -100,29 +100,17 @@ static std::string OptLLVM(const std::string &IR, CodeGenOpt::Level OLvl) {
   if (!M || verifyModule(*M, &errs()))
     ErrorAndExit("Could not parse IR");
 
-  Triple ModuleTriple(M->getTargetTriple());
-  const TargetOptions Options = InitTargetOptionsFromCodeGenFlags();
-  std::string E;
-  const Target *TheTarget = TargetRegistry::lookupTarget(MArch, ModuleTriple, E);
-  TargetMachine *Machine =
-      TheTarget->createTargetMachine(M->getTargetTriple(), getCPUStr(),
-                                     getFeaturesStr(), Options, getRelocModel(),
-                                     getCodeModel(), OLvl);
-  std::unique_ptr<TargetMachine> TM(Machine);
   setFunctionAttributes(getCPUStr(), getFeaturesStr(), *M);
-
+  
   legacy::PassManager Passes;
+  Triple ModuleTriple(M->getTargetTriple());
   
   Passes.add(new TargetLibraryInfoWrapperPass(ModuleTriple));
-  Passes.add(createTargetTransformInfoWrapperPass(TM->getTargetIRAnalysis()));
-
-  LLVMTargetMachine &LTM = static_cast<LLVMTargetMachine &>(*TM);
-  Passes.add(LTM.createPassConfig(Passes));
-
+  Passes.add(createTargetTransformInfoWrapperPass(TargetIRAnalysis()));
   Passes.add(createVerifierPass());
 
   AddOptimizationPasses(Passes, OLvl, 0);
-
+  
   // Add a pass that writes the optimized IR to an output stream
   std::string outString;
   raw_string_ostream OS(outString);

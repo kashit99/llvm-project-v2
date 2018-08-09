@@ -2,7 +2,7 @@
 // RUN: %run %t 2>&1 | FileCheck %s
 
 // REQUIRES: cxxabi
-// UNSUPPORTED: windows-msvc
+// UNSUPPORTED: win32
 
 #include <string.h>
 

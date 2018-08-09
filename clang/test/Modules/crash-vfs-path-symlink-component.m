@@ -1,7 +1,7 @@
 // REQUIRES: crash-recovery, shell
 
 // FIXME: This XFAIL is cargo-culted from crash-report.c. Do we need it?
-// XFAIL: windows-gnu
+// XFAIL: mingw32
 
 // Test that clang is capable of collecting the right header files in the
 // crash reproducer if there's a symbolic link component in the path.

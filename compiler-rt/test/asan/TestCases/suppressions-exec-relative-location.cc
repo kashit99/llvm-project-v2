@@ -24,7 +24,7 @@
 // RUN:   FileCheck --check-prefix=CHECK-WRONG-FILE-NAME %s
 
 // XFAIL: android
-// XFAIL: windows-msvc
+// XFAIL: win32
 // UNSUPPORTED: ios
 
 #include <stdio.h>

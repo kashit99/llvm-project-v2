@@ -253,6 +253,8 @@ public:
 
   void RegisterExecutionUnit(lldb::IRExecutionUnitSP &execution_unit_sp);
 
+  void RegisterSymbol(const ConstString &name, lldb::addr_t address);
+
 private:
   LLVMCastKind m_kind;
 

@@ -1550,7 +1550,8 @@ static InputKind ParseFrontendArgs(FrontendOptions &Opts, ArgList &Args,
 
   Opts.OverrideRecordLayoutsFile
     = Args.getLastArgValue(OPT_foverride_record_layout_EQ);
-  Opts.AuxTriple = Args.getLastArgValue(OPT_aux_triple);
+  Opts.AuxTriple =
+      llvm::Triple::normalize(Args.getLastArgValue(OPT_aux_triple));
   Opts.StatsFile = Args.getLastArgValue(OPT_stats_file);
 
   if (const Arg *A = Args.getLastArg(OPT_arcmt_check,
@@ -1614,10 +1615,6 @@ static InputKind ParseFrontendArgs(FrontendOptions &Opts, ArgList &Args,
     Diags.Report(diag::err_drv_argument_not_allowed_with)
       << "ARC migration" << "ObjC migration";
   }
-
-  Opts.IndexStorePath = Args.getLastArgValue(OPT_index_store_path);
-  Opts.IndexIgnoreSystemSymbols = Args.hasArg(OPT_index_ignore_system_symbols);
-  Opts.IndexRecordCodegenName = Args.hasArg(OPT_index_record_codegen_name);
 
   InputKind DashX(InputKind::Unknown);
   if (const Arg *A = Args.getLastArg(OPT_x)) {
@@ -1854,18 +1851,6 @@ static void ParseHeaderSearchArgs(HeaderSearchOptions &Opts, ArgList &Args,
 
   for (const auto *A : Args.filtered(OPT_ivfsoverlay))
     Opts.AddVFSOverlayFile(A->getValue());
-}
-
-static void ParseAPINotesArgs(APINotesOptions &Opts, ArgList &Args,
-                              DiagnosticsEngine &diags) {
-  using namespace options;
-  if (const Arg *A = Args.getLastArg(OPT_fapinotes_swift_version)) {
-    if (Opts.SwiftVersion.tryParse(A->getValue()))
-      diags.Report(diag::err_drv_invalid_value)
-        << A->getAsString(Args) << A->getValue();
-  }
-  for (const Arg *A : Args.filtered(OPT_iapinotes_modules))
-    Opts.ModuleSearchPaths.push_back(A->getValue());
 }
 
 void CompilerInvocation::setLangDefaults(LangOptions &Opts, InputKind IK,
@@ -2403,7 +2388,6 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
       Args.hasArg(OPT_fmodules_local_submodule_visibility) || Opts.ModulesTS;
   Opts.ModulesCodegen = Args.hasArg(OPT_fmodules_codegen);
   Opts.ModulesDebugInfo = Args.hasArg(OPT_fmodules_debuginfo);
-  Opts.ModulesHashErrorDiags = Args.hasArg(OPT_fmodules_hash_error_diagnostics);
   Opts.ModulesSearchAll = Opts.Modules &&
     !Args.hasArg(OPT_fno_modules_search_all) &&
     Args.hasArg(OPT_fmodules_search_all);
@@ -2501,8 +2485,6 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
   // is enabled.
   Opts.HalfArgsAndReturns = Args.hasArg(OPT_fallow_half_arguments_and_returns)
                             | Opts.NativeHalfArgsAndReturns;
-  Opts.APINotes = Args.hasArg(OPT_fapinotes);
-  Opts.APINotesModules = Args.hasArg(OPT_fapinotes_modules);
   Opts.GNUAsm = !Args.hasArg(OPT_fno_gnu_inline_asm);
 
   // __declspec is enabled by default for the PS4 by the driver, and also
@@ -3041,8 +3023,6 @@ bool CompilerInvocation::CreateFromArgs(CompilerInvocation &Res,
                               Res.getTargetOpts(), Res.getFrontendOpts());
   ParseHeaderSearchArgs(Res.getHeaderSearchOpts(), Args,
                         Res.getFileSystemOpts().WorkingDir);
-  ParseAPINotesArgs(Res.getAPINotesOpts(), Args, Diags);
-
   if (DashX.getFormat() == InputKind::Precompiled ||
       DashX.getLanguage() == InputKind::LLVM_IR) {
     // ObjCAAutoRefCount and Sanitize LangOpts are used to setup the
@@ -3107,16 +3087,7 @@ bool CompilerInvocation::CreateFromArgs(CompilerInvocation &Res,
   return Success;
 }
 
-// Some extension diagnostics aren't explicitly mapped and require custom
-// logic in the dianognostic engine to be used, track -pedantic-errors
-static bool isExtHandlingFromDiagsError(DiagnosticsEngine &Diags) {
-  diag::Severity Ext = Diags.getExtensionHandlingBehavior();
-  if (Ext == diag::Severity::Warning && Diags.getWarningsAsErrors())
-    return true;
-  return Ext >= diag::Severity::Error;
-}
-
-std::string CompilerInvocation::getModuleHash(DiagnosticsEngine &Diags) const {
+std::string CompilerInvocation::getModuleHash() const {
   // Note: For QoI reasons, the things we use as a hash here should all be
   // dumped via the -module-info flag.
   using llvm::hash_code;
@@ -3182,19 +3153,7 @@ std::string CompilerInvocation::getModuleHash(DiagnosticsEngine &Diags) const {
   // Extend the signature with the module file extensions.
   const FrontendOptions &frontendOpts = getFrontendOpts();
   for (const auto &ext : frontendOpts.ModuleFileExtensions) {
-    code = hash_combine(code, ext->hashExtension(code));
-  }
-
-  // Extend the signature with the SWift version for API notes.
-  const APINotesOptions &apiNotesOpts = getAPINotesOpts();
-  if (apiNotesOpts.SwiftVersion) {
-    code = hash_combine(code, apiNotesOpts.SwiftVersion.getMajor());
-    if (auto minor = apiNotesOpts.SwiftVersion.getMinor())
-      code = hash_combine(code, *minor);
-    if (auto subminor = apiNotesOpts.SwiftVersion.getSubminor())
-      code = hash_combine(code, *subminor);
-    if (auto build = apiNotesOpts.SwiftVersion.getBuild())
-      code = hash_combine(code, *build);
+    code = ext->hashExtension(code);
   }
 
   // Extend the signature with the enabled sanitizers, if at least one is
@@ -3203,24 +3162,6 @@ std::string CompilerInvocation::getModuleHash(DiagnosticsEngine &Diags) const {
   SanHash.clear(getPPTransparentSanitizers());
   if (!SanHash.empty())
     code = hash_combine(code, SanHash.Mask);
-
-  // Check for a couple things (see checkDiagnosticMappings in ASTReader.cpp):
-  //  -Werror: consider all warnings into the hash
-  //  -Werror=something: consider only the specified into the hash
-  //  -pedantic-error
-  if (getLangOpts()->ModulesHashErrorDiags) {
-    bool ConsiderAllWarningsAsErrors = Diags.getWarningsAsErrors();
-    code = hash_combine(code, isExtHandlingFromDiagsError(Diags));
-    for (auto DiagIDMappingPair : Diags.getDiagnosticMappings()) {
-      diag::kind DiagID = DiagIDMappingPair.first;
-      auto CurLevel = Diags.getDiagnosticLevel(DiagID, SourceLocation());
-      if (CurLevel < DiagnosticsEngine::Error && !ConsiderAllWarningsAsErrors)
-        continue; // not significant
-      code = hash_combine(
-          code,
-          Diags.getDiagnosticIDs()->getWarningOptionForDiag(DiagID).str());
-    }
-  }
 
   return llvm::APInt(64, code).toString(36, /*Signed=*/false);
 }

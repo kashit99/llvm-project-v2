@@ -16,7 +16,6 @@
 #include "llvm/Analysis/ValueTracking.h"
 #include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/Instructions.h"
-#include "llvm/Support/AtomicOrdering.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -82,12 +81,10 @@ void NVPTXDAGToDAGISel::Select(SDNode *N) {
 
   switch (N->getOpcode()) {
   case ISD::LOAD:
-  case ISD::ATOMIC_LOAD:
     if (tryLoad(N))
       return;
     break;
   case ISD::STORE:
-  case ISD::ATOMIC_STORE:
     if (tryStore(N))
       return;
     break;
@@ -837,25 +834,15 @@ static Optional<unsigned> pickOpcodeForVT(
 
 bool NVPTXDAGToDAGISel::tryLoad(SDNode *N) {
   SDLoc dl(N);
-  MemSDNode *LD = cast<MemSDNode>(N);
-  assert(LD->readMem() && "Expected load");
-  LoadSDNode *PlainLoad = dyn_cast<LoadSDNode>(N);
+  LoadSDNode *LD = cast<LoadSDNode>(N);
   EVT LoadedVT = LD->getMemoryVT();
   SDNode *NVPTXLD = nullptr;
 
   // do not support pre/post inc/dec
-  if (PlainLoad && PlainLoad->isIndexed())
+  if (LD->isIndexed())
     return false;
 
   if (!LoadedVT.isSimple())
-    return false;
-
-  AtomicOrdering Ordering = LD->getOrdering();
-  // In order to lower atomic loads with stronger guarantees we would need to
-  // use load.acquire or insert fences. However these features were only added
-  // with PTX ISA 6.0 / sm_70.
-  // TODO: Check if we can actually use the new instructions and implement them.
-  if (isStrongerThanMonotonic(Ordering))
     return false;
 
   // Address Space Setting
@@ -868,9 +855,8 @@ bool NVPTXDAGToDAGISel::tryLoad(SDNode *N) {
       CurDAG->getDataLayout().getPointerSizeInBits(LD->getAddressSpace());
 
   // Volatile Setting
-  // - .volatile is only available for .global and .shared
-  // - .volatile has the same memory synchronization semantics as .relaxed.sys
-  bool isVolatile = LD->isVolatile() || Ordering == AtomicOrdering::Monotonic;
+  // - .volatile is only availalble for .global and .shared
+  bool isVolatile = LD->isVolatile();
   if (CodeAddrSpace != NVPTX::PTXLdStInstCode::GLOBAL &&
       CodeAddrSpace != NVPTX::PTXLdStInstCode::SHARED &&
       CodeAddrSpace != NVPTX::PTXLdStInstCode::GENERIC)
@@ -896,7 +882,7 @@ bool NVPTXDAGToDAGISel::tryLoad(SDNode *N) {
     fromTypeWidth = 32;
   }
 
-  if (PlainLoad && (PlainLoad->getExtensionType() == ISD::SEXTLOAD))
+  if ((LD->getExtensionType() == ISD::SEXTLOAD))
     fromType = NVPTX::PTXLdStInstCode::Signed;
   else if (ScalarVT.isFloatingPoint())
     // f16 uses .b16 as its storage type.
@@ -1705,27 +1691,15 @@ bool NVPTXDAGToDAGISel::tryLDGLDU(SDNode *N) {
 
 bool NVPTXDAGToDAGISel::tryStore(SDNode *N) {
   SDLoc dl(N);
-  MemSDNode *ST = cast<MemSDNode>(N);
-  assert(ST->writeMem() && "Expected store");
-  StoreSDNode *PlainStore = dyn_cast<StoreSDNode>(N);
-  AtomicSDNode *AtomicStore = dyn_cast<AtomicSDNode>(N);
-  assert((PlainStore || AtomicStore) && "Expected store");
+  StoreSDNode *ST = cast<StoreSDNode>(N);
   EVT StoreVT = ST->getMemoryVT();
   SDNode *NVPTXST = nullptr;
 
   // do not support pre/post inc/dec
-  if (PlainStore && PlainStore->isIndexed())
+  if (ST->isIndexed())
     return false;
 
   if (!StoreVT.isSimple())
-    return false;
-
-  AtomicOrdering Ordering = ST->getOrdering();
-  // In order to lower atomic loads with stronger guarantees we would need to
-  // use store.release or insert fences. However these features were only added
-  // with PTX ISA 6.0 / sm_70.
-  // TODO: Check if we can actually use the new instructions and implement them.
-  if (isStrongerThanMonotonic(Ordering))
     return false;
 
   // Address Space Setting
@@ -1734,9 +1708,8 @@ bool NVPTXDAGToDAGISel::tryStore(SDNode *N) {
       CurDAG->getDataLayout().getPointerSizeInBits(ST->getAddressSpace());
 
   // Volatile Setting
-  // - .volatile is only available for .global and .shared
-  // - .volatile has the same memory synchronization semantics as .relaxed.sys
-  bool isVolatile = ST->isVolatile() || Ordering == AtomicOrdering::Monotonic;
+  // - .volatile is only availalble for .global and .shared
+  bool isVolatile = ST->isVolatile();
   if (CodeAddrSpace != NVPTX::PTXLdStInstCode::GLOBAL &&
       CodeAddrSpace != NVPTX::PTXLdStInstCode::SHARED &&
       CodeAddrSpace != NVPTX::PTXLdStInstCode::GENERIC)
@@ -1766,53 +1739,41 @@ bool NVPTXDAGToDAGISel::tryStore(SDNode *N) {
     toType = NVPTX::PTXLdStInstCode::Unsigned;
 
   // Create the machine instruction DAG
-  SDValue Chain = ST->getChain();
-  SDValue Value = PlainStore ? PlainStore->getValue() : AtomicStore->getVal();
-  SDValue BasePtr = ST->getBasePtr();
+  SDValue Chain = N->getOperand(0);
+  SDValue N1 = N->getOperand(1);
+  SDValue N2 = N->getOperand(2);
   SDValue Addr;
   SDValue Offset, Base;
   Optional<unsigned> Opcode;
-  MVT::SimpleValueType SourceVT =
-      Value.getNode()->getSimpleValueType(0).SimpleTy;
+  MVT::SimpleValueType SourceVT = N1.getNode()->getSimpleValueType(0).SimpleTy;
 
-  if (SelectDirectAddr(BasePtr, Addr)) {
+  if (SelectDirectAddr(N2, Addr)) {
     Opcode = pickOpcodeForVT(SourceVT, NVPTX::ST_i8_avar, NVPTX::ST_i16_avar,
                              NVPTX::ST_i32_avar, NVPTX::ST_i64_avar,
                              NVPTX::ST_f16_avar, NVPTX::ST_f16x2_avar,
                              NVPTX::ST_f32_avar, NVPTX::ST_f64_avar);
     if (!Opcode)
       return false;
-    SDValue Ops[] = {Value,
-                     getI32Imm(isVolatile, dl),
-                     getI32Imm(CodeAddrSpace, dl),
-                     getI32Imm(vecType, dl),
-                     getI32Imm(toType, dl),
-                     getI32Imm(toTypeWidth, dl),
-                     Addr,
-                     Chain};
+    SDValue Ops[] = { N1, getI32Imm(isVolatile, dl),
+                      getI32Imm(CodeAddrSpace, dl), getI32Imm(vecType, dl),
+                      getI32Imm(toType, dl), getI32Imm(toTypeWidth, dl), Addr,
+                      Chain };
     NVPTXST = CurDAG->getMachineNode(Opcode.getValue(), dl, MVT::Other, Ops);
-  } else if (PointerSize == 64
-                 ? SelectADDRsi64(BasePtr.getNode(), BasePtr, Base, Offset)
-                 : SelectADDRsi(BasePtr.getNode(), BasePtr, Base, Offset)) {
+  } else if (PointerSize == 64 ? SelectADDRsi64(N2.getNode(), N2, Base, Offset)
+                               : SelectADDRsi(N2.getNode(), N2, Base, Offset)) {
     Opcode = pickOpcodeForVT(SourceVT, NVPTX::ST_i8_asi, NVPTX::ST_i16_asi,
                              NVPTX::ST_i32_asi, NVPTX::ST_i64_asi,
                              NVPTX::ST_f16_asi, NVPTX::ST_f16x2_asi,
                              NVPTX::ST_f32_asi, NVPTX::ST_f64_asi);
     if (!Opcode)
       return false;
-    SDValue Ops[] = {Value,
-                     getI32Imm(isVolatile, dl),
-                     getI32Imm(CodeAddrSpace, dl),
-                     getI32Imm(vecType, dl),
-                     getI32Imm(toType, dl),
-                     getI32Imm(toTypeWidth, dl),
-                     Base,
-                     Offset,
-                     Chain};
+    SDValue Ops[] = { N1, getI32Imm(isVolatile, dl),
+                      getI32Imm(CodeAddrSpace, dl), getI32Imm(vecType, dl),
+                      getI32Imm(toType, dl), getI32Imm(toTypeWidth, dl), Base,
+                      Offset, Chain };
     NVPTXST = CurDAG->getMachineNode(Opcode.getValue(), dl, MVT::Other, Ops);
-  } else if (PointerSize == 64
-                 ? SelectADDRri64(BasePtr.getNode(), BasePtr, Base, Offset)
-                 : SelectADDRri(BasePtr.getNode(), BasePtr, Base, Offset)) {
+  } else if (PointerSize == 64 ? SelectADDRri64(N2.getNode(), N2, Base, Offset)
+                               : SelectADDRri(N2.getNode(), N2, Base, Offset)) {
     if (PointerSize == 64)
       Opcode = pickOpcodeForVT(
           SourceVT, NVPTX::ST_i8_ari_64, NVPTX::ST_i16_ari_64,
@@ -1826,15 +1787,10 @@ bool NVPTXDAGToDAGISel::tryStore(SDNode *N) {
     if (!Opcode)
       return false;
 
-    SDValue Ops[] = {Value,
-                     getI32Imm(isVolatile, dl),
-                     getI32Imm(CodeAddrSpace, dl),
-                     getI32Imm(vecType, dl),
-                     getI32Imm(toType, dl),
-                     getI32Imm(toTypeWidth, dl),
-                     Base,
-                     Offset,
-                     Chain};
+    SDValue Ops[] = { N1, getI32Imm(isVolatile, dl),
+                      getI32Imm(CodeAddrSpace, dl), getI32Imm(vecType, dl),
+                      getI32Imm(toType, dl), getI32Imm(toTypeWidth, dl), Base,
+                      Offset, Chain };
     NVPTXST = CurDAG->getMachineNode(Opcode.getValue(), dl, MVT::Other, Ops);
   } else {
     if (PointerSize == 64)
@@ -1850,14 +1806,10 @@ bool NVPTXDAGToDAGISel::tryStore(SDNode *N) {
                                NVPTX::ST_f32_areg, NVPTX::ST_f64_areg);
     if (!Opcode)
       return false;
-    SDValue Ops[] = {Value,
-                     getI32Imm(isVolatile, dl),
-                     getI32Imm(CodeAddrSpace, dl),
-                     getI32Imm(vecType, dl),
-                     getI32Imm(toType, dl),
-                     getI32Imm(toTypeWidth, dl),
-                     BasePtr,
-                     Chain};
+    SDValue Ops[] = { N1, getI32Imm(isVolatile, dl),
+                      getI32Imm(CodeAddrSpace, dl), getI32Imm(vecType, dl),
+                      getI32Imm(toType, dl), getI32Imm(toTypeWidth, dl), N2,
+                      Chain };
     NVPTXST = CurDAG->getMachineNode(Opcode.getValue(), dl, MVT::Other, Ops);
   }
 

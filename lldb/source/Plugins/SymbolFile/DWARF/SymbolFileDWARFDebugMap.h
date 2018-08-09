@@ -23,6 +23,7 @@
 class SymbolFileDWARF;
 class DWARFDebugAranges;
 class DWARFDeclContext;
+class DebugMapModule;
 
 class SymbolFileDWARFDebugMap : public lldb_private::SymbolFile {
 public:
@@ -123,6 +124,9 @@ public:
                   uint32_t type_mask,
                   lldb_private::TypeList &type_list) override;
 
+  std::vector<lldb::DataBufferSP>
+  GetASTData(lldb::LanguageType language) override;
+
   //------------------------------------------------------------------
   // PluginInterface protocol
   //------------------------------------------------------------------
@@ -136,6 +140,7 @@ protected:
   friend class DebugMapModule;
   friend struct DIERef;
   friend class DWARFASTParserClang;
+  friend class DWARFASTParserSwift;
   friend class DWARFUnit;
   friend class SymbolFileDWARF;
   struct OSOInfo {

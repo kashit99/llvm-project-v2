@@ -8,7 +8,7 @@
 
 // expected to fail on windows as the inclusion would succeed and the
 // compilation will fail due to the '#error success'.
-// XFAIL: windows-msvc
+// XFAIL: win32
 
 // This test may or may not fail since 'Inputs\success.h' is passed
 // to Win32 APIs on Windows.

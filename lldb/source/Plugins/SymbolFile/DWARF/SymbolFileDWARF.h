@@ -48,6 +48,7 @@ class DebugMapModule;
 class DWARFAbbreviationDeclaration;
 class DWARFAbbreviationDeclarationSet;
 class DWARFileUnit;
+class DWARFCompileUnit;
 class DWARFDebugAbbrev;
 class DWARFDebugAranges;
 class DWARFDebugInfo;
@@ -73,6 +74,7 @@ public:
   friend class DWARFUnit;
   friend class DWARFDIE;
   friend class DWARFASTParserClang;
+  friend class DWARFASTParserSwift;
   friend class DWARFASTParserGo;
   friend class DWARFASTParserJava;
   friend class DWARFASTParserOCaml;
@@ -224,6 +226,15 @@ public:
       const lldb_private::SymbolContext &sc,
       const lldb_private::ConstString &name,
       const lldb_private::CompilerDeclContext *parent_decl_ctx) override;
+
+  bool GetCompileOption(const char *option, std::string &value,
+                        lldb_private::CompileUnit *cu = nullptr) override;
+
+  int GetCompileOptions(const char *option, std::vector<std::string> &value,
+                        lldb_private::CompileUnit *cu = nullptr) override;
+
+  void GetLoadedModules(lldb::LanguageType language,
+                        lldb_private::FileSpecList &modules) override;
 
   void PreloadSymbols() override;
 
@@ -438,6 +449,15 @@ protected:
 
   void UpdateExternalModuleListIfNeeded();
 
+  lldb_private::ClangASTImporter &GetClangASTImporter();
+
+  lldb_private::SwiftASTContext *
+  GetSwiftASTContextForCU(lldb_private::Status *error, DWARFCompileUnit &cu);
+
+  lldb::user_id_t GetTypeUIDFromTypeAttribute(const DWARFFormValue &type_attr);
+
+  lldb::TypeSP ResolveTypeFromAttribute(const DWARFFormValue &type_attr);
+
   virtual DIEToTypePtr &GetDIEToType() { return m_die_to_type; }
 
   virtual DIEToVariableSP &GetDIEToVariable() { return m_die_to_variable_sp; }
@@ -485,6 +505,7 @@ protected:
   std::unique_ptr<DWARFDebugInfo> m_info;
   std::unique_ptr<DWARFDebugLine> m_line;
   std::unique_ptr<GlobalVariableMap> m_global_aranges_ap;
+  std::unique_ptr<lldb_private::ClangASTImporter> m_clang_ast_importer_ap;
 
   typedef std::unordered_map<lldb::offset_t, lldb_private::DebugMacrosSP>
       DebugMacrosMap;

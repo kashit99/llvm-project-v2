@@ -16,7 +16,6 @@
 #define LLVM_CLANG_SEMA_ATTRIBUTELIST_H
 
 #include "clang/Basic/AttrSubjectMatchRules.h"
-#include "clang/Basic/Diagnostic.h"
 #include "clang/Basic/SourceLocation.h"
 #include "clang/Basic/TargetInfo.h"
 #include "clang/Sema/Ownership.h"
@@ -939,34 +938,6 @@ enum AttributeDeclKind {
   ExpectedKernelFunction,
   ExpectedFunctionWithProtoType,
 };
-
-inline const DiagnosticBuilder &operator<<(const DiagnosticBuilder &DB,
-                                           const ParsedAttr &At) {
-  DB.AddTaggedVal(reinterpret_cast<intptr_t>(At.getName()),
-                  DiagnosticsEngine::ak_identifierinfo);
-  return DB;
-}
-
-inline const PartialDiagnostic &operator<<(const PartialDiagnostic &PD,
-                                           const ParsedAttr &At) {
-  PD.AddTaggedVal(reinterpret_cast<intptr_t>(At.getName()),
-                  DiagnosticsEngine::ak_identifierinfo);
-  return PD;
-}
-
-inline const DiagnosticBuilder &operator<<(const DiagnosticBuilder &DB,
-                                           const ParsedAttr *At) {
-  DB.AddTaggedVal(reinterpret_cast<intptr_t>(At->getName()),
-                  DiagnosticsEngine::ak_identifierinfo);
-  return DB;
-}
-
-inline const PartialDiagnostic &operator<<(const PartialDiagnostic &PD,
-                                           const ParsedAttr *At) {
-  PD.AddTaggedVal(reinterpret_cast<intptr_t>(At->getName()),
-                  DiagnosticsEngine::ak_identifierinfo);
-  return PD;
-}
 
 } // namespace clang
 

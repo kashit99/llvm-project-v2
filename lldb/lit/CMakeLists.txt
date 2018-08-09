@@ -49,6 +49,10 @@ llvm_canonicalize_cmake_booleans(
   LLDB_DISABLE_PYTHON
   LLVM_ENABLE_ZLIB)
 
+# This should be inherited from the `check-lldb` target. We currently don't run
+# it for swift, but we might consider removing this code once we're done.
+set(LIT_ARGS "-sv")
+
 configure_lit_site_cfg(
   ${CMAKE_CURRENT_SOURCE_DIR}/lit.site.cfg.in
   ${CMAKE_CURRENT_BINARY_DIR}/lit.site.cfg)
@@ -72,6 +76,7 @@ set(LLDB_TEST_PARAMS
 
 add_lit_testsuite(check-lldb-lit "Running lldb lit test suite"
   ${CMAKE_CURRENT_BINARY_DIR}
+  ${LIT_ARGS}
   PARAMS lldb_site_config=${CMAKE_CURRENT_BINARY_DIR}/lit.site.cfg
          lldb_unit_site_config=${CMAKE_CURRENT_BINARY_DIR}/Unit/lit.site.cfg
   DEPENDS ${LLDB_TEST_DEPS}
@@ -87,6 +92,7 @@ endif()
 
 add_lit_testsuites(LLDB
   ${CMAKE_CURRENT_BINARY_DIR}
+  ${LIT_ARGS}
   PARAMS lldb_site_config=${CMAKE_CURRENT_BINARY_DIR}/lit.site.cfg
          lldb_unit_site_config=${CMAKE_CURRENT_BINARY_DIR}/Unit/lit.site.cfg
   DEPENDS ${LLDB_TEST_DEPS}

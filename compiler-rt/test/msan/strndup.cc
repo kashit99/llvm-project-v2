@@ -4,7 +4,7 @@
 // When built as C on Linux, strndup is transformed to __strndup.
 // RUN: %clangxx_msan -O3 -xc %s -o %t && not %run %t 2>&1 | FileCheck --check-prefix=ON %s
 
-// UNSUPPORTED: windows-msvc
+// UNSUPPORTED: win32
 
 #include <assert.h>
 #include <stdlib.h>

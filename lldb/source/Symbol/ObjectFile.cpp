@@ -16,6 +16,7 @@
 #include "lldb/Symbol/SymbolFile.h"
 #include "lldb/Target/Process.h"
 #include "lldb/Target/SectionLoadList.h"
+#include "lldb/Target/SwiftLanguageRuntime.h"
 #include "lldb/Target/Target.h"
 #include "lldb/Utility/DataBuffer.h"
 #include "lldb/Utility/DataBufferHeap.h"
@@ -362,8 +363,10 @@ AddressClass ObjectFile::GetAddressClass(addr_t file_addr) {
           case eSectionTypeDWARFDebugTypes:
           case eSectionTypeDWARFAppleNames:
           case eSectionTypeDWARFAppleTypes:
+          case eSectionTypeDWARFAppleExternalTypes:
           case eSectionTypeDWARFAppleNamespaces:
           case eSectionTypeDWARFAppleObjC:
+          case eSectionTypeSwiftModules:
           case eSectionTypeDWARFGNUDebugAltLink:
             return AddressClass::eDebug;
           case eSectionTypeEHFrame:
@@ -446,6 +449,8 @@ AddressClass ObjectFile::GetAddressClass(addr_t file_addr) {
         return AddressClass::eRuntime;
       case eSymbolTypeReExported:
         return AddressClass::eRuntime;
+      case eSymbolTypeASTFile:
+        return AddressClass::eDebug;
       }
     }
   }

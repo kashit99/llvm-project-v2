@@ -182,7 +182,6 @@ defm : ZnWriteResPair<WriteIMul64, [ZnALU1, ZnMultiplier], 4, [1,1], 2>;
 
 defm : X86WriteRes<WriteBSWAP32, [ZnALU], 1, [4], 1>;
 defm : X86WriteRes<WriteBSWAP64, [ZnALU], 1, [4], 1>;
-defm : X86WriteRes<WriteXCHG, [ZnALU], 1, [2], 2>;
 
 defm : ZnWriteResPair<WriteShift, [ZnALU], 1>;
 
@@ -500,6 +499,14 @@ def : InstRW<[WriteALULd, ReadAfterLd], (instregex "MOV16rm")>;
 def : InstRW<[WriteLoad], (instregex "MOV(S|Z)X32rm(8|16)")>;
 
 // XCHG.
+// r,r.
+def ZnWriteXCHG : SchedWriteRes<[ZnALU]> {
+  let NumMicroOps = 2;
+  let ResourceCycles = [2];
+}
+
+def : InstRW<[ZnWriteXCHG], (instregex "XCHG(8|16|32|64)rr", "XCHG(16|32|64)ar")>;
+
 // r,m.
 def ZnWriteXCHGrm : SchedWriteRes<[ZnAGU, ZnALU]> {
   let Latency = 5;
@@ -800,8 +807,6 @@ def : InstRW<[WriteMicrocoded], (instregex "SCAS(B|W|L|Q)")>;
 def : InstRW<[WriteMicrocoded], (instregex "STOS(B|L|Q|W)")>;
 
 // XADD.
-def ZnXADD : SchedWriteRes<[ZnALU]>;
-def : InstRW<[ZnXADD], (instregex "XADD(8|16|32|64)rr")>;
 def : InstRW<[WriteMicrocoded], (instregex "XADD(8|16|32|64)rm")>;
 
 //=== Floating Point x87 Instructions ===//

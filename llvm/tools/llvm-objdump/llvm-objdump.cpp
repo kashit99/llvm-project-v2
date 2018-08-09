@@ -2382,6 +2382,7 @@ int main(int argc, char **argv) {
   cl::AddExtraVersionPrinter(TargetRegistry::printRegisteredTargetsForVersion);
 
   cl::ParseCommandLineOptions(argc, argv, "llvm object file dumper\n");
+  TripleName = Triple::normalize(TripleName);
 
   ToolName = argv[0];
 

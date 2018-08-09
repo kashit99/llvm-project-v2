@@ -145,6 +145,11 @@ void StoringDiagnosticConsumer::DumpDiagnostics(Stream &error_stream) {
   }
 }
 
+static FileSpec GetResourceDir() {
+  static FileSpec g_cached_resource_dir = GetClangResourceDir();
+  return g_cached_resource_dir;
+}
+
 ClangModulesDeclVendor::ClangModulesDeclVendor() {}
 
 ClangModulesDeclVendor::~ClangModulesDeclVendor() {}
@@ -633,7 +638,7 @@ ClangModulesDeclVendor::Create(Target &target) {
                                                     source_buffer.release());
 
   std::unique_ptr<clang::CompilerInstance> instance(
-      new clang::CompilerInstance);
+      new clang::CompilerInstance());
 
   instance->setDiagnostics(diagnostics_engine.get());
   instance->setInvocation(invocation);

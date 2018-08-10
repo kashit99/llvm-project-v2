@@ -1892,15 +1892,17 @@ Instruction *InstCombiner::visitFSub(BinaryOperator &I) {
 
   // Similar to above, but look through a cast of the negated value:
   // X - (fptrunc(-Y)) --> X + fptrunc(Y)
-  Type *Ty = I.getType();
-  if (match(Op1, m_OneUse(m_FPTrunc(m_FNeg(m_Value(Y))))))
-    return BinaryOperator::CreateFAddFMF(Op0, Builder.CreateFPTrunc(Y, Ty), &I);
-
+  if (match(Op1, m_OneUse(m_FPTrunc(m_FNeg(m_Value(Y)))))) {
+    Value *TruncY = Builder.CreateFPTrunc(Y, I.getType());
+    return BinaryOperator::CreateFAddFMF(Op0, TruncY, &I);
+  }
   // X - (fpext(-Y)) --> X + fpext(Y)
-  if (match(Op1, m_OneUse(m_FPExt(m_FNeg(m_Value(Y))))))
-    return BinaryOperator::CreateFAddFMF(Op0, Builder.CreateFPExt(Y, Ty), &I);
+  if (match(Op1, m_OneUse(m_FPExt(m_FNeg(m_Value(Y)))))) {
+    Value *ExtY = Builder.CreateFPExt(Y, I.getType());
+    return BinaryOperator::CreateFAddFMF(Op0, ExtY, &I);
+  }
 
-  // Handle special cases for FSub with selects feeding the operation
+  // Handle specials cases for FSub with selects feeding the operation
   if (Value *V = SimplifySelectsFeedingBinaryOp(I, Op0, Op1))
     return replaceInstUsesWith(I, V);
 

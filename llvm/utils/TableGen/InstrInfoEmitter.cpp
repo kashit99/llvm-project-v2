@@ -389,8 +389,9 @@ void InstrInfoEmitter::emitMCIIHelperMethods(raw_ostream &OS) {
   for (const Record *Rec : TIIPredicates) {
     FOS << "bool " << Rec->getValueAsString("FunctionName");
     FOS << "(const MCInst &MI) {\n";
-    PE.expandStatement(FOS, Rec->getValueAsDef("Body"));
-    FOS << "\n}\n";
+    FOS << "  return ";
+    PE.expandPredicate(FOS, Rec->getValueAsDef("Pred"));
+    FOS << ";\n}\n";
   }
 
   FOS << "\n} // end " << TargetName << "_MC namespace\n";
@@ -412,8 +413,9 @@ void InstrInfoEmitter::emitTIIHelperMethods(raw_ostream &OS) {
   for (const Record *Rec : TIIPredicates) {
     FOS << "\n  static bool " << Rec->getValueAsString("FunctionName");
     FOS << "(const MachineInstr &MI) {\n";
-    PE.expandStatement(FOS, Rec->getValueAsDef("Body"));
-    FOS << "\n  }\n";
+    FOS << "    return ";
+    PE.expandPredicate(FOS, Rec->getValueAsDef("Pred"));
+    FOS << ";\n  }\n";
   }
 }
 

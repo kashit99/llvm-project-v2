@@ -210,7 +210,7 @@ getNonOverridenMethodCompletionResults(const DeclContext *DC, Sema *S) {
   // These are stored by name to make querying fast in the later step.
   llvm::StringMap<std::vector<FunctionDecl *>> Overrides;
   for (auto *Method : CR->methods()) {
-    if (!Method->isVirtual())
+    if (!Method->isVirtual() || !Method->getIdentifier())
       continue;
     Overrides[Method->getName()].push_back(Method);
   }
@@ -221,14 +221,14 @@ getNonOverridenMethodCompletionResults(const DeclContext *DC, Sema *S) {
     if (!BR)
       continue;
     for (auto *Method : BR->methods()) {
-      if (!Method->isVirtual())
+      if (!Method->isVirtual() || !Method->getIdentifier())
         continue;
       const auto it = Overrides.find(Method->getName());
       bool IsOverriden = false;
       if (it != Overrides.end()) {
         for (auto *MD : it->second) {
           // If the method in current body is not an overload of this virtual
-          // function, that it overrides this one.
+          // function, then it overrides this one.
           if (!S->IsOverload(MD, Method, false)) {
             IsOverriden = true;
             break;
@@ -798,7 +798,7 @@ struct ScoredSignature {
 class SignatureHelpCollector final : public CodeCompleteConsumer {
 public:
   SignatureHelpCollector(const clang::CodeCompleteOptions &CodeCompleteOpts,
-                         SymbolIndex *Index, SignatureHelp &SigHelp)
+                         const SymbolIndex *Index, SignatureHelp &SigHelp)
       : CodeCompleteConsumer(CodeCompleteOpts,
                              /*OutputIsBinary=*/false),
         SigHelp(SigHelp),
@@ -1584,7 +1584,7 @@ SignatureHelp signatureHelp(PathRef FileName,
                             StringRef Contents, Position Pos,
                             IntrusiveRefCntPtr<vfs::FileSystem> VFS,
                             std::shared_ptr<PCHContainerOperations> PCHs,
-                            SymbolIndex *Index) {
+                            const SymbolIndex *Index) {
   SignatureHelp Result;
   clang::CodeCompleteOptions Options;
   Options.IncludeGlobals = false;

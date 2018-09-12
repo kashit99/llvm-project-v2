@@ -1234,32 +1234,6 @@ namespace {
     }
   };
 
-  class AttrArgument : public SimpleArgument {
-  public:
-    AttrArgument(const Record &Arg, StringRef Attr)
-      : SimpleArgument(Arg, Attr, "Attr *")
-    {}
-
-    void writePCHReadDecls(raw_ostream &OS) const override {
-      OS << "    AttrVec vec;\n"
-            "    ReadAttributes(Record, vec);\n"
-            "    assert(vec.size() == 1);\n"
-            "    Attr *" << getLowerName() << " = vec.front();";
-    }
-
-    void writePCHWrite(raw_ostream &OS) const override {
-      OS << "    AddAttributes(SA->get" << getUpperName() << "());";
-    }
-
-    void writeDump(raw_ostream &OS) const override {}
-  
-    void writeDumpChildren(raw_ostream &OS) const override {
-      OS << "    dumpAttr(SA->get" << getUpperName() << "());\n";
-    }
-
-    void writeHasChildren(raw_ostream &OS) const override { OS << "true"; }
-  };
-
 } // end anonymous namespace
 
 static std::unique_ptr<Argument>
@@ -1315,8 +1289,6 @@ createArgument(const Record &Arg, StringRef Attr,
     Ptr = llvm::make_unique<VariadicIdentifierArgument>(Arg, Attr);
   else if (ArgName == "VersionArgument")
     Ptr = llvm::make_unique<VersionArgument>(Arg, Attr);
-  else if (ArgName == "AttrArgument")
-    Ptr = llvm::make_unique<AttrArgument>(Arg, Attr);
 
   if (!Ptr) {
     // Search in reverse order so that the most-derived type is handled first.
@@ -3333,11 +3305,16 @@ static std::string GenerateAppertainsTo(const Record &Attr, raw_ostream &OS) {
   // Otherwise, generate an appertainsTo check specific to this attribute which
   // checks all of the given subjects against the Decl passed in. Return the
   // name of that check to the caller.
+  //
+  // If D is null, that means the attribute was not applied to a declaration
+  // at all (for instance because it was applied to a type), or that the caller
+  // has determined that the check should fail (perhaps prior to the creation
+  // of the declaration).
   std::string FnName = "check" + Attr.getName().str() + "AppertainsTo";
   std::stringstream SS;
   SS << "static bool " << FnName << "(Sema &S, const ParsedAttr &Attr, ";
   SS << "const Decl *D) {\n";
-  SS << "  if (";
+  SS << "  if (!D || (";
   for (auto I = Subjects.begin(), E = Subjects.end(); I != E; ++I) {
     // If the subject has custom code associated with it, generate a function
     // for it. The function cannot be inlined into this check (yet) because it
@@ -3353,7 +3330,7 @@ static std::string GenerateAppertainsTo(const Record &Attr, raw_ostream &OS) {
     if (I + 1 != E)
       SS << " && ";
   }
-  SS << ") {\n";
+  SS << ")) {\n";
   SS << "    S.Diag(Attr.getLoc(), diag::";
   SS << (Warn ? "warn_attribute_wrong_decl_type_str" :
                "err_attribute_wrong_decl_type_str");

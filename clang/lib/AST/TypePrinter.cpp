@@ -104,7 +104,6 @@ namespace {
     unsigned Indentation;
     bool HasEmptyPlaceHolder = false;
     bool InsideCCAttribute = false;
-    bool IgnoreFunctionProtoTypeConstQual = false;
 
   public:
     explicit TypePrinter(const PrintingPolicy &Policy, unsigned Indentation = 0)
@@ -803,12 +802,8 @@ void TypePrinter::printFunctionProtoAfter(const FunctionProtoType *T,
   printFunctionAfter(Info, OS);
 
   if (unsigned quals = T->getTypeQuals()) {
-    if (IgnoreFunctionProtoTypeConstQual)
-      quals &= ~unsigned(Qualifiers::Const);
-    if (quals) {
-      OS << ' ';
-      AppendTypeQualList(OS, quals, Policy.Restrict);
-    }
+    OS << ' ';
+    AppendTypeQualList(OS, quals, Policy.Restrict);
   }
 
   switch (T->getRefQualifier()) {
@@ -1137,13 +1132,6 @@ void TypePrinter::printTag(TagDecl *D, raw_ostream &OS) {
   else if (TypedefNameDecl *Typedef = D->getTypedefNameForAnonDecl()) {
     assert(Typedef->getIdentifier() && "Typedef without identifier?");
     OS << Typedef->getIdentifier()->getName();
-  } else if (Policy.UseStdFunctionForLambda && isa<CXXRecordDecl>(D) &&
-             cast<CXXRecordDecl>(D)->isLambda()) {
-    OS << "std::function<";
-    QualType T = cast<CXXRecordDecl>(D)->getLambdaCallOperator()->getType();
-    SaveAndRestore<bool> NoConst(IgnoreFunctionProtoTypeConstQual, true);
-    print(T, OS, "");
-    OS << '>';
   } else {
     // Make an unambiguous representation for anonymous types, e.g.
     //   (anonymous enum at /usr/include/string.h:120:9)
@@ -1455,9 +1443,27 @@ void TypePrinter::printAttributedAfter(const AttributedType *T,
     return;
   }
 
+  if (T->getAttrKind() == AttributedType::attr_lifetimebound) {
+    OS << " [[clang::lifetimebound]]";
+    return;
+  }
+
   OS << " __attribute__((";
   switch (T->getAttrKind()) {
-  default: llvm_unreachable("This attribute should have been handled already");
+  case AttributedType::attr_lifetimebound:
+  case AttributedType::attr_nonnull:
+  case AttributedType::attr_nullable:
+  case AttributedType::attr_null_unspecified:
+  case AttributedType::attr_objc_gc:
+  case AttributedType::attr_objc_inert_unsafe_unretained:
+  case AttributedType::attr_objc_kindof:
+  case AttributedType::attr_objc_ownership:
+  case AttributedType::attr_ptr32:
+  case AttributedType::attr_ptr64:
+  case AttributedType::attr_sptr:
+  case AttributedType::attr_uptr:
+    llvm_unreachable("This attribute should have been handled already");
+
   case AttributedType::attr_address_space:
     OS << "address_space(";
     // FIXME: printing the raw LangAS value is wrong. This should probably

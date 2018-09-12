@@ -1160,47 +1160,57 @@ QualType QualType::substObjCTypeArgs(
 
     // Replace an Objective-C type parameter reference with the corresponding
     // type argument.
-    if (const auto *typedefTy = dyn_cast<TypedefType>(splitType.Ty)) {
-      if (auto *typeParam = dyn_cast<ObjCTypeParamDecl>(typedefTy->getDecl())) {
-        // If we have type arguments, use them.
-        if (!typeArgs.empty()) {
-          // FIXME: Introduce SubstObjCTypeParamType ?
-          QualType argType = typeArgs[typeParam->getIndex()];
+    if (const auto *OTPTy = dyn_cast<ObjCTypeParamType>(splitType.Ty)) {
+      ObjCTypeParamDecl *typeParam = OTPTy->getDecl();
+      // If we have type arguments, use them.
+      if (!typeArgs.empty()) {
+        QualType argType = typeArgs[typeParam->getIndex()];
+        if (OTPTy->qual_empty())
           return ctx.getQualifiedType(argType, splitType.Quals);
-        }
 
-        switch (context) {
-        case ObjCSubstitutionContext::Ordinary:
-        case ObjCSubstitutionContext::Parameter:
-        case ObjCSubstitutionContext::Superclass:
-          // Substitute the bound.
+        // Apply protocol lists if exists.
+        bool hasError;
+        SmallVector<ObjCProtocolDecl*, 8> protocolsVec;
+        protocolsVec.append(OTPTy->qual_begin(),
+                            OTPTy->qual_end());
+        ArrayRef<ObjCProtocolDecl *> protocolsToApply = protocolsVec;
+        QualType resultTy = ctx.applyObjCProtocolQualifiers(argType,
+            protocolsToApply, hasError, true/*allowOnPointerType*/);
+
+        return ctx.getQualifiedType(resultTy, splitType.Quals);
+      }
+
+      switch (context) {
+      case ObjCSubstitutionContext::Ordinary:
+      case ObjCSubstitutionContext::Parameter:
+      case ObjCSubstitutionContext::Superclass:
+        // Substitute the bound.
+        return ctx.getQualifiedType(typeParam->getUnderlyingType(),
+                                    splitType.Quals);
+
+      case ObjCSubstitutionContext::Result:
+      case ObjCSubstitutionContext::Property: {
+        // Substitute the __kindof form of the underlying type.
+        const auto *objPtr = typeParam->getUnderlyingType()
+          ->castAs<ObjCObjectPointerType>();
+
+        // __kindof types, id, and Class don't need an additional
+        // __kindof.
+        if (objPtr->isKindOfType() || objPtr->isObjCIdOrClassType())
           return ctx.getQualifiedType(typeParam->getUnderlyingType(),
                                       splitType.Quals);
 
-        case ObjCSubstitutionContext::Result:
-        case ObjCSubstitutionContext::Property: {
-          // Substitute the __kindof form of the underlying type.
-          const auto *objPtr = typeParam->getUnderlyingType()
-            ->castAs<ObjCObjectPointerType>();
+        // Add __kindof.
+        const auto *obj = objPtr->getObjectType();
+        QualType resultTy = ctx.getObjCObjectType(obj->getBaseType(),
+                                                  obj->getTypeArgsAsWritten(),
+                                                  obj->getProtocols(),
+                                                  /*isKindOf=*/true);
 
-          // __kindof types, id, and Class don't need an additional
-          // __kindof.
-          if (objPtr->isKindOfType() || objPtr->isObjCIdOrClassType())
-            return ctx.getQualifiedType(typeParam->getUnderlyingType(),
-                                        splitType.Quals);
-
-          // Add __kindof.
-          const auto *obj = objPtr->getObjectType();
-          QualType resultTy = ctx.getObjCObjectType(obj->getBaseType(),
-                                                    obj->getTypeArgsAsWritten(),
-                                                    obj->getProtocols(),
-                                                    /*isKindOf=*/true);
-
-          // Rebuild object pointer type.
-          resultTy = ctx.getObjCObjectPointerType(resultTy);
-          return ctx.getQualifiedType(resultTy, splitType.Quals);
-        }
-        }
+        // Rebuild object pointer type.
+        resultTy = ctx.getObjCObjectPointerType(resultTy);
+        return ctx.getQualifiedType(resultTy, splitType.Quals);
+      }
       }
     }
 
@@ -3168,6 +3178,7 @@ bool AttributedType::isQualifier() const {
   case AttributedType::attr_nonnull:
   case AttributedType::attr_nullable:
   case AttributedType::attr_null_unspecified:
+  case AttributedType::attr_lifetimebound:
     return true;
 
   // These aren't qualifiers; they rewrite the modified type to be a
@@ -3237,6 +3248,7 @@ bool AttributedType::isCallingConv() const {
   case attr_null_unspecified:
   case attr_objc_kindof:
   case attr_nocf_check:
+  case attr_lifetimebound:
     return false;
 
   case attr_pcs:

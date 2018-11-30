@@ -62,8 +62,7 @@ public:
                    for (const auto &Ref : Sym.second)
                      Refs.insert(Sym.first, Ref);
                  }
-               },
-               /*IncludeGraphCallback=*/nullptr)
+               })
         .release();
   }
 

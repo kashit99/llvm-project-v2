@@ -12,6 +12,7 @@
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Error.h"
+#include "llvm/Support/SHA1.h"
 #include "llvm/Support/raw_ostream.h"
 
 using namespace llvm;
@@ -40,6 +41,34 @@ raw_ostream &operator<<(raw_ostream &OS, const SymbolLocation &L) {
     return OS << "(none)";
   return OS << L.FileURI << "[" << L.Start.line() << ":" << L.Start.column()
             << "-" << L.End.line() << ":" << L.End.column() << ")";
+}
+
+SymbolID::SymbolID(StringRef USR) {
+  auto Hash = SHA1::hash(arrayRefFromStringRef(USR));
+  static_assert(sizeof(Hash) >= RawSize, "RawSize larger than SHA1");
+  memcpy(HashValue.data(), Hash.data(), RawSize);
+}
+
+raw_ostream &operator<<(raw_ostream &OS, const SymbolID &ID) {
+  return OS << toHex(ID.raw());
+}
+
+SymbolID SymbolID::fromRaw(StringRef Raw) {
+  SymbolID ID;
+  assert(Raw.size() == RawSize);
+  memcpy(ID.HashValue.data(), Raw.data(), RawSize);
+  return ID;
+}
+
+std::string SymbolID::str() const { return toHex(raw()); }
+
+Expected<SymbolID> SymbolID::fromStr(StringRef Str) {
+  if (Str.size() != RawSize * 2)
+    return createStringError(inconvertibleErrorCode(), "Bad ID length");
+  for (char C : Str)
+    if (!isHexDigit(C))
+      return createStringError(inconvertibleErrorCode(), "Bad hex ID");
+  return fromRaw(fromHex(Str));
 }
 
 raw_ostream &operator<<(raw_ostream &OS, SymbolOrigin O) {

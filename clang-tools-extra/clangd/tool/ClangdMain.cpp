@@ -254,7 +254,6 @@ int main(int argc, char *argv[]) {
     RunSynchronously = true;
     InputStyle = JSONStreamStyle::Delimited;
     PrettyPrint = true;
-    preventThreadStarvationInTests(); // Ensure background index makes progress.
   }
   if (Test || EnableTestScheme) {
     static URISchemeRegistry::Add<TestScheme> X(

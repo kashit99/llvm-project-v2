@@ -258,10 +258,9 @@ main.cpp:2:3: error: something terrible happened)");
   toLSPDiags(
       D,
 #ifdef _WIN32
-      URIForFile::canonicalize("c:\\path\\to\\foo\\bar\\main.cpp",
-                               /*TUPath=*/""),
+      URIForFile("c:\\path\\to\\foo\\bar\\main.cpp"),
 #else
-      URIForFile::canonicalize("/path/to/foo/bar/main.cpp", /*TUPath=*/""),
+      URIForFile("/path/to/foo/bar/main.cpp"),
 #endif
       ClangdDiagnosticOptions(),
       [&](clangd::Diagnostic LSPDiag, ArrayRef<clangd::Fix> Fixes) {

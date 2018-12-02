@@ -24,7 +24,6 @@
 
 #ifndef LLVM_CLANG_TOOLS_EXTRA_CLANGD_INDEX_RIFF_H
 #define LLVM_CLANG_TOOLS_EXTRA_CLANGD_INDEX_RIFF_H
-#include "Headers.h"
 #include "Index.h"
 #include "llvm/Support/Error.h"
 
@@ -38,10 +37,11 @@ enum class IndexFileFormat {
 
 // Holds the contents of an index file that was read.
 struct IndexFileIn {
+  using FileDigest = std::array<uint8_t, 20>;
   llvm::Optional<SymbolSlab> Symbols;
   llvm::Optional<RefSlab> Refs;
-  // Keys are URIs of the source files.
-  llvm::Optional<IncludeGraph> Sources;
+  // Digest of the source file that generated the contents.
+  llvm::Optional<FileDigest> Digest;
 };
 // Parse an index file. The input must be a RIFF or YAML file.
 llvm::Expected<IndexFileIn> readIndexFile(llvm::StringRef);
@@ -50,8 +50,8 @@ llvm::Expected<IndexFileIn> readIndexFile(llvm::StringRef);
 struct IndexFileOut {
   const SymbolSlab *Symbols = nullptr;
   const RefSlab *Refs = nullptr;
-  // Keys are URIs of the source files.
-  const IncludeGraph *Sources = nullptr;
+  // Digest of the source file that generated the contents.
+  const IndexFileIn::FileDigest *Digest = nullptr;
   // TODO: Support serializing Dex posting lists.
   IndexFileFormat Format = IndexFileFormat::RIFF;
 

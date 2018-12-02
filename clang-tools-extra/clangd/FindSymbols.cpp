@@ -142,9 +142,7 @@ getWorkspaceSymbols(StringRef Query, int Limit, const SymbolIndex *const Index,
       return;
     }
     Location L;
-    // Use HintPath as TUPath since there is no TU associated with this
-    // request.
-    L.uri = URIForFile::canonicalize(*Path, HintPath);
+    L.uri = URIForFile((*Path));
     Position Start, End;
     Start.line = CD.Start.line();
     Start.character = CD.Start.column();

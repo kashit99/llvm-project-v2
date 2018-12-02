@@ -84,10 +84,11 @@ public:
   LLVM_NODISCARD bool
   blockUntilIdleForTest(llvm::Optional<double> TimeoutSeconds = 10);
 
+  using FileDigest = decltype(llvm::SHA1::hash({}));
+
 private:
   /// Given index results from a TU, only update files in \p FilesToUpdate.
-  /// Also stores new index information on IndexStorage.
-  void update(llvm::StringRef MainFile, IndexFileIn Index,
+  void update(llvm::StringRef MainFile, SymbolSlab Symbols, RefSlab Refs,
               const llvm::StringMap<FileDigest> &FilesToUpdate,
               BackgroundIndexStorage *IndexStorage);
 

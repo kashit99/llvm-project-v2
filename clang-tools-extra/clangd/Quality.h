@@ -68,10 +68,8 @@ struct SymbolQualitySignals {
     Type,
     Function,
     Constructor,
-    Destructor,
     Namespace,
     Keyword,
-    Operator,
   } Category = Unknown;
 
   void merge(const CodeCompletionResult &SemaCCResult);

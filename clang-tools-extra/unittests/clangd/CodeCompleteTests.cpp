@@ -416,11 +416,6 @@ TEST(CompletionTest, InjectedTypename) {
               Has("X"));
 }
 
-TEST(CompletionTest, SkipInjectedWhenUnqualified) {
-  EXPECT_THAT(completions("struct X { void f() { X^ }};").Completions,
-              ElementsAre(Named("X"), Named("~X")));
-}
-
 TEST(CompletionTest, Snippets) {
   clangd::CodeCompleteOptions Opts;
   auto Results = completions(

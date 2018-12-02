@@ -43,26 +43,25 @@ void logIfOverflow(const SymbolLocation &Loc) {
 }
 
 // Convert a SymbolLocation to LSP's Location.
-// TUPath is used to resolve the path of URI.
+// HintPath is used to resolve the path of URI.
 // FIXME: figure out a good home for it, and share the implementation with
 // FindSymbols.
 Optional<Location> toLSPLocation(const SymbolLocation &Loc,
-                                 StringRef TUPath) {
+                                 StringRef HintPath) {
   if (!Loc)
     return None;
   auto Uri = URI::parse(Loc.FileURI);
   if (!Uri) {
-    elog("Could not parse URI {0}: {1}", Loc.FileURI, Uri.takeError());
+    log("Could not parse URI: {0}", Loc.FileURI);
     return None;
   }
-  auto U = URIForFile::fromURI(*Uri, TUPath);
-  if (!U) {
-    elog("Could not resolve URI {0}: {1}", Loc.FileURI, U.takeError());
+  auto Path = URI::resolve(*Uri, HintPath);
+  if (!Path) {
+    log("Could not resolve URI: {0}", Loc.FileURI);
     return None;
   }
-
   Location LSPLoc;
-  LSPLoc.uri = std::move(*U);
+  LSPLoc.uri = URIForFile(*Path);
   LSPLoc.range.start.line = Loc.Start.line();
   LSPLoc.range.start.character = Loc.Start.column();
   LSPLoc.range.end.line = Loc.End.line();
@@ -225,8 +224,7 @@ Range getTokenRange(ParsedAST &AST, SourceLocation TokLoc) {
           sourceLocToPosition(SourceMgr, LocEnd)};
 }
 
-Optional<Location> makeLocation(ParsedAST &AST, SourceLocation TokLoc,
-                                StringRef TUPath) {
+Optional<Location> makeLocation(ParsedAST &AST, SourceLocation TokLoc) {
   const SourceManager &SourceMgr = AST.getASTContext().getSourceManager();
   const FileEntry *F = SourceMgr.getFileEntryForID(SourceMgr.getFileID(TokLoc));
   if (!F)
@@ -237,7 +235,7 @@ Optional<Location> makeLocation(ParsedAST &AST, SourceLocation TokLoc,
     return None;
   }
   Location L;
-  L.uri = URIForFile::canonicalize(*FilePath, TUPath);
+  L.uri = URIForFile(*FilePath);
   L.range = getTokenRange(AST, TokLoc);
   return L;
 }
@@ -246,31 +244,25 @@ Optional<Location> makeLocation(ParsedAST &AST, SourceLocation TokLoc,
 
 std::vector<Location> findDefinitions(ParsedAST &AST, Position Pos,
                                       const SymbolIndex *Index) {
-  const auto &SM = AST.getASTContext().getSourceManager();
-  auto MainFilePath = getRealPath(SM.getFileEntryForID(SM.getMainFileID()), SM);
-  if (!MainFilePath) {
-    elog("Failed to get a path for the main file, so no references");
-    return {};
-  }
+  const SourceManager &SourceMgr = AST.getASTContext().getSourceManager();
 
   std::vector<Location> Result;
   // Handle goto definition for #include.
   for (auto &Inc : AST.getIncludeStructure().MainFileIncludes) {
     if (!Inc.Resolved.empty() && Inc.R.start.line == Pos.line)
-      Result.push_back(
-          Location{URIForFile::canonicalize(Inc.Resolved, *MainFilePath), {}});
+      Result.push_back(Location{URIForFile{Inc.Resolved}, {}});
   }
   if (!Result.empty())
     return Result;
 
   // Identified symbols at a specific position.
   SourceLocation SourceLocationBeg =
-      getBeginningOfIdentifier(AST, Pos, SM.getMainFileID());
+      getBeginningOfIdentifier(AST, Pos, SourceMgr.getMainFileID());
   auto Symbols = getSymbolAtPosition(AST, SourceLocationBeg);
 
   for (auto Item : Symbols.Macros) {
     auto Loc = Item.Info->getDefinitionLoc();
-    auto L = makeLocation(AST, Loc, *MainFilePath);
+    auto L = makeLocation(AST, Loc);
     if (L)
       Result.push_back(*L);
   }
@@ -320,7 +312,7 @@ std::vector<Location> findDefinitions(ParsedAST &AST, Position Pos,
     auto &Candidate = ResultCandidates[R.first->second];
 
     auto Loc = findNameLoc(D);
-    auto L = makeLocation(AST, Loc, *MainFilePath);
+    auto L = makeLocation(AST, Loc);
     // The declaration in the identified symbols is a definition if possible
     // otherwise it is declaration.
     bool IsDef = getDefinition(D) == D;
@@ -336,22 +328,22 @@ std::vector<Location> findDefinitions(ParsedAST &AST, Position Pos,
     // Build request for index query, using SymbolID.
     for (auto It : CandidatesIndex)
       QueryRequest.IDs.insert(It.first);
-    std::string TUPath;
+    std::string HintPath;
     const FileEntry *FE =
-        SM.getFileEntryForID(SM.getMainFileID());
-    if (auto Path = getRealPath(FE, SM))
-      TUPath = *Path;
+        SourceMgr.getFileEntryForID(SourceMgr.getMainFileID());
+    if (auto Path = getRealPath(FE, SourceMgr))
+      HintPath = *Path;
     // Query the index and populate the empty slot.
-    Index->lookup(QueryRequest, [&TUPath, &ResultCandidates,
+    Index->lookup(QueryRequest, [&HintPath, &ResultCandidates,
                                  &CandidatesIndex](const Symbol &Sym) {
       auto It = CandidatesIndex.find(Sym.ID);
       assert(It != CandidatesIndex.end());
       auto &Value = ResultCandidates[It->second];
 
       if (!Value.Def)
-        Value.Def = toLSPLocation(Sym.Definition, TUPath);
+        Value.Def = toLSPLocation(Sym.Definition, HintPath);
       if (!Value.Decl)
-        Value.Decl = toLSPLocation(Sym.CanonicalDeclaration, TUPath);
+        Value.Decl = toLSPLocation(Sym.CanonicalDeclaration, HintPath);
     });
   }
 
@@ -730,7 +722,7 @@ std::vector<Location> findReferences(ParsedAST &AST, Position Pos,
   for (const auto &Ref : MainFileRefs) {
     Location Result;
     Result.range = getTokenRange(AST, Ref.Loc);
-    Result.uri = URIForFile::canonicalize(*MainFilePath, *MainFilePath);
+    Result.uri = URIForFile(*MainFilePath);
     Results.push_back(std::move(Result));
   }
 
@@ -750,54 +742,11 @@ std::vector<Location> findReferences(ParsedAST &AST, Position Pos,
   if (Req.IDs.empty())
     return Results;
   Index->refs(Req, [&](const Ref &R) {
-    auto LSPLoc = toLSPLocation(R.Location, *MainFilePath);
+    auto LSPLoc = toLSPLocation(R.Location, /*HintPath=*/*MainFilePath);
     // Avoid indexed results for the main file - the AST is authoritative.
     if (LSPLoc && LSPLoc->uri.file() != *MainFilePath)
       Results.push_back(std::move(*LSPLoc));
   });
-  return Results;
-}
-
-std::vector<SymbolDetails> getSymbolInfo(ParsedAST &AST, Position Pos) {
-  const SourceManager &SM = AST.getASTContext().getSourceManager();
-
-  auto Loc = getBeginningOfIdentifier(AST, Pos, SM.getMainFileID());
-  auto Symbols = getSymbolAtPosition(AST, Loc);
-
-  std::vector<SymbolDetails> Results;
-
-  for (const auto &Sym : Symbols.Decls) {
-    SymbolDetails NewSymbol;
-    if (const NamedDecl *ND = dyn_cast<NamedDecl>(Sym.D)) {
-      std::string QName = printQualifiedName(*ND);
-      std::tie(NewSymbol.containerName, NewSymbol.name) =
-          splitQualifiedName(QName);
-
-      if (NewSymbol.containerName.empty()) {
-        if (const auto *ParentND =
-                dyn_cast_or_null<NamedDecl>(ND->getDeclContext()))
-          NewSymbol.containerName = printQualifiedName(*ParentND);
-      }
-    }
-    llvm::SmallString<32> USR;
-    if (!index::generateUSRForDecl(Sym.D, USR)) {
-      NewSymbol.USR = USR.str();
-      NewSymbol.ID = SymbolID(NewSymbol.USR);
-    }
-    Results.push_back(std::move(NewSymbol));
-  }
-
-  for (const auto &Macro : Symbols.Macros) {
-    SymbolDetails NewMacro;
-    NewMacro.name = Macro.Name;
-    llvm::SmallString<32> USR;
-    if (!index::generateUSRForMacro(NewMacro.name, Loc, SM, USR)) {
-      NewMacro.USR = USR.str();
-      NewMacro.ID = SymbolID(NewMacro.USR);
-    }
-    Results.push_back(std::move(NewMacro));
-  }
-
   return Results;
 }
 

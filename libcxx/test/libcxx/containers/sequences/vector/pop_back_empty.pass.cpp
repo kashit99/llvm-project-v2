@@ -6,16 +6,20 @@
 // Source Licenses. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
-//
-// XFAIL: suse-linux-enterprise-server-11
-// XFAIL: apple-darwin
-// XFAIL: newlib
-// XFAIL: netbsd
 
-// <uchar.h>
+// <vector>
 
-#include <uchar.h>
+// pop_back() more than the number of elements in a vector
 
-int main()
-{
+#define _LIBCPP_ASSERT(x, m) ((x) ? (void)0 : std::exit(0))
+
+#include <cstdlib>
+#include <vector>
+
+
+int main() {
+    std::vector<int> v;
+    v.push_back(0);
+    v.pop_back();
+    v.pop_back();
 }

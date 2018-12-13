@@ -6,16 +6,20 @@
 // Source Licenses. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
-//
-// XFAIL: suse-linux-enterprise-server-11
-// XFAIL: apple-darwin
-// XFAIL: newlib
-// XFAIL: netbsd
 
-// <uchar.h>
+// <deque>
 
-#include <uchar.h>
+// pop_back() more than the number of elements in a deque
 
-int main()
-{
+#define _LIBCPP_ASSERT(x, m) ((x) ? (void)0 : std::exit(0))
+
+#include <cstdlib>
+#include <deque>
+
+
+int main() {
+    std::deque<int> q;
+    q.push_back(0);
+    q.pop_back();
+    q.pop_back();
 }

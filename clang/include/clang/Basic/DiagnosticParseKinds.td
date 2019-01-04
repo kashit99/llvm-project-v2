@@ -266,7 +266,7 @@ def err_atimport : Error<
 def warn_atimport_in_framework_header : Warning<
   "use of '@import' in framework header is discouraged, "
   "including this header requires -fmodules">,
-  InGroup<FrameworkHdrAtImport>, DefaultIgnore;
+  InGroup<FrameworkHdrAtImport>;
 
 def err_invalid_reference_qualifier_application : Error<
   "'%0' qualifier may not be applied to a reference">;
@@ -1197,9 +1197,6 @@ def err_pragma_fp_scope : Error<
 
 def err_pragma_invalid_keyword : Error<
   "invalid argument; expected 'enable'%select{|, 'full'}0%select{|, 'assume_safety'}1 or 'disable'">;
-
-// API notes.
-def err_type_unparsed : Error<"unparsed tokens following type">;
 
 // Pragma unroll support.
 def warn_pragma_unroll_cuda_value_in_parens : Warning<

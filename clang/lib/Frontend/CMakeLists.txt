@@ -51,7 +51,6 @@ add_clang_library(clangFrontend
   ${optional_deps}
 
   LINK_LIBS
-  clangAPINotes
   clangAST
   clangBasic
   clangDriver

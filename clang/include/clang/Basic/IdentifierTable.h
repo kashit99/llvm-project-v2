@@ -95,10 +95,6 @@ class alignas(IdentifierInfoAlignment) IdentifierInfo {
   // loaded from an AST file.
   unsigned ChangedAfterLoad : 1;
 
-  // True if the identifier's frontend information has changed from the
-  // definition loaded from an AST file.
-  unsigned FEChangedAfterLoad : 1;
-
   // True if revertTokenIDToIdentifier was called.
   unsigned RevertedTokenID : 1;
 
@@ -109,7 +105,7 @@ class alignas(IdentifierInfoAlignment) IdentifierInfo {
   // True if this is the 'import' contextual keyword.
   unsigned IsModulesImport : 1;
 
-  // 29 bits left in a 64-bit word.
+  // 30 bits left in a 64-bit word.
 
   // Managed by the language front-end.
   void *FETokenInfo = nullptr;
@@ -121,7 +117,7 @@ class alignas(IdentifierInfoAlignment) IdentifierInfo {
         HadMacro(false), IsExtension(false), IsFutureCompatKeyword(false),
         IsPoisoned(false), IsCPPOperatorKeyword(false),
         NeedsHandleIdentifier(false), IsFromAST(false), ChangedAfterLoad(false),
-        FEChangedAfterLoad(false), RevertedTokenID(false), OutOfDate(false),
+        RevertedTokenID(false), OutOfDate(false),
         IsModulesImport(false) {}
 
 public:
@@ -332,18 +328,6 @@ public:
   /// an AST file.
   void setChangedSinceDeserialization() {
     ChangedAfterLoad = true;
-  }
-
-  /// Determine whether the frontend token information for this
-  /// identifier has changed since it was loaded from an AST file.
-  bool hasFETokenInfoChangedSinceDeserialization() const {
-    return FEChangedAfterLoad;
-  }
-
-  /// Note that the frontend token information for this identifier has
-  /// changed since it was loaded from an AST file.
-  void setFETokenInfoChangedSinceDeserialization() {
-    FEChangedAfterLoad = true;
   }
 
   /// Determine whether the information for this identifier is out of

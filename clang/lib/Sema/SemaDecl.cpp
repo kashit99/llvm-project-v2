@@ -2474,10 +2474,6 @@ static bool mergeDeclAttribute(Sema &S, NamedDecl *D,
     NewAttr = S.mergeMinSizeAttr(D, MA->getRange(), AttrSpellingListIndex);
   else if (const auto *OA = dyn_cast<OptimizeNoneAttr>(Attr))
     NewAttr = S.mergeOptimizeNoneAttr(D, OA->getRange(), AttrSpellingListIndex);
-  else if (const auto *SNA = dyn_cast<SwiftNameAttr>(Attr))
-    NewAttr = S.mergeSwiftNameAttr(D, SNA->getRange(), SNA->getName(),
-                                   AMK == Sema::AMK_Override,
-                                   AttrSpellingListIndex);
   else if (const auto *InternalLinkageA = dyn_cast<InternalLinkageAttr>(Attr))
     NewAttr = S.mergeInternalLinkageAttr(D, *InternalLinkageA);
   else if (const auto *CommonA = dyn_cast<CommonAttr>(Attr))
@@ -2489,8 +2485,6 @@ static bool mergeDeclAttribute(Sema &S, NamedDecl *D,
   else if ((isa<DeprecatedAttr>(Attr) || isa<UnavailableAttr>(Attr)) &&
            (AMK == Sema::AMK_Override ||
             AMK == Sema::AMK_ProtocolImplementation))
-    NewAttr = nullptr;
-  else if (isa<SwiftPrivateAttr>(Attr) && AMK == Sema::AMK_Override)
     NewAttr = nullptr;
   else if (const auto *UA = dyn_cast<UuidAttr>(Attr))
     NewAttr = S.mergeUuidAttr(D, UA->getRange(), AttrSpellingListIndex,
@@ -12531,8 +12525,10 @@ void Sema::DiagnoseSizeOfParametersAndReturnValue(
   }
 }
 
-QualType Sema::adjustParameterTypeForObjCAutoRefCount(QualType T,
-                                                      SourceLocation Loc) {
+ParmVarDecl *Sema::CheckParameter(DeclContext *DC, SourceLocation StartLoc,
+                                  SourceLocation NameLoc, IdentifierInfo *Name,
+                                  QualType T, TypeSourceInfo *TSInfo,
+                                  StorageClass SC) {
   // In ARC, infer a lifetime qualifier for appropriate parameter types.
   if (getLangOpts().ObjCAutoRefCount &&
       T.getObjCLifetime() == Qualifiers::OCL_None &&
@@ -12547,7 +12543,7 @@ QualType Sema::adjustParameterTypeForObjCAutoRefCount(QualType T,
       if (!T.isConstQualified()) {
         DelayedDiagnostics.add(
             sema::DelayedDiagnostic::makeForbiddenType(
-            Loc, diag::err_arc_array_param_no_ownership, T, false));
+            NameLoc, diag::err_arc_array_param_no_ownership, T, false));
       }
       lifetime = Qualifiers::OCL_ExplicitNone;
     } else {
@@ -12555,16 +12551,6 @@ QualType Sema::adjustParameterTypeForObjCAutoRefCount(QualType T,
     }
     T = Context.getLifetimeQualifiedType(T, lifetime);
   }
-
-  return T;
-}
-
-ParmVarDecl *Sema::CheckParameter(DeclContext *DC, SourceLocation StartLoc,
-                                  SourceLocation NameLoc, IdentifierInfo *Name,
-                                  QualType T, TypeSourceInfo *TSInfo,
-                                  StorageClass SC) {
-  // Perform Objective-C ARC adjustments.
-  T = adjustParameterTypeForObjCAutoRefCount(T, NameLoc);
 
   ParmVarDecl *New = ParmVarDecl::Create(Context, DC, StartLoc, NameLoc, Name,
                                          Context.getAdjustedParameterType(T),
@@ -13429,9 +13415,7 @@ void Sema::ActOnFinishDelayedAttribute(Scope *S, Decl *D,
   // Always attach attributes to the underlying decl.
   if (TemplateDecl *TD = dyn_cast<TemplateDecl>(D))
     D = TD->getTemplatedDecl();
-
   ProcessDeclAttributeList(S, D, Attrs);
-  ProcessAPINotes(D);
 
   if (CXXMethodDecl *Method = dyn_cast_or_null<CXXMethodDecl>(D))
     if (Method->isStatic())
@@ -16187,7 +16171,6 @@ void Sema::ActOnFields(Scope *S, SourceLocation RecLoc, Decl *EnclosingDecl,
       CDecl->setIvarRBraceLoc(RBrac);
     }
   }
-  ProcessAPINotes(Record);
 }
 
 /// Determine whether the given integral value is representable within
@@ -16495,8 +16478,6 @@ Decl *Sema::ActOnEnumConstant(Scope *S, Decl *theEnumDecl, Decl *lastEnumConst,
   ProcessDeclAttributeList(S, New, Attrs);
   AddPragmaAttributes(S, New);
 
-  ProcessAPINotes(New);
-
   // Register this decl in the current scope stack.
   New->setAccess(TheEnumDecl->getAccess());
   PushOnScopeChains(New, S);
@@ -16692,7 +16673,6 @@ void Sema::ActOnEnumBody(SourceLocation EnumLoc, SourceRange BraceRange,
   QualType EnumType = Context.getTypeDeclType(Enum);
 
   ProcessDeclAttributeList(S, Enum, Attrs);
-  ProcessAPINotes(Enum);
 
   if (Enum->isDependentType()) {
     for (unsigned i = 0, e = Elements.size(); i != e; ++i) {

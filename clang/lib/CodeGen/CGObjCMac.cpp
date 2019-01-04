@@ -6838,8 +6838,9 @@ llvm::Constant *CGObjCNonFragileABIMac::GetOrEmitProtocol(
     return Entry;
 
   // Use the protocol definition, if there is one.
-  if (const ObjCProtocolDecl *Def = PD->getDefinition())
-    PD = Def;
+  assert(PD->hasDefinition() &&
+         "emitting protocol metadata without definition");
+  PD = PD->getDefinition();
 
   auto methodLists = ProtocolMethodLists::get(PD);
 
@@ -7205,12 +7206,7 @@ CGObjCNonFragileABIMac::GetClassGlobal(StringRef Name,
   }
 
   assert(GV->getLinkage() == L);
-
-  if (IsForDefinition ||
-      GV->getValueType() == ObjCTypes.ClassnfABITy)
-    return GV;
-
-  return llvm::ConstantExpr::getBitCast(GV, ObjCTypes.ClassnfABIPtrTy);
+  return GV;
 }
 
 llvm::Value *

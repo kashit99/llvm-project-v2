@@ -30,7 +30,6 @@
 #include "clang/AST/PrettyPrinter.h"
 #include "clang/AST/StmtCXX.h"
 #include "clang/AST/TypeLoc.h"
-#include "clang/APINotes/APINotesManager.h"
 #include "clang/AST/TypeOrdering.h"
 #include "clang/Basic/ExpressionTraits.h"
 #include "clang/Basic/Module.h"
@@ -57,7 +56,6 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/TinyPtrVector.h"
 #include <deque>
-#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -323,7 +321,6 @@ public:
   ASTConsumer &Consumer;
   DiagnosticsEngine &Diags;
   SourceManager &SourceMgr;
-  api_notes::APINotesManager APINotes;
 
   /// Flag indicating whether or not to collect detailed statistics.
   bool CollectStats;
@@ -660,10 +657,6 @@ public:
     LateTemplateParserCleanup = LTPCleanup;
     OpaqueParser = P;
   }
-
-  /// \brief Callback to the parser to parse a type expressed as a string.
-  std::function<TypeResult(StringRef, StringRef, SourceLocation)>
-    ParseTypeFromStringCallback;
 
   class DelayedDiagnostics;
 
@@ -1557,24 +1550,6 @@ public:
     }
   };
 
-  /// Do a check to make sure \p Name looks like a legal swift_name
-  /// attribute for the decl \p D. Raise a diagnostic if the name is invalid
-  /// for the given declaration.
-  ///
-  /// For a function, this will validate a compound Swift name,
-  /// e.g. <code>init(foo:bar:baz:)</code> or <code>controllerForName(_:)</code>,
-  /// and the function will output the number of parameter names, and whether
-  /// this is a single-arg initializer.
-  ///
-  /// For a type, enum constant, property, or variable declaration, this will
-  /// validate either a simple identifier, or a qualified
-  /// <code>context.identifier</code> name.
-  ///
-  /// \returns true if the name is a valid swift name for \p D, false otherwise.
-  bool DiagnoseSwiftName(Decl *D, StringRef Name,
-                         SourceLocation ArgLoc,
-                         IdentifierInfo *AttrName);
-
 private:
   /// Methods for marking which expressions involve dereferencing a pointer
   /// marked with the 'noderef' attribute. Expressions are checked bottom up as
@@ -2018,8 +1993,6 @@ public:
   ParmVarDecl *BuildParmVarDeclForTypedef(DeclContext *DC,
                                           SourceLocation Loc,
                                           QualType T);
-  QualType adjustParameterTypeForObjCAutoRefCount(QualType T,
-                                                  SourceLocation Loc);
   ParmVarDecl *CheckParameter(DeclContext *DC, SourceLocation StartLoc,
                               SourceLocation NameLoc, IdentifierInfo *Name,
                               QualType T, TypeSourceInfo *TSInfo,
@@ -2520,9 +2493,6 @@ public:
                                 unsigned AttrSpellingListIndex);
   OptimizeNoneAttr *mergeOptimizeNoneAttr(Decl *D, SourceRange Range,
                                           unsigned AttrSpellingListIndex);
-  SwiftNameAttr *mergeSwiftNameAttr(Decl *D, SourceRange Range,
-                                    StringRef Name, bool Override,
-                                    unsigned AttrSpellingListIndex);
   InternalLinkageAttr *mergeInternalLinkageAttr(Decl *D, const ParsedAttr &AL);
   InternalLinkageAttr *mergeInternalLinkageAttr(Decl *D,
                                                 const InternalLinkageAttr &AL);
@@ -3405,12 +3375,6 @@ public:
 
   void checkUnusedDeclAttributes(Declarator &D);
 
-  /// Map any API notes provided for this declaration to attributes on the
-  /// declaration.
-  ///
-  /// Triggered by declaration-attribute processing.
-  void ProcessAPINotes(Decl *D);
-
   /// Determine if type T is a valid subject for a nonnull and similar
   /// attributes. By default, we look through references (the behavior used by
   /// nonnull), but if the second parameter is true, then we treat a reference
@@ -3447,29 +3411,6 @@ public:
   /// Get the outermost AttributedType node that sets a calling convention.
   /// Valid types should not have multiple attributes with different CCs.
   const AttributedType *getCallingConvAttributedType(QualType T) const;
-
-  /// Check whether a nullability type specifier can be added to the given
-  /// type through some means not written in source (e.g. API notes).
-  ///
-  /// \param type The type to which the nullability specifier will be
-  /// added. On success, this type will be updated appropriately.
-  ///
-  /// \param nullability The nullability specifier to add.
-  ///
-  /// \param diagLoc The location to use for diagnostics.
-  ///
-  /// \param allowArrayTypes Whether to accept nullability specifiers on an
-  /// array type (e.g., because it will decay to a pointer).
-  ///
-  /// \param overrideExisting Whether to override an existing, locally-specified
-  /// nullability specifier rather than complaining about the conflict.
-  ///
-  /// \returns true if nullability cannot be applied, false otherwise.
-  bool checkImplicitNullabilityTypeSpecifier(QualType &type,
-                                             NullabilityKind nullability,
-                                             SourceLocation diagLoc,
-                                             bool allowArrayTypes,
-                                             bool overrideExisting);
 
   /// Stmt attributes - this routine is the top level dispatcher.
   StmtResult ProcessStmtAttributes(Stmt *Stmt,
@@ -8397,12 +8338,6 @@ public:
     RTC_Unknown
   };
 
-  /// Check whether the declared result type of the given Objective-C
-  /// method declaration is compatible with the method's class.
-  ResultTypeCompatibilityKind
-  checkRelatedResultTypeCompatibility(const ObjCMethodDecl *Method,
-                                      const ObjCInterfaceDecl *CurrentClass);
-
   void CheckObjCMethodOverrides(ObjCMethodDecl *ObjCMethod,
                                 ObjCInterfaceDecl *CurrentClass,
                                 ResultTypeCompatibilityKind RTC);
@@ -10774,7 +10709,6 @@ public:
 
   /// The struct behind the CFErrorRef pointer.
   RecordDecl *CFError = nullptr;
-  bool isCFError(RecordDecl *D);
 
   /// Retrieve the identifier "NSError".
   IdentifierInfo *getNSErrorIdent();

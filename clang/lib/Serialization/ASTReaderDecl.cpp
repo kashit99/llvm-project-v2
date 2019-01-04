@@ -1244,8 +1244,6 @@ void ASTDeclReader::VisitObjCCategoryDecl(ObjCCategoryDecl *CD) {
 void ASTDeclReader::VisitObjCCompatibleAliasDecl(ObjCCompatibleAliasDecl *CAD) {
   VisitNamedDecl(CAD);
   CAD->setClassInterface(ReadDeclAs<ObjCInterfaceDecl>());
-  CAD->setClassInterfaceLoc(ReadSourceLocation());
-  CAD->setAtLoc(ReadSourceLocation());
 }
 
 void ASTDeclReader::VisitObjCPropertyDecl(ObjCPropertyDecl *D) {
@@ -2689,8 +2687,6 @@ public:
   }
 
   Expr *readExpr() { return Reader->ReadExpr(*F); }
-
-  Attr *readAttr() { return Reader->ReadAttr(*F, Record, Idx); }
 
   std::string readString() {
     return Reader->ReadString(Record, Idx);

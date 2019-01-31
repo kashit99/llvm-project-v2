@@ -1,8 +1,9 @@
 //===--- CrossTranslationUnit.cpp - -----------------------------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -119,26 +120,26 @@ std::error_code IndexError::convertToErrorCode() const {
 
 llvm::Expected<llvm::StringMap<std::string>>
 parseCrossTUIndex(StringRef IndexPath, StringRef CrossTUDir) {
-  std::ifstream ExternalMapFile(IndexPath);
-  if (!ExternalMapFile)
+  std::ifstream ExternalFnMapFile(IndexPath);
+  if (!ExternalFnMapFile)
     return llvm::make_error<IndexError>(index_error_code::missing_index_file,
                                         IndexPath.str());
 
   llvm::StringMap<std::string> Result;
   std::string Line;
   unsigned LineNo = 1;
-  while (std::getline(ExternalMapFile, Line)) {
+  while (std::getline(ExternalFnMapFile, Line)) {
     const size_t Pos = Line.find(" ");
     if (Pos > 0 && Pos != std::string::npos) {
       StringRef LineRef{Line};
-      StringRef LookupName = LineRef.substr(0, Pos);
-      if (Result.count(LookupName))
+      StringRef FunctionLookupName = LineRef.substr(0, Pos);
+      if (Result.count(FunctionLookupName))
         return llvm::make_error<IndexError>(
             index_error_code::multiple_definitions, IndexPath.str(), LineNo);
       StringRef FileName = LineRef.substr(Pos + 1);
       SmallString<256> FilePath = CrossTUDir;
       llvm::sys::path::append(FilePath, FileName);
-      Result[LookupName] = FilePath.str().str();
+      Result[FunctionLookupName] = FilePath.str().str();
     } else
       return llvm::make_error<IndexError>(
           index_error_code::invalid_index_format, IndexPath.str(), LineNo);
@@ -207,6 +208,9 @@ CrossTranslationUnitContext::getCrossTUDefinition(const FunctionDecl *FD,
   if (!ASTUnitOrError)
     return ASTUnitOrError.takeError();
   ASTUnit *Unit = *ASTUnitOrError;
+  if (!Unit)
+    return llvm::make_error<IndexError>(
+        index_error_code::failed_to_get_external_ast);
   assert(&Unit->getFileManager() ==
          &Unit->getASTContext().getSourceManager().getFileManager());
 
@@ -249,7 +253,7 @@ void CrossTranslationUnitContext::emitCrossTUDiagnostics(const IndexError &IE) {
         << IE.getFileName();
     break;
   case index_error_code::invalid_index_format:
-    Context.getDiagnostics().Report(diag::err_extdefmap_parsing)
+    Context.getDiagnostics().Report(diag::err_fnmap_parsing)
         << IE.getFileName() << IE.getLineNum();
     break;
   case index_error_code::multiple_definitions:
@@ -320,9 +324,6 @@ llvm::Expected<ASTUnit *> CrossTranslationUnitContext::loadExternalAST(
   } else {
     Unit = FnUnitCacheEntry->second;
   }
-  if (!Unit)
-    return llvm::make_error<IndexError>(
-        index_error_code::failed_to_get_external_ast);
   return Unit;
 }
 

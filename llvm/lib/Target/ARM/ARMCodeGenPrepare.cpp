@@ -1,8 +1,9 @@
 //===----- ARMCodeGenPrepare.cpp ------------------------------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -113,11 +114,7 @@ class IRPromoter {
   SmallPtrSet<Value*, 8> Promoted;
   Module *M = nullptr;
   LLVMContext &Ctx;
-  // The type we promote to: always i32
   IntegerType *ExtTy = nullptr;
-  // The type of the value that the search began from, either i8 or i16.
-  // This defines the max range of the values that we allow in the promoted
-  // tree.
   IntegerType *OrigTy = nullptr;
   SmallPtrSetImpl<Value*> *Visited;
   SmallPtrSetImpl<Value*> *Sources;
@@ -330,7 +327,7 @@ bool ARMCodeGenPrepare::isSafeOverflow(Instruction *I) {
   // - (255 >= 254) == (0xFFFFFFFF >= 254) == true
   //
   // To demonstrate why we can't handle increasing values:
-  //
+  // 
   // %add = add i8 %a, 2
   // %cmp = icmp ult i8 %add, 127
   //
@@ -608,7 +605,7 @@ void IRPromoter::PromoteTree() {
 
     if (!shouldPromote(I) || SafeToPromote->count(I) || NewInsts.count(I))
       continue;
-
+  
     assert(EnableDSP && "DSP intrinisc insertion not enabled!");
 
     // Replace unsafe instructions with appropriate intrinsic calls.
@@ -689,10 +686,10 @@ void IRPromoter::Cleanup() {
   // Some zexts will now have become redundant, along with their trunc
   // operands, so remove them
   for (auto V : *Visited) {
-    if (!isa<ZExtInst>(V))
+    if (!isa<CastInst>(V))
       continue;
 
-    auto ZExt = cast<ZExtInst>(V);
+    auto ZExt = cast<CastInst>(V);
     if (ZExt->getDestTy() != ExtTy)
       continue;
 
@@ -704,11 +701,9 @@ void IRPromoter::Cleanup() {
       continue;
     }
 
-    // Unless they produce a value that is narrower than ExtTy, we can
-    // replace the result of the zext with the input of a newly inserted
-    // trunc.
-    if (NewInsts.count(Src) && isa<TruncInst>(Src) &&
-        Src->getType() == OrigTy) {
+    // For any truncs that we insert to handle zexts, we can replace the
+    // result of the zext with the input to the trunc.
+    if (NewInsts.count(Src) && isa<ZExtInst>(V) && isa<TruncInst>(Src)) {
       auto *Trunc = cast<TruncInst>(Src);
       assert(Trunc->getOperand(0)->getType() == ExtTy &&
              "expected inserted trunc to be operating on i32");

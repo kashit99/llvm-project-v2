@@ -1,8 +1,9 @@
 //===- unittest/Format/FormatTestJS.cpp - Formatting unit tests for JS ----===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -598,8 +599,6 @@ TEST_F(FormatTestJS, GoogModules) {
   verifyFormat("goog.provide('this.is.really.absurdly.long');",
                getGoogleJSStyleWithColumns(40));
   verifyFormat("var long = goog.require('this.is.really.absurdly.long');",
-               getGoogleJSStyleWithColumns(40));
-  verifyFormat("const X = goog.requireType('this.is.really.absurdly.long');",
                getGoogleJSStyleWithColumns(40));
   verifyFormat("goog.forwardDeclare('this.is.really.absurdly.long');",
                getGoogleJSStyleWithColumns(40));

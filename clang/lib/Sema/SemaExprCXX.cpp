@@ -1,8 +1,9 @@
 //===--- SemaExprCXX.cpp - Semantic Analysis for Expressions --------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 ///
@@ -1063,7 +1064,7 @@ QualType Sema::getCurrentThisType() {
 
   if (CXXMethodDecl *method = dyn_cast<CXXMethodDecl>(DC)) {
     if (method && method->isInstance())
-      ThisTy = method->getThisType();
+      ThisTy = method->getThisType(Context);
   }
 
   if (ThisTy.isNull() && isLambdaCallOperator(CurContext) &&
@@ -1510,19 +1511,11 @@ namespace {
         Destroying = true;
         ++NumBaseParams;
       }
-
-      if (NumBaseParams < FD->getNumParams() &&
-          S.Context.hasSameUnqualifiedType(
-              FD->getParamDecl(NumBaseParams)->getType(),
-              S.Context.getSizeType())) {
-        ++NumBaseParams;
-        HasSizeT = true;
-      }
-
-      if (NumBaseParams < FD->getNumParams() &&
-          FD->getParamDecl(NumBaseParams)->getType()->isAlignValT()) {
-        ++NumBaseParams;
-        HasAlignValT = true;
+      if (FD->getNumParams() == NumBaseParams + 2)
+        HasAlignValT = HasSizeT = true;
+      else if (FD->getNumParams() == NumBaseParams + 1) {
+        HasSizeT = FD->getParamDecl(NumBaseParams)->getType()->isIntegerType();
+        HasAlignValT = !HasSizeT;
       }
 
       // In CUDA, determine how much we'd like / dislike to call this.
@@ -1872,11 +1865,12 @@ Sema::BuildCXXNew(SourceRange Range, bool UseGlobal,
     if (Braced && !getLangOpts().CPlusPlus17)
       Diag(Initializer->getBeginLoc(), diag::ext_auto_new_list_init)
           << AllocType << TypeRange;
+    Expr *Deduce = Inits[0];
     QualType DeducedType;
-    if (DeduceAutoType(AllocTypeInfo, Inits[0], DeducedType) == DAR_Failed)
+    if (DeduceAutoType(AllocTypeInfo, Deduce, DeducedType) == DAR_Failed)
       return ExprError(Diag(StartLoc, diag::err_auto_new_deduction_failure)
-                       << AllocType << Inits[0]->getType()
-                       << TypeRange << Inits[0]->getSourceRange());
+                       << AllocType << Deduce->getType()
+                       << TypeRange << Deduce->getSourceRange());
     if (DeducedType.isNull())
       return ExprError();
     AllocType = DeducedType;
@@ -2185,11 +2179,11 @@ Sema::BuildCXXNew(SourceRange Range, bool UseGlobal,
     }
   }
 
-  return CXXNewExpr::Create(Context, UseGlobal, OperatorNew, OperatorDelete,
-                            PassAlignment, UsualArrayDeleteWantsSize,
-                            PlacementArgs, TypeIdParens, ArraySize, initStyle,
-                            Initializer, ResultType, AllocTypeInfo, Range,
-                            DirectInitRange);
+  return new (Context)
+      CXXNewExpr(Context, UseGlobal, OperatorNew, OperatorDelete, PassAlignment,
+                 UsualArrayDeleteWantsSize, PlacementArgs, TypeIdParens,
+                 ArraySize, initStyle, Initializer, ResultType, AllocTypeInfo,
+                 Range, DirectInitRange);
 }
 
 /// Checks that a type is suitable as the allocated type
@@ -3594,7 +3588,7 @@ void Sema::CheckVirtualDtorCall(CXXDestructorDecl *dtor, SourceLocation Loc,
   if (getSourceManager().isInSystemHeader(PointeeRD->getLocation()))
     return;
 
-  QualType ClassType = dtor->getThisType()->getPointeeType();
+  QualType ClassType = dtor->getThisType(Context)->getPointeeType();
   if (PointeeRD->isAbstract()) {
     // If the class is abstract, we warn by default, because we're
     // sure the code has undefined behavior.
@@ -6854,9 +6848,8 @@ canRecoverDotPseudoDestructorCallsOnPointerObjects(Sema &SemaRef,
                                                    QualType DestructedType) {
   // If this is a record type, check if its destructor is callable.
   if (auto *RD = DestructedType->getAsCXXRecordDecl()) {
-    if (RD->hasDefinition())
-      if (CXXDestructorDecl *D = SemaRef.LookupDestructor(RD))
-        return SemaRef.CanUseDecl(D, /*TreatUnavailableAsInvalid=*/false);
+    if (CXXDestructorDecl *D = SemaRef.LookupDestructor(RD))
+      return SemaRef.CanUseDecl(D, /*TreatUnavailableAsInvalid=*/false);
     return false;
   }
 
@@ -7815,8 +7808,6 @@ ExprResult Sema::ActOnFinishFullExpr(Expr *FE, SourceLocation CC,
     FullExpr = IgnoredValueConversions(FullExpr.get());
     if (FullExpr.isInvalid())
       return ExprError();
-
-    DiagnoseUnusedExprResult(FullExpr.get());
   }
 
   FullExpr = CorrectDelayedTyposInExpr(FullExpr.get());

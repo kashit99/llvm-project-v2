@@ -1,8 +1,9 @@
 //===--- TUScheduler.cpp -----------------------------------------*-C++-*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 // For each file, managed by TUScheduler, we create a single ASTWorker that
@@ -55,19 +56,20 @@
 #include <queue>
 #include <thread>
 
+using namespace llvm;
 namespace clang {
 namespace clangd {
 using std::chrono::steady_clock;
 
 namespace {
 class ASTWorker;
-} // namespace
+}
 
 static clang::clangd::Key<std::string> kFileBeingProcessed;
 
-llvm::Optional<llvm::StringRef> TUScheduler::getFileBeingProcessedInContext() {
+Optional<StringRef> TUScheduler::getFileBeingProcessedInContext() {
   if (auto *File = Context::current().get(kFileBeingProcessed))
-    return llvm::StringRef(*File);
+    return StringRef(*File);
   return None;
 }
 
@@ -111,7 +113,7 @@ public:
   /// Returns the cached value for \p K, or llvm::None if the value is not in
   /// the cache anymore. If nullptr was cached for \p K, this function will
   /// return a null unique_ptr wrapped into an optional.
-  llvm::Optional<std::unique_ptr<ParsedAST>> take(Key K) {
+  Optional<std::unique_ptr<ParsedAST>> take(Key K) {
     std::unique_lock<std::mutex> Lock(Mut);
     auto Existing = findByKey(K);
     if (Existing == LRU.end())
@@ -121,7 +123,7 @@ public:
     // GCC 4.8 fails to compile `return V;`, as it tries to call the copy
     // constructor of unique_ptr, so we call the move ctor explicitly to avoid
     // this miscompile.
-    return llvm::Optional<std::unique_ptr<ParsedAST>>(std::move(V));
+    return Optional<std::unique_ptr<ParsedAST>>(std::move(V));
   }
 
 private:
@@ -175,16 +177,15 @@ public:
   ~ASTWorker();
 
   void update(ParseInputs Inputs, WantDiagnostics);
-  void
-  runWithAST(llvm::StringRef Name,
-             llvm::unique_function<void(llvm::Expected<InputsAndAST>)> Action);
+  void runWithAST(StringRef Name,
+                  unique_function<void(Expected<InputsAndAST>)> Action);
   bool blockUntilIdle(Deadline Timeout) const;
 
   std::shared_ptr<const PreambleData> getPossiblyStalePreamble() const;
   /// Obtain a preamble reflecting all updates so far. Threadsafe.
   /// It may be delivered immediately, or later on the worker thread.
   void getCurrentPreamble(
-      llvm::unique_function<void(std::shared_ptr<const PreambleData>)>);
+      unique_function<void(std::shared_ptr<const PreambleData>)>);
   /// Wait for the first build of preamble to finish. Preamble itself can be
   /// accessed via getPossiblyStalePreamble(). Note that this function will
   /// return after an unsuccessful build of the preamble too, i.e. result of
@@ -202,8 +203,8 @@ private:
   /// Signal that run() should finish processing pending requests and exit.
   void stop();
   /// Adds a new task to the end of the request queue.
-  void startTask(llvm::StringRef Name, llvm::unique_function<void()> Task,
-                 llvm::Optional<WantDiagnostics> UpdateType);
+  void startTask(StringRef Name, unique_function<void()> Task,
+                 Optional<WantDiagnostics> UpdateType);
   /// Updates the TUStatus and emits it. Only called in the worker thread.
   void emitTUStatus(TUAction FAction,
                     const TUStatus::BuildDetails *Detail = nullptr);
@@ -217,11 +218,11 @@ private:
   bool shouldSkipHeadLocked() const;
 
   struct Request {
-    llvm::unique_function<void()> Action;
+    unique_function<void()> Action;
     std::string Name;
     steady_clock::time_point AddTime;
     Context Ctx;
-    llvm::Optional<WantDiagnostics> UpdateType;
+    Optional<WantDiagnostics> UpdateType;
   };
 
   /// Handles retention of ASTs.
@@ -320,7 +321,7 @@ ASTWorkerHandle ASTWorker::create(PathRef FileName,
       FileName, IdleASTs, Barrier, /*RunSync=*/!Tasks, UpdateDebounce,
       std::move(PCHs), StorePreamblesInMemory, Callbacks));
   if (Tasks)
-    Tasks->runAsync("worker:" + llvm::sys::path::filename(FileName),
+    Tasks->runAsync("worker:" + sys::path::filename(FileName),
                     [Worker]() { Worker->run(); });
 
   return ASTWorkerHandle(std::move(Worker));
@@ -349,7 +350,7 @@ ASTWorker::~ASTWorker() {
 }
 
 void ASTWorker::update(ParseInputs Inputs, WantDiagnostics WantDiags) {
-  llvm::StringRef TaskName = "Update";
+  StringRef TaskName = "Update";
   auto Task = [=]() mutable {
     // Will be used to check if we can avoid rebuilding the AST.
     bool InputsAreTheSame =
@@ -363,7 +364,7 @@ void ASTWorker::update(ParseInputs Inputs, WantDiagnostics WantDiags) {
     emitTUStatus({TUAction::BuildingPreamble, TaskName});
     log("Updating file {0} with command [{1}] {2}", FileName,
         Inputs.CompileCommand.Directory,
-        llvm::join(Inputs.CompileCommand.CommandLine, " "));
+        join(Inputs.CompileCommand.CommandLine, " "));
     // Rebuild the preamble and the AST.
     std::unique_ptr<CompilerInvocation> Invocation =
         buildCompilerInvocation(Inputs);
@@ -436,9 +437,9 @@ void ASTWorker::update(ParseInputs Inputs, WantDiagnostics WantDiags) {
     }
 
     // Get the AST for diagnostics.
-    llvm::Optional<std::unique_ptr<ParsedAST>> AST = IdleASTs.take(this);
+    Optional<std::unique_ptr<ParsedAST>> AST = IdleASTs.take(this);
     if (!AST) {
-      llvm::Optional<ParsedAST> NewAST =
+      Optional<ParsedAST> NewAST =
           buildAST(FileName, std::move(Invocation), Inputs, NewPreamble, PCHs);
       AST = NewAST ? llvm::make_unique<ParsedAST>(std::move(*NewAST)) : nullptr;
       if (!(*AST)) { // buildAST fails.
@@ -473,17 +474,16 @@ void ASTWorker::update(ParseInputs Inputs, WantDiagnostics WantDiags) {
 }
 
 void ASTWorker::runWithAST(
-    llvm::StringRef Name,
-    llvm::unique_function<void(llvm::Expected<InputsAndAST>)> Action) {
+    StringRef Name, unique_function<void(Expected<InputsAndAST>)> Action) {
   auto Task = [=](decltype(Action) Action) {
     if (isCancelled())
-      return Action(llvm::make_error<CancelledError>());
-    llvm::Optional<std::unique_ptr<ParsedAST>> AST = IdleASTs.take(this);
+      return Action(make_error<CancelledError>());
+    Optional<std::unique_ptr<ParsedAST>> AST = IdleASTs.take(this);
     if (!AST) {
       std::unique_ptr<CompilerInvocation> Invocation =
           buildCompilerInvocation(FileInputs);
       // Try rebuilding the AST.
-      llvm::Optional<ParsedAST> NewAST =
+      Optional<ParsedAST> NewAST =
           Invocation
               ? buildAST(FileName,
                          llvm::make_unique<CompilerInvocation>(*Invocation),
@@ -492,12 +492,12 @@ void ASTWorker::runWithAST(
       AST = NewAST ? llvm::make_unique<ParsedAST>(std::move(*NewAST)) : nullptr;
     }
     // Make sure we put the AST back into the LRU cache.
-    auto _ = llvm::make_scope_exit(
+    auto _ = make_scope_exit(
         [&AST, this]() { IdleASTs.put(this, std::move(*AST)); });
     // Run the user-provided action.
     if (!*AST)
-      return Action(llvm::make_error<llvm::StringError>(
-          "invalid AST", llvm::errc::invalid_argument));
+      return Action(
+          make_error<StringError>("invalid AST", errc::invalid_argument));
     Action(InputsAndAST{FileInputs, **AST});
   };
   startTask(Name, Bind(Task, std::move(Action)),
@@ -511,7 +511,7 @@ ASTWorker::getPossiblyStalePreamble() const {
 }
 
 void ASTWorker::getCurrentPreamble(
-    llvm::unique_function<void(std::shared_ptr<const PreambleData>)> Callback) {
+    unique_function<void(std::shared_ptr<const PreambleData>)> Callback) {
   // We could just call startTask() to throw the read on the queue, knowing
   // it will run after any updates. But we know this task is cheap, so to
   // improve latency we cheat: insert it on the queue after the last update.
@@ -565,12 +565,11 @@ void ASTWorker::stop() {
   RequestsCV.notify_all();
 }
 
-void ASTWorker::startTask(llvm::StringRef Name,
-                          llvm::unique_function<void()> Task,
-                          llvm::Optional<WantDiagnostics> UpdateType) {
+void ASTWorker::startTask(StringRef Name, unique_function<void()> Task,
+                          Optional<WantDiagnostics> UpdateType) {
   if (RunSync) {
     assert(!Done && "running a task after stop()");
-    trace::Span Tracer(Name + ":" + llvm::sys::path::filename(FileName));
+    trace::Span Tracer(Name + ":" + sys::path::filename(FileName));
     Task();
     return;
   }
@@ -612,8 +611,8 @@ void ASTWorker::run() {
         }
 
         // Tracing: we have a next request, attribute this sleep to it.
-        llvm::Optional<WithContext> Ctx;
-        llvm::Optional<trace::Span> Tracer;
+        Optional<WithContext> Ctx;
+        Optional<trace::Span> Tracer;
         if (!Requests.empty()) {
           Ctx.emplace(Requests.front().Ctx.clone());
           Tracer.emplace("Debounce");
@@ -735,7 +734,7 @@ bool ASTWorker::blockUntilIdle(Deadline Timeout) const {
 // are familiar by C++ programmers.
 std::string renderTUAction(const TUAction &Action) {
   std::string Result;
-  llvm::raw_string_ostream OS(Result);
+  raw_string_ostream OS(Result);
   switch (Action.S) {
   case TUAction::Queued:
     OS << "file is queued";
@@ -845,20 +844,19 @@ void TUScheduler::remove(PathRef File) {
          File);
 }
 
-void TUScheduler::run(llvm::StringRef Name,
-                      llvm::unique_function<void()> Action) {
+void TUScheduler::run(StringRef Name, unique_function<void()> Action) {
   if (!PreambleTasks)
     return Action();
   PreambleTasks->runAsync(Name, std::move(Action));
 }
 
 void TUScheduler::runWithAST(
-    llvm::StringRef Name, PathRef File,
-    llvm::unique_function<void(llvm::Expected<InputsAndAST>)> Action) {
+    StringRef Name, PathRef File,
+    unique_function<void(Expected<InputsAndAST>)> Action) {
   auto It = Files.find(File);
   if (It == Files.end()) {
-    Action(llvm::make_error<LSPError>(
-        "trying to get AST for non-added document", ErrorCode::InvalidParams));
+    Action(make_error<LSPError>("trying to get AST for non-added document",
+                                ErrorCode::InvalidParams));
     return;
   }
 
@@ -866,13 +864,12 @@ void TUScheduler::runWithAST(
 }
 
 void TUScheduler::runWithPreamble(
-    llvm::StringRef Name, PathRef File, PreambleConsistency Consistency,
-    llvm::unique_function<void(llvm::Expected<InputsAndPreamble>)> Action) {
+    StringRef Name, PathRef File, PreambleConsistency Consistency,
+    unique_function<void(Expected<InputsAndPreamble>)> Action) {
   auto It = Files.find(File);
   if (It == Files.end()) {
-    Action(llvm::make_error<LSPError>(
-        "trying to get preamble for non-added document",
-        ErrorCode::InvalidParams));
+    Action(make_error<LSPError>("trying to get preamble for non-added document",
+                                ErrorCode::InvalidParams));
     return;
   }
 
@@ -924,7 +921,7 @@ void TUScheduler::runWithPreamble(
   };
 
   PreambleTasks->runAsync(
-      "task:" + llvm::sys::path::filename(File),
+      "task:" + sys::path::filename(File),
       Bind(Task, std::string(Name), std::string(File), It->second->Contents,
            It->second->Command,
            Context::current().derive(kFileBeingProcessed, File),

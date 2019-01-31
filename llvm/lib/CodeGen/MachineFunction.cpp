@@ -1,8 +1,9 @@
 //===- MachineFunction.cpp ------------------------------------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -138,12 +139,12 @@ MachineFunction::MachineFunction(const Function &F,
   init();
 }
 
-void MachineFunction::handleInsertion(MachineInstr &MI) {
+void MachineFunction::handleInsertion(const MachineInstr &MI) {
   if (TheDelegate)
     TheDelegate->MF_HandleInsertion(MI);
 }
 
-void MachineFunction::handleRemoval(MachineInstr &MI) {
+void MachineFunction::handleRemoval(const MachineInstr &MI) {
   if (TheDelegate)
     TheDelegate->MF_HandleRemoval(MI);
 }
@@ -395,18 +396,19 @@ MachineMemOperand *MachineFunction::getMachineMemOperand(
 MachineMemOperand *
 MachineFunction::getMachineMemOperand(const MachineMemOperand *MMO,
                                       int64_t Offset, uint64_t Size) {
-  const MachinePointerInfo &PtrInfo = MMO->getPointerInfo();
-
-  // If there is no pointer value, the offset isn't tracked so we need to adjust
-  // the base alignment.
-  unsigned Align = PtrInfo.V.isNull()
-                       ? MinAlign(MMO->getBaseAlignment(), Offset)
-                       : MMO->getBaseAlignment();
-
+  if (MMO->getValue())
+    return new (Allocator)
+               MachineMemOperand(MachinePointerInfo(MMO->getValue(),
+                                                    MMO->getOffset()+Offset),
+                                 MMO->getFlags(), Size, MMO->getBaseAlignment(),
+                                 AAMDNodes(), nullptr, MMO->getSyncScopeID(),
+                                 MMO->getOrdering(), MMO->getFailureOrdering());
   return new (Allocator)
-      MachineMemOperand(PtrInfo.getWithOffset(Offset), MMO->getFlags(), Size,
-                        Align, AAMDNodes(), nullptr, MMO->getSyncScopeID(),
-                        MMO->getOrdering(), MMO->getFailureOrdering());
+             MachineMemOperand(MachinePointerInfo(MMO->getPseudoValue(),
+                                                  MMO->getOffset()+Offset),
+                               MMO->getFlags(), Size, MMO->getBaseAlignment(),
+                               AAMDNodes(), nullptr, MMO->getSyncScopeID(),
+                               MMO->getOrdering(), MMO->getFailureOrdering());
 }
 
 MachineMemOperand *

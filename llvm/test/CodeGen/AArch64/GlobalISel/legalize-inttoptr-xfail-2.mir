@@ -19,8 +19,9 @@
 # and fix the mistake: check that type index 0 is p0 and type index 1
 # is s64.
 
-# CHECK: Bad machine code: pointer casts must be all-vector or all-scalar
-# CHECK: LLVM ERROR: Found 1 machine code errors.
+# CHECK:      LLVM ERROR: unable to legalize instruction:
+# CHECK-SAME: %{{[0-9]+}}:_(p0) = G_INTTOPTR %{{[0-9]+}}:_(<4 x s16>)
+# CHECK-SAME: (in function: broken)
 
 ---
 name:            broken

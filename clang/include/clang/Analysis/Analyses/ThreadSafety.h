@@ -1,8 +1,9 @@
 //===- ThreadSafety.h -------------------------------------------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -128,10 +129,9 @@ public:
   /// \param Kind -- the capability's name parameter (role, mutex, etc).
   /// \param LockName -- A StringRef name for the lock expression, to be printed
   /// in the error message.
-  /// \param LocLocked -- The location of the first lock expression.
   /// \param Loc -- The location of the second lock expression.
   virtual void handleDoubleLock(StringRef Kind, Name LockName,
-                                SourceLocation LocLocked, SourceLocation Loc) {}
+                                SourceLocation Loc) {}
 
   /// Warn about situations where a mutex is sometimes held and sometimes not.
   /// The three situations are:

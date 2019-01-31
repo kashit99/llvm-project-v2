@@ -1,8 +1,9 @@
 //===- MSP430AsmParser.cpp - Parse MSP430 assembly to MCInst instructions -===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -496,11 +497,7 @@ bool MSP430AsmParser::ParseOperand(OperandVector &Operands) {
         getLexer().Lex(); // Eat '+'
         return false;
       }
-      if (Operands.size() > 1) // Emulate @rd in destination position as 0(rd)
-        Operands.push_back(MSP430Operand::CreateMem(RegNo,
-            MCConstantExpr::create(0, getContext()), StartLoc, EndLoc));
-      else
-        Operands.push_back(MSP430Operand::CreateIndReg(RegNo, StartLoc, EndLoc));
+      Operands.push_back(MSP430Operand::CreateIndReg(RegNo, StartLoc, EndLoc));
       return false;
     }
     case AsmToken::Hash:

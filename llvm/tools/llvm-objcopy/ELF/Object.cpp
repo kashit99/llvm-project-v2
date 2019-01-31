@@ -1,8 +1,9 @@
 //===- Object.cpp ---------------------------------------------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                      The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -1488,16 +1489,17 @@ template <class ELFT> size_t ELFWriter<ELFT>::totalSize() const {
          NullSectionSize;
 }
 
-template <class ELFT> Error ELFWriter<ELFT>::write() {
+template <class ELFT> void ELFWriter<ELFT>::write() {
   writeEhdr();
   writePhdrs();
   writeSectionData();
   if (WriteSectionHeaders)
     writeShdrs();
-  return Buf.commit();
+  if (auto E = Buf.commit())
+    reportError(Buf.getName(), errorToErrorCode(std::move(E)));
 }
 
-template <class ELFT> Error ELFWriter<ELFT>::finalize() {
+template <class ELFT> void ELFWriter<ELFT>::finalize() {
   // It could happen that SectionNames has been removed and yet the user wants
   // a section header table output. We need to throw an error if a user tries
   // to do that.
@@ -1581,22 +1583,21 @@ template <class ELFT> Error ELFWriter<ELFT>::finalize() {
     Section.finalize();
   }
 
-  if (Error E = Buf.allocate(totalSize()))
-    return E;
+  Buf.allocate(totalSize());
   SecWriter = llvm::make_unique<ELFSectionWriter<ELFT>>(Buf);
-  return Error::success();
 }
 
-Error BinaryWriter::write() {
+void BinaryWriter::write() {
   for (auto &Section : Obj.sections()) {
     if ((Section.Flags & SHF_ALLOC) == 0)
       continue;
     Section.accept(*SecWriter);
   }
-  return Buf.commit();
+  if (auto E = Buf.commit())
+    reportError(Buf.getName(), errorToErrorCode(std::move(E)));
 }
 
-Error BinaryWriter::finalize() {
+void BinaryWriter::finalize() {
   // TODO: Create a filter range to construct OrderedSegments from so that this
   // code can be deduped with assignOffsets above. This should also solve the
   // todo below for LayoutSections.
@@ -1675,10 +1676,8 @@ Error BinaryWriter::finalize() {
       TotalSize = std::max(TotalSize, Section->Offset + Section->Size);
   }
 
-  if (Error E = Buf.allocate(TotalSize))
-    return E;
+  Buf.allocate(TotalSize);
   SecWriter = llvm::make_unique<BinarySectionWriter>(Buf);
-  return Error::success();
 }
 
 template class ELFBuilder<ELF64LE>;

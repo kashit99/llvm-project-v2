@@ -59,7 +59,7 @@ function(add_lldb_library name)
       ${pass_NO_INSTALL_RPATH}
     )
 
-    if (NOT LLVM_INSTALL_TOOLCHAIN_ONLY OR ${name} STREQUAL "liblldb")
+    if (${name} STREQUAL "liblldb")
       if (PARAM_SHARED)
         if(${name} STREQUAL "liblldb" AND LLDB_BUILD_FRAMEWORK)
           if(LLDB_FRAMEWORK_INSTALL_DIR)

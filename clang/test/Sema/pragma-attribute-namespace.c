@@ -1,9 +1,5 @@
 // RUN: %clang_cc1 -fsyntax-only -verify %s
 
-#if !__has_extension(pragma_clang_attribute_namespaces)
-#error
-#endif
-
 #pragma clang attribute MyNamespace.push (__attribute__((annotate)), apply_to=function) // expected-error 2 {{'annotate' attribute}}
 
 int some_func(); // expected-note{{when applied to this declaration}}

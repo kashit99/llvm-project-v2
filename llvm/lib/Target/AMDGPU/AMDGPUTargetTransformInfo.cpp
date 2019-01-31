@@ -1,8 +1,9 @@
 //===- AMDGPUTargetTransformInfo.cpp - AMDGPU specific TTI pass -----------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -307,8 +308,6 @@ bool GCNTTIImpl::getTgtMemIntrinsic(IntrinsicInst *Inst,
   switch (Inst->getIntrinsicID()) {
   case Intrinsic::amdgcn_atomic_inc:
   case Intrinsic::amdgcn_atomic_dec:
-  case Intrinsic::amdgcn_ds_ordered_add:
-  case Intrinsic::amdgcn_ds_ordered_swap:
   case Intrinsic::amdgcn_ds_fadd:
   case Intrinsic::amdgcn_ds_fmin:
   case Intrinsic::amdgcn_ds_fmax: {
@@ -578,8 +577,6 @@ bool GCNTTIImpl::isAlwaysUniform(const Value *V) const {
       return false;
     case Intrinsic::amdgcn_readfirstlane:
     case Intrinsic::amdgcn_readlane:
-    case Intrinsic::amdgcn_icmp:
-    case Intrinsic::amdgcn_fcmp:
       return true;
     }
   }

@@ -1,8 +1,9 @@
 //=- WebAssemblyFixIrreducibleControlFlow.cpp - Fix irreducible control flow -//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 ///
@@ -249,21 +250,10 @@ bool LoopFixer::run() {
              [&](const MachineBasicBlock *A, const MachineBasicBlock *B) {
                auto ANum = A->getNumber();
                auto BNum = B->getNumber();
+               assert(ANum != -1 && BNum != -1);
+               assert(ANum != BNum);
                return ANum < BNum;
              });
-
-#ifndef NDEBUG
-  for (auto Block : SortedEntries)
-    assert(Block->getNumber() != -1);
-  if (SortedEntries.size() > 1) {
-    for (auto I = SortedEntries.begin(), E = SortedEntries.end() - 1;
-         I != E; ++I) {
-      auto ANum = (*I)->getNumber();
-      auto BNum = (*(std::next(I)))->getNumber();
-      assert(ANum != BNum);
-    }
-  }
-#endif
 
   // Create a dispatch block which will contain a jump table to the entries.
   MachineBasicBlock *Dispatch = MF.CreateMachineBasicBlock();

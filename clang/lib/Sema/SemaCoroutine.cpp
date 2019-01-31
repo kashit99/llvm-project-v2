@@ -1,8 +1,9 @@
 //===--- SemaCoroutines.cpp - Semantic Analysis for Coroutines ------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -83,7 +84,8 @@ static QualType lookupPromiseType(Sema &S, const FunctionDecl *FD,
       //      ref-qualifier or with the & ref-qualifier
       //  -- "rvalue reference to cv X" for functions declared with the &&
       //      ref-qualifier
-      QualType T = MD->getThisType()->getAs<PointerType>()->getPointeeType();
+      QualType T =
+          MD->getThisType(S.Context)->getAs<PointerType>()->getPointeeType();
       T = FnType->getRefQualifier() == RQ_RValue
               ? S.Context.getRValueReferenceType(T)
               : S.Context.getLValueReferenceType(T, /*SpelledAsLValue*/ true);
@@ -504,7 +506,7 @@ VarDecl *Sema::buildCoroutinePromise(SourceLocation Loc) {
   auto *FD = cast<FunctionDecl>(CurContext);
   bool IsThisDependentType = [&] {
     if (auto *MD = dyn_cast_or_null<CXXMethodDecl>(FD))
-      return MD->isInstance() && MD->getThisType()->isDependentType();
+      return MD->isInstance() && MD->getThisType(Context)->isDependentType();
     else
       return false;
   }();
@@ -645,7 +647,7 @@ bool Sema::ActOnCoroutineBodyStart(Scope *SC, SourceLocation KWLoc,
       return StmtError();
     Suspend = BuildResolvedCoawaitExpr(Loc, Suspend.get(),
                                        /*IsImplicit*/ true);
-    Suspend = ActOnFinishFullExpr(Suspend.get(), /*DiscardedValue*/ false);
+    Suspend = ActOnFinishFullExpr(Suspend.get());
     if (Suspend.isInvalid()) {
       Diag(Loc, diag::note_coroutine_promise_suspend_implicitly_required)
           << ((Name == "initial_suspend") ? 0 : 1);
@@ -866,7 +868,7 @@ StmtResult Sema::BuildCoreturnStmt(SourceLocation Loc, Expr *E,
   if (PC.isInvalid())
     return StmtError();
 
-  Expr *PCE = ActOnFinishFullExpr(PC.get(), /*DiscardedValue*/ false).get();
+  Expr *PCE = ActOnFinishFullExpr(PC.get()).get();
 
   Stmt *Res = new (Context) CoreturnStmt(Loc, E, PCE, IsImplicit);
   return Res;
@@ -1235,7 +1237,7 @@ bool CoroutineStmtBuilder::makeNewAndDeleteExpr() {
 
   ExprResult NewExpr =
       S.ActOnCallExpr(S.getCurScope(), NewRef.get(), Loc, NewArgs, Loc);
-  NewExpr = S.ActOnFinishFullExpr(NewExpr.get(), /*DiscardedValue*/ false);
+  NewExpr = S.ActOnFinishFullExpr(NewExpr.get());
   if (NewExpr.isInvalid())
     return false;
 
@@ -1261,8 +1263,7 @@ bool CoroutineStmtBuilder::makeNewAndDeleteExpr() {
 
   ExprResult DeleteExpr =
       S.ActOnCallExpr(S.getCurScope(), DeleteRef.get(), Loc, DeleteArgs, Loc);
-  DeleteExpr =
-      S.ActOnFinishFullExpr(DeleteExpr.get(), /*DiscardedValue*/ false);
+  DeleteExpr = S.ActOnFinishFullExpr(DeleteExpr.get());
   if (DeleteExpr.isInvalid())
     return false;
 
@@ -1347,8 +1348,7 @@ bool CoroutineStmtBuilder::makeOnException() {
 
   ExprResult UnhandledException = buildPromiseCall(S, Fn.CoroutinePromise, Loc,
                                                    "unhandled_exception", None);
-  UnhandledException = S.ActOnFinishFullExpr(UnhandledException.get(), Loc,
-                                             /*DiscardedValue*/ false);
+  UnhandledException = S.ActOnFinishFullExpr(UnhandledException.get(), Loc);
   if (UnhandledException.isInvalid())
     return false;
 
@@ -1401,8 +1401,7 @@ bool CoroutineStmtBuilder::makeGroDeclAndReturnStmt() {
          "get_return_object type must no longer be dependent");
 
   if (FnRetType->isVoidType()) {
-    ExprResult Res =
-        S.ActOnFinishFullExpr(this->ReturnValue, Loc, /*DiscardedValue*/ false);
+    ExprResult Res = S.ActOnFinishFullExpr(this->ReturnValue, Loc);
     if (Res.isInvalid())
       return false;
 
@@ -1434,7 +1433,7 @@ bool CoroutineStmtBuilder::makeGroDeclAndReturnStmt() {
   if (Res.isInvalid())
     return false;
 
-  Res = S.ActOnFinishFullExpr(Res.get(), /*DiscardedValue*/ false);
+  Res = S.ActOnFinishFullExpr(Res.get());
   if (Res.isInvalid())
     return false;
 

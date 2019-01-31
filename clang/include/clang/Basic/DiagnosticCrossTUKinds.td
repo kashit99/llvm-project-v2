@@ -1,8 +1,9 @@
 //==--- DiagnosticCrossTUKinds.td - Cross Translation Unit diagnostics ----===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -11,7 +12,7 @@ let Component = "CrossTU" in {
 def err_ctu_error_opening : Error<
   "error opening '%0': required by the CrossTU functionality">;
 
-def err_extdefmap_parsing : Error<
+def err_fnmap_parsing : Error<
   "error parsing index file: '%0' line: %1 'UniqueID filename' format "
   "expected">;
 

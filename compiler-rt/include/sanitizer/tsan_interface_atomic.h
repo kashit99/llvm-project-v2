@@ -1,8 +1,9 @@
 //===-- tsan_interface_atomic.h ---------------------------------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -30,7 +31,7 @@ __extension__ typedef __int128 __tsan_atomic128;
 #endif
 
 // Part of ABI, do not change.
-// https://github.com/llvm/llvm-project/blob/master/libcxx/include/atomic
+// http://llvm.org/viewvc/llvm-project/libcxx/trunk/include/atomic?view=markup
 typedef enum {
   __tsan_memory_order_relaxed,
   __tsan_memory_order_consume,

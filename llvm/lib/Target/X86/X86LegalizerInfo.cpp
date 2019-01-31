@@ -1,8 +1,9 @@
 //===- X86LegalizerInfo.cpp --------------------------------------*- C++ -*-==//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 /// \file
@@ -133,15 +134,9 @@ void X86LegalizerInfo::setLegalizerInfo32bit() {
 
     // Shifts and SDIV
     getActionDefinitionsBuilder(
-        {G_SDIV, G_SREM, G_UDIV, G_UREM})
-      .legalFor({s8, s16, s32})
-      .clampScalar(0, s8, s32);
-
-    getActionDefinitionsBuilder(
-        {G_SHL, G_LSHR, G_ASHR})
-      .legalFor({{s8, s8}, {s16, s8}, {s32, s8}})
-      .clampScalar(0, s8, s32)
-      .clampScalar(1, s8, s8);
+        {G_SHL, G_LSHR, G_ASHR, G_SDIV, G_SREM, G_UDIV, G_UREM})
+        .legalFor({s8, s16, s32})
+        .clampScalar(0, s8, s32);
   }
 
   // Control-flow
@@ -241,18 +236,11 @@ void X86LegalizerInfo::setLegalizerInfo64bit() {
       .clampScalar(1, s32, s64)
       .widenScalarToNextPow2(1);
 
-  // Divisions
+  // Shifts and SDIV
   getActionDefinitionsBuilder(
-      {G_SDIV, G_SREM, G_UDIV, G_UREM})
+      {G_SHL, G_LSHR, G_ASHR, G_SDIV, G_SREM, G_UDIV, G_UREM})
       .legalFor({s8, s16, s32, s64})
       .clampScalar(0, s8, s64);
-
-  // Shifts
-  getActionDefinitionsBuilder(
-    {G_SHL, G_LSHR, G_ASHR})
-    .legalFor({{s8, s8}, {s16, s8}, {s32, s8}, {s64, s8}})
-    .clampScalar(0, s8, s64)
-    .clampScalar(1, s8, s8);
 
   // Merge/Unmerge
   setAction({G_MERGE_VALUES, s128}, Legal);

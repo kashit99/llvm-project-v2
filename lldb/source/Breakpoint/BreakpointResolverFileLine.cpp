@@ -12,6 +12,7 @@
 #include "lldb/Core/Module.h"
 #include "lldb/Symbol/CompileUnit.h"
 #include "lldb/Symbol/Function.h"
+#include "lldb/Symbol/SymbolVendor.h"
 #include "lldb/Utility/Log.h"
 #include "lldb/Utility/StreamString.h"
 
@@ -230,11 +231,13 @@ BreakpointResolverFileLine::SearchCallback(SearchFilter &filter,
     search_file_spec.GetDirectory().Clear();
 
   const size_t num_comp_units = context.module_sp->GetNumCompileUnits();
+  const bool force_check_inlines =
+      context.module_sp->GetSymbolVendor()->ForceInlineSourceFileCheck();
   for (size_t i = 0; i < num_comp_units; i++) {
     CompUnitSP cu_sp(context.module_sp->GetCompileUnitAtIndex(i));
     if (cu_sp) {
       if (filter.CompUnitPasses(*cu_sp))
-        cu_sp->ResolveSymbolContext(search_file_spec, m_line_number, m_inlines,
+        cu_sp->ResolveSymbolContext(search_file_spec, m_line_number, m_inlines | force_check_inlines,
                                     m_exact_match, eSymbolContextEverything,
                                     sc_list);
     }

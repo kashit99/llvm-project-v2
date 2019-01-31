@@ -1,9 +1,10 @@
 // -*- C++ -*-
 //===----------------------------------------------------------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is dual licensed under the MIT and the University of Illinois Open
+// Source Licenses. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -21,7 +22,7 @@
 
 // template <class ...Types> class variant;
 
-// variant(variant&&) noexcept(see below); // constexpr in C++20
+// variant(variant&&) noexcept(see below);
 
 #include <cassert>
 #include <string>
@@ -146,8 +147,7 @@ void test_move_ctor_sfinae() {
     static_assert(!std::is_move_constructible<V>::value, "");
   }
 
-  // Make sure we properly propagate triviality (see P0602R4).
-#if TEST_STD_VER > 17
+  // The following tests are for not-yet-standardized behavior (P0602):
   {
     using V = std::variant<int, long>;
     static_assert(std::is_trivially_move_constructible<V>::value, "");
@@ -165,7 +165,6 @@ void test_move_ctor_sfinae() {
     using V = std::variant<int, TMoveNTCopy>;
     static_assert(std::is_trivially_move_constructible<V>::value, "");
   }
-#endif // > C++17
 }
 
 template <typename T>
@@ -215,8 +214,7 @@ void test_move_ctor_basic() {
     assert(std::get<1>(v2).value == 42);
   }
 
-  // Make sure we properly propagate triviality, which implies constexpr-ness (see P0602R4).
-#if TEST_STD_VER > 17
+  // The following tests are for not-yet-standardized behavior (P0602):
   {
     struct {
       constexpr Result<int> operator()() const {
@@ -289,7 +287,6 @@ void test_move_ctor_basic() {
     static_assert(result.index == 1, "");
     static_assert(result.value.value == 42, "");
   }
-#endif // > C++17
 }
 
 void test_move_ctor_valueless_by_exception() {
@@ -303,7 +300,9 @@ void test_move_ctor_valueless_by_exception() {
 }
 
 template <size_t Idx>
-constexpr bool test_constexpr_ctor_imp(std::variant<long, void*, const int> const& v) {
+constexpr bool test_constexpr_ctor_extension_imp(
+    std::variant<long, void*, const int> const& v)
+{
   auto copy = v;
   auto v2 = std::move(copy);
   return v2.index() == v.index() &&
@@ -311,9 +310,8 @@ constexpr bool test_constexpr_ctor_imp(std::variant<long, void*, const int> cons
         std::get<Idx>(v2) == std::get<Idx>(v);
 }
 
-void test_constexpr_move_ctor() {
-  // Make sure we properly propagate triviality, which implies constexpr-ness (see P0602R4).
-#if TEST_STD_VER > 17
+void test_constexpr_move_ctor_extension() {
+  // NOTE: This test is for not yet standardized behavior. (P0602)
   using V = std::variant<long, void*, const int>;
 #ifdef TEST_WORKAROUND_C1XX_BROKEN_IS_TRIVIALLY_COPYABLE
   static_assert(std::is_trivially_destructible<V>::value, "");
@@ -325,10 +323,9 @@ void test_constexpr_move_ctor() {
   static_assert(std::is_trivially_copyable<V>::value, "");
 #endif // TEST_WORKAROUND_C1XX_BROKEN_IS_TRIVIALLY_COPYABLE
   static_assert(std::is_trivially_move_constructible<V>::value, "");
-  static_assert(test_constexpr_ctor_imp<0>(V(42l)), "");
-  static_assert(test_constexpr_ctor_imp<1>(V(nullptr)), "");
-  static_assert(test_constexpr_ctor_imp<2>(V(101)), "");
-#endif // > C++17
+  static_assert(test_constexpr_ctor_extension_imp<0>(V(42l)), "");
+  static_assert(test_constexpr_ctor_extension_imp<1>(V(nullptr)), "");
+  static_assert(test_constexpr_ctor_extension_imp<2>(V(101)), "");
 }
 
 int main() {
@@ -336,5 +333,5 @@ int main() {
   test_move_ctor_valueless_by_exception();
   test_move_noexcept();
   test_move_ctor_sfinae();
-  test_constexpr_move_ctor();
+  test_constexpr_move_ctor_extension();
 }

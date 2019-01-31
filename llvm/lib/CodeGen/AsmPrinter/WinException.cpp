@@ -1,8 +1,9 @@
 //===-- CodeGen/AsmPrinter/WinException.cpp - Dwarf Exception Impl ------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -544,17 +545,15 @@ void WinException::emitCSpecificHandlerTable(const MachineFunction *MF) {
       OS.AddComment(Comment);
   };
 
-  if (!isAArch64) {
-    // Emit a label assignment with the SEH frame offset so we can use it for
-    // llvm.eh.recoverfp.
-    StringRef FLinkageName =
-        GlobalValue::dropLLVMManglingEscape(MF->getFunction().getName());
-    MCSymbol *ParentFrameOffset =
-        Ctx.getOrCreateParentFrameOffsetSymbol(FLinkageName);
-    const MCExpr *MCOffset =
-        MCConstantExpr::create(FuncInfo.SEHSetFrameOffset, Ctx);
-    Asm->OutStreamer->EmitAssignment(ParentFrameOffset, MCOffset);
-  }
+  // Emit a label assignment with the SEH frame offset so we can use it for
+  // llvm.x86.seh.recoverfp.
+  StringRef FLinkageName =
+      GlobalValue::dropLLVMManglingEscape(MF->getFunction().getName());
+  MCSymbol *ParentFrameOffset =
+      Ctx.getOrCreateParentFrameOffsetSymbol(FLinkageName);
+  const MCExpr *MCOffset =
+      MCConstantExpr::create(FuncInfo.SEHSetFrameOffset, Ctx);
+  Asm->OutStreamer->EmitAssignment(ParentFrameOffset, MCOffset);
 
   // Use the assembler to compute the number of table entries through label
   // difference and division.
@@ -938,9 +937,6 @@ void WinException::emitEHRegistrationOffsetLabel(const WinEHFuncInfo &FuncInfo,
   if (FI != INT_MAX) {
     const TargetFrameLowering *TFI = Asm->MF->getSubtarget().getFrameLowering();
     unsigned UnusedReg;
-    // FIXME: getFrameIndexReference needs to match the behavior of
-    // AArch64RegisterInfo::hasBasePointer in which one of the scenarios where
-    // SP is used is if frame size >= 256.
     Offset = TFI->getFrameIndexReference(*Asm->MF, FI, UnusedReg);
   }
 

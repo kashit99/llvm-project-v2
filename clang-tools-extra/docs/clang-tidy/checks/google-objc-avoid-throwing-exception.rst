@@ -36,4 +36,4 @@ Instead, returning an error via ``NSError **`` is preferred:
   }
 
 The corresponding style guide rule:
-https://google.github.io/styleguide/objcguide.html#avoid-throwing-exceptions
+http://google.github.io/styleguide/objcguide.html#avoid-throwing-exceptions

@@ -2,6 +2,7 @@
 
 // Make sure warnings are produced based on printf format strings.
 
+
 kernel void format_string_warnings(__constant char* arg) {
 
   printf("%d", arg); // expected-warning {{format specifies type 'int' but the argument has type '__constant char *'}}

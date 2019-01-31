@@ -1,8 +1,9 @@
 //===- LLVMBitCodes.h - Enum values for the LLVM bitcode format -*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -406,9 +407,7 @@ enum RMWOperations {
   RMW_MAX = 7,
   RMW_MIN = 8,
   RMW_UMAX = 9,
-  RMW_UMIN = 10,
-  RMW_FADD = 11,
-  RMW_FSUB = 12
+  RMW_UMIN = 10
 };
 
 /// OverflowingBinaryOperatorOptionalFlags - Flags for serializing

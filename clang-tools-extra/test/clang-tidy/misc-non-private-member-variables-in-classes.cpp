@@ -35,23 +35,6 @@ private:
   int S1_v3;
 };
 
-// Only data and implicit or static methods, do not warn
-
-class C {
-public:
-  C() {}
-  ~C() {}
-};
-
-struct S1Implicit {
-  C S1Implicit_v0;
-};
-
-struct S1ImplicitAndStatic {
-  C S1Implicit_v0;
-  static void s() {}
-};
-
 //----------------------------------------------------------------------------//
 
 // All functions are static, do not warn.

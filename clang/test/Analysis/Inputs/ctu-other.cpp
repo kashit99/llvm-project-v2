@@ -24,37 +24,32 @@ namespace embed_ns {
 int fens(int x) {
   return x - 3;
 }
-} // namespace embed_ns
+}
 
 class embed_cls {
 public:
-  int fecl(int x);
+  int fecl(int x) {
+    return x - 7;
+  }
 };
-int embed_cls::fecl(int x) {
-  return x - 7;
 }
-} // namespace myns
 
 class mycls {
 public:
-  int fcl(int x);
-  static int fscl(int x);
+  int fcl(int x) {
+    return x + 5;
+  }
+  static int fscl(int x) {
+    return x + 6;
+  }
 
   class embed_cls2 {
   public:
-    int fecl2(int x);
+    int fecl2(int x) {
+      return x - 11;
+    }
   };
 };
-
-int mycls::fcl(int x) {
-  return x + 5;
-}
-int mycls::fscl(int x) {
-  return x + 6;
-}
-int mycls::embed_cls2::fecl2(int x) {
-  return x - 11;
-}
 
 namespace chns {
 int chf2(int x);

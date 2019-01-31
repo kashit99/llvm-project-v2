@@ -1,8 +1,9 @@
 //== BasicObjCFoundationChecks.cpp - Simple Apple-Foundation checks -*- C++ -*--
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -1242,54 +1243,27 @@ void ento::registerNilArgChecker(CheckerManager &mgr) {
   mgr.registerChecker<NilArgChecker>();
 }
 
-bool ento::shouldRegisterNilArgChecker(const LangOptions &LO) {
-  return true;
-}
-
 void ento::registerCFNumberChecker(CheckerManager &mgr) {
   mgr.registerChecker<CFNumberChecker>();
-}
-
-bool ento::shouldRegisterCFNumberChecker(const LangOptions &LO) {
-  return true;
 }
 
 void ento::registerCFRetainReleaseChecker(CheckerManager &mgr) {
   mgr.registerChecker<CFRetainReleaseChecker>();
 }
 
-bool ento::shouldRegisterCFRetainReleaseChecker(const LangOptions &LO) {
-  return true;
-}
-
 void ento::registerClassReleaseChecker(CheckerManager &mgr) {
   mgr.registerChecker<ClassReleaseChecker>();
-}
-
-bool ento::shouldRegisterClassReleaseChecker(const LangOptions &LO) {
-  return true;
 }
 
 void ento::registerVariadicMethodTypeChecker(CheckerManager &mgr) {
   mgr.registerChecker<VariadicMethodTypeChecker>();
 }
 
-bool ento::shouldRegisterVariadicMethodTypeChecker(const LangOptions &LO) {
-  return true;
-}
-
 void ento::registerObjCLoopChecker(CheckerManager &mgr) {
   mgr.registerChecker<ObjCLoopChecker>();
 }
 
-bool ento::shouldRegisterObjCLoopChecker(const LangOptions &LO) {
-  return true;
-}
-
-void ento::registerObjCNonNilReturnValueChecker(CheckerManager &mgr) {
+void
+ento::registerObjCNonNilReturnValueChecker(CheckerManager &mgr) {
   mgr.registerChecker<ObjCNonNilReturnValueChecker>();
-}
-
-bool ento::shouldRegisterObjCNonNilReturnValueChecker(const LangOptions &LO) {
-  return true;
 }

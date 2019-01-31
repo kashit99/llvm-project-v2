@@ -1,8 +1,9 @@
 //===--- CGStmt.cpp - Emit LLVM Code from Statements ----------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -19,6 +20,7 @@
 #include "clang/Basic/PrettyStackTrace.h"
 #include "clang/Basic/TargetInfo.h"
 #include "llvm/ADT/StringExtras.h"
+#include "llvm/IR/CallSite.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/InlineAsm.h"
 #include "llvm/IR/Intrinsics.h"
@@ -527,16 +529,6 @@ void CodeGenFunction::EmitLabel(const LabelDecl *D) {
   }
 
   EmitBlock(Dest.getBlock());
-
-  // Emit debug info for labels.
-  if (CGDebugInfo *DI = getDebugInfo()) {
-    if (CGM.getCodeGenOpts().getDebugInfo() >=
-        codegenoptions::LimitedDebugInfo) {
-      DI->setLocation(D->getLocation());
-      DI->EmitLabel(D, Builder);
-    }
-  }
-
   incrementProfileCounter(D->getStmt());
 }
 

@@ -1,8 +1,9 @@
 // unittests/ASTMatchers/ASTMatchersNarrowingTest.cpp - AST matcher unit tests//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -2252,18 +2253,6 @@ TEST(IsAssignmentOperator, Basic) {
                       CXXAsgmtOperator));
   EXPECT_TRUE(
       notMatches("void x() { int a; if(a == 0) return; }", BinAsgmtOperator));
-}
-
-TEST(HasInit, Basic) {
-  EXPECT_TRUE(
-    matches("int x{0};",
-            initListExpr(hasInit(0, expr()))));
-  EXPECT_FALSE(
-    matches("int x{0};",
-            initListExpr(hasInit(1, expr()))));
-  EXPECT_FALSE(
-    matches("int x;",
-            initListExpr(hasInit(0, expr()))));
 }
 
 TEST(Matcher, isMain) {

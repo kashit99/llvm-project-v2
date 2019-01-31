@@ -1,8 +1,9 @@
 //===-- X86FloatingPoint.cpp - Floating point Reg -> Stack converter ------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -1368,6 +1369,8 @@ void FPS::handleTwoArgFP(MachineBasicBlock::iterator &I) {
 /// register arguments and no explicit destinations.
 ///
 void FPS::handleCompareFP(MachineBasicBlock::iterator &I) {
+  ASSERT_SORTED(ForwardST0Table); ASSERT_SORTED(ReverseST0Table);
+  ASSERT_SORTED(ForwardSTiTable); ASSERT_SORTED(ReverseSTiTable);
   MachineInstr &MI = *I;
 
   unsigned NumOperands = MI.getDesc().getNumOperands();

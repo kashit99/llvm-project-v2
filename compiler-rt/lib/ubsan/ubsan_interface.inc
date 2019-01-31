@@ -1,16 +1,15 @@
 //===-- ubsan_interface.inc -----------------------------------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 // Ubsan interface list.
 //===----------------------------------------------------------------------===//
 INTERFACE_FUNCTION(__ubsan_handle_add_overflow)
 INTERFACE_FUNCTION(__ubsan_handle_add_overflow_abort)
-INTERFACE_FUNCTION(__ubsan_handle_alignment_assumption)
-INTERFACE_FUNCTION(__ubsan_handle_alignment_assumption_abort)
 INTERFACE_FUNCTION(__ubsan_handle_builtin_unreachable)
 INTERFACE_FUNCTION(__ubsan_handle_cfi_bad_type)
 INTERFACE_FUNCTION(__ubsan_handle_cfi_check_fail)

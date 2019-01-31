@@ -1,8 +1,9 @@
 //===-- FindSymbolsTests.cpp -------------------------*- C++ -*------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 #include "Annotations.h"
@@ -12,6 +13,8 @@
 #include "TestFS.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+
+using namespace llvm;
 
 namespace clang {
 namespace clangd {
@@ -61,7 +64,6 @@ public:
       : Server(CDB, FSProvider, DiagConsumer, optsForTests()) {
     // Make sure the test root directory is created.
     FSProvider.Files[testPath("unused")] = "";
-    CDB.ExtraClangFlags = {"-xc++"};
   }
 
 protected:
@@ -71,14 +73,14 @@ protected:
   ClangdServer Server;
   int Limit = 0;
 
-  std::vector<SymbolInformation> getSymbols(llvm::StringRef Query) {
+  std::vector<SymbolInformation> getSymbols(StringRef Query) {
     EXPECT_TRUE(Server.blockUntilIdleForTest()) << "Waiting for preamble";
     auto SymbolInfos = runWorkspaceSymbols(Server, Query, Limit);
     EXPECT_TRUE(bool(SymbolInfos)) << "workspaceSymbols returned an error";
     return *SymbolInfos;
   }
 
-  void addFile(llvm::StringRef FileName, llvm::StringRef Contents) {
+  void addFile(StringRef FileName, StringRef Contents) {
     auto Path = testPath(FileName);
     FSProvider.Files[Path] = Contents;
     Server.addDocument(Path, Contents);
@@ -87,16 +89,13 @@ protected:
 
 } // namespace
 
-TEST_F(WorkspaceSymbolsTest, Macros) {
+TEST_F(WorkspaceSymbolsTest, NoMacro) {
   addFile("foo.cpp", R"cpp(
-       #define MACRO X
-       )cpp");
+      #define MACRO X
+      )cpp");
 
-  // LSP's SymbolKind doesn't have a "Macro" kind, and
-  // indexSymbolKindToSymbolKind() currently maps macros
-  // to SymbolKind::String.
-  EXPECT_THAT(getSymbols("macro"),
-              ElementsAre(AllOf(QName("MACRO"), WithKind(SymbolKind::String))));
+  // Macros are not in the index.
+  EXPECT_THAT(getSymbols("macro"), IsEmpty());
 }
 
 TEST_F(WorkspaceSymbolsTest, NoLocals) {
@@ -144,11 +143,10 @@ TEST_F(WorkspaceSymbolsTest, Unnamed) {
 
 TEST_F(WorkspaceSymbolsTest, InMainFile) {
   addFile("foo.cpp", R"cpp(
-      int test() {}
-      static test2() {}
+      int test() {
+      }
       )cpp");
-  EXPECT_THAT(getSymbols("test"), 
-              ElementsAre(QName("test"), QName("test2")));
+  EXPECT_THAT(getSymbols("test"), IsEmpty());
 }
 
 TEST_F(WorkspaceSymbolsTest, Namespaces) {
@@ -188,7 +186,7 @@ TEST_F(WorkspaceSymbolsTest, AnonymousNamespace) {
   addFile("foo.cpp", R"cpp(
       #include "foo.h"
       )cpp");
-  EXPECT_THAT(getSymbols("test"), ElementsAre(QName("test")));
+  EXPECT_THAT(getSymbols("test"), IsEmpty());
 }
 
 TEST_F(WorkspaceSymbolsTest, MultiFile) {
@@ -320,7 +318,7 @@ protected:
     return *SymbolInfos;
   }
 
-  void addFile(llvm::StringRef FilePath, llvm::StringRef Contents) {
+  void addFile(StringRef FilePath, StringRef Contents) {
     FSProvider.Files[FilePath] = Contents;
     Server.addDocument(FilePath, Contents);
   }

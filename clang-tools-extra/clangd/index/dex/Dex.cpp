@@ -1,8 +1,9 @@
 //===--- Dex.cpp - Dex Symbol Index Implementation --------------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -19,6 +20,7 @@
 #include <algorithm>
 #include <queue>
 
+using namespace llvm;
 namespace clang {
 namespace clangd {
 namespace dex {
@@ -48,7 +50,7 @@ std::vector<Token> generateSearchTokens(const Symbol &Sym) {
   std::vector<Token> Result = generateIdentifierTrigrams(Sym.Name);
   Result.emplace_back(Token::Kind::Scope, Sym.Scope);
   // Skip token generation for symbols with unknown declaration location.
-  if (!llvm::StringRef(Sym.CanonicalDeclaration.FileURI).empty())
+  if (!StringRef(Sym.CanonicalDeclaration.FileURI).empty())
     for (const auto &ProximityURI :
          generateProximityURIs(Sym.CanonicalDeclaration.FileURI))
       Result.emplace_back(Token::Kind::ProximityURI, ProximityURI);
@@ -58,14 +60,14 @@ std::vector<Token> generateSearchTokens(const Symbol &Sym) {
 }
 
 // Constructs BOOST iterators for Path Proximities.
-std::unique_ptr<Iterator> createFileProximityIterator(
-    llvm::ArrayRef<std::string> ProximityPaths,
-    const llvm::DenseMap<Token, PostingList> &InvertedIndex,
-    const Corpus &Corpus) {
+std::unique_ptr<Iterator>
+createFileProximityIterator(ArrayRef<std::string> ProximityPaths,
+                            const DenseMap<Token, PostingList> &InvertedIndex,
+                            const Corpus &Corpus) {
   std::vector<std::unique_ptr<Iterator>> BoostingIterators;
   // Deduplicate parent URIs extracted from the ProximityPaths.
-  llvm::StringSet<> ParentURIs;
-  llvm::StringMap<SourceParams> Sources;
+  StringSet<> ParentURIs;
+  StringMap<SourceParams> Sources;
   for (const auto &Path : ProximityPaths) {
     Sources[Path] = SourceParams();
     auto PathURI = URI::create(Path);
@@ -122,7 +124,7 @@ void Dex::buildIndex() {
   }
 
   // Populate TempInvertedIndex with lists for index symbols.
-  llvm::DenseMap<Token, std::vector<DocID>> TempInvertedIndex;
+  DenseMap<Token, std::vector<DocID>> TempInvertedIndex;
   for (DocID SymbolRank = 0; SymbolRank < Symbols.size(); ++SymbolRank) {
     const auto *Sym = Symbols[SymbolRank];
     for (const auto &Token : generateSearchTokens(*Sym))
@@ -145,7 +147,7 @@ std::unique_ptr<Iterator> Dex::iterator(const Token &Tok) const {
 /// while applying Callback to each symbol in the order of decreasing quality
 /// of the matched symbols.
 bool Dex::fuzzyFind(const FuzzyFindRequest &Req,
-                    llvm::function_ref<void(const Symbol &)> Callback) const {
+                    function_ref<void(const Symbol &)> Callback) const {
   assert(!StringRef(Req.Query).contains("::") &&
          "There must be no :: in query.");
   trace::Span Tracer("Dex fuzzyFind");
@@ -188,7 +190,7 @@ bool Dex::fuzzyFind(const FuzzyFindRequest &Req,
   // FIXME(kbobyrev): Tune this ratio.
   if (Req.Limit)
     Root = Corpus.limit(move(Root), *Req.Limit * 100);
-  SPAN_ATTACH(Tracer, "query", llvm::to_string(*Root));
+  SPAN_ATTACH(Tracer, "query", to_string(*Root));
   vlog("Dex query tree: {0}", *Root);
 
   using IDAndScore = std::pair<DocID, float>;
@@ -202,7 +204,7 @@ bool Dex::fuzzyFind(const FuzzyFindRequest &Req,
   for (const auto &IDAndScore : IDAndScores) {
     const DocID SymbolDocID = IDAndScore.first;
     const auto *Sym = Symbols[SymbolDocID];
-    const llvm::Optional<float> Score = Filter.match(Sym->Name);
+    const Optional<float> Score = Filter.match(Sym->Name);
     if (!Score)
       continue;
     // Combine Fuzzy Matching score, precomputed symbol quality and boosting
@@ -223,7 +225,7 @@ bool Dex::fuzzyFind(const FuzzyFindRequest &Req,
 }
 
 void Dex::lookup(const LookupRequest &Req,
-                 llvm::function_ref<void(const Symbol &)> Callback) const {
+                 function_ref<void(const Symbol &)> Callback) const {
   trace::Span Tracer("Dex lookup");
   for (const auto &ID : Req.IDs) {
     auto I = LookupTable.find(ID);
@@ -233,17 +235,12 @@ void Dex::lookup(const LookupRequest &Req,
 }
 
 void Dex::refs(const RefsRequest &Req,
-               llvm::function_ref<void(const Ref &)> Callback) const {
+               function_ref<void(const Ref &)> Callback) const {
   trace::Span Tracer("Dex refs");
-  uint32_t Remaining =
-      Req.Limit.getValueOr(std::numeric_limits<uint32_t>::max());
   for (const auto &ID : Req.IDs)
-    for (const auto &Ref : Refs.lookup(ID)) {
-      if (Remaining > 0 && static_cast<int>(Req.Filter & Ref.Kind)) {
-        --Remaining;
+    for (const auto &Ref : Refs.lookup(ID))
+      if (static_cast<int>(Req.Filter & Ref.Kind))
         Callback(Ref);
-      }
-    }
 }
 
 size_t Dex::estimateMemoryUsage() const {
@@ -257,13 +254,13 @@ size_t Dex::estimateMemoryUsage() const {
   return Bytes + BackingDataSize;
 }
 
-std::vector<std::string> generateProximityURIs(llvm::StringRef URIPath) {
+std::vector<std::string> generateProximityURIs(StringRef URIPath) {
   std::vector<std::string> Result;
   auto ParsedURI = URI::parse(URIPath);
   assert(ParsedURI &&
          "Non-empty argument of generateProximityURIs() should be a valid "
          "URI.");
-  llvm::StringRef Body = ParsedURI->body();
+  StringRef Body = ParsedURI->body();
   // FIXME(kbobyrev): Currently, this is a heuristic which defines the maximum
   // size of resulting vector. Some projects might want to have higher limit if
   // the file hierarchy is deeper. For the generic case, it would be useful to
@@ -276,7 +273,7 @@ std::vector<std::string> generateProximityURIs(llvm::StringRef URIPath) {
   while (!Body.empty() && --Limit > 0) {
     // FIXME(kbobyrev): Parsing and encoding path to URIs is not necessary and
     // could be optimized.
-    Body = llvm::sys::path::parent_path(Body, llvm::sys::path::Style::posix);
+    Body = sys::path::parent_path(Body, sys::path::Style::posix);
     URI TokenURI(ParsedURI->scheme(), ParsedURI->authority(), Body);
     if (!Body.empty())
       Result.emplace_back(TokenURI.toString());

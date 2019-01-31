@@ -79,8 +79,14 @@ ConstString ValueObjectVariable::GetTypeName() {
 
 ConstString ValueObjectVariable::GetDisplayTypeName() {
   Type *var_type = m_variable_sp->GetType();
-  if (var_type)
-    return var_type->GetForwardCompilerType().GetDisplayTypeName();
+  if (var_type) {
+    CompilerType fwd_type = var_type->GetForwardCompilerType();
+    // FIXME: This is probably not the best place to do this.
+    auto ts = fwd_type.GetTypeSystem();
+    auto qual_type = fwd_type.GetOpaqueQualType();
+    auto stack_frame_sp = GetFrameSP();
+    return ts->MapIntoContext(stack_frame_sp, qual_type).GetDisplayTypeName();
+  }
   return ConstString();
 }
 
@@ -130,12 +136,25 @@ bool ValueObjectVariable::UpdateValue() {
   if (variable->GetLocationIsConstantValueData()) {
     // expr doesn't contain DWARF bytes, it contains the constant variable
     // value bytes themselves...
-    if (expr.GetExpressionData(m_data))
+    if (expr.GetExpressionData(m_data)) {
+      if (m_data.GetDataStart() && m_data.GetByteSize())
+        m_value.SetBytes(m_data.GetDataStart(), m_data.GetByteSize());
       m_value.SetContext(Value::eContextTypeVariable, variable);
-    else
-      m_error.SetErrorString("empty constant data");
+    } else {
+      CompilerType var_type(GetCompilerTypeImpl());
+      if (var_type.IsValid()) {
+        ExecutionContext exe_ctx(GetExecutionContextRef());
+        llvm::Optional<uint64_t> size =
+            var_type.GetByteSize(exe_ctx.GetBestExecutionContextScope());
+        if (size && *size == 0)
+          m_value.SetCompilerType(var_type);
+        else
+          m_error.SetErrorString("empty constant data");
+      }
+    }
     // constant bytes can't be edited - sorry
     m_resolved_value.SetContext(Value::eContextTypeInvalid, NULL);
+    SetAddressTypeOfChildren(eAddressTypeInvalid);
   } else {
     lldb::addr_t loclist_base_load_addr = LLDB_INVALID_ADDRESS;
     ExecutionContext exe_ctx(GetExecutionContextRef());
@@ -168,7 +187,8 @@ bool ValueObjectVariable::UpdateValue() {
 
       Process *process = exe_ctx.GetProcessPtr();
       const bool process_is_alive = process && process->IsAlive();
-      const uint32_t type_info = compiler_type.GetTypeInfo();
+      const uint32_t type_info =
+          compiler_type.IsValid() ? compiler_type.GetTypeInfo() : 0;
       const bool is_pointer_or_ref =
           (type_info & (lldb::eTypeIsPointer | lldb::eTypeIsReference)) != 0;
 

@@ -1,8 +1,9 @@
 //===--------------------- InstrBuilder.cpp ---------------------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 /// \file
@@ -30,8 +31,6 @@ InstrBuilder::InstrBuilder(const llvm::MCSubtargetInfo &sti,
                            const llvm::MCInstrAnalysis *mcia)
     : STI(sti), MCII(mcii), MRI(mri), MCIA(mcia), FirstCallInst(true),
       FirstReturnInst(true) {
-  const MCSchedModel &SM = STI.getSchedModel();
-  ProcResourceMasks.resize(SM.getNumProcResourceKinds());
   computeProcResourceMasks(STI.getSchedModel(), ProcResourceMasks);
 }
 
@@ -60,20 +59,12 @@ static void initializeUsedResources(InstrDesc &ID,
   unsigned NumProcResources = SM.getNumProcResourceKinds();
   APInt Buffers(NumProcResources, 0);
 
-  bool AllInOrderResources = true;
-  bool AnyDispatchHazards = false;
   for (unsigned I = 0, E = SCDesc.NumWriteProcResEntries; I < E; ++I) {
     const MCWriteProcResEntry *PRE = STI.getWriteProcResBegin(&SCDesc) + I;
     const MCProcResourceDesc &PR = *SM.getProcResource(PRE->ProcResourceIdx);
     uint64_t Mask = ProcResourceMasks[PRE->ProcResourceIdx];
-    if (PR.BufferSize < 0) {
-      AllInOrderResources = false;
-    } else {
+    if (PR.BufferSize != -1)
       Buffers.setBit(PRE->ProcResourceIdx);
-      AnyDispatchHazards |= (PR.BufferSize == 0);
-      AllInOrderResources &= (PR.BufferSize <= 1);
-    }
-
     CycleSegment RCy(0, PRE->Cycles, false);
     Worklist.emplace_back(ResourcePlusCycles(Mask, ResourceUsage(RCy)));
     if (PR.SuperIdx) {
@@ -81,8 +72,6 @@ static void initializeUsedResources(InstrDesc &ID,
       SuperResources[Super] += PRE->Cycles;
     }
   }
-
-  ID.MustIssueImmediately = AllInOrderResources && AnyDispatchHazards;
 
   // Sort elements by mask popcount, so that we prioritize resource units over
   // resource groups, and smaller groups over larger groups.
@@ -179,10 +168,9 @@ static void initializeUsedResources(InstrDesc &ID,
 
   LLVM_DEBUG({
     for (const std::pair<uint64_t, ResourceUsage> &R : ID.Resources)
-      dbgs() << "\t\tMask=" << format_hex(R.first, 16) << ", "
-             << "cy=" << R.second.size() << '\n';
+      dbgs() << "\t\tMask=" << R.first << ", cy=" << R.second.size() << '\n';
     for (const uint64_t R : ID.Buffers)
-      dbgs() << "\t\tBuffer Mask=" << format_hex(R, 16) << '\n';
+      dbgs() << "\t\tBuffer Mask=" << R << '\n';
   });
 }
 
@@ -526,13 +514,9 @@ InstrBuilder::createInstrDescImpl(const MCInst &MCI) {
         MCI);
   }
 
-  LLVM_DEBUG(dbgs() << "\n\t\tOpcode Name= " << MCII.getName(Opcode) << '\n');
-  LLVM_DEBUG(dbgs() << "\t\tSchedClassID=" << SchedClassID << '\n');
-
   // Create a new empty descriptor.
   std::unique_ptr<InstrDesc> ID = llvm::make_unique<InstrDesc>();
   ID->NumMicroOps = SCDesc.NumMicroOps;
-  ID->SchedClassID = SchedClassID;
 
   if (MCDesc.isCall() && FirstCallInst) {
     // We don't correctly model calls.

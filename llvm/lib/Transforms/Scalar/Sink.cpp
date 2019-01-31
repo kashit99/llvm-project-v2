@@ -1,8 +1,9 @@
 //===-- Sink.cpp - Code Sinking -------------------------------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -75,14 +76,14 @@ static bool isSafeToMove(Instruction *Inst, AliasAnalysis &AA,
       Inst->mayThrow())
     return false;
 
-  if (auto *Call = dyn_cast<CallBase>(Inst)) {
+  if (auto CS = CallSite(Inst)) {
     // Convergent operations cannot be made control-dependent on additional
     // values.
-    if (Call->hasFnAttr(Attribute::Convergent))
+    if (CS.hasFnAttr(Attribute::Convergent))
       return false;
 
     for (Instruction *S : Stores)
-      if (isModSet(AA.getModRefInfo(S, Call)))
+      if (isModSet(AA.getModRefInfo(S, CS)))
         return false;
   }
 

@@ -1,8 +1,9 @@
 //===- MachineBlockPlacement.cpp - Basic Block Code Layout optimization ---===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -315,7 +316,7 @@ class MachineBlockPlacement : public MachineFunctionPass {
   /// A type for a block filter set.
   using BlockFilterSet = SmallSetVector<const MachineBasicBlock *, 16>;
 
-  /// Pair struct containing basic block and taildup profitability
+  /// Pair struct containing basic block and taildup profitiability
   struct BlockAndTailDupResult {
     MachineBasicBlock *BB;
     bool ShouldTailDup;
@@ -451,8 +452,6 @@ class MachineBlockPlacement : public MachineFunctionPass {
 
   void buildChain(const MachineBasicBlock *BB, BlockChain &Chain,
                   BlockFilterSet *BlockFilter = nullptr);
-  bool canMoveBottomBlockToTop(const MachineBasicBlock *BottomBlock,
-                               const MachineBasicBlock *OldTop);
   MachineBasicBlock *findBestLoopTop(
       const MachineLoop &L, const BlockFilterSet &LoopBlockSet);
   MachineBasicBlock *findBestLoopExit(
@@ -1758,39 +1757,6 @@ void MachineBlockPlacement::buildChain(
                     << getBlockName(*Chain.begin()) << "\n");
 }
 
-// If bottom of block BB has only one successor OldTop, in most cases it is
-// profitable to move it before OldTop, except the following case:
-//
-//     -->OldTop<-
-//     |    .    |
-//     |    .    |
-//     |    .    |
-//     ---Pred   |
-//          |    |
-//         BB-----
-//
-// If BB is moved before OldTop, Pred needs a taken branch to BB, and it can't
-// layout the other successor below it, so it can't reduce taken branch.
-// In this case we keep its original layout.
-bool
-MachineBlockPlacement::canMoveBottomBlockToTop(
-    const MachineBasicBlock *BottomBlock,
-    const MachineBasicBlock *OldTop) {
-  if (BottomBlock->pred_size() != 1)
-    return true;
-  MachineBasicBlock *Pred = *BottomBlock->pred_begin();
-  if (Pred->succ_size() != 2)
-    return true;
-
-  MachineBasicBlock *OtherBB = *Pred->succ_begin();
-  if (OtherBB == BottomBlock)
-    OtherBB = *Pred->succ_rbegin();
-  if (OtherBB == OldTop)
-    return false;
-
-  return true;
-}
-
 /// Find the best loop top block for layout.
 ///
 /// Look for a block which is strictly better than the loop header for laying
@@ -1833,9 +1799,6 @@ MachineBlockPlacement::findBestLoopTop(const MachineLoop &L,
                       << Pred->succ_size() << " successors, ";
                MBFI->printBlockFreq(dbgs(), Pred) << " freq\n");
     if (Pred->succ_size() > 1)
-      continue;
-
-    if (!canMoveBottomBlockToTop(Pred, L.getHeader()))
       continue;
 
     BlockFrequency PredFreq = MBFI->getBlockFreq(Pred);

@@ -1,8 +1,9 @@
 //===- AsmWriter.cpp - Printing LLVM as an assembly file ------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -35,6 +36,7 @@
 #include "llvm/IR/Attributes.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/CFG.h"
+#include "llvm/IR/CallSite.h"
 #include "llvm/IR/CallingConv.h"
 #include "llvm/IR/Comdat.h"
 #include "llvm/IR/Constant.h"
@@ -996,9 +998,9 @@ void SlotTracker::processFunction() {
 
       // We allow direct calls to any llvm.foo function here, because the
       // target may not be linked into the optimizer.
-      if (const auto *Call = dyn_cast<CallBase>(&I)) {
+      if (auto CS = ImmutableCallSite(&I)) {
         // Add all the call attributes to the table.
-        AttributeSet Attrs = Call->getAttributes().getFnAttributes();
+        AttributeSet Attrs = CS.getAttributes().getFnAttributes();
         if (Attrs.hasAttributes())
           CreateAttributeSetSlot(Attrs);
       }
@@ -2357,7 +2359,7 @@ public:
 
   void writeOperand(const Value *Op, bool PrintType);
   void writeParamOperand(const Value *Operand, AttributeSet Attrs);
-  void writeOperandBundles(const CallBase *Call);
+  void writeOperandBundles(ImmutableCallSite CS);
   void writeSyncScope(const LLVMContext &Context,
                       SyncScope::ID SSID);
   void writeAtomic(const LLVMContext &Context,
@@ -2508,15 +2510,15 @@ void AssemblyWriter::writeParamOperand(const Value *Operand,
   WriteAsOperandInternal(Out, Operand, &TypePrinter, &Machine, TheModule);
 }
 
-void AssemblyWriter::writeOperandBundles(const CallBase *Call) {
-  if (!Call->hasOperandBundles())
+void AssemblyWriter::writeOperandBundles(ImmutableCallSite CS) {
+  if (!CS.hasOperandBundles())
     return;
 
   Out << " [ ";
 
   bool FirstBundle = true;
-  for (unsigned i = 0, e = Call->getNumOperandBundles(); i != e; ++i) {
-    OperandBundleUse BU = Call->getOperandBundleAt(i);
+  for (unsigned i = 0, e = CS.getNumOperandBundles(); i != e; ++i) {
+    OperandBundleUse BU = CS.getOperandBundleAt(i);
 
     if (!FirstBundle)
       Out << ", ";

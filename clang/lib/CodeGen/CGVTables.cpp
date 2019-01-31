@@ -1,8 +1,9 @@
 //===--- CGVTables.cpp - Emit LLVM Code for C++ vtables -------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -230,7 +231,7 @@ void CodeGenFunction::StartThunk(llvm::Function *Fn, GlobalDecl GD,
 
   // Build FunctionArgs.
   const CXXMethodDecl *MD = cast<CXXMethodDecl>(GD.getDecl());
-  QualType ThisType = MD->getThisType();
+  QualType ThisType = MD->getThisType(getContext());
   const FunctionProtoType *FPT = MD->getType()->getAs<FunctionProtoType>();
   QualType ResultType;
   if (IsUnprototyped)
@@ -309,7 +310,7 @@ void CodeGenFunction::EmitCallAndReturnForThunk(llvm::Constant *CalleePtr,
 
   // Start building CallArgs.
   CallArgList CallArgs;
-  QualType ThisType = MD->getThisType();
+  QualType ThisType = MD->getThisType(getContext());
   CallArgs.add(RValue::get(AdjustedThisPtr), ThisType);
 
   if (isa<CXXDestructorDecl>(MD))
@@ -353,7 +354,7 @@ void CodeGenFunction::EmitCallAndReturnForThunk(llvm::Constant *CalleePtr,
     Slot = ReturnValueSlot(ReturnValue, ResultType.isVolatileQualified());
 
   // Now emit our call.
-  llvm::CallBase *CallOrInvoke;
+  llvm::Instruction *CallOrInvoke;
   CGCallee Callee = CGCallee::forDirect(CalleePtr, CurGD);
   RValue RV = EmitCall(*CurFnInfo, Callee, Slot, CallArgs, &CallOrInvoke);
 

@@ -1,8 +1,9 @@
 //===---  BugType.h - Bug Information Description ---------------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -37,14 +38,12 @@ private:
   virtual void anchor();
 
 public:
-  BugType(CheckName Check, StringRef Name, StringRef Cat,
-          bool SuppressOnSink=false)
+  BugType(CheckName Check, StringRef Name, StringRef Cat)
       : Check(Check), Name(Name), Category(Cat), Checker(nullptr),
-        SuppressOnSink(SuppressOnSink) {}
-  BugType(const CheckerBase *Checker, StringRef Name, StringRef Cat,
-          bool SuppressOnSink=false)
+        SuppressOnSink(false) {}
+  BugType(const CheckerBase *Checker, StringRef Name, StringRef Cat)
       : Check(Checker->getCheckName()), Name(Name), Category(Cat),
-        Checker(Checker), SuppressOnSink(SuppressOnSink) {}
+        Checker(Checker), SuppressOnSink(false) {}
   virtual ~BugType() = default;
 
   StringRef getName() const { return Name; }
@@ -65,6 +64,7 @@ public:
   ///  type should be suppressed if the end node of the report is post-dominated
   ///  by a sink node.
   bool isSuppressOnSink() const { return SuppressOnSink; }
+  void setSuppressOnSink(bool x) { SuppressOnSink = x; }
 };
 
 class BuiltinBug : public BugType {

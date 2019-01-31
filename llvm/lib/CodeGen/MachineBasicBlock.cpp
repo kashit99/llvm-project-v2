@@ -1,8 +1,9 @@
 //===-- llvm/CodeGen/MachineBasicBlock.cpp ----------------------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -132,12 +133,8 @@ void ilist_traits<MachineInstr>::transferNodesFromList(ilist_traits &FromList,
                                                        instr_iterator First,
                                                        instr_iterator Last) {
   assert(Parent->getParent() == FromList.Parent->getParent() &&
-         "cannot transfer MachineInstrs between MachineFunctions");
-
-  // If it's within the same BB, there's nothing to do.
-  if (this == &FromList)
-    return;
-
+        "MachineInstr parent mismatch!");
+  assert(this != &FromList && "Called without a real transfer...");
   assert(Parent != FromList.Parent && "Two lists have the same parent?");
 
   // If splicing between two blocks within the same function, just update the

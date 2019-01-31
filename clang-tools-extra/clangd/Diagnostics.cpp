@@ -1,8 +1,9 @@
 //===--- Diagnostics.cpp -----------------------------------------*- C++-*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -16,6 +17,7 @@
 #include "llvm/Support/Path.h"
 #include <algorithm>
 
+using namespace llvm;
 namespace clang {
 namespace clangd {
 
@@ -55,7 +57,7 @@ Range diagnosticRange(const clang::Diagnostic &D, const LangOptions &L) {
     if (locationInRange(Loc, R, M))
       return halfOpenToRange(M, R);
   }
-  llvm::Optional<Range> FallbackRange;
+  Optional<Range> FallbackRange;
   // The range may be given as a fixit hint instead.
   for (const auto &F : D.getFixItHints()) {
     auto R = Lexer::makeFileCharRange(F.RemoveRange, M, L);
@@ -91,7 +93,7 @@ bool isNote(DiagnosticsEngine::Level L) {
   return L == DiagnosticsEngine::Note || L == DiagnosticsEngine::Remark;
 }
 
-llvm::StringRef diagLeveltoString(DiagnosticsEngine::Level Lvl) {
+StringRef diagLeveltoString(DiagnosticsEngine::Level Lvl) {
   switch (Lvl) {
   case DiagnosticsEngine::Ignored:
     return "ignored";
@@ -120,12 +122,12 @@ llvm::StringRef diagLeveltoString(DiagnosticsEngine::Level Lvl) {
 ///
 ///     dir1/dir2/dir3/../../dir4/header.h:12:23
 ///     error: undeclared identifier
-void printDiag(llvm::raw_string_ostream &OS, const DiagBase &D) {
+void printDiag(raw_string_ostream &OS, const DiagBase &D) {
   if (D.InsideMainFile) {
     // Paths to main files are often taken from compile_command.json, where they
     // are typically absolute. To reduce noise we print only basename for them,
     // it should not be confusing and saves space.
-    OS << llvm::sys::path::filename(D.File) << ":";
+    OS << sys::path::filename(D.File) << ":";
   } else {
     OS << D.File << ":";
   }
@@ -145,7 +147,7 @@ void printDiag(llvm::raw_string_ostream &OS, const DiagBase &D) {
 /// Capitalizes the first word in the diagnostic's message.
 std::string capitalize(std::string Message) {
   if (!Message.empty())
-    Message[0] = llvm::toUpper(Message[0]);
+    Message[0] = toUpper(Message[0]);
   return Message;
 }
 
@@ -163,7 +165,7 @@ std::string capitalize(std::string Message) {
 ///     note: candidate function not viable: requires 3 arguments
 std::string mainMessage(const Diag &D) {
   std::string Result;
-  llvm::raw_string_ostream OS(Result);
+  raw_string_ostream OS(Result);
   OS << D.Message;
   for (auto &Note : D.Notes) {
     OS << "\n\n";
@@ -178,7 +180,7 @@ std::string mainMessage(const Diag &D) {
 /// for the user to understand the note.
 std::string noteMessage(const Diag &Main, const DiagBase &Note) {
   std::string Result;
-  llvm::raw_string_ostream OS(Result);
+  raw_string_ostream OS(Result);
   OS << Note.Message;
   OS << "\n\n";
   printDiag(OS, Main);
@@ -187,7 +189,7 @@ std::string noteMessage(const Diag &Main, const DiagBase &Note) {
 }
 } // namespace
 
-llvm::raw_ostream &operator<<(llvm::raw_ostream &OS, const DiagBase &D) {
+raw_ostream &operator<<(raw_ostream &OS, const DiagBase &D) {
   OS << "[";
   if (!D.InsideMainFile)
     OS << D.File << ":";
@@ -196,7 +198,7 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &OS, const DiagBase &D) {
   return OS << D.Message;
 }
 
-llvm::raw_ostream &operator<<(llvm::raw_ostream &OS, const Fix &F) {
+raw_ostream &operator<<(raw_ostream &OS, const Fix &F) {
   OS << F.Message << " {";
   const char *Sep = "";
   for (const auto &Edit : F.Edits) {
@@ -206,7 +208,7 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &OS, const Fix &F) {
   return OS << "}";
 }
 
-llvm::raw_ostream &operator<<(llvm::raw_ostream &OS, const Diag &D) {
+raw_ostream &operator<<(raw_ostream &OS, const Diag &D) {
   OS << static_cast<const DiagBase &>(D);
   if (!D.Notes.empty()) {
     OS << ", notes: {";
@@ -238,9 +240,9 @@ CodeAction toCodeAction(const Fix &F, const URIForFile &File) {
   return Action;
 }
 
-void toLSPDiags(
-    const Diag &D, const URIForFile &File, const ClangdDiagnosticOptions &Opts,
-    llvm::function_ref<void(clangd::Diagnostic, llvm::ArrayRef<Fix>)> OutFn) {
+void toLSPDiags(const Diag &D, const URIForFile &File,
+                const ClangdDiagnosticOptions &Opts,
+                function_ref<void(clangd::Diagnostic, ArrayRef<Fix>)> OutFn) {
   auto FillBasicFields = [](const DiagBase &D) -> clangd::Diagnostic {
     clangd::Diagnostic Res;
     Res.range = D.Range;
@@ -267,7 +269,7 @@ void toLSPDiags(
       continue;
     clangd::Diagnostic Res = FillBasicFields(Note);
     Res.message = noteMessage(D, Note);
-    OutFn(std::move(Res), llvm::ArrayRef<Fix>());
+    OutFn(std::move(Res), ArrayRef<Fix>());
   }
 }
 
@@ -313,7 +315,7 @@ void StoreDiags::HandleDiagnostic(DiagnosticsEngine::Level DiagLevel,
 
   auto FillDiagBase = [&](DiagBase &D) {
     D.Range = diagnosticRange(Info, *LangOpts);
-    llvm::SmallString<64> Message;
+    SmallString<64> Message;
     Info.FormatDiagnostic(Message);
     D.Message = Message.str();
     D.InsideMainFile = InsideMainFile;
@@ -331,7 +333,7 @@ void StoreDiags::HandleDiagnostic(DiagnosticsEngine::Level DiagLevel,
     if (!InsideMainFile)
       return false;
 
-    llvm::SmallVector<TextEdit, 1> Edits;
+    SmallVector<TextEdit, 1> Edits;
     for (auto &FixIt : Info.getFixItHints()) {
       if (!isInsideMainFile(FixIt.RemoveRange.getBegin(),
                             Info.getSourceManager()))
@@ -339,16 +341,16 @@ void StoreDiags::HandleDiagnostic(DiagnosticsEngine::Level DiagLevel,
       Edits.push_back(toTextEdit(FixIt, Info.getSourceManager(), *LangOpts));
     }
 
-    llvm::SmallString<64> Message;
+    SmallString<64> Message;
     // If requested and possible, create a message like "change 'foo' to 'bar'".
     if (SyntheticMessage && Info.getNumFixItHints() == 1) {
       const auto &FixIt = Info.getFixItHint(0);
       bool Invalid = false;
-      llvm::StringRef Remove = Lexer::getSourceText(
+      StringRef Remove = Lexer::getSourceText(
           FixIt.RemoveRange, Info.getSourceManager(), *LangOpts, &Invalid);
-      llvm::StringRef Insert = FixIt.CodeToInsert;
+      StringRef Insert = FixIt.CodeToInsert;
       if (!Invalid) {
-        llvm::raw_svector_ostream M(Message);
+        raw_svector_ostream M(Message);
         if (!Remove.empty() && !Insert.empty())
           M << "change '" << Remove << "' to '" << Insert << "'";
         else if (!Remove.empty())
@@ -374,11 +376,6 @@ void StoreDiags::HandleDiagnostic(DiagnosticsEngine::Level DiagLevel,
 
     if (!Info.getFixItHints().empty())
       AddFix(true /* try to invent a message instead of repeating the diag */);
-    if (Fixer) {
-      auto ExtraFixes = Fixer(DiagLevel, Info);
-      LastDiag->Fixes.insert(LastDiag->Fixes.end(), ExtraFixes.begin(),
-                             ExtraFixes.end());
-    }
   } else {
     // Handle a note to an existing diagnostic.
     if (!LastDiag) {
@@ -408,8 +405,8 @@ void StoreDiags::flushLastDiag() {
   if (mentionsMainFile(*LastDiag))
     Output.push_back(std::move(*LastDiag));
   else
-    vlog("Dropped diagnostic outside main file: {0}: {1}", LastDiag->File,
-         LastDiag->Message);
+    log("Dropped diagnostic outside main file: {0}: {1}", LastDiag->File,
+        LastDiag->Message);
   LastDiag.reset();
 }
 

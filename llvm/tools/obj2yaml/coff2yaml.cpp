@@ -1,13 +1,13 @@
 //===------ utils/obj2yaml.cpp - obj2yaml conversion tool -------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
 #include "obj2yaml.h"
-#include "llvm/ADT/StringMap.h"
 #include "llvm/DebugInfo/CodeView/DebugChecksumsSubsection.h"
 #include "llvm/DebugInfo/CodeView/DebugStringTableSubsection.h"
 #include "llvm/DebugInfo/CodeView/StringsAndChecksums.h"
@@ -142,18 +142,6 @@ void COFFDumper::dumpSections(unsigned NumSections) {
   codeview::StringsAndChecksumsRef SC;
   initializeFileAndStringTable(Obj, SC);
 
-  StringMap<bool> SymbolUnique;
-  for (const auto &S : Obj.symbols()) {
-    object::COFFSymbolRef Symbol = Obj.getCOFFSymbol(S);
-    StringRef Name;
-    Obj.getSymbolName(Symbol, Name);
-    StringMap<bool>::iterator It;
-    bool Inserted;
-    std::tie(It, Inserted) = SymbolUnique.insert(std::make_pair(Name, true));
-    if (!Inserted)
-      It->second = false;
-  }
-
   for (const auto &ObjSection : Obj.sections()) {
     const object::coff_section *COFFSection = Obj.getCOFFSection(ObjSection);
     COFFYAML::Section NewYAMLSection;
@@ -204,10 +192,7 @@ void COFFDumper::dumpSections(unsigned NumSections) {
        OS.flush();
        report_fatal_error(Buf);
       }
-      if (SymbolUnique.lookup(*SymbolNameOrErr))
-        Rel.SymbolName = *SymbolNameOrErr;
-      else
-        Rel.SymbolTableIndex = reloc->SymbolTableIndex;
+      Rel.SymbolName = *SymbolNameOrErr;
       Rel.VirtualAddress = reloc->VirtualAddress;
       Rel.Type = reloc->Type;
       Relocations.push_back(Rel);

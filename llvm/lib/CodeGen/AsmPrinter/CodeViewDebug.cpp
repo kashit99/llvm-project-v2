@@ -1,8 +1,9 @@
 //===- llvm/lib/CodeGen/AsmPrinter/CodeViewDebug.cpp ----------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -1835,10 +1836,7 @@ TypeIndex CodeViewDebug::lowerTypeMemberFunction(const DISubroutineType *Ty,
 
   unsigned Index = 0;
   SmallVector<TypeIndex, 8> ArgTypeIndices;
-  TypeIndex ReturnTypeIndex = TypeIndex::Void();
-  if (ReturnAndArgs.size() > Index) {
-    ReturnTypeIndex = getTypeIndex(ReturnAndArgs[Index++]);
-  }
+  TypeIndex ReturnTypeIndex = getTypeIndex(ReturnAndArgs[Index++]);
 
   // If the first argument is a pointer type and this isn't a static method,
   // treat it as the special 'this' parameter, which is encoded separately from

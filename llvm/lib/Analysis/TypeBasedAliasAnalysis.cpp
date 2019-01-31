@@ -1,8 +1,9 @@
 //===- TypeBasedAliasAnalysis.cpp - Type-Based Alias Analysis -------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -398,20 +399,20 @@ bool TypeBasedAAResult::pointsToConstantMemory(const MemoryLocation &Loc,
 }
 
 FunctionModRefBehavior
-TypeBasedAAResult::getModRefBehavior(const CallBase *Call) {
+TypeBasedAAResult::getModRefBehavior(ImmutableCallSite CS) {
   if (!EnableTBAA)
-    return AAResultBase::getModRefBehavior(Call);
+    return AAResultBase::getModRefBehavior(CS);
 
   FunctionModRefBehavior Min = FMRB_UnknownModRefBehavior;
 
   // If this is an "immutable" type, we can assume the call doesn't write
   // to memory.
-  if (const MDNode *M = Call->getMetadata(LLVMContext::MD_tbaa))
+  if (const MDNode *M = CS.getInstruction()->getMetadata(LLVMContext::MD_tbaa))
     if ((!isStructPathTBAA(M) && TBAANode(M).isTypeImmutable()) ||
         (isStructPathTBAA(M) && TBAAStructTagNode(M).isTypeImmutable()))
       Min = FMRB_OnlyReadsMemory;
 
-  return FunctionModRefBehavior(AAResultBase::getModRefBehavior(Call) & Min);
+  return FunctionModRefBehavior(AAResultBase::getModRefBehavior(CS) & Min);
 }
 
 FunctionModRefBehavior TypeBasedAAResult::getModRefBehavior(const Function *F) {
@@ -419,30 +420,33 @@ FunctionModRefBehavior TypeBasedAAResult::getModRefBehavior(const Function *F) {
   return AAResultBase::getModRefBehavior(F);
 }
 
-ModRefInfo TypeBasedAAResult::getModRefInfo(const CallBase *Call,
+ModRefInfo TypeBasedAAResult::getModRefInfo(ImmutableCallSite CS,
                                             const MemoryLocation &Loc) {
   if (!EnableTBAA)
-    return AAResultBase::getModRefInfo(Call, Loc);
+    return AAResultBase::getModRefInfo(CS, Loc);
 
   if (const MDNode *L = Loc.AATags.TBAA)
-    if (const MDNode *M = Call->getMetadata(LLVMContext::MD_tbaa))
+    if (const MDNode *M =
+            CS.getInstruction()->getMetadata(LLVMContext::MD_tbaa))
       if (!Aliases(L, M))
         return ModRefInfo::NoModRef;
 
-  return AAResultBase::getModRefInfo(Call, Loc);
+  return AAResultBase::getModRefInfo(CS, Loc);
 }
 
-ModRefInfo TypeBasedAAResult::getModRefInfo(const CallBase *Call1,
-                                            const CallBase *Call2) {
+ModRefInfo TypeBasedAAResult::getModRefInfo(ImmutableCallSite CS1,
+                                            ImmutableCallSite CS2) {
   if (!EnableTBAA)
-    return AAResultBase::getModRefInfo(Call1, Call2);
+    return AAResultBase::getModRefInfo(CS1, CS2);
 
-  if (const MDNode *M1 = Call1->getMetadata(LLVMContext::MD_tbaa))
-    if (const MDNode *M2 = Call2->getMetadata(LLVMContext::MD_tbaa))
+  if (const MDNode *M1 =
+          CS1.getInstruction()->getMetadata(LLVMContext::MD_tbaa))
+    if (const MDNode *M2 =
+            CS2.getInstruction()->getMetadata(LLVMContext::MD_tbaa))
       if (!Aliases(M1, M2))
         return ModRefInfo::NoModRef;
 
-  return AAResultBase::getModRefInfo(Call1, Call2);
+  return AAResultBase::getModRefInfo(CS1, CS2);
 }
 
 bool MDNode::isTBAAVtableAccess() const {

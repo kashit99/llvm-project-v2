@@ -9,6 +9,7 @@
 #include <pthread.h>
 #endif
 
+using namespace llvm;
 namespace clang {
 namespace clangd {
 
@@ -63,14 +64,14 @@ bool AsyncTaskRunner::wait(Deadline D) const {
                       [&] { return InFlightTasks == 0; });
 }
 
-void AsyncTaskRunner::runAsync(const llvm::Twine &Name,
-                               llvm::unique_function<void()> Action) {
+void AsyncTaskRunner::runAsync(const Twine &Name,
+                               unique_function<void()> Action) {
   {
     std::lock_guard<std::mutex> Lock(Mutex);
     ++InFlightTasks;
   }
 
-  auto CleanupTask = llvm::make_scope_exit([this]() {
+  auto CleanupTask = make_scope_exit([this]() {
     std::lock_guard<std::mutex> Lock(Mutex);
     int NewTasksCnt = --InFlightTasks;
     if (NewTasksCnt == 0) {
@@ -82,7 +83,7 @@ void AsyncTaskRunner::runAsync(const llvm::Twine &Name,
 
   std::thread(
       [](std::string Name, decltype(Action) Action, decltype(CleanupTask)) {
-        llvm::set_thread_name(Name);
+        set_thread_name(Name);
         Action();
         // Make sure function stored by Action is destroyed before CleanupTask
         // is run.
@@ -92,7 +93,7 @@ void AsyncTaskRunner::runAsync(const llvm::Twine &Name,
       .detach();
 }
 
-Deadline timeoutSeconds(llvm::Optional<double> Seconds) {
+Deadline timeoutSeconds(Optional<double> Seconds) {
   using namespace std::chrono;
   if (!Seconds)
     return Deadline::infinity();

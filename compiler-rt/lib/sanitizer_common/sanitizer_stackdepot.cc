@@ -1,8 +1,9 @@
 //===-- sanitizer_stackdepot.cc -------------------------------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -25,7 +26,7 @@ struct StackDepotNode {
   u32 tag;
   uptr stack[1];  // [size]
 
-  static const u32 kTabSizeLog = SANITIZER_ANDROID ? 16 : 20;
+  static const u32 kTabSizeLog = 20;
   // Lower kTabSizeLog bits are equal for all items in one bucket.
   // We use these bits to store the per-stack use counter.
   static const u32 kUseCountBits = kTabSizeLog;

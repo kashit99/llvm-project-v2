@@ -27,6 +27,7 @@ endif()
 
 if(CYGWIN OR NOT LLVM_ENABLE_PIC)
   set(LLVM_TOOL_LTO_BUILD Off)
+  set(LLVM_TOOL_LLVM_LTO_BUILD Off)
 endif()
 
 # Add LTO, llvm-ar, llvm-config, and llvm-profdata before clang, ExternalProject

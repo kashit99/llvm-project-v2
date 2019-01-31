@@ -1,8 +1,7 @@
 //===-- sanitizer_procmaps_solaris.cc -------------------------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -22,16 +21,11 @@
 namespace __sanitizer {
 
 void ReadProcMaps(ProcSelfMapsBuff *proc_maps) {
-  if (!ReadFileToBuffer("/proc/self/xmap", &proc_maps->data,
-                        &proc_maps->mmaped_size, &proc_maps->len)) {
-    proc_maps->data = nullptr;
-    proc_maps->mmaped_size = 0;
-    proc_maps->len = 0;
-  }
+  ReadFileToBuffer("/proc/self/xmap", &proc_maps->data, &proc_maps->mmaped_size,
+                   &proc_maps->len);
 }
 
 bool MemoryMappingLayout::Next(MemoryMappedSegment *segment) {
-  if (Error()) return false; // simulate empty maps
   char *last = data_.proc_self_maps.data + data_.proc_self_maps.len;
   if (data_.current >= last) return false;
 

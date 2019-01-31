@@ -1,8 +1,9 @@
 //===- SemaTemplateDeduction.cpp - Template Argument Deduction ------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -1670,8 +1671,8 @@ DeduceTemplateArgumentsByTypeMatch(Sema &S,
       const FunctionProtoType *FunctionProtoParam =
         cast<FunctionProtoType>(Param);
 
-      if (FunctionProtoParam->getMethodQuals()
-            != FunctionProtoArg->getMethodQuals() ||
+      if (FunctionProtoParam->getTypeQuals()
+            != FunctionProtoArg->getTypeQuals() ||
           FunctionProtoParam->getRefQualifier()
             != FunctionProtoArg->getRefQualifier() ||
           FunctionProtoParam->isVariadic() != FunctionProtoArg->isVariadic())
@@ -3081,7 +3082,7 @@ Sema::SubstituteExplicitTemplateArguments(
     CXXRecordDecl *ThisContext = nullptr;
     if (CXXMethodDecl *Method = dyn_cast<CXXMethodDecl>(Function)) {
       ThisContext = Method->getParent();
-      ThisTypeQuals = Method->getMethodQualifiers();
+      ThisTypeQuals = Method->getTypeQualifiers();
     }
 
     CXXThisScopeRAII ThisScope(*this, ThisContext, ThisTypeQuals,
@@ -4660,7 +4661,7 @@ AddImplicitObjectParameterType(ASTContext &Context,
   // The standard doesn't say explicitly, but we pick the appropriate kind of
   // reference type based on [over.match.funcs]p4.
   QualType ArgTy = Context.getTypeDeclType(Method->getParent());
-  ArgTy = Context.getQualifiedType(ArgTy, Method->getMethodQualifiers());
+  ArgTy = Context.getQualifiedType(ArgTy, Method->getTypeQualifiers());
   if (Method->getRefQualifier() == RQ_RValue)
     ArgTy = Context.getRValueReferenceType(ArgTy);
   else

@@ -1,8 +1,9 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is dual licensed under the MIT and the University of Illinois Open
+// Source Licenses. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -124,7 +125,7 @@ TimeSpec LastAccessTime(path const& p) { return GetTimes(p).access; }
 
 TimeSpec LastWriteTime(path const& p) { return GetTimes(p).write; }
 
-Times GetSymlinkTimes(path const& p) {
+std::pair<TimeSpec, TimeSpec> GetSymlinkTimes(path const& p) {
   StatT st;
   if (::lstat(p.c_str(), &st) == -1) {
     std::error_code ec(errno, std::generic_category());
@@ -135,10 +136,7 @@ Times GetSymlinkTimes(path const& p) {
         std::exit(EXIT_FAILURE);
 #endif
     }
-    Times res;
-    res.access = extract_atime(st);
-    res.write = extract_mtime(st);
-    return res;
+    return {extract_atime(st), extract_mtime(st)};
 }
 
 namespace {
@@ -502,8 +500,9 @@ TEST_CASE(last_write_time_symlink_test)
 
     TEST_CHECK(CompareTime(LastWriteTime(file), new_time));
     TEST_CHECK(CompareTime(LastAccessTime(sym), old_times.access));
-    Times sym_times = GetSymlinkTimes(sym);
-    TEST_CHECK(CompareTime(sym_times.write, old_sym_times.write));
+    std::pair<TimeSpec, TimeSpec> sym_times = GetSymlinkTimes(sym);
+    TEST_CHECK(CompareTime(sym_times.first, old_sym_times.first));
+    TEST_CHECK(CompareTime(sym_times.second, old_sym_times.second));
 }
 
 

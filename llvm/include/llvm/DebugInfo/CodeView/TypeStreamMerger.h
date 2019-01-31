@@ -1,8 +1,9 @@
 //===- TypeStreamMerger.h ---------------------------------------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -83,20 +84,20 @@ Error mergeTypeAndIdRecords(MergingTypeTableBuilder &DestIds,
                             MergingTypeTableBuilder &DestTypes,
                             SmallVectorImpl<TypeIndex> &SourceToDest,
                             const CVTypeArray &IdsAndTypes,
-                            Optional<uint32_t> &PCHSignature);
+                            Optional<EndPrecompRecord> &EndPrecomp);
 
 Error mergeTypeAndIdRecords(GlobalTypeTableBuilder &DestIds,
                             GlobalTypeTableBuilder &DestTypes,
                             SmallVectorImpl<TypeIndex> &SourceToDest,
                             const CVTypeArray &IdsAndTypes,
                             ArrayRef<GloballyHashedType> Hashes,
-                            Optional<uint32_t> &PCHSignature);
+                            Optional<EndPrecompRecord> &EndPrecomp);
 
 Error mergeTypeRecords(GlobalTypeTableBuilder &Dest,
                        SmallVectorImpl<TypeIndex> &SourceToDest,
                        const CVTypeArray &Types,
                        ArrayRef<GloballyHashedType> Hashes,
-                       Optional<uint32_t> &PCHSignature);
+                       Optional<EndPrecompRecord> &EndPrecomp);
 
 Error mergeIdRecords(GlobalTypeTableBuilder &Dest, ArrayRef<TypeIndex> Types,
                      SmallVectorImpl<TypeIndex> &SourceToDest,

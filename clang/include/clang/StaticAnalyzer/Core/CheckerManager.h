@@ -1,8 +1,9 @@
 //===- CheckerManager.h - Static Analyzer Checker Manager -------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -141,7 +142,7 @@ public:
   using CheckerDtor = CheckerFn<void ()>;
 
 //===----------------------------------------------------------------------===//
-// Checker registration.
+// registerChecker
 //===----------------------------------------------------------------------===//
 
   /// Used to register checkers.
@@ -153,7 +154,8 @@ public:
   CHECKER *registerChecker(AT &&... Args) {
     CheckerTag tag = getTag<CHECKER>();
     CheckerRef &ref = CheckerTags[tag];
-    assert(!ref && "Checker already registered, use getChecker!");
+    if (ref)
+      return static_cast<CHECKER *>(ref); // already registered.
 
     CHECKER *checker = new CHECKER(std::forward<AT>(Args)...);
     checker->Name = CurrentCheckName;
@@ -163,17 +165,8 @@ public:
     return checker;
   }
 
-  template <typename CHECKER>
-  CHECKER *getChecker() {
-    CheckerTag tag = getTag<CHECKER>();
-    assert(CheckerTags.count(tag) != 0 &&
-           "Requested checker is not registered! Maybe you should add it as a "
-           "dependency in Checkers.td?");
-    return static_cast<CHECKER *>(CheckerTags[tag]);
-  }
-
 //===----------------------------------------------------------------------===//
-// Functions for running checkers for AST traversing.
+// Functions for running checkers for AST traversing..
 //===----------------------------------------------------------------------===//
 
   /// Run checkers handling Decls.

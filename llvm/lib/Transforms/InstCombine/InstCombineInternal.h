@@ -1,8 +1,9 @@
 //===- InstCombineInternal.h - InstCombine pass internals -------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -801,8 +802,7 @@ private:
 
   Value *simplifyAMDGCNMemoryIntrinsicDemanded(IntrinsicInst *II,
                                                APInt DemandedElts,
-                                               int DmaskIdx = -1,
-                                               int TFCIdx = -1);
+                                               int DmaskIdx = -1);
 
   Value *SimplifyDemandedVectorElts(Value *V, APInt DemandedElts,
                                     APInt &UndefElts, unsigned Depth = 0);
@@ -833,11 +833,6 @@ private:
   Instruction *FoldPHIArgGEPIntoPHI(PHINode &PN);
   Instruction *FoldPHIArgLoadIntoPHI(PHINode &PN);
   Instruction *FoldPHIArgZextsIntoPHI(PHINode &PN);
-
-  /// If an integer typed PHI has only one use which is an IntToPtr operation,
-  /// replace the PHI with an existing pointer typed PHI if it exists. Otherwise
-  /// insert a new pointer typed PHI and replace the original one.
-  Instruction *FoldIntegerTypedPHI(PHINode &PN);
 
   /// Helper function for FoldPHIArgXIntoPHI() to set debug location for the
   /// folded operation.
@@ -903,10 +898,7 @@ private:
   Instruction *foldICmpBinOpEqualityWithConstant(ICmpInst &Cmp,
                                                  BinaryOperator *BO,
                                                  const APInt &C);
-  Instruction *foldICmpIntrinsicWithConstant(ICmpInst &ICI, IntrinsicInst *II,
-                                             const APInt &C);
-  Instruction *foldICmpEqIntrinsicWithConstant(ICmpInst &ICI, IntrinsicInst *II,
-                                               const APInt &C);
+  Instruction *foldICmpIntrinsicWithConstant(ICmpInst &ICI, const APInt &C);
 
   // Helpers of visitSelectInst().
   Instruction *foldSelectExtConst(SelectInst &Sel);

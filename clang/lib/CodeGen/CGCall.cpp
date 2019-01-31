@@ -1,8 +1,9 @@
 //===--- CGCall.cpp - Encapsulate calling convention details --------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -31,6 +32,7 @@
 #include "llvm/Transforms/Utils/Local.h"
 #include "llvm/Analysis/ValueTracking.h"
 #include "llvm/IR/Attributes.h"
+#include "llvm/IR/CallSite.h"
 #include "llvm/IR/CallingConv.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/InlineAsm.h"
@@ -72,7 +74,7 @@ static CanQualType GetThisType(ASTContext &Context, const CXXRecordDecl *RD,
                                const CXXMethodDecl *MD) {
   QualType RecTy = Context.getTagDeclType(RD)->getCanonicalTypeInternal();
   if (MD)
-    RecTy = Context.getAddrSpaceQualType(RecTy, MD->getMethodQualifiers().getAddressSpace());
+    RecTy = Context.getAddrSpaceQualType(RecTy, MD->getType().getAddressSpace());
   return Context.getPointerType(CanQualType::CreateUnsafe(RecTy));
 }
 
@@ -1791,6 +1793,8 @@ void CodeGenModule::ConstructDefaultFnAttrList(StringRef Name, bool HasOptnone,
     if (CodeGenOpts.Backchain)
       FuncAttrs.addAttribute("backchain");
 
+    // FIXME: The interaction of this attribute with the SLH command line flag
+    // has not been determined.
     if (CodeGenOpts.SpeculativeLoadHardening)
       FuncAttrs.addAttribute(llvm::Attribute::SpeculativeLoadHardening);
   }
@@ -1811,12 +1815,6 @@ void CodeGenModule::ConstructDefaultFnAttrList(StringRef Name, bool HasOptnone,
     // Respect -fcuda-flush-denormals-to-zero.
     if (CodeGenOpts.FlushDenorm)
       FuncAttrs.addAttribute("nvptx-f32ftz", "true");
-  }
-
-  for (StringRef Attr : CodeGenOpts.DefaultFunctionAttrs) {
-    StringRef Var, Value;
-    std::tie(Var, Value) = Attr.split('=');
-    FuncAttrs.addAttribute(Var, Value);
   }
 }
 
@@ -1860,6 +1858,8 @@ void CodeGenModule::ConstructAttributeList(
       FuncAttrs.addAttribute(llvm::Attribute::NoDuplicate);
     if (TargetDecl->hasAttr<ConvergentAttr>())
       FuncAttrs.addAttribute(llvm::Attribute::Convergent);
+    if (TargetDecl->hasAttr<SpeculativeLoadHardeningAttr>())
+      FuncAttrs.addAttribute(llvm::Attribute::SpeculativeLoadHardening);
 
     if (const FunctionDecl *Fn = dyn_cast<FunctionDecl>(TargetDecl)) {
       AddAttributesFromFunctionProtoType(
@@ -1903,16 +1903,6 @@ void CodeGenModule::ConstructAttributeList(
   }
 
   ConstructDefaultFnAttrList(Name, HasOptnone, AttrOnCallSite, FuncAttrs);
-
-  // This must run after constructing the default function attribute list
-  // to ensure that the speculative load hardening attribute is removed
-  // in the case where the -mspeculative-load-hardening flag was passed.
-  if (TargetDecl) {
-    if (TargetDecl->hasAttr<NoSpeculativeLoadHardeningAttr>())
-      FuncAttrs.removeAttribute(llvm::Attribute::SpeculativeLoadHardening);
-    if (TargetDecl->hasAttr<SpeculativeLoadHardeningAttr>())
-      FuncAttrs.addAttribute(llvm::Attribute::SpeculativeLoadHardening);
-  }
 
   if (CodeGenOpts.EnableSegmentedStacks &&
       !(TargetDecl && TargetDecl->hasAttr<NoSplitStackAttr>()))
@@ -2414,10 +2404,7 @@ void CodeGenFunction::EmitFunctionProlog(const CGFunctionInfo &FI,
           if (!AVAttr)
             if (const auto *TOTy = dyn_cast<TypedefType>(OTy))
               AVAttr = TOTy->getDecl()->getAttr<AlignValueAttr>();
-          if (AVAttr && !SanOpts.has(SanitizerKind::Alignment)) {
-            // If alignment-assumption sanitizer is enabled, we do *not* add
-            // alignment attribute here, but emit normal alignment assumption,
-            // so the UBSAN check could function.
+          if (AVAttr) {
             llvm::Value *AlignmentValue =
               EmitScalarExpr(AVAttr->getAlignment());
             llvm::ConstantInt *AlignmentCI =
@@ -3760,29 +3747,33 @@ void CodeGenFunction::EmitNoreturnRuntimeCallOrInvoke(llvm::Value *callee,
 }
 
 /// Emits a call or invoke instruction to the given nullary runtime function.
-llvm::CallBase *CodeGenFunction::EmitRuntimeCallOrInvoke(llvm::Value *callee,
-                                                         const Twine &name) {
+llvm::CallSite
+CodeGenFunction::EmitRuntimeCallOrInvoke(llvm::Value *callee,
+                                         const Twine &name) {
   return EmitRuntimeCallOrInvoke(callee, None, name);
 }
 
 /// Emits a call or invoke instruction to the given runtime function.
-llvm::CallBase *CodeGenFunction::EmitRuntimeCallOrInvoke(
-    llvm::Value *callee, ArrayRef<llvm::Value *> args, const Twine &name) {
-  llvm::CallBase *call = EmitCallOrInvoke(callee, args, name);
-  call->setCallingConv(getRuntimeCC());
-  return call;
+llvm::CallSite
+CodeGenFunction::EmitRuntimeCallOrInvoke(llvm::Value *callee,
+                                         ArrayRef<llvm::Value*> args,
+                                         const Twine &name) {
+  llvm::CallSite callSite = EmitCallOrInvoke(callee, args, name);
+  callSite.setCallingConv(getRuntimeCC());
+  return callSite;
 }
 
 /// Emits a call or invoke instruction to the given function, depending
 /// on the current state of the EH stack.
-llvm::CallBase *CodeGenFunction::EmitCallOrInvoke(llvm::Value *Callee,
-                                                  ArrayRef<llvm::Value *> Args,
-                                                  const Twine &Name) {
+llvm::CallSite
+CodeGenFunction::EmitCallOrInvoke(llvm::Value *Callee,
+                                  ArrayRef<llvm::Value *> Args,
+                                  const Twine &Name) {
   llvm::BasicBlock *InvokeDest = getInvokeDest();
   SmallVector<llvm::OperandBundleDef, 1> BundleList =
       getBundlesForFunclet(Callee);
 
-  llvm::CallBase *Inst;
+  llvm::Instruction *Inst;
   if (!InvokeDest)
     Inst = Builder.CreateCall(Callee, Args, BundleList, Name);
   else {
@@ -3797,7 +3788,7 @@ llvm::CallBase *CodeGenFunction::EmitCallOrInvoke(llvm::Value *Callee,
   if (CGM.getLangOpts().ObjCAutoRefCount)
     AddObjCARCExceptionMetadata(Inst);
 
-  return Inst;
+  return llvm::CallSite(Inst);
 }
 
 void CodeGenFunction::deferPlaceholderReplacement(llvm::Instruction *Old,
@@ -3809,7 +3800,7 @@ RValue CodeGenFunction::EmitCall(const CGFunctionInfo &CallInfo,
                                  const CGCallee &Callee,
                                  ReturnValueSlot ReturnValue,
                                  const CallArgList &CallArgs,
-                                 llvm::CallBase **callOrInvoke,
+                                 llvm::Instruction **callOrInvoke,
                                  SourceLocation Loc) {
   // FIXME: We no longer need the types from CallArgs; lift up and simplify.
 
@@ -4342,21 +4333,22 @@ RValue CodeGenFunction::EmitCall(const CGFunctionInfo &CallInfo,
       getBundlesForFunclet(CalleePtr);
 
   // Emit the actual call/invoke instruction.
-  llvm::CallBase *CI;
+  llvm::CallSite CS;
   if (!InvokeDest) {
-    CI = Builder.CreateCall(CalleePtr, IRCallArgs, BundleList);
+    CS = Builder.CreateCall(CalleePtr, IRCallArgs, BundleList);
   } else {
     llvm::BasicBlock *Cont = createBasicBlock("invoke.cont");
-    CI = Builder.CreateInvoke(CalleePtr, Cont, InvokeDest, IRCallArgs,
+    CS = Builder.CreateInvoke(CalleePtr, Cont, InvokeDest, IRCallArgs,
                               BundleList);
     EmitBlock(Cont);
   }
+  llvm::Instruction *CI = CS.getInstruction();
   if (callOrInvoke)
     *callOrInvoke = CI;
 
   // Apply the attributes and calling convention.
-  CI->setAttributes(Attrs);
-  CI->setCallingConv(static_cast<llvm::CallingConv::ID>(CallingConv));
+  CS.setAttributes(Attrs);
+  CS.setCallingConv(static_cast<llvm::CallingConv::ID>(CallingConv));
 
   // Apply various metadata.
 
@@ -4371,7 +4363,7 @@ RValue CodeGenFunction::EmitCall(const CGFunctionInfo &CallInfo,
   // Insert instrumentation or attach profile metadata at indirect call sites.
   // For more details, see the comment before the definition of
   // IPVK_IndirectCallTarget in InstrProfData.inc.
-  if (!CI->getCalledFunction())
+  if (!CS.getCalledFunction())
     PGO.valueProfile(Builder, llvm::IPVK_IndirectCallTarget,
                      CI, CalleePtr);
 
@@ -4392,29 +4384,16 @@ RValue CodeGenFunction::EmitCall(const CGFunctionInfo &CallInfo,
   // If the call doesn't return, finish the basic block and clear the
   // insertion point; this allows the rest of IRGen to discard
   // unreachable code.
-  if (CI->doesNotReturn()) {
+  if (CS.doesNotReturn()) {
     if (UnusedReturnSizePtr)
       PopCleanupBlock();
 
     // Strip away the noreturn attribute to better diagnose unreachable UB.
     if (SanOpts.has(SanitizerKind::Unreachable)) {
-      // Also remove from function since CI->hasFnAttr(..) also checks attributes
-      // of the called function.
-      if (auto *F = CI->getCalledFunction())
+      if (auto *F = CS.getCalledFunction())
         F->removeFnAttr(llvm::Attribute::NoReturn);
-      CI->removeAttribute(llvm::AttributeList::FunctionIndex,
-                          llvm::Attribute::NoReturn);
-
-      // Avoid incompatibility with ASan which relies on the `noreturn`
-      // attribute to insert handler calls.
-      if (SanOpts.has(SanitizerKind::Address)) {
-        SanitizerScope SanScope(this);
-        Builder.SetInsertPoint(CI);
-        auto *FnType = llvm::FunctionType::get(CGM.VoidTy, /*isVarArg=*/false);
-        auto *Fn = CGM.CreateRuntimeFunction(FnType, "__asan_handle_no_return");
-        EmitNounwindRuntimeCall(Fn);
-        Builder.SetInsertPoint(CI->getParent());
-      }
+      CS.removeAttribute(llvm::AttributeList::FunctionIndex,
+                         llvm::Attribute::NoReturn);
     }
 
     EmitUnreachable(Loc);
@@ -4551,14 +4530,13 @@ RValue CodeGenFunction::EmitCall(const CGFunctionInfo &CallInfo,
 
       llvm::Value *Alignment = EmitScalarExpr(AA->getAlignment());
       llvm::ConstantInt *AlignmentCI = cast<llvm::ConstantInt>(Alignment);
-      EmitAlignmentAssumption(Ret.getScalarVal(), RetTy, Loc, AA->getLocation(),
-                              AlignmentCI->getZExtValue(), OffsetValue);
+      EmitAlignmentAssumption(Ret.getScalarVal(), AlignmentCI->getZExtValue(),
+                              OffsetValue);
     } else if (const auto *AA = TargetDecl->getAttr<AllocAlignAttr>()) {
-      llvm::Value *AlignmentVal = CallArgs[AA->getParamIndex().getLLVMIndex()]
-                                      .getRValue(*this)
-                                      .getScalarVal();
-      EmitAlignmentAssumption(Ret.getScalarVal(), RetTy, Loc, AA->getLocation(),
-                              AlignmentVal);
+      llvm::Value *ParamVal =
+          CallArgs[AA->getParamIndex().getLLVMIndex()].getRValue(
+              *this).getScalarVal();
+      EmitAlignmentAssumption(Ret.getScalarVal(), ParamVal);
     }
   }
 

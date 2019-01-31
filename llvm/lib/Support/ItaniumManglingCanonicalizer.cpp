@@ -1,8 +1,9 @@
 //===----------------- ItaniumManglingCanonicalizer.cpp -------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is dual licensed under the MIT and the University of Illinois Open
+// Source Licenses. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -21,7 +22,6 @@ using namespace llvm;
 using llvm::itanium_demangle::ForwardTemplateReference;
 using llvm::itanium_demangle::Node;
 using llvm::itanium_demangle::NodeKind;
-using llvm::itanium_demangle::StringView;
 
 namespace {
 struct FoldingSetNodeIDBuilder {

@@ -1,8 +1,9 @@
 //===-- ExpectedTypeTest.cpp  -----------------------------------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -16,6 +17,8 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
+using namespace llvm;
+
 namespace clang {
 namespace clangd {
 namespace {
@@ -27,21 +30,21 @@ using ::testing::UnorderedElementsAreArray;
 
 class ExpectedTypeConversionTest : public ::testing::Test {
 protected:
-  void build(llvm::StringRef Code) {
+  void build(StringRef Code) {
     assert(!AST && "AST built twice");
     AST = TestTU::withCode(Code).build();
   }
 
-  const ValueDecl *decl(llvm::StringRef Name) {
+  const ValueDecl *decl(StringRef Name) {
     return &cast<ValueDecl>(findDecl(*AST, Name));
   }
 
-  QualType typeOf(llvm::StringRef Name) {
+  QualType typeOf(StringRef Name) {
     return decl(Name)->getType().getCanonicalType();
   }
 
   /// An overload for convenience.
-  llvm::Optional<OpaqueType> fromCompletionResult(const ValueDecl *D) {
+  Optional<OpaqueType> fromCompletionResult(const ValueDecl *D) {
     return OpaqueType::fromCompletionResult(
         ASTCtx(), CodeCompletionResult(D, CCP_Declaration));
   }
@@ -51,7 +54,7 @@ protected:
   using EquivClass = std::set<std::string>;
 
   Matcher<std::map<std::string, EquivClass>>
-  ClassesAre(llvm::ArrayRef<EquivClass> Classes) {
+  ClassesAre(ArrayRef<EquivClass> Classes) {
     using MapEntry = std::map<std::string, EquivClass>::value_type;
 
     std::vector<Matcher<MapEntry>> Elements;
@@ -64,9 +67,9 @@ protected:
   // Groups \p Decls into equivalence classes based on the result of
   // 'OpaqueType::fromCompletionResult'.
   std::map<std::string, EquivClass>
-  buildEquivClasses(llvm::ArrayRef<llvm::StringRef> DeclNames) {
+  buildEquivClasses(ArrayRef<StringRef> DeclNames) {
     std::map<std::string, EquivClass> Classes;
-    for (llvm::StringRef Name : DeclNames) {
+    for (StringRef Name : DeclNames) {
       auto Type = OpaqueType::fromType(ASTCtx(), typeOf(Name));
       Classes[Type->raw()].insert(Name);
     }
@@ -77,7 +80,7 @@ protected:
 
 private:
   // Set after calling build().
-  llvm::Optional<ParsedAST> AST;
+  Optional<ParsedAST> AST;
 };
 
 TEST_F(ExpectedTypeConversionTest, BasicTypes) {

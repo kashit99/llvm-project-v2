@@ -1,8 +1,9 @@
 //===--- CGClass.cpp - Emit LLVM Code for C++ classes -----------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -2013,7 +2014,7 @@ void CodeGenFunction::EmitCXXConstructorCall(const CXXConstructorDecl *D,
   CallArgList Args;
 
   LangAS SlotAS = E->getType().getAddressSpace();
-  QualType ThisType = D->getThisType();
+  QualType ThisType = D->getThisType(getContext());
   LangAS ThisAS = ThisType.getTypePtr()->getPointeeType().getAddressSpace();
   llvm::Value *ThisPtr = This.getPointer();
   if (SlotAS != ThisAS) {
@@ -2024,7 +2025,7 @@ void CodeGenFunction::EmitCXXConstructorCall(const CXXConstructorDecl *D,
                                                     ThisAS, SlotAS, NewType);
   }
   // Push the this ptr.
-  Args.add(RValue::get(ThisPtr), D->getThisType());
+  Args.add(RValue::get(ThisPtr), D->getThisType(getContext()));
 
   // If this is a trivial constructor, emit a memcpy now before we lose
   // the alignment information on the argument.
@@ -2158,7 +2159,7 @@ void CodeGenFunction::EmitInheritedCXXConstructorCall(
     const CXXConstructorDecl *D, bool ForVirtualBase, Address This,
     bool InheritedFromVBase, const CXXInheritedCtorInitExpr *E) {
   CallArgList Args;
-  CallArg ThisArg(RValue::get(This.getPointer()), D->getThisType());
+  CallArg ThisArg(RValue::get(This.getPointer()), D->getThisType(getContext()));
 
   // Forward the parameters.
   if (InheritedFromVBase &&
@@ -2283,7 +2284,7 @@ CodeGenFunction::EmitSynthesizedCXXCopyCtorCall(const CXXConstructorDecl *D,
   CallArgList Args;
 
   // Push the this ptr.
-  Args.add(RValue::get(This.getPointer()), D->getThisType());
+  Args.add(RValue::get(This.getPointer()), D->getThisType(getContext()));
 
   // Push the src ptr.
   QualType QT = *(FPT->param_type_begin());

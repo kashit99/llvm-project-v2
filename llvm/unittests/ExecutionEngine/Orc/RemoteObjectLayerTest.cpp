@@ -1,8 +1,9 @@
 //===---------------------- RemoteObjectLayerTest.cpp ---------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -94,12 +95,7 @@ MockObjectLayer::ObjectPtr createTestObject() {
   LLVMContext Ctx;
   ModuleBuilder MB(Ctx, TM->getTargetTriple().str(), "TestModule");
   MB.getModule()->setDataLayout(TM->createDataLayout());
-  auto *Main = MB.createFunctionDecl(
-      FunctionType::get(Type::getInt32Ty(Ctx),
-                        {Type::getInt32Ty(Ctx),
-                         Type::getInt8PtrTy(Ctx)->getPointerTo()},
-                        false),
-      "main");
+  auto *Main = MB.createFunctionDecl<void(int, char**)>("main");
   Main->getBasicBlockList().push_back(BasicBlock::Create(Ctx));
   IRBuilder<> B(&Main->back());
   B.CreateRet(ConstantInt::getSigned(Type::getInt32Ty(Ctx), 42));

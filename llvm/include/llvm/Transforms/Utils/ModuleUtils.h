@@ -1,8 +1,9 @@
 //===-- ModuleUtils.h - Functions to manipulate Modules ---------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -55,19 +56,6 @@ Function *declareSanitizerInitFunction(Module &M, StringRef InitName,
 std::pair<Function *, Function *> createSanitizerCtorAndInitFunctions(
     Module &M, StringRef CtorName, StringRef InitName,
     ArrayRef<Type *> InitArgTypes, ArrayRef<Value *> InitArgs,
-    StringRef VersionCheckName = StringRef());
-
-/// Creates sanitizer constructor function lazily. If a constructor and init
-/// function already exist, this function returns it. Otherwise it calls \c
-/// createSanitizerCtorAndInitFunctions. The FunctionsCreatedCallback is invoked
-/// in that case, passing the new Ctor and Init function.
-///
-/// \return Returns pair of pointers to constructor, and init functions
-/// respectively.
-std::pair<Function *, Function *> getOrCreateSanitizerCtorAndInitFunctions(
-    Module &M, StringRef CtorName, StringRef InitName,
-    ArrayRef<Type *> InitArgTypes, ArrayRef<Value *> InitArgs,
-    function_ref<void(Function *, Function *)> FunctionsCreatedCallback,
     StringRef VersionCheckName = StringRef());
 
 // Creates and returns a sanitizer init function without argument if it doesn't

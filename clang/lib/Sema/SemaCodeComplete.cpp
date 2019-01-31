@@ -1,8 +1,9 @@
 //===---------------- SemaCodeComplete.cpp - Code Completion ----*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -637,8 +638,7 @@ QualType clang::getDeclUsageType(ASTContext &C, const NamedDecl *ND) {
     T = Property->getType();
   else if (const auto *Value = dyn_cast<ValueDecl>(ND))
     T = Value->getType();
-
-  if (T.isNull())
+  else
     return QualType();
 
   // Dig through references, function pointers, and block pointers to
@@ -985,7 +985,7 @@ void ResultBuilder::AddResult(Result R, DeclContext *CurContext,
   if (HasObjectTypeQualifiers)
     if (const auto *Method = dyn_cast<CXXMethodDecl>(R.Declaration))
       if (Method->isInstance()) {
-        Qualifiers MethodQuals = Method->getMethodQualifiers();
+        Qualifiers MethodQuals = Method->getTypeQualifiers();
         if (ObjectTypeQualifiers == MethodQuals)
           R.Priority += CCD_ObjectQualifierMatch;
         else if (ObjectTypeQualifiers - MethodQuals) {
@@ -2693,23 +2693,23 @@ static void
 AddFunctionTypeQualsToCompletionString(CodeCompletionBuilder &Result,
                                        const FunctionDecl *Function) {
   const auto *Proto = Function->getType()->getAs<FunctionProtoType>();
-  if (!Proto || !Proto->getMethodQuals())
+  if (!Proto || !Proto->getTypeQuals())
     return;
 
   // FIXME: Add ref-qualifier!
 
   // Handle single qualifiers without copying
-  if (Proto->getMethodQuals().hasOnlyConst()) {
+  if (Proto->getTypeQuals().hasOnlyConst()) {
     Result.AddInformativeChunk(" const");
     return;
   }
 
-  if (Proto->getMethodQuals().hasOnlyVolatile()) {
+  if (Proto->getTypeQuals().hasOnlyVolatile()) {
     Result.AddInformativeChunk(" volatile");
     return;
   }
 
-  if (Proto->getMethodQuals().hasOnlyRestrict()) {
+  if (Proto->getTypeQuals().hasOnlyRestrict()) {
     Result.AddInformativeChunk(" restrict");
     return;
   }

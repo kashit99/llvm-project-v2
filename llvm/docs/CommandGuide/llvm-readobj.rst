@@ -84,10 +84,6 @@ input. Otherwise, it will read from the specified ``filenames``.
 
  Display section groups (only for ELF object files).
 
-.. option:: -demangle, -C
-
- Print demangled symbol names in the output.
-
 EXIT STATUS
 -----------
 

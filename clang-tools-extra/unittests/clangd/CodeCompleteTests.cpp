@@ -1,8 +1,9 @@
 //===-- CodeCompleteTests.cpp -----------------------------------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -16,7 +17,6 @@
 #include "SourceCode.h"
 #include "SyncAPI.h"
 #include "TestFS.h"
-#include "TestIndex.h"
 #include "index/MemIndex.h"
 #include "clang/Sema/CodeCompleteConsumer.h"
 #include "llvm/Support/Error.h"
@@ -24,11 +24,11 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
+using namespace llvm;
 namespace clang {
 namespace clangd {
 
 namespace {
-using ::llvm::Failed;
 using ::testing::AllOf;
 using ::testing::Contains;
 using ::testing::Each;
@@ -87,7 +87,7 @@ std::unique_ptr<SymbolIndex> memIndex(std::vector<Symbol> Symbols) {
   return MemIndex::build(std::move(Slab).build(), RefSlab());
 }
 
-CodeCompleteResult completions(ClangdServer &Server, llvm::StringRef TestCode,
+CodeCompleteResult completions(ClangdServer &Server, StringRef TestCode,
                                Position point,
                                std::vector<Symbol> IndexSymbols = {},
                                clangd::CodeCompleteOptions Opts = {}) {
@@ -100,12 +100,11 @@ CodeCompleteResult completions(ClangdServer &Server, llvm::StringRef TestCode,
 
   auto File = testPath("foo.cpp");
   runAddDocument(Server, File, TestCode);
-  auto CompletionList =
-      llvm::cantFail(runCodeComplete(Server, File, point, Opts));
+  auto CompletionList = cantFail(runCodeComplete(Server, File, point, Opts));
   return CompletionList;
 }
 
-CodeCompleteResult completions(ClangdServer &Server, llvm::StringRef Text,
+CodeCompleteResult completions(ClangdServer &Server, StringRef Text,
                                std::vector<Symbol> IndexSymbols = {},
                                clangd::CodeCompleteOptions Opts = {},
                                PathRef FilePath = "foo.cpp") {
@@ -120,13 +119,13 @@ CodeCompleteResult completions(ClangdServer &Server, llvm::StringRef Text,
   Annotations Test(Text);
   runAddDocument(Server, File, Test.code());
   auto CompletionList =
-      llvm::cantFail(runCodeComplete(Server, File, Test.point(), Opts));
+      cantFail(runCodeComplete(Server, File, Test.point(), Opts));
   return CompletionList;
 }
 
 // Builds a server and runs code completion.
 // If IndexSymbols is non-empty, an index will be built and passed to opts.
-CodeCompleteResult completions(llvm::StringRef Text,
+CodeCompleteResult completions(StringRef Text,
                                std::vector<Symbol> IndexSymbols = {},
                                clangd::CodeCompleteOptions Opts = {},
                                PathRef FilePath = "foo.cpp") {
@@ -138,6 +137,51 @@ CodeCompleteResult completions(llvm::StringRef Text,
                      FilePath);
 }
 
+std::string replace(StringRef Haystack, StringRef Needle, StringRef Repl) {
+  std::string Result;
+  raw_string_ostream OS(Result);
+  std::pair<StringRef, StringRef> Split;
+  for (Split = Haystack.split(Needle); !Split.second.empty();
+       Split = Split.first.split(Needle))
+    OS << Split.first << Repl;
+  Result += Split.first;
+  OS.flush();
+  return Result;
+}
+
+// Helpers to produce fake index symbols for memIndex() or completions().
+// USRFormat is a regex replacement string for the unqualified part of the USR.
+Symbol sym(StringRef QName, index::SymbolKind Kind, StringRef USRFormat) {
+  Symbol Sym;
+  std::string USR = "c:"; // We synthesize a few simple cases of USRs by hand!
+  size_t Pos = QName.rfind("::");
+  if (Pos == StringRef::npos) {
+    Sym.Name = QName;
+    Sym.Scope = "";
+  } else {
+    Sym.Name = QName.substr(Pos + 2);
+    Sym.Scope = QName.substr(0, Pos + 2);
+    USR += "@N@" + replace(QName.substr(0, Pos), "::", "@N@"); // ns:: -> @N@ns
+  }
+  USR += Regex("^.*$").sub(USRFormat, Sym.Name); // e.g. func -> @F@func#
+  Sym.ID = SymbolID(USR);
+  Sym.SymInfo.Kind = Kind;
+  Sym.Flags |= Symbol::IndexedForCodeCompletion;
+  Sym.Origin = SymbolOrigin::Static;
+  return Sym;
+}
+Symbol func(StringRef Name) { // Assumes the function has no args.
+  return sym(Name, index::SymbolKind::Function, "@F@\\0#"); // no args
+}
+Symbol cls(StringRef Name) {
+  return sym(Name, index::SymbolKind::Class, "@S@\\0");
+}
+Symbol var(StringRef Name) {
+  return sym(Name, index::SymbolKind::Variable, "@\\0");
+}
+Symbol ns(StringRef Name) {
+  return sym(Name, index::SymbolKind::Namespace, "@N@\\0");
+}
 Symbol withReferences(int N, Symbol S) {
   S.References = N;
   return S;
@@ -818,7 +862,7 @@ TEST(CompletionTest, IgnoreCompleteInExcludedPPBranchWithRecoveryContext) {
 
   EXPECT_TRUE(Results.Completions.empty());
 }
-SignatureHelp signatures(llvm::StringRef Text, Position Point,
+SignatureHelp signatures(StringRef Text, Position Point,
                          std::vector<Symbol> IndexSymbols = {}) {
   std::unique_ptr<SymbolIndex> Index;
   if (!IndexSymbols.empty())
@@ -833,10 +877,10 @@ SignatureHelp signatures(llvm::StringRef Text, Position Point,
   ClangdServer Server(CDB, FS, DiagConsumer, Opts);
   auto File = testPath("foo.cpp");
   runAddDocument(Server, File, Text);
-  return llvm::cantFail(runSignatureHelp(Server, File, Point));
+  return cantFail(runSignatureHelp(Server, File, Point));
 }
 
-SignatureHelp signatures(llvm::StringRef Text,
+SignatureHelp signatures(StringRef Text,
                          std::vector<Symbol> IndexSymbols = {}) {
   Annotations Test(Text);
   return signatures(Test.code(), Test.point(), std::move(IndexSymbols));
@@ -954,19 +998,18 @@ TEST(SignatureHelpTest, OpeningParen) {
 
 class IndexRequestCollector : public SymbolIndex {
 public:
-  bool
-  fuzzyFind(const FuzzyFindRequest &Req,
-            llvm::function_ref<void(const Symbol &)> Callback) const override {
+  bool fuzzyFind(const FuzzyFindRequest &Req,
+                 function_ref<void(const Symbol &)> Callback) const override {
     std::lock_guard<std::mutex> Lock(Mut);
     Requests.push_back(Req);
     return true;
   }
 
   void lookup(const LookupRequest &,
-              llvm::function_ref<void(const Symbol &)>) const override {}
+              function_ref<void(const Symbol &)>) const override {}
 
   void refs(const RefsRequest &,
-            llvm::function_ref<void(const Ref &)>) const override {}
+            function_ref<void(const Ref &)>) const override {}
 
   // This is incorrect, but IndexRequestCollector is not an actual index and it
   // isn't used in production code.
@@ -985,7 +1028,7 @@ private:
   mutable std::vector<FuzzyFindRequest> Requests;
 };
 
-std::vector<FuzzyFindRequest> captureIndexRequests(llvm::StringRef Code) {
+std::vector<FuzzyFindRequest> captureIndexRequests(StringRef Code) {
   clangd::CodeCompleteOptions Opts;
   IndexRequestCollector Requests;
   Opts.Index = &Requests;
@@ -1746,37 +1789,6 @@ TEST(SignatureHelpTest, IndexDocumentation) {
                         SigDoc("Doc from sema"))));
 }
 
-TEST(SignatureHelpTest, DynamicIndexDocumentation) {
-  MockFSProvider FS;
-  MockCompilationDatabase CDB;
-  IgnoreDiagnostics DiagConsumer;
-  ClangdServer::Options Opts = ClangdServer::optsForTest();
-  Opts.BuildDynamicSymbolIndex = true;
-  ClangdServer Server(CDB, FS, DiagConsumer, Opts);
-
-  FS.Files[testPath("foo.h")] = R"cpp(
-    struct Foo {
-       // Member doc
-       int foo();
-    };
-  )cpp";
-  Annotations FileContent(R"cpp(
-    #include "foo.h"
-    void test() {
-      Foo f;
-      f.foo(^);
-    }
-  )cpp");
-  auto File = testPath("test.cpp");
-  Server.addDocument(File, FileContent.code());
-  // Wait for the dynamic index being built.
-  ASSERT_TRUE(Server.blockUntilIdleForTest());
-  EXPECT_THAT(
-      llvm::cantFail(runSignatureHelp(Server, File, FileContent.point()))
-          .signatures,
-      ElementsAre(AllOf(Sig("foo() -> int", {}), SigDoc("Member doc"))));
-}
-
 TEST(CompletionTest, CompletionFunctionArgsDisabled) {
   CodeCompleteOptions Opts;
   Opts.EnableSnippets = true;
@@ -2271,17 +2283,6 @@ TEST(CompletionTest, ObjectiveCMethodTwoArgumentsFromMiddle) {
   EXPECT_THAT(C, ElementsAre(ReturnType("id")));
   EXPECT_THAT(C, ElementsAre(Signature("(unsigned int)")));
   EXPECT_THAT(C, ElementsAre(SnippetSuffix("${1:(unsigned int)}")));
-}
-
-TEST(CompletionTest, WorksWithNullType) {
-  auto R = completions(R"cpp(
-    int main() {
-      for (auto [loopVar] : y ) { // y has to be unresolved.
-        int z = loopV^;
-      }
-    }
-  )cpp");
-  EXPECT_THAT(R.Completions, ElementsAre(Named("loopVar")));
 }
 
 } // namespace

@@ -44,17 +44,15 @@ for.body:                                         ; preds = %for.body.lr.ph, %fo
 ; CHECK-NEXT: [[REG4:%[0-9]+]]:gr32 = PHI
 ; CHECK-NEXT: DBG_VALUE [[REG3]], $noreg, !16
 ; CHECK-NEXT: DBG_VALUE 555, $noreg, !17
-; CHECK-NEXT: [[ADDREG:%[0-9]+]]:gr32 = nuw nsw ADD32rr
+; XXX: Shouldn't the following DBG_VALUE be placed after the add (ADD32rr).
 ; CHECK-NEXT: DBG_VALUE [[REG2]], $noreg, !17
-; CHECK:      [[MULREG:%[0-9]+]]:gr32 = LEA64_32r
+; CHECK-NEXT: ADD32rr
+; XXX: Shouldn't the following DBG_VALUE be placed after the mul (LEA etc).
 ; CHECK-NEXT: DBG_VALUE 777, $noreg, !17
-; XXX: The following DBG_VALUE should have stayed below the INC32r
-; CHECK-NEXT: DBG_VALUE [[MULREG]], $noreg, !16
-; CHECK-NEXT: [[INCREG:%[0-9]+]]:gr32 = nuw nsw INC32r
-; CHECK-NEXT: DBG_VALUE [[INCREG]], $noreg, !17
-; CHECK-NEXT: DBG_VALUE [[ADDREG]], $noreg, !15
-; CHECK-NEXT: implicit-def $eflags,
-; CHECK-NEXT: DBG_VALUE [[REG4]]
+; CHECK:      INC32r
+; XXX: Shouldn't the following DBG_VALUE be placed after the icmp (the non-dead implicit def of $eflags)
+; CHECK:      DBG_VALUE [[REG4]]
+; CHECK-NEXT: implicit-def $eflags
   %u.023 = phi i32 [ 0, %for.body.lr.ph ], [ %inc, %for.body ]
   %y.022 = phi i32 [ 13, %for.body.lr.ph ], [ %mul, %for.body ]
   %x.021 = phi i32 [ 9, %for.body.lr.ph ], [ %add, %for.body ]

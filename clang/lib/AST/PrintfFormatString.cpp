@@ -1,8 +1,9 @@
 //== PrintfFormatString.cpp - Analysis of printf format strings --*- C++ -*-==//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -315,11 +316,7 @@ static PrintfSpecifierResult ParsePrintfSpecifier(FormatStringHandler &H,
     case 'f': k = ConversionSpecifier::fArg; break;
     case 'g': k = ConversionSpecifier::gArg; break;
     case 'i': k = ConversionSpecifier::iArg; break;
-    case 'n':
-      // Not handled, but reserved in OpenCL.
-      if (!LO.OpenCL)
-        k = ConversionSpecifier::nArg;
-      break;
+    case 'n': k = ConversionSpecifier::nArg; break;
     case 'o': k = ConversionSpecifier::oArg; break;
     case 'p': k = ConversionSpecifier::pArg; break;
     case 's': k = ConversionSpecifier::sArg; break;
@@ -490,12 +487,10 @@ ArgType PrintfSpecifier::getScalarArgType(ASTContext &Ctx,
         // GNU extension.
         return Ctx.LongLongTy;
       case LengthModifier::None:
-      case LengthModifier::AsShortLong:
         return Ctx.IntTy;
       case LengthModifier::AsInt32:
         return ArgType(Ctx.IntTy, "__int32");
-      case LengthModifier::AsChar:
-        return ArgType::AnyCharTy;
+      case LengthModifier::AsChar: return ArgType::AnyCharTy;
       case LengthModifier::AsShort: return Ctx.ShortTy;
       case LengthModifier::AsLong: return Ctx.LongTy;
       case LengthModifier::AsLongLong:
@@ -526,7 +521,6 @@ ArgType PrintfSpecifier::getScalarArgType(ASTContext &Ctx,
         // GNU extension.
         return Ctx.UnsignedLongLongTy;
       case LengthModifier::None:
-      case LengthModifier::AsShortLong:
         return Ctx.UnsignedIntTy;
       case LengthModifier::AsInt32:
         return ArgType(Ctx.UnsignedIntTy, "unsigned __int32");
@@ -556,18 +550,6 @@ ArgType PrintfSpecifier::getScalarArgType(ASTContext &Ctx,
     }
 
   if (CS.isDoubleArg()) {
-    if (!VectorNumElts.isInvalid()) {
-      switch (LM.getKind()) {
-      case LengthModifier::AsShort:
-        return Ctx.HalfTy;
-      case LengthModifier::AsShortLong:
-        return Ctx.FloatTy;
-      case LengthModifier::AsLong:
-      default:
-        return Ctx.DoubleTy;
-      }
-    }
-
     if (LM.getKind() == LengthModifier::AsLongDouble)
       return Ctx.LongDoubleTy;
     return Ctx.DoubleTy;
@@ -601,8 +583,6 @@ ArgType PrintfSpecifier::getScalarArgType(ASTContext &Ctx,
       case LengthModifier::AsInt64:
       case LengthModifier::AsWide:
         return ArgType::Invalid();
-      case LengthModifier::AsShortLong:
-        llvm_unreachable("only used for OpenCL which doesn not handle nArg");
     }
   }
 
@@ -781,13 +761,10 @@ bool PrintfSpecifier::fixType(QualType QT, const LangOptions &LangOpt,
   case BuiltinType::UInt:
   case BuiltinType::Int:
   case BuiltinType::Float:
-    LM.setKind(VectorNumElts.isInvalid() ?
-               LengthModifier::None : LengthModifier::AsShortLong);
-    break;
   case BuiltinType::Double:
-    LM.setKind(VectorNumElts.isInvalid() ?
-               LengthModifier::None : LengthModifier::AsLong);
+    LM.setKind(LengthModifier::None);
     break;
+
   case BuiltinType::Char_U:
   case BuiltinType::UChar:
   case BuiltinType::Char_S:
@@ -820,7 +797,7 @@ bool PrintfSpecifier::fixType(QualType QT, const LangOptions &LangOpt,
     namedTypeToLengthModifier(QT, LM);
 
   // If fixing the length modifier was enough, we might be done.
-  if (hasValidLengthModifier(Ctx.getTargetInfo(), LangOpt)) {
+  if (hasValidLengthModifier(Ctx.getTargetInfo())) {
     // If we're going to offer a fix anyway, make sure the sign matches.
     switch (CS.getKind()) {
     case ConversionSpecifier::uArg:

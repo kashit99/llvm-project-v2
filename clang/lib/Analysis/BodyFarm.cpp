@@ -1,8 +1,9 @@
 //== BodyFarm.cpp  - Factory for conjuring up fake bodies ----------*- C++ -*-//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -805,11 +806,6 @@ Stmt *BodyFarm::getBody(const ObjCMethodDecl *D) {
     return nullptr;
 
   D = D->getCanonicalDecl();
-
-  // We should not try to synthesize explicitly redefined accessors.
-  // We do not know for sure how they behave.
-  if (!D->isImplicit())
-    return nullptr;
 
   Optional<Stmt *> &Val = Bodies[D];
   if (Val.hasValue())

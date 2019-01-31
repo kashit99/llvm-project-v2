@@ -1,8 +1,9 @@
 //===-- Mips16ISelLowering.h - Mips16 DAG Lowering Interface ----*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -385,22 +386,27 @@ const char* Mips16TargetLowering::
   }
   else if (RetTy ->isDoubleTy()) {
     result = dfMips16Helper[stubNum];
-  } else if (StructType *SRetTy = dyn_cast<StructType>(RetTy)) {
+  }
+  else if (RetTy->isStructTy()) {
     // check if it's complex
-    if (SRetTy->getNumElements() == 2) {
-      if ((SRetTy->getElementType(0)->isFloatTy()) &&
-          (SRetTy->getElementType(1)->isFloatTy())) {
+    if (RetTy->getNumContainedTypes() == 2) {
+      if ((RetTy->getContainedType(0)->isFloatTy()) &&
+          (RetTy->getContainedType(1)->isFloatTy())) {
         result = scMips16Helper[stubNum];
-      } else if ((SRetTy->getElementType(0)->isDoubleTy()) &&
-                 (SRetTy->getElementType(1)->isDoubleTy())) {
+      }
+      else if ((RetTy->getContainedType(0)->isDoubleTy()) &&
+               (RetTy->getContainedType(1)->isDoubleTy())) {
         result = dcMips16Helper[stubNum];
-      } else {
+      }
+      else {
         llvm_unreachable("Uncovered condition");
       }
-    } else {
+    }
+    else {
       llvm_unreachable("Uncovered condition");
     }
-  } else {
+  }
+  else {
     if (stubNum == 0) {
       needHelper = false;
       return "";

@@ -1,8 +1,9 @@
 //===--- DurationRewriter.cpp - clang-tidy --------------------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -37,7 +38,7 @@ truncateIfIntegral(const FloatingLiteral &FloatLiteral) {
 }
 
 const std::pair<llvm::StringRef, llvm::StringRef> &
-getDurationInverseForScale(DurationScale Scale) {
+getInverseForScale(DurationScale Scale) {
   static const llvm::IndexedMap<std::pair<llvm::StringRef, llvm::StringRef>,
                                 DurationScale2IndexFunctor>
       InverseMap = []() {
@@ -71,7 +72,7 @@ static llvm::Optional<std::string>
 rewriteInverseDurationCall(const MatchFinder::MatchResult &Result,
                            DurationScale Scale, const Expr &Node) {
   const std::pair<llvm::StringRef, llvm::StringRef> &InverseFunctions =
-      getDurationInverseForScale(Scale);
+      getInverseForScale(Scale);
   if (const auto *MaybeCallArg = selectFirst<const Expr>(
           "e",
           match(callExpr(callee(functionDecl(hasAnyName(
@@ -85,7 +86,7 @@ rewriteInverseDurationCall(const MatchFinder::MatchResult &Result,
 }
 
 /// Returns the factory function name for a given `Scale`.
-llvm::StringRef getDurationFactoryForScale(DurationScale Scale) {
+llvm::StringRef getFactoryForScale(DurationScale Scale) {
   switch (Scale) {
   case DurationScale::Hours:
     return "absl::Hours";
@@ -103,23 +104,18 @@ llvm::StringRef getDurationFactoryForScale(DurationScale Scale) {
   llvm_unreachable("unknown scaling factor");
 }
 
-/// Returns the Time factory function name for a given `Scale`.
-llvm::StringRef getTimeFactoryForScale(DurationScale scale) {
-  switch (scale) {
-  case DurationScale::Hours:
-    return "absl::ToUnixHours";
-  case DurationScale::Minutes:
-    return "absl::ToUnixMinutes";
-  case DurationScale::Seconds:
-    return "absl::ToUnixSeconds";
-  case DurationScale::Milliseconds:
-    return "absl::ToUnixMillis";
-  case DurationScale::Microseconds:
-    return "absl::ToUnixMicros";
-  case DurationScale::Nanoseconds:
-    return "absl::ToUnixNanos";
-  }
-  llvm_unreachable("unknown scaling factor");
+/// Matches the n'th item of an initializer list expression.
+///
+/// Example matches y.
+///     (matcher = initListExpr(hasInit(0, expr())))
+/// \code
+///   int x{y}.
+/// \endcode
+AST_MATCHER_P2(InitListExpr, hasInit, unsigned, N,
+               ast_matchers::internal::Matcher<Expr>, InnerMatcher) {
+  return N < Node.getNumInits() &&
+          InnerMatcher.matches(*Node.getInit(N)->IgnoreParenImpCasts(), Finder,
+                               Builder);
 }
 
 /// Returns `true` if `Node` is a value which evaluates to a literal `0`.
@@ -136,13 +132,13 @@ bool IsLiteralZero(const MatchFinder::MatchResult &Result, const Expr &Node) {
   // Now check to see if we're using a functional cast with a scalar
   // initializer expression, e.g. `int{0}`.
   if (selectFirst<const clang::Expr>(
-          "val", match(cxxFunctionalCastExpr(
-                           hasDestinationType(
-                               anyOf(isInteger(), realFloatingPointType())),
-                           hasSourceExpression(initListExpr(
-                               hasInit(0, ignoringParenImpCasts(ZeroMatcher)))))
-                           .bind("val"),
-                       Node, *Result.Context)) != nullptr)
+          "val",
+          match(cxxFunctionalCastExpr(
+                    hasDestinationType(
+                        anyOf(isInteger(), realFloatingPointType())),
+                    hasSourceExpression(initListExpr(hasInit(0, ZeroMatcher))))
+                    .bind("val"),
+                Node, *Result.Context)) != nullptr)
     return true;
 
   return false;
@@ -194,7 +190,7 @@ std::string simplifyDurationFactoryArg(const MatchFinder::MatchResult &Result,
   return tooling::fixit::getText(Node, *Result.Context).str();
 }
 
-llvm::Optional<DurationScale> getScaleForDurationInverse(llvm::StringRef Name) {
+llvm::Optional<DurationScale> getScaleForInverse(llvm::StringRef Name) {
   static const llvm::StringMap<DurationScale> ScaleMap(
       {{"ToDoubleHours", DurationScale::Hours},
        {"ToInt64Hours", DurationScale::Hours},
@@ -216,22 +212,6 @@ llvm::Optional<DurationScale> getScaleForDurationInverse(llvm::StringRef Name) {
   return ScaleIter->second;
 }
 
-llvm::Optional<DurationScale> getScaleForTimeInverse(llvm::StringRef Name) {
-  static const llvm::StringMap<DurationScale> ScaleMap(
-      {{"ToUnixHours", DurationScale::Hours},
-       {"ToUnixMinutes", DurationScale::Minutes},
-       {"ToUnixSeconds", DurationScale::Seconds},
-       {"ToUnixMillis", DurationScale::Milliseconds},
-       {"ToUnixMicros", DurationScale::Microseconds},
-       {"ToUnixNanos", DurationScale::Nanoseconds}});
-
-  auto ScaleIter = ScaleMap.find(std::string(Name));
-  if (ScaleIter == ScaleMap.end())
-    return llvm::None;
-
-  return ScaleIter->second;
-}
-
 std::string rewriteExprFromNumberToDuration(
     const ast_matchers::MatchFinder::MatchResult &Result, DurationScale Scale,
     const Expr *Node) {
@@ -245,26 +225,9 @@ std::string rewriteExprFromNumberToDuration(
   if (IsLiteralZero(Result, RootNode))
     return std::string("absl::ZeroDuration()");
 
-  return (llvm::Twine(getDurationFactoryForScale(Scale)) + "(" +
+  return (llvm::Twine(getFactoryForScale(Scale)) + "(" +
           simplifyDurationFactoryArg(Result, RootNode) + ")")
       .str();
-}
-
-bool isNotInMacro(const MatchFinder::MatchResult &Result, const Expr *E) {
-  if (!E->getBeginLoc().isMacroID())
-    return true;
-
-  SourceLocation Loc = E->getBeginLoc();
-  // We want to get closer towards the initial macro typed into the source only
-  // if the location is being expanded as a macro argument.
-  while (Result.SourceManager->isMacroArgExpansion(Loc)) {
-    // We are calling getImmediateMacroCallerLoc, but note it is essentially
-    // equivalent to calling getImmediateSpellingLoc in this context according
-    // to Clang implementation. We are not calling getImmediateSpellingLoc
-    // because Clang comment says it "should not generally be used by clients."
-    Loc = Result.SourceManager->getImmediateMacroCallerLoc(Loc);
-  }
-  return !Loc.isMacroID();
 }
 
 } // namespace abseil

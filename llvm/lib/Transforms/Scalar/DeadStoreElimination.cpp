@@ -1,8 +1,9 @@
 //===- DeadStoreElimination.cpp - Fast Dead Store Elimination -------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -833,7 +834,7 @@ static bool handleEndBlock(BasicBlock &BB, AliasAnalysis *AA,
       continue;
     }
 
-    if (auto *Call = dyn_cast<CallBase>(&*BBI)) {
+    if (auto CS = CallSite(&*BBI)) {
       // Remove allocation function calls from the list of dead stack objects;
       // there can't be any references before the definition.
       if (isAllocLikeFn(&*BBI, TLI))
@@ -841,15 +842,15 @@ static bool handleEndBlock(BasicBlock &BB, AliasAnalysis *AA,
 
       // If this call does not access memory, it can't be loading any of our
       // pointers.
-      if (AA->doesNotAccessMemory(Call))
+      if (AA->doesNotAccessMemory(CS))
         continue;
 
       // If the call might load from any of our allocas, then any store above
       // the call is live.
       DeadStackObjects.remove_if([&](Value *I) {
         // See if the call site touches the value.
-        return isRefSet(AA->getModRefInfo(
-            Call, I, getPointerSize(I, DL, *TLI, BB.getParent())));
+        return isRefSet(AA->getModRefInfo(CS, I, getPointerSize(I, DL, *TLI,
+                                                                BB.getParent())));
       });
 
       // If all of the allocas were clobbered by the call then we're not going

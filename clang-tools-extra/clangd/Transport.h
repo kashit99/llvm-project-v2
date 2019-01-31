@@ -1,8 +1,9 @@
 //===--- Transport.h - sending and receiving LSP messages -------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -84,12 +85,6 @@ std::unique_ptr<Transport>
 newJSONTransport(std::FILE *In, llvm::raw_ostream &Out,
                  llvm::raw_ostream *InMirror, bool Pretty,
                  JSONStreamStyle = JSONStreamStyle::Standard);
-
-#ifdef CLANGD_BUILD_XPC
-// Returns a Transport for macOS based on XPC.
-// Clangd with this transport is meant to be run as bundled XPC service.
-std::unique_ptr<Transport> newXPCTransport();
-#endif
 
 } // namespace clangd
 } // namespace clang

@@ -1,8 +1,9 @@
 //===-- ARMCallingConv.td - Calling Conventions for ARM ----*- tablegen -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 // This describes the calling conventions for ARM architecture.
@@ -15,7 +16,6 @@ class CCIfAlign<string Align, CCAction A>:
 //===----------------------------------------------------------------------===//
 // ARM APCS Calling Convention
 //===----------------------------------------------------------------------===//
-let Entry = 1 in
 def CC_ARM_APCS : CallingConv<[
 
   // Handles byval parameters.
@@ -44,7 +44,6 @@ def CC_ARM_APCS : CallingConv<[
   CCIfType<[v2f64], CCAssignToStack<16, 4>>
 ]>;
 
-let Entry = 1 in
 def RetCC_ARM_APCS : CallingConv<[
   CCIfType<[i1, i8, i16], CCPromoteToType<i32>>,
   CCIfType<[f32], CCBitConvertToType<i32>>,
@@ -68,7 +67,6 @@ def RetCC_ARM_APCS : CallingConv<[
 //===----------------------------------------------------------------------===//
 // ARM APCS Calling Convention for FastCC (when VFP2 or later is available)
 //===----------------------------------------------------------------------===//
-let Entry = 1 in
 def FastCC_ARM_APCS : CallingConv<[
   // Handle all vector types as either f64 or v2f64.
   CCIfType<[v1i64, v2i32, v4i16, v8i8, v2f32], CCBitConvertToType<f64>>,
@@ -88,7 +86,6 @@ def FastCC_ARM_APCS : CallingConv<[
   CCDelegateTo<CC_ARM_APCS>
 ]>;
 
-let Entry = 1 in
 def RetFastCC_ARM_APCS : CallingConv<[
   // Handle all vector types as either f64 or v2f64.
   CCIfType<[v1i64, v2i32, v4i16, v8i8, v2f32], CCBitConvertToType<f64>>,
@@ -105,7 +102,6 @@ def RetFastCC_ARM_APCS : CallingConv<[
 // ARM APCS Calling Convention for GHC
 //===----------------------------------------------------------------------===//
 
-let Entry = 1 in
 def CC_ARM_APCS_GHC : CallingConv<[
   // Handle all vector types as either f64 or v2f64.
   CCIfType<[v1i64, v2i32, v4i16, v8i8, v2f32], CCBitConvertToType<f64>>,
@@ -156,7 +152,6 @@ def RetCC_ARM_AAPCS_Common : CallingConv<[
 // ARM AAPCS (EABI) Calling Convention
 //===----------------------------------------------------------------------===//
 
-let Entry = 1 in
 def CC_ARM_AAPCS : CallingConv<[
   // Handles byval parameters.
   CCIfByVal<CCPassByVal<4, 4>>,
@@ -179,7 +174,6 @@ def CC_ARM_AAPCS : CallingConv<[
   CCDelegateTo<CC_ARM_AAPCS_Common>
 ]>;
 
-let Entry = 1 in
 def RetCC_ARM_AAPCS : CallingConv<[
   // Handle all vector types as either f64 or v2f64.
   CCIfType<[v1i64, v2i32, v4i16, v4f16, v8i8, v2f32], CCBitConvertToType<f64>>,
@@ -202,7 +196,6 @@ def RetCC_ARM_AAPCS : CallingConv<[
 // Also used for FastCC (when VFP2 or later is available)
 //===----------------------------------------------------------------------===//
 
-let Entry = 1 in
 def CC_ARM_AAPCS_VFP : CallingConv<[
   // Handles byval parameters.
   CCIfByVal<CCPassByVal<4, 4>>,
@@ -227,7 +220,6 @@ def CC_ARM_AAPCS_VFP : CallingConv<[
   CCDelegateTo<CC_ARM_AAPCS_Common>
 ]>;
 
-let Entry = 1 in
 def RetCC_ARM_AAPCS_VFP : CallingConv<[
   // Handle all vector types as either f64 or v2f64.
   CCIfType<[v1i64, v2i32, v4i16, v4f16, v8i8, v2f32], CCBitConvertToType<f64>>,

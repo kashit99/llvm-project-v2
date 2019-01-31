@@ -1,8 +1,9 @@
 //===-- Execution.cpp - Implement code to simulate the program ------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -1777,14 +1778,17 @@ void Interpreter::visitExtractElementInst(ExtractElementInst &I) {
 
 void Interpreter::visitInsertElementInst(InsertElementInst &I) {
   ExecutionContext &SF = ECStack.back();
-  VectorType *Ty = cast<VectorType>(I.getType());
+  Type *Ty = I.getType();
+
+  if(!(Ty->isVectorTy()) )
+    llvm_unreachable("Unhandled dest type for insertelement instruction");
 
   GenericValue Src1 = getOperandValue(I.getOperand(0), SF);
   GenericValue Src2 = getOperandValue(I.getOperand(1), SF);
   GenericValue Src3 = getOperandValue(I.getOperand(2), SF);
   GenericValue Dest;
 
-  Type *TyContained = Ty->getElementType();
+  Type *TyContained = Ty->getContainedType(0);
 
   const unsigned indx = unsigned(Src3.IntVal.getZExtValue());
   Dest.AggregateVal = Src1.AggregateVal;
@@ -1810,7 +1814,9 @@ void Interpreter::visitInsertElementInst(InsertElementInst &I) {
 void Interpreter::visitShuffleVectorInst(ShuffleVectorInst &I){
   ExecutionContext &SF = ECStack.back();
 
-  VectorType *Ty = cast<VectorType>(I.getType());
+  Type *Ty = I.getType();
+  if(!(Ty->isVectorTy()))
+    llvm_unreachable("Unhandled dest type for shufflevector instruction");
 
   GenericValue Src1 = getOperandValue(I.getOperand(0), SF);
   GenericValue Src2 = getOperandValue(I.getOperand(1), SF);
@@ -1821,7 +1827,7 @@ void Interpreter::visitShuffleVectorInst(ShuffleVectorInst &I){
   // bytecode can't contain different types for src1 and src2 for a
   // shufflevector instruction.
 
-  Type *TyContained = Ty->getElementType();
+  Type *TyContained = Ty->getContainedType(0);
   unsigned src1Size = (unsigned)Src1.AggregateVal.size();
   unsigned src2Size = (unsigned)Src2.AggregateVal.size();
   unsigned src3Size = (unsigned)Src3.AggregateVal.size();

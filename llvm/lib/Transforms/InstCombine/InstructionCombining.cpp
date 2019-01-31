@@ -1,8 +1,9 @@
 //===- InstructionCombining.cpp - Combine multiple instructions -----------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -3064,11 +3065,9 @@ static bool TryToSinkInstruction(Instruction *I, BasicBlock *DestBlock) {
       I->isTerminator())
     return false;
 
-  // Do not sink static or dynamic alloca instructions. Static allocas must
-  // remain in the entry block, and dynamic allocas must not be sunk in between
-  // a stacksave / stackrestore pair, which would incorrectly shorten its
-  // lifetime.
-  if (isa<AllocaInst>(I))
+  // Do not sink alloca instructions out of the entry block.
+  if (isa<AllocaInst>(I) && I->getParent() ==
+        &DestBlock->getParent()->getEntryBlock())
     return false;
 
   // Do not sink into catchswitch blocks.

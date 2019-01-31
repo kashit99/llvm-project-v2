@@ -1,8 +1,9 @@
 //===--- TargetBuiltins.h - Target specific builtin IDs ---------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 ///
@@ -147,6 +148,16 @@ namespace clang {
 #include "clang/Basic/BuiltinsHexagon.def"
         LastTSBuiltin
     };
+  }
+
+  /// Nios2 builtins
+  namespace Nios2 {
+  enum {
+    LastTIBuiltin = clang::Builtin::FirstTSBuiltin - 1,
+#define BUILTIN(ID, TYPE, ATTRS) BI##ID,
+#include "clang/Basic/BuiltinsNios2.def"
+    LastTSBuiltin
+  };
   }
 
   /// MIPS builtins

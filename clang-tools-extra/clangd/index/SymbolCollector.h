@@ -1,8 +1,9 @@
 //===--- SymbolCollector.h ---------------------------------------*- C++-*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 #ifndef LLVM_CLANG_TOOLS_EXTRA_CLANGD_INDEX_SYMBOL_COLLECTOR_H
@@ -27,13 +28,12 @@ namespace clangd {
 /// It collects most declarations except:
 /// - Implicit declarations
 /// - Anonymous declarations (anonymous enum/class/struct, etc)
-/// - Declarations in anonymous namespaces in headers
+/// - Declarations in anonymous namespaces
 /// - Local declarations (in function bodies, blocks, etc)
+/// - Declarations in main files
 /// - Template specializations
 /// - Library-specific private declarations (e.g. private declaration generated
 /// by protobuf compiler)
-///
-/// References to main-file symbols are not collected.
 ///
 /// See also shouldCollectSymbol(...).
 ///
@@ -72,9 +72,6 @@ public:
     /// collect macros. For example, `indexTopLevelDecls` will not index any
     /// macro even if this is true.
     bool CollectMacro = false;
-    /// Collect symbols local to main-files, such as static functions
-    /// and symbols inside an anonymous namespace.
-    bool CollectMainFileSymbols = true;
     /// If this is set, only collect symbols/references from a file if
     /// `FileFilter(SM, FID)` is true. If not set, all files are indexed.
     std::function<bool(const SourceManager &, FileID)> FileFilter = nullptr;
@@ -84,7 +81,7 @@ public:
 
   /// Returns true is \p ND should be collected.
   static bool shouldCollectSymbol(const NamedDecl &ND, const ASTContext &ASTCtx,
-                                  const Options &Opts, bool IsMainFileSymbol);
+                                  const Options &Opts);
 
   void initialize(ASTContext &Ctx) override;
 
@@ -108,7 +105,7 @@ public:
   void finish() override;
 
 private:
-  const Symbol *addDeclaration(const NamedDecl &, SymbolID, bool IsMainFileSymbol);
+  const Symbol *addDeclaration(const NamedDecl &, SymbolID);
   void addDefinition(const NamedDecl &, const Symbol &DeclSymbol);
 
   // All Symbols collected from the AST.

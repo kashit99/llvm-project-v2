@@ -1,8 +1,9 @@
 //===- Buffer.h -------------------------------------------------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                      The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -27,7 +28,7 @@ class Buffer {
 
 public:
   virtual ~Buffer();
-  virtual Error allocate(size_t Size) = 0;
+  virtual void allocate(size_t Size) = 0;
   virtual uint8_t *getBufferStart() = 0;
   virtual Error commit() = 0;
 
@@ -37,12 +38,9 @@ public:
 
 class FileBuffer : public Buffer {
   std::unique_ptr<FileOutputBuffer> Buf;
-  // Indicates that allocate(0) was called, and commit() should create or
-  // truncate a file instead of using a FileOutputBuffer.
-  bool EmptyFile = false;
 
 public:
-  Error allocate(size_t Size) override;
+  void allocate(size_t Size) override;
   uint8_t *getBufferStart() override;
   Error commit() override;
 
@@ -53,7 +51,7 @@ class MemBuffer : public Buffer {
   std::unique_ptr<WritableMemoryBuffer> Buf;
 
 public:
-  Error allocate(size_t Size) override;
+  void allocate(size_t Size) override;
   uint8_t *getBufferStart() override;
   Error commit() override;
 

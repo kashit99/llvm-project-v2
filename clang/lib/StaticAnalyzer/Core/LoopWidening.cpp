@@ -1,8 +1,9 @@
 //===--- LoopWidening.cpp - Widen loops -------------------------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 ///
@@ -84,8 +85,9 @@ ProgramStateRef getWidenedLoopState(ProgramStateRef PrevState,
   // have 'this' pointers.
   const CXXMethodDecl *CXXMD = dyn_cast<CXXMethodDecl>(STC->getDecl());
   if (CXXMD && !CXXMD->isStatic()) {
-    const CXXThisRegion *ThisR =
-        MRMgr.getCXXThisRegion(CXXMD->getThisType(), STC);
+    const CXXThisRegion *ThisR = MRMgr.getCXXThisRegion(
+        CXXMD->getThisType(STC->getAnalysisDeclContext()->getASTContext()),
+        STC);
     ITraits.setTrait(ThisR,
                      RegionAndSymbolInvalidationTraits::TK_PreserveContents);
   }

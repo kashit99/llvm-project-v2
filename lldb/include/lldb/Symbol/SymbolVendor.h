@@ -134,6 +134,14 @@ public:
   // Clear module unified section list symbol table.
   virtual void ClearSymtab();
 
+  bool GetCompileOption(const char *option, std::string &value,
+                        CompileUnit *cu = nullptr);
+
+  int GetCompileOptions(const char *option, std::vector<std::string> &values,
+                        CompileUnit *cu = nullptr);
+
+  void GetLoadedModules(lldb::LanguageType language, FileSpecList &modules);
+
   //------------------------------------------------------------------
   /// Notify the SymbolVendor that the file addresses in the Sections
   /// for this module have been changed.
@@ -146,6 +154,17 @@ public:
   ConstString GetPluginName() override;
 
   uint32_t GetPluginVersion() override;
+
+  virtual bool SetLimitSourceFileRange(const FileSpec &file,
+                                       uint32_t first_line, uint32_t last_line);
+
+  virtual bool SymbolContextShouldBeExcluded(const SymbolContext &sc,
+                                             uint32_t actual_line);
+
+  virtual std::vector<lldb::DataBufferSP>
+  GetASTData(lldb::LanguageType language);
+
+  virtual bool ForceInlineSourceFileCheck();
 
 protected:
   //------------------------------------------------------------------

@@ -1,8 +1,9 @@
 //==- AliasAnalysis.cpp - Generic Alias Analysis Interface Implementation --==//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -39,6 +40,7 @@
 #include "llvm/IR/Argument.h"
 #include "llvm/IR/Attributes.h"
 #include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/CallSite.h"
 #include "llvm/IR/Instruction.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
@@ -116,11 +118,11 @@ bool AAResults::pointsToConstantMemory(const MemoryLocation &Loc,
   return false;
 }
 
-ModRefInfo AAResults::getArgModRefInfo(const CallBase *Call, unsigned ArgIdx) {
+ModRefInfo AAResults::getArgModRefInfo(ImmutableCallSite CS, unsigned ArgIdx) {
   ModRefInfo Result = ModRefInfo::ModRef;
 
   for (const auto &AA : AAs) {
-    Result = intersectModRef(Result, AA->getArgModRefInfo(Call, ArgIdx));
+    Result = intersectModRef(Result, AA->getArgModRefInfo(CS, ArgIdx));
 
     // Early-exit the moment we reach the bottom of the lattice.
     if (isNoModRef(Result))
@@ -130,11 +132,11 @@ ModRefInfo AAResults::getArgModRefInfo(const CallBase *Call, unsigned ArgIdx) {
   return Result;
 }
 
-ModRefInfo AAResults::getModRefInfo(Instruction *I, const CallBase *Call2) {
+ModRefInfo AAResults::getModRefInfo(Instruction *I, ImmutableCallSite Call) {
   // We may have two calls.
-  if (const auto *Call1 = dyn_cast<CallBase>(I)) {
+  if (auto CS = ImmutableCallSite(I)) {
     // Check if the two calls modify the same memory.
-    return getModRefInfo(Call1, Call2);
+    return getModRefInfo(CS, Call);
   } else if (I->isFenceLike()) {
     // If this is a fence, just return ModRef.
     return ModRefInfo::ModRef;
@@ -144,19 +146,19 @@ ModRefInfo AAResults::getModRefInfo(Instruction *I, const CallBase *Call2) {
     // is that if the call references what this instruction
     // defines, it must be clobbered by this location.
     const MemoryLocation DefLoc = MemoryLocation::get(I);
-    ModRefInfo MR = getModRefInfo(Call2, DefLoc);
+    ModRefInfo MR = getModRefInfo(Call, DefLoc);
     if (isModOrRefSet(MR))
       return setModAndRef(MR);
   }
   return ModRefInfo::NoModRef;
 }
 
-ModRefInfo AAResults::getModRefInfo(const CallBase *Call,
+ModRefInfo AAResults::getModRefInfo(ImmutableCallSite CS,
                                     const MemoryLocation &Loc) {
   ModRefInfo Result = ModRefInfo::ModRef;
 
   for (const auto &AA : AAs) {
-    Result = intersectModRef(Result, AA->getModRefInfo(Call, Loc));
+    Result = intersectModRef(Result, AA->getModRefInfo(CS, Loc));
 
     // Early-exit the moment we reach the bottom of the lattice.
     if (isNoModRef(Result))
@@ -165,7 +167,7 @@ ModRefInfo AAResults::getModRefInfo(const CallBase *Call,
 
   // Try to refine the mod-ref info further using other API entry points to the
   // aggregate set of AA results.
-  auto MRB = getModRefBehavior(Call);
+  auto MRB = getModRefBehavior(CS);
   if (MRB == FMRB_DoesNotAccessMemory ||
       MRB == FMRB_OnlyAccessesInaccessibleMem)
     return ModRefInfo::NoModRef;
@@ -179,16 +181,15 @@ ModRefInfo AAResults::getModRefInfo(const CallBase *Call,
     bool IsMustAlias = true;
     ModRefInfo AllArgsMask = ModRefInfo::NoModRef;
     if (doesAccessArgPointees(MRB)) {
-      for (auto AI = Call->arg_begin(), AE = Call->arg_end(); AI != AE; ++AI) {
+      for (auto AI = CS.arg_begin(), AE = CS.arg_end(); AI != AE; ++AI) {
         const Value *Arg = *AI;
         if (!Arg->getType()->isPointerTy())
           continue;
-        unsigned ArgIdx = std::distance(Call->arg_begin(), AI);
-        MemoryLocation ArgLoc =
-            MemoryLocation::getForArgument(Call, ArgIdx, TLI);
+        unsigned ArgIdx = std::distance(CS.arg_begin(), AI);
+        MemoryLocation ArgLoc = MemoryLocation::getForArgument(CS, ArgIdx, TLI);
         AliasResult ArgAlias = alias(ArgLoc, Loc);
         if (ArgAlias != NoAlias) {
-          ModRefInfo ArgMask = getArgModRefInfo(Call, ArgIdx);
+          ModRefInfo ArgMask = getArgModRefInfo(CS, ArgIdx);
           AllArgsMask = unionModRef(AllArgsMask, ArgMask);
         }
         // Conservatively clear IsMustAlias unless only MustAlias is found.
@@ -212,12 +213,12 @@ ModRefInfo AAResults::getModRefInfo(const CallBase *Call,
   return Result;
 }
 
-ModRefInfo AAResults::getModRefInfo(const CallBase *Call1,
-                                    const CallBase *Call2) {
+ModRefInfo AAResults::getModRefInfo(ImmutableCallSite CS1,
+                                    ImmutableCallSite CS2) {
   ModRefInfo Result = ModRefInfo::ModRef;
 
   for (const auto &AA : AAs) {
-    Result = intersectModRef(Result, AA->getModRefInfo(Call1, Call2));
+    Result = intersectModRef(Result, AA->getModRefInfo(CS1, CS2));
 
     // Early-exit the moment we reach the bottom of the lattice.
     if (isNoModRef(Result))
@@ -227,61 +228,59 @@ ModRefInfo AAResults::getModRefInfo(const CallBase *Call1,
   // Try to refine the mod-ref info further using other API entry points to the
   // aggregate set of AA results.
 
-  // If Call1 or Call2 are readnone, they don't interact.
-  auto Call1B = getModRefBehavior(Call1);
-  if (Call1B == FMRB_DoesNotAccessMemory)
+  // If CS1 or CS2 are readnone, they don't interact.
+  auto CS1B = getModRefBehavior(CS1);
+  if (CS1B == FMRB_DoesNotAccessMemory)
     return ModRefInfo::NoModRef;
 
-  auto Call2B = getModRefBehavior(Call2);
-  if (Call2B == FMRB_DoesNotAccessMemory)
+  auto CS2B = getModRefBehavior(CS2);
+  if (CS2B == FMRB_DoesNotAccessMemory)
     return ModRefInfo::NoModRef;
 
   // If they both only read from memory, there is no dependence.
-  if (onlyReadsMemory(Call1B) && onlyReadsMemory(Call2B))
+  if (onlyReadsMemory(CS1B) && onlyReadsMemory(CS2B))
     return ModRefInfo::NoModRef;
 
-  // If Call1 only reads memory, the only dependence on Call2 can be
-  // from Call1 reading memory written by Call2.
-  if (onlyReadsMemory(Call1B))
+  // If CS1 only reads memory, the only dependence on CS2 can be
+  // from CS1 reading memory written by CS2.
+  if (onlyReadsMemory(CS1B))
     Result = clearMod(Result);
-  else if (doesNotReadMemory(Call1B))
+  else if (doesNotReadMemory(CS1B))
     Result = clearRef(Result);
 
-  // If Call2 only access memory through arguments, accumulate the mod/ref
-  // information from Call1's references to the memory referenced by
-  // Call2's arguments.
-  if (onlyAccessesArgPointees(Call2B)) {
-    if (!doesAccessArgPointees(Call2B))
+  // If CS2 only access memory through arguments, accumulate the mod/ref
+  // information from CS1's references to the memory referenced by
+  // CS2's arguments.
+  if (onlyAccessesArgPointees(CS2B)) {
+    if (!doesAccessArgPointees(CS2B))
       return ModRefInfo::NoModRef;
     ModRefInfo R = ModRefInfo::NoModRef;
     bool IsMustAlias = true;
-    for (auto I = Call2->arg_begin(), E = Call2->arg_end(); I != E; ++I) {
+    for (auto I = CS2.arg_begin(), E = CS2.arg_end(); I != E; ++I) {
       const Value *Arg = *I;
       if (!Arg->getType()->isPointerTy())
         continue;
-      unsigned Call2ArgIdx = std::distance(Call2->arg_begin(), I);
-      auto Call2ArgLoc =
-          MemoryLocation::getForArgument(Call2, Call2ArgIdx, TLI);
+      unsigned CS2ArgIdx = std::distance(CS2.arg_begin(), I);
+      auto CS2ArgLoc = MemoryLocation::getForArgument(CS2, CS2ArgIdx, TLI);
 
-      // ArgModRefC2 indicates what Call2 might do to Call2ArgLoc, and the
-      // dependence of Call1 on that location is the inverse:
-      // - If Call2 modifies location, dependence exists if Call1 reads or
-      //   writes.
-      // - If Call2 only reads location, dependence exists if Call1 writes.
-      ModRefInfo ArgModRefC2 = getArgModRefInfo(Call2, Call2ArgIdx);
+      // ArgModRefCS2 indicates what CS2 might do to CS2ArgLoc, and the
+      // dependence of CS1 on that location is the inverse:
+      // - If CS2 modifies location, dependence exists if CS1 reads or writes.
+      // - If CS2 only reads location, dependence exists if CS1 writes.
+      ModRefInfo ArgModRefCS2 = getArgModRefInfo(CS2, CS2ArgIdx);
       ModRefInfo ArgMask = ModRefInfo::NoModRef;
-      if (isModSet(ArgModRefC2))
+      if (isModSet(ArgModRefCS2))
         ArgMask = ModRefInfo::ModRef;
-      else if (isRefSet(ArgModRefC2))
+      else if (isRefSet(ArgModRefCS2))
         ArgMask = ModRefInfo::Mod;
 
-      // ModRefC1 indicates what Call1 might do to Call2ArgLoc, and we use
+      // ModRefCS1 indicates what CS1 might do to CS2ArgLoc, and we use
       // above ArgMask to update dependence info.
-      ModRefInfo ModRefC1 = getModRefInfo(Call1, Call2ArgLoc);
-      ArgMask = intersectModRef(ArgMask, ModRefC1);
+      ModRefInfo ModRefCS1 = getModRefInfo(CS1, CS2ArgLoc);
+      ArgMask = intersectModRef(ArgMask, ModRefCS1);
 
       // Conservatively clear IsMustAlias unless only MustAlias is found.
-      IsMustAlias &= isMustSet(ModRefC1);
+      IsMustAlias &= isMustSet(ModRefCS1);
 
       R = intersectModRef(unionModRef(R, ArgMask), Result);
       if (R == Result) {
@@ -299,32 +298,31 @@ ModRefInfo AAResults::getModRefInfo(const CallBase *Call1,
     return IsMustAlias ? setMust(R) : clearMust(R);
   }
 
-  // If Call1 only accesses memory through arguments, check if Call2 references
-  // any of the memory referenced by Call1's arguments. If not, return NoModRef.
-  if (onlyAccessesArgPointees(Call1B)) {
-    if (!doesAccessArgPointees(Call1B))
+  // If CS1 only accesses memory through arguments, check if CS2 references
+  // any of the memory referenced by CS1's arguments. If not, return NoModRef.
+  if (onlyAccessesArgPointees(CS1B)) {
+    if (!doesAccessArgPointees(CS1B))
       return ModRefInfo::NoModRef;
     ModRefInfo R = ModRefInfo::NoModRef;
     bool IsMustAlias = true;
-    for (auto I = Call1->arg_begin(), E = Call1->arg_end(); I != E; ++I) {
+    for (auto I = CS1.arg_begin(), E = CS1.arg_end(); I != E; ++I) {
       const Value *Arg = *I;
       if (!Arg->getType()->isPointerTy())
         continue;
-      unsigned Call1ArgIdx = std::distance(Call1->arg_begin(), I);
-      auto Call1ArgLoc =
-          MemoryLocation::getForArgument(Call1, Call1ArgIdx, TLI);
+      unsigned CS1ArgIdx = std::distance(CS1.arg_begin(), I);
+      auto CS1ArgLoc = MemoryLocation::getForArgument(CS1, CS1ArgIdx, TLI);
 
-      // ArgModRefC1 indicates what Call1 might do to Call1ArgLoc; if Call1
-      // might Mod Call1ArgLoc, then we care about either a Mod or a Ref by
-      // Call2. If Call1 might Ref, then we care only about a Mod by Call2.
-      ModRefInfo ArgModRefC1 = getArgModRefInfo(Call1, Call1ArgIdx);
-      ModRefInfo ModRefC2 = getModRefInfo(Call2, Call1ArgLoc);
-      if ((isModSet(ArgModRefC1) && isModOrRefSet(ModRefC2)) ||
-          (isRefSet(ArgModRefC1) && isModSet(ModRefC2)))
-        R = intersectModRef(unionModRef(R, ArgModRefC1), Result);
+      // ArgModRefCS1 indicates what CS1 might do to CS1ArgLoc; if CS1 might
+      // Mod CS1ArgLoc, then we care about either a Mod or a Ref by CS2. If
+      // CS1 might Ref, then we care only about a Mod by CS2.
+      ModRefInfo ArgModRefCS1 = getArgModRefInfo(CS1, CS1ArgIdx);
+      ModRefInfo ModRefCS2 = getModRefInfo(CS2, CS1ArgLoc);
+      if ((isModSet(ArgModRefCS1) && isModOrRefSet(ModRefCS2)) ||
+          (isRefSet(ArgModRefCS1) && isModSet(ModRefCS2)))
+        R = intersectModRef(unionModRef(R, ArgModRefCS1), Result);
 
       // Conservatively clear IsMustAlias unless only MustAlias is found.
-      IsMustAlias &= isMustSet(ModRefC2);
+      IsMustAlias &= isMustSet(ModRefCS2);
 
       if (R == Result) {
         // On early exit, not all args were checked, cannot set Must.
@@ -344,11 +342,11 @@ ModRefInfo AAResults::getModRefInfo(const CallBase *Call1,
   return Result;
 }
 
-FunctionModRefBehavior AAResults::getModRefBehavior(const CallBase *Call) {
+FunctionModRefBehavior AAResults::getModRefBehavior(ImmutableCallSite CS) {
   FunctionModRefBehavior Result = FMRB_UnknownModRefBehavior;
 
   for (const auto &AA : AAs) {
-    Result = FunctionModRefBehavior(Result & AA->getModRefBehavior(Call));
+    Result = FunctionModRefBehavior(Result & AA->getModRefBehavior(CS));
 
     // Early-exit the moment we reach the bottom of the lattice.
     if (Result == FMRB_DoesNotAccessMemory)
@@ -560,8 +558,8 @@ ModRefInfo AAResults::callCapturesBefore(const Instruction *I,
       isa<Constant>(Object))
     return ModRefInfo::ModRef;
 
-  const auto *Call = dyn_cast<CallBase>(I);
-  if (!Call || Call == Object)
+  ImmutableCallSite CS(I);
+  if (!CS.getInstruction() || CS.getInstruction() == Object)
     return ModRefInfo::ModRef;
 
   if (PointerMayBeCapturedBefore(Object, /* ReturnCaptures */ true,
@@ -574,14 +572,14 @@ ModRefInfo AAResults::callCapturesBefore(const Instruction *I,
   ModRefInfo R = ModRefInfo::NoModRef;
   bool IsMustAlias = true;
   // Set flag only if no May found and all operands processed.
-  for (auto CI = Call->data_operands_begin(), CE = Call->data_operands_end();
+  for (auto CI = CS.data_operands_begin(), CE = CS.data_operands_end();
        CI != CE; ++CI, ++ArgNo) {
     // Only look at the no-capture or byval pointer arguments.  If this
     // pointer were passed to arguments that were neither of these, then it
     // couldn't be no-capture.
     if (!(*CI)->getType()->isPointerTy() ||
-        (!Call->doesNotCapture(ArgNo) && ArgNo < Call->getNumArgOperands() &&
-         !Call->isByValArgument(ArgNo)))
+        (!CS.doesNotCapture(ArgNo) &&
+         ArgNo < CS.getNumArgOperands() && !CS.isByValArgument(ArgNo)))
       continue;
 
     AliasResult AR = alias(MemoryLocation(*CI), MemoryLocation(Object));
@@ -593,9 +591,9 @@ ModRefInfo AAResults::callCapturesBefore(const Instruction *I,
       IsMustAlias = false;
     if (AR == NoAlias)
       continue;
-    if (Call->doesNotAccessMemory(ArgNo))
+    if (CS.doesNotAccessMemory(ArgNo))
       continue;
-    if (Call->onlyReadsMemory(ArgNo)) {
+    if (CS.onlyReadsMemory(ArgNo)) {
       R = ModRefInfo::Ref;
       continue;
     }
@@ -777,8 +775,8 @@ AAResults llvm::createLegacyPMAAResults(Pass &P, Function &F,
 }
 
 bool llvm::isNoAliasCall(const Value *V) {
-  if (const auto *Call = dyn_cast<CallBase>(V))
-    return Call->hasRetAttr(Attribute::NoAlias);
+  if (auto CS = ImmutableCallSite(V))
+    return CS.hasRetAttr(Attribute::NoAlias);
   return false;
 }
 

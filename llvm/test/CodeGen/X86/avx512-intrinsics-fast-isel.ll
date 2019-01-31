@@ -169,8 +169,7 @@ entry:
 define <16 x float> @test_mm512_mask_shuffle_f32x4(<16 x float> %__W, i16 zeroext %__U, <16 x float> %__A, <16 x float> %__B) {
 ; X86-LABEL: test_mm512_mask_shuffle_f32x4:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vshuff32x4 {{.*#+}} zmm0 {%k1} = zmm1[0,1,2,3,4,5,6,7],zmm2[0,1,2,3,0,1,2,3]
 ; X86-NEXT:    retl
 ;
@@ -189,8 +188,7 @@ entry:
 define <16 x float> @test_mm512_maskz_shuffle_f32x4(i16 zeroext %__U, <16 x float> %__A, <16 x float> %__B) {
 ; X86-LABEL: test_mm512_maskz_shuffle_f32x4:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vshuff32x4 {{.*#+}} zmm0 {%k1} {z} = zmm0[0,1,2,3,4,5,6,7],zmm1[0,1,2,3,0,1,2,3]
 ; X86-NEXT:    retl
 ;
@@ -269,8 +267,7 @@ entry:
 define <8 x i64> @test_mm512_mask_shuffle_i32x4(<8 x i64> %__W, i16 zeroext %__U, <8 x i64> %__A, <8 x i64> %__B) local_unnamed_addr #0 {
 ; X86-LABEL: test_mm512_mask_shuffle_i32x4:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vshufi32x4 {{.*#+}} zmm0 {%k1} = zmm1[0,1,2,3,4,5,6,7],zmm2[0,1,2,3,0,1,2,3]
 ; X86-NEXT:    retl
 ;
@@ -292,8 +289,7 @@ entry:
 define <8 x i64> @test_mm512_maskz_shuffle_i32x4(i16 zeroext %__U, <8 x i64> %__A, <8 x i64> %__B) local_unnamed_addr #0 {
 ; X86-LABEL: test_mm512_maskz_shuffle_i32x4:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vshufi32x4 {{.*#+}} zmm0 {%k1} {z} = zmm0[0,1,2,3,4,5,6,7],zmm1[0,1,2,3,0,1,2,3]
 ; X86-NEXT:    retl
 ;
@@ -381,8 +377,7 @@ entry:
 define zeroext i16 @test_mm512_mask_testn_epi32_mask(i16 zeroext %__U, <8 x i64> %__A, <8 x i64> %__B) {
 ; X86-LABEL: test_mm512_mask_testn_epi32_mask:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vptestnmd %zmm0, %zmm1, %k0 {%k1}
 ; X86-NEXT:    kmovw %k0, %eax
 ; X86-NEXT:    movzwl %ax, %eax
@@ -453,8 +448,7 @@ entry:
 define zeroext i16 @test_mm512_mask_test_epi32_mask(i16 zeroext %__U, <8 x i64> %__A, <8 x i64> %__B) {
 ; X86-LABEL: test_mm512_mask_test_epi32_mask:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vptestmd %zmm0, %zmm1, %k0 {%k1}
 ; X86-NEXT:    kmovw %k0, %eax
 ; X86-NEXT:    movzwl %ax, %eax
@@ -511,8 +505,7 @@ define <8 x i64> @test_mm512_mask_set1_epi32(<8 x i64> %__O, i16 zeroext %__M, i
 ; X86-LABEL: test_mm512_mask_set1_epi32:
 ; X86:       # %bb.0: # %entry
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %ecx
-; X86-NEXT:    kmovw %ecx, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vpbroadcastd %eax, %zmm0 {%k1}
 ; X86-NEXT:    retl
 ;
@@ -535,8 +528,7 @@ define <8 x i64> @test_mm512_maskz_set1_epi32(i16 zeroext %__M, i32 %__A)  {
 ; X86-LABEL: test_mm512_maskz_set1_epi32:
 ; X86:       # %bb.0: # %entry
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %ecx
-; X86-NEXT:    kmovw %ecx, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vpbroadcastd %eax, %zmm0 {%k1} {z}
 ; X86-NEXT:    retl
 ;
@@ -615,8 +607,7 @@ define <8 x i64> @test_mm512_broadcastd_epi32(<2 x i64> %a0) {
 define <8 x i64> @test_mm512_mask_broadcastd_epi32(<8 x i64> %a0, i16 %a1, <2 x i64> %a2) {
 ; X86-LABEL: test_mm512_mask_broadcastd_epi32:
 ; X86:       # %bb.0:
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vpbroadcastd %xmm1, %zmm0 {%k1}
 ; X86-NEXT:    retl
 ;
@@ -637,8 +628,7 @@ define <8 x i64> @test_mm512_mask_broadcastd_epi32(<8 x i64> %a0, i16 %a1, <2 x 
 define <8 x i64> @test_mm512_maskz_broadcastd_epi32(i16 %a0, <2 x i64> %a1) {
 ; X86-LABEL: test_mm512_maskz_broadcastd_epi32:
 ; X86:       # %bb.0:
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vpbroadcastd %xmm0, %zmm0 {%k1} {z}
 ; X86-NEXT:    retl
 ;
@@ -761,8 +751,7 @@ define <16 x float> @test_mm512_broadcastss_ps(<4 x float> %a0) {
 define <16 x float> @test_mm512_mask_broadcastss_ps(<16 x float> %a0, i16 %a1, <4 x float> %a2) {
 ; X86-LABEL: test_mm512_mask_broadcastss_ps:
 ; X86:       # %bb.0:
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vbroadcastss %xmm1, %zmm0 {%k1}
 ; X86-NEXT:    retl
 ;
@@ -780,8 +769,7 @@ define <16 x float> @test_mm512_mask_broadcastss_ps(<16 x float> %a0, i16 %a1, <
 define <16 x float> @test_mm512_maskz_broadcastss_ps(i16 %a0, <4 x float> %a1) {
 ; X86-LABEL: test_mm512_maskz_broadcastss_ps:
 ; X86:       # %bb.0:
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vbroadcastss %xmm0, %zmm0 {%k1} {z}
 ; X86-NEXT:    retl
 ;
@@ -855,8 +843,7 @@ define <16 x float> @test_mm512_movehdup_ps(<16 x float> %a0) {
 define <16 x float> @test_mm512_mask_movehdup_ps(<16 x float> %a0, i16 %a1, <16 x float> %a2) {
 ; X86-LABEL: test_mm512_mask_movehdup_ps:
 ; X86:       # %bb.0:
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vmovshdup {{.*#+}} zmm0 {%k1} = zmm1[1,1,3,3,5,5,7,7,9,9,11,11,13,13,15,15]
 ; X86-NEXT:    retl
 ;
@@ -874,8 +861,7 @@ define <16 x float> @test_mm512_mask_movehdup_ps(<16 x float> %a0, i16 %a1, <16 
 define <16 x float> @test_mm512_maskz_movehdup_ps(i16 %a0, <16 x float> %a1) {
 ; X86-LABEL: test_mm512_maskz_movehdup_ps:
 ; X86:       # %bb.0:
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vmovshdup {{.*#+}} zmm0 {%k1} {z} = zmm0[1,1,3,3,5,5,7,7,9,9,11,11,13,13,15,15]
 ; X86-NEXT:    retl
 ;
@@ -902,8 +888,7 @@ define <16 x float> @test_mm512_moveldup_ps(<16 x float> %a0) {
 define <16 x float> @test_mm512_mask_moveldup_ps(<16 x float> %a0, i16 %a1, <16 x float> %a2) {
 ; X86-LABEL: test_mm512_mask_moveldup_ps:
 ; X86:       # %bb.0:
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vmovsldup {{.*#+}} zmm0 {%k1} = zmm1[0,0,2,2,4,4,6,6,8,8,10,10,12,12,14,14]
 ; X86-NEXT:    retl
 ;
@@ -921,8 +906,7 @@ define <16 x float> @test_mm512_mask_moveldup_ps(<16 x float> %a0, i16 %a1, <16 
 define <16 x float> @test_mm512_maskz_moveldup_ps(i16 %a0, <16 x float> %a1) {
 ; X86-LABEL: test_mm512_maskz_moveldup_ps:
 ; X86:       # %bb.0:
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vmovsldup {{.*#+}} zmm0 {%k1} {z} = zmm0[0,0,2,2,4,4,6,6,8,8,10,10,12,12,14,14]
 ; X86-NEXT:    retl
 ;
@@ -996,8 +980,7 @@ define <16 x float> @test_mm512_permute_ps(<16 x float> %a0) {
 define <16 x float> @test_mm512_mask_permute_ps(<16 x float> %a0, i16 %a1, <16 x float> %a2) {
 ; X86-LABEL: test_mm512_mask_permute_ps:
 ; X86:       # %bb.0:
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vpermilps {{.*#+}} zmm0 {%k1} = zmm1[2,0,0,0,6,4,4,4,10,8,8,8,14,12,12,12]
 ; X86-NEXT:    retl
 ;
@@ -1015,8 +998,7 @@ define <16 x float> @test_mm512_mask_permute_ps(<16 x float> %a0, i16 %a1, <16 x
 define <16 x float> @test_mm512_maskz_permute_ps(i16 %a0, <16 x float> %a1) {
 ; X86-LABEL: test_mm512_maskz_permute_ps:
 ; X86:       # %bb.0:
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vpermilps {{.*#+}} zmm0 {%k1} {z} = zmm0[2,0,0,0,6,4,4,4,10,8,8,8,14,12,12,12]
 ; X86-NEXT:    retl
 ;
@@ -1139,8 +1121,7 @@ define <8 x i64> @test_mm512_shuffle_epi32(<8 x i64> %a0) {
 define <8 x i64> @test_mm512_mask_shuffle_epi32(<8 x i64> %a0, i16 %a1, <8 x i64> %a2) {
 ; X86-LABEL: test_mm512_mask_shuffle_epi32:
 ; X86:       # %bb.0:
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vpshufd {{.*#+}} zmm0 {%k1} = zmm1[1,0,0,0,5,4,4,4,9,8,8,8,13,12,12,12]
 ; X86-NEXT:    retl
 ;
@@ -1161,8 +1142,7 @@ define <8 x i64> @test_mm512_mask_shuffle_epi32(<8 x i64> %a0, i16 %a1, <8 x i64
 define <8 x i64> @test_mm512_maskz_shuffle_epi32(i16 %a0, <8 x i64> %a1) {
 ; X86-LABEL: test_mm512_maskz_shuffle_epi32:
 ; X86:       # %bb.0:
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vpshufd {{.*#+}} zmm0 {%k1} {z} = zmm0[1,0,0,0,5,4,4,4,9,8,8,8,13,12,12,12]
 ; X86-NEXT:    retl
 ;
@@ -1241,8 +1221,7 @@ define <8 x i64> @test_mm512_unpackhi_epi32(<8 x i64> %a0, <8 x i64> %a1) {
 define <8 x i64> @test_mm512_mask_unpackhi_epi32(<8 x i64> %a0, i16 %a1, <8 x i64> %a2, <8 x i64> %a3) {
 ; X86-LABEL: test_mm512_mask_unpackhi_epi32:
 ; X86:       # %bb.0:
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vpunpckhdq {{.*#+}} zmm0 {%k1} = zmm1[2],zmm2[2],zmm1[3],zmm2[3],zmm1[6],zmm2[6],zmm1[7],zmm2[7],zmm1[10],zmm2[10],zmm1[11],zmm2[11],zmm1[14],zmm2[14],zmm1[15],zmm2[15]
 ; X86-NEXT:    retl
 ;
@@ -1264,8 +1243,7 @@ define <8 x i64> @test_mm512_mask_unpackhi_epi32(<8 x i64> %a0, i16 %a1, <8 x i6
 define <8 x i64> @test_mm512_maskz_unpackhi_epi32(i16 %a0, <8 x i64> %a1, <8 x i64> %a2) {
 ; X86-LABEL: test_mm512_maskz_unpackhi_epi32:
 ; X86:       # %bb.0:
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vpunpckhdq {{.*#+}} zmm0 {%k1} {z} = zmm0[2],zmm1[2],zmm0[3],zmm1[3],zmm0[6],zmm1[6],zmm0[7],zmm1[7],zmm0[10],zmm1[10],zmm0[11],zmm1[11],zmm0[14],zmm1[14],zmm0[15],zmm1[15]
 ; X86-NEXT:    retl
 ;
@@ -1389,8 +1367,7 @@ define <16 x float> @test_mm512_unpackhi_ps(<16 x float> %a0, <16 x float> %a1) 
 define <16 x float> @test_mm512_mask_unpackhi_ps(<16 x float> %a0, i16 %a1, <16 x float> %a2, <16 x float> %a3) {
 ; X86-LABEL: test_mm512_mask_unpackhi_ps:
 ; X86:       # %bb.0:
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vunpckhps {{.*#+}} zmm0 {%k1} = zmm1[2],zmm2[2],zmm1[3],zmm2[3],zmm1[6],zmm2[6],zmm1[7],zmm2[7],zmm1[10],zmm2[10],zmm1[11],zmm2[11],zmm1[14],zmm2[14],zmm1[15],zmm2[15]
 ; X86-NEXT:    retl
 ;
@@ -1408,8 +1385,7 @@ define <16 x float> @test_mm512_mask_unpackhi_ps(<16 x float> %a0, i16 %a1, <16 
 define <16 x float> @test_mm512_maskz_unpackhi_ps(i16 %a0, <16 x float> %a1, <16 x float> %a2) {
 ; X86-LABEL: test_mm512_maskz_unpackhi_ps:
 ; X86:       # %bb.0:
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vunpckhps {{.*#+}} zmm0 {%k1} {z} = zmm0[2],zmm1[2],zmm0[3],zmm1[3],zmm0[6],zmm1[6],zmm0[7],zmm1[7],zmm0[10],zmm1[10],zmm0[11],zmm1[11],zmm0[14],zmm1[14],zmm0[15],zmm1[15]
 ; X86-NEXT:    retl
 ;
@@ -1439,8 +1415,7 @@ define <8 x i64> @test_mm512_unpacklo_epi32(<8 x i64> %a0, <8 x i64> %a1) {
 define <8 x i64> @test_mm512_mask_unpacklo_epi32(<8 x i64> %a0, i16 %a1, <8 x i64> %a2, <8 x i64> %a3) {
 ; X86-LABEL: test_mm512_mask_unpacklo_epi32:
 ; X86:       # %bb.0:
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vpunpckldq {{.*#+}} zmm0 {%k1} = zmm1[0],zmm2[0],zmm1[1],zmm2[1],zmm1[4],zmm2[4],zmm1[5],zmm2[5],zmm1[8],zmm2[8],zmm1[9],zmm2[9],zmm1[12],zmm2[12],zmm1[13],zmm2[13]
 ; X86-NEXT:    retl
 ;
@@ -1462,8 +1437,7 @@ define <8 x i64> @test_mm512_mask_unpacklo_epi32(<8 x i64> %a0, i16 %a1, <8 x i6
 define <8 x i64> @test_mm512_maskz_unpacklo_epi32(i16 %a0, <8 x i64> %a1, <8 x i64> %a2) {
 ; X86-LABEL: test_mm512_maskz_unpacklo_epi32:
 ; X86:       # %bb.0:
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vpunpckldq {{.*#+}} zmm0 {%k1} {z} = zmm0[0],zmm1[0],zmm0[1],zmm1[1],zmm0[4],zmm1[4],zmm0[5],zmm1[5],zmm0[8],zmm1[8],zmm0[9],zmm1[9],zmm0[12],zmm1[12],zmm0[13],zmm1[13]
 ; X86-NEXT:    retl
 ;
@@ -1587,8 +1561,7 @@ define <16 x float> @test_mm512_unpacklo_ps(<16 x float> %a0, <16 x float> %a1) 
 define <16 x float> @test_mm512_mask_unpacklo_ps(<16 x float> %a0, i16 %a1, <16 x float> %a2, <16 x float> %a3) {
 ; X86-LABEL: test_mm512_mask_unpacklo_ps:
 ; X86:       # %bb.0:
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vunpcklps {{.*#+}} zmm0 {%k1} = zmm1[0],zmm2[0],zmm1[1],zmm2[1],zmm1[4],zmm2[4],zmm1[5],zmm2[5],zmm1[8],zmm2[8],zmm1[9],zmm2[9],zmm1[12],zmm2[12],zmm1[13],zmm2[13]
 ; X86-NEXT:    retl
 ;
@@ -1606,8 +1579,7 @@ define <16 x float> @test_mm512_mask_unpacklo_ps(<16 x float> %a0, i16 %a1, <16 
 define <16 x float> @test_mm512_maskz_unpacklo_ps(i16 %a0, <16 x float> %a1, <16 x float> %a2) {
 ; X86-LABEL: test_mm512_maskz_unpacklo_ps:
 ; X86:       # %bb.0:
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vunpcklps {{.*#+}} zmm0 {%k1} {z} = zmm0[0],zmm1[0],zmm0[1],zmm1[1],zmm0[4],zmm1[4],zmm0[5],zmm1[5],zmm0[8],zmm1[8],zmm0[9],zmm1[9],zmm0[12],zmm1[12],zmm0[13],zmm1[13]
 ; X86-NEXT:    retl
 ;
@@ -2006,8 +1978,7 @@ entry:
 define <2 x i64> @test_mm512_mask_cvtepi32_epi8(<2 x i64> %__O, i16 zeroext %__M, <8 x i64> %__A) {
 ; X86-LABEL: test_mm512_mask_cvtepi32_epi8:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vpmovdb %zmm1, %xmm0 {%k1}
 ; X86-NEXT:    vzeroupper
 ; X86-NEXT:    retl
@@ -2029,8 +2000,7 @@ entry:
 define <2 x i64> @test_mm512_maskz_cvtepi32_epi8(i16 zeroext %__M, <8 x i64> %__A) {
 ; X86-LABEL: test_mm512_maskz_cvtepi32_epi8:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vpmovdb %zmm0, %xmm0 {%k1} {z}
 ; X86-NEXT:    vzeroupper
 ; X86-NEXT:    retl
@@ -2179,8 +2149,7 @@ declare <16 x i32> @llvm.x86.avx512.pternlog.d.512(<16 x i32>, <16 x i32>, <16 x
 define <8 x i64> @test_mm512_mask_ternarylogic_epi32(<8 x i64> %__A, i16 zeroext %__U, <8 x i64> %__B, <8 x i64> %__C) {
 ; X86-LABEL: test_mm512_mask_ternarylogic_epi32:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vpternlogd $4, %zmm2, %zmm1, %zmm0 {%k1}
 ; X86-NEXT:    retl
 ;
@@ -2203,8 +2172,7 @@ entry:
 define <8 x i64> @test_mm512_maskz_ternarylogic_epi32(i16 zeroext %__U, <8 x i64> %__A, <8 x i64> %__B, <8 x i64> %__C) {
 ; X86-LABEL: test_mm512_maskz_ternarylogic_epi32:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vpternlogd $4, %zmm2, %zmm1, %zmm0 {%k1} {z}
 ; X86-NEXT:    retl
 ;
@@ -2281,8 +2249,7 @@ declare <16 x i32> @llvm.x86.avx512.vpermi2var.d.512(<16 x i32>, <16 x i32>, <16
 define <8 x i64> @test_mm512_mask2_permutex2var_epi32(<8 x i64> %__A, <8 x i64> %__I, i16 zeroext %__U, <8 x i64> %__B) {
 ; X86-LABEL: test_mm512_mask2_permutex2var_epi32:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vpermi2d %zmm2, %zmm0, %zmm1 {%k1}
 ; X86-NEXT:    vmovdqa64 %zmm1, %zmm0
 ; X86-NEXT:    retl
@@ -2334,8 +2301,7 @@ declare <16 x float> @llvm.x86.avx512.vpermi2var.ps.512(<16 x float>, <16 x i32>
 define <16 x float> @test_mm512_mask2_permutex2var_ps(<16 x float> %__A, <8 x i64> %__I, i16 zeroext %__U, <16 x float> %__B) {
 ; X86-LABEL: test_mm512_mask2_permutex2var_ps:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vpermi2ps %zmm2, %zmm0, %zmm1 {%k1}
 ; X86-NEXT:    vmovaps %zmm1, %zmm0
 ; X86-NEXT:    retl
@@ -2396,8 +2362,7 @@ entry:
 define <8 x i64> @test_mm512_maskz_permutex2var_epi32(i16 zeroext %__U, <8 x i64> %__A, <8 x i64> %__I, <8 x i64> %__B) {
 ; X86-LABEL: test_mm512_maskz_permutex2var_epi32:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vpermt2d %zmm2, %zmm1, %zmm0 {%k1} {z}
 ; X86-NEXT:    retl
 ;
@@ -2420,8 +2385,7 @@ entry:
 define <8 x i64> @test_mm512_mask_permutex2var_epi32(<8 x i64> %__A, i16 zeroext %__U, <8 x i64> %__I, <8 x i64> %__B) {
 ; X86-LABEL: test_mm512_mask_permutex2var_epi32:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vpermt2d %zmm2, %zmm1, %zmm0 {%k1}
 ; X86-NEXT:    retl
 ;
@@ -2505,8 +2469,7 @@ entry:
 define <16 x float> @test_mm512_mask_permutex2var_ps(<16 x float> %__A, i16 zeroext %__U, <8 x i64> %__I, <16 x float> %__B) {
 ; X86-LABEL: test_mm512_mask_permutex2var_ps:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vpermt2ps %zmm2, %zmm1, %zmm0 {%k1}
 ; X86-NEXT:    retl
 ;
@@ -2526,8 +2489,7 @@ entry:
 define <16 x float> @test_mm512_maskz_permutex2var_ps(i16 zeroext %__U, <16 x float> %__A, <8 x i64> %__I, <16 x float> %__B) {
 ; X86-LABEL: test_mm512_maskz_permutex2var_ps:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vpermt2ps %zmm2, %zmm1, %zmm0 {%k1} {z}
 ; X86-NEXT:    retl
 ;
@@ -3465,8 +3427,7 @@ declare <16 x float> @llvm.x86.avx512.vfmadd.ps.512(<16 x float>, <16 x float>, 
 define <16 x float> @test_mm512_mask_fmadd_round_ps(<16 x float> %__A, i16 zeroext %__U, <16 x float> %__B, <16 x float> %__C) {
 ; X86-LABEL: test_mm512_mask_fmadd_round_ps:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vfmadd132ps {rn-sae}, %zmm1, %zmm2, %zmm0 {%k1}
 ; X86-NEXT:    retl
 ;
@@ -3485,8 +3446,7 @@ entry:
 define <16 x float> @test_mm512_mask3_fmadd_round_ps(<16 x float> %__A, <16 x float> %__B, <16 x float> %__C, i16 zeroext %__U) {
 ; X86-LABEL: test_mm512_mask3_fmadd_round_ps:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vfmadd231ps {rn-sae}, %zmm1, %zmm0, %zmm2 {%k1}
 ; X86-NEXT:    vmovaps %zmm2, %zmm0
 ; X86-NEXT:    retl
@@ -3507,8 +3467,7 @@ entry:
 define <16 x float> @test_mm512_maskz_fmadd_round_ps(i16 zeroext %__U, <16 x float> %__A, <16 x float> %__B, <16 x float> %__C) {
 ; X86-LABEL: test_mm512_maskz_fmadd_round_ps:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vfmadd213ps {rn-sae}, %zmm2, %zmm1, %zmm0 {%k1} {z}
 ; X86-NEXT:    retl
 ;
@@ -3545,8 +3504,7 @@ entry:
 define <16 x float> @test_mm512_mask_fmsub_round_ps(<16 x float> %__A, i16 zeroext %__U, <16 x float> %__B, <16 x float> %__C) {
 ; X86-LABEL: test_mm512_mask_fmsub_round_ps:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vfmsub132ps {rn-sae}, %zmm1, %zmm2, %zmm0 {%k1}
 ; X86-NEXT:    retl
 ;
@@ -3566,8 +3524,7 @@ entry:
 define <16 x float> @test_mm512_maskz_fmsub_round_ps(i16 zeroext %__U, <16 x float> %__A, <16 x float> %__B, <16 x float> %__C) {
 ; X86-LABEL: test_mm512_maskz_fmsub_round_ps:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vfmsub213ps {rn-sae}, %zmm2, %zmm1, %zmm0 {%k1} {z}
 ; X86-NEXT:    retl
 ;
@@ -3605,8 +3562,7 @@ entry:
 define <16 x float> @test_mm512_mask3_fnmadd_round_ps(<16 x float> %__A, <16 x float> %__B, <16 x float> %__C, i16 zeroext %__U) {
 ; X86-LABEL: test_mm512_mask3_fnmadd_round_ps:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vfnmadd231ps {rn-sae}, %zmm1, %zmm0, %zmm2 {%k1}
 ; X86-NEXT:    vmovaps %zmm2, %zmm0
 ; X86-NEXT:    retl
@@ -3628,8 +3584,7 @@ entry:
 define <16 x float> @test_mm512_maskz_fnmadd_round_ps(i16 zeroext %__U, <16 x float> %__A, <16 x float> %__B, <16 x float> %__C) {
 ; X86-LABEL: test_mm512_maskz_fnmadd_round_ps:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vfnmadd213ps {rn-sae}, %zmm2, %zmm1, %zmm0 {%k1} {z}
 ; X86-NEXT:    retl
 ;
@@ -3664,8 +3619,7 @@ entry:
 define <16 x float> @test_mm512_maskz_fnmsub_round_ps(i16 zeroext %__U, <16 x float> %__A, <16 x float> %__B, <16 x float> %__C) {
 ; X86-LABEL: test_mm512_maskz_fnmsub_round_ps:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vfnmsub213ps {rn-sae}, %zmm2, %zmm1, %zmm0 {%k1} {z}
 ; X86-NEXT:    retl
 ;
@@ -3696,8 +3650,7 @@ entry:
 define <16 x float> @test_mm512_mask_fmadd_ps(<16 x float> %__A, i16 zeroext %__U, <16 x float> %__B, <16 x float> %__C) {
 ; X86-LABEL: test_mm512_mask_fmadd_ps:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vfmadd132ps {{.*#+}} zmm0 = (zmm0 * zmm1) + zmm2
 ; X86-NEXT:    retl
 ;
@@ -3716,8 +3669,7 @@ entry:
 define <16 x float> @test_mm512_mask3_fmadd_ps(<16 x float> %__A, <16 x float> %__B, <16 x float> %__C, i16 zeroext %__U) {
 ; X86-LABEL: test_mm512_mask3_fmadd_ps:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vfmadd231ps {{.*#+}} zmm2 = (zmm0 * zmm1) + zmm2
 ; X86-NEXT:    vmovaps %zmm2, %zmm0
 ; X86-NEXT:    retl
@@ -3738,8 +3690,7 @@ entry:
 define <16 x float> @test_mm512_maskz_fmadd_ps(i16 zeroext %__U, <16 x float> %__A, <16 x float> %__B, <16 x float> %__C) {
 ; X86-LABEL: test_mm512_maskz_fmadd_ps:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vfmadd213ps {{.*#+}} zmm0 = (zmm1 * zmm0) + zmm2
 ; X86-NEXT:    retl
 ;
@@ -3776,8 +3727,7 @@ entry:
 define <16 x float> @test_mm512_mask_fmsub_ps(<16 x float> %__A, i16 zeroext %__U, <16 x float> %__B, <16 x float> %__C) {
 ; X86-LABEL: test_mm512_mask_fmsub_ps:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vfmsub132ps {{.*#+}} zmm0 = (zmm0 * zmm1) - zmm2
 ; X86-NEXT:    retl
 ;
@@ -3797,8 +3747,7 @@ entry:
 define <16 x float> @test_mm512_maskz_fmsub_ps(i16 zeroext %__U, <16 x float> %__A, <16 x float> %__B, <16 x float> %__C) {
 ; X86-LABEL: test_mm512_maskz_fmsub_ps:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vfmsub213ps {{.*#+}} zmm0 = (zmm1 * zmm0) - zmm2
 ; X86-NEXT:    retl
 ;
@@ -3836,8 +3785,7 @@ entry:
 define <16 x float> @test_mm512_mask3_fnmadd_ps(<16 x float> %__A, <16 x float> %__B, <16 x float> %__C, i16 zeroext %__U) {
 ; X86-LABEL: test_mm512_mask3_fnmadd_ps:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vfnmadd231ps {{.*#+}} zmm2 = -(zmm0 * zmm1) + zmm2
 ; X86-NEXT:    vmovaps %zmm2, %zmm0
 ; X86-NEXT:    retl
@@ -3859,8 +3807,7 @@ entry:
 define <16 x float> @test_mm512_maskz_fnmadd_ps(i16 zeroext %__U, <16 x float> %__A, <16 x float> %__B, <16 x float> %__C) {
 ; X86-LABEL: test_mm512_maskz_fnmadd_ps:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vfnmadd213ps {{.*#+}} zmm0 = -(zmm1 * zmm0) + zmm2
 ; X86-NEXT:    retl
 ;
@@ -3895,8 +3842,7 @@ entry:
 define <16 x float> @test_mm512_maskz_fnmsub_ps(i16 zeroext %__U, <16 x float> %__A, <16 x float> %__B, <16 x float> %__C) {
 ; X86-LABEL: test_mm512_maskz_fnmsub_ps:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vfnmsub213ps {{.*#+}} zmm0 = -(zmm1 * zmm0) - zmm2
 ; X86-NEXT:    retl
 ;
@@ -4206,8 +4152,7 @@ declare <16 x float> @llvm.x86.avx512.vfmaddsub.ps.512(<16 x float>, <16 x float
 define <16 x float> @test_mm512_mask_fmaddsub_round_ps(<16 x float> %__A, i16 zeroext %__U, <16 x float> %__B, <16 x float> %__C) {
 ; X86-LABEL: test_mm512_mask_fmaddsub_round_ps:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vfmaddsub132ps {rn-sae}, %zmm1, %zmm2, %zmm0 {%k1}
 ; X86-NEXT:    retl
 ;
@@ -4226,8 +4171,7 @@ entry:
 define <16 x float> @test_mm512_mask3_fmaddsub_round_ps(<16 x float> %__A, <16 x float> %__B, <16 x float> %__C, i16 zeroext %__U) {
 ; X86-LABEL: test_mm512_mask3_fmaddsub_round_ps:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vfmaddsub231ps {rn-sae}, %zmm1, %zmm0, %zmm2 {%k1}
 ; X86-NEXT:    vmovaps %zmm2, %zmm0
 ; X86-NEXT:    retl
@@ -4248,8 +4192,7 @@ entry:
 define <16 x float> @test_mm512_maskz_fmaddsub_round_ps(i16 zeroext %__U, <16 x float> %__A, <16 x float> %__B, <16 x float> %__C) {
 ; X86-LABEL: test_mm512_maskz_fmaddsub_round_ps:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vfmaddsub213ps {rn-sae}, %zmm2, %zmm1, %zmm0 {%k1} {z}
 ; X86-NEXT:    retl
 ;
@@ -4286,8 +4229,7 @@ entry:
 define <16 x float> @test_mm512_mask_fmsubadd_round_ps(<16 x float> %__A, i16 zeroext %__U, <16 x float> %__B, <16 x float> %__C) {
 ; X86-LABEL: test_mm512_mask_fmsubadd_round_ps:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vfmsubadd132ps {rn-sae}, %zmm1, %zmm2, %zmm0 {%k1}
 ; X86-NEXT:    retl
 ;
@@ -4307,8 +4249,7 @@ entry:
 define <16 x float> @test_mm512_maskz_fmsubadd_round_ps(i16 zeroext %__U, <16 x float> %__A, <16 x float> %__B, <16 x float> %__C) {
 ; X86-LABEL: test_mm512_maskz_fmsubadd_round_ps:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vfmsubadd213ps {rn-sae}, %zmm2, %zmm1, %zmm0 {%k1} {z}
 ; X86-NEXT:    retl
 ;
@@ -4341,8 +4282,7 @@ entry:
 define <16 x float> @test_mm512_mask_fmaddsub_ps(<16 x float> %__A, i16 zeroext %__U, <16 x float> %__B, <16 x float> %__C) {
 ; X86-LABEL: test_mm512_mask_fmaddsub_ps:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vfmaddsub132ps {{.*#+}} zmm0 = (zmm0 * zmm1) +/- zmm2
 ; X86-NEXT:    retl
 ;
@@ -4364,8 +4304,7 @@ entry:
 define <16 x float> @test_mm512_mask3_fmaddsub_ps(<16 x float> %__A, <16 x float> %__B, <16 x float> %__C, i16 zeroext %__U) {
 ; X86-LABEL: test_mm512_mask3_fmaddsub_ps:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vfmaddsub231ps {{.*#+}} zmm2 = (zmm0 * zmm1) +/- zmm2
 ; X86-NEXT:    vmovaps %zmm2, %zmm0
 ; X86-NEXT:    retl
@@ -4389,8 +4328,7 @@ entry:
 define <16 x float> @test_mm512_maskz_fmaddsub_ps(i16 zeroext %__U, <16 x float> %__A, <16 x float> %__B, <16 x float> %__C) {
 ; X86-LABEL: test_mm512_maskz_fmaddsub_ps:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vfmaddsub213ps {{.*#+}} zmm0 = (zmm1 * zmm0) +/- zmm2
 ; X86-NEXT:    retl
 ;
@@ -4425,8 +4363,7 @@ entry:
 define <16 x float> @test_mm512_mask_fmsubadd_ps(<16 x float> %__A, i16 zeroext %__U, <16 x float> %__B, <16 x float> %__C) {
 ; X86-LABEL: test_mm512_mask_fmsubadd_ps:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vfmsubadd132ps {{.*#+}} zmm0 = (zmm0 * zmm1) -/+ zmm2
 ; X86-NEXT:    retl
 ;
@@ -4448,8 +4385,7 @@ entry:
 define <16 x float> @test_mm512_maskz_fmsubadd_ps(i16 zeroext %__U, <16 x float> %__A, <16 x float> %__B, <16 x float> %__C) {
 ; X86-LABEL: test_mm512_maskz_fmsubadd_ps:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vfmsubadd213ps {{.*#+}} zmm0 = (zmm1 * zmm0) -/+ zmm2
 ; X86-NEXT:    retl
 ;
@@ -4517,8 +4453,7 @@ entry:
 define <16 x float> @test_mm512_mask3_fmsub_round_ps(<16 x float> %__A, <16 x float> %__B, <16 x float> %__C, i16 zeroext %__U) {
 ; X86-LABEL: test_mm512_mask3_fmsub_round_ps:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vfmsub231ps {rn-sae}, %zmm1, %zmm0, %zmm2 {%k1}
 ; X86-NEXT:    vmovaps %zmm2, %zmm0
 ; X86-NEXT:    retl
@@ -4540,8 +4475,7 @@ entry:
 define <16 x float> @test_mm512_mask3_fmsub_ps(<16 x float> %__A, <16 x float> %__B, <16 x float> %__C, i16 zeroext %__U) {
 ; X86-LABEL: test_mm512_mask3_fmsub_ps:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vfmsub231ps {{.*#+}} zmm2 = (zmm0 * zmm1) - zmm2
 ; X86-NEXT:    vmovaps %zmm2, %zmm0
 ; X86-NEXT:    retl
@@ -4611,8 +4545,7 @@ entry:
 define <16 x float> @test_mm512_mask3_fmsubadd_round_ps(<16 x float> %__A, <16 x float> %__B, <16 x float> %__C, i16 zeroext %__U) {
 ; X86-LABEL: test_mm512_mask3_fmsubadd_round_ps:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vfmsubadd231ps {rn-sae}, %zmm1, %zmm0, %zmm2 {%k1}
 ; X86-NEXT:    vmovaps %zmm2, %zmm0
 ; X86-NEXT:    retl
@@ -4634,8 +4567,7 @@ entry:
 define <16 x float> @test_mm512_mask3_fmsubadd_ps(<16 x float> %__A, <16 x float> %__B, <16 x float> %__C, i16 zeroext %__U) {
 ; X86-LABEL: test_mm512_mask3_fmsubadd_ps:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vfmsubadd231ps {{.*#+}} zmm2 = (zmm0 * zmm1) -/+ zmm2
 ; X86-NEXT:    vmovaps %zmm2, %zmm0
 ; X86-NEXT:    retl
@@ -4701,8 +4633,7 @@ entry:
 define <16 x float> @test_mm512_mask_fnmadd_round_ps(<16 x float> %__A, i16 zeroext %__U, <16 x float> %__B, <16 x float> %__C) {
 ; X86-LABEL: test_mm512_mask_fnmadd_round_ps:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vfnmadd132ps {rn-sae}, %zmm1, %zmm2, %zmm0 {%k1}
 ; X86-NEXT:    retl
 ;
@@ -4722,8 +4653,7 @@ entry:
 define <16 x float> @test_mm512_mask_fnmadd_ps(<16 x float> %__A, i16 zeroext %__U, <16 x float> %__B, <16 x float> %__C) {
 ; X86-LABEL: test_mm512_mask_fnmadd_ps:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vfnmadd132ps {{.*#+}} zmm0 = -(zmm0 * zmm1) + zmm2
 ; X86-NEXT:    retl
 ;
@@ -4835,8 +4765,7 @@ entry:
 define <16 x float> @test_mm512_mask_fnmsub_round_ps(<16 x float> %__A, i16 zeroext %__U, <16 x float> %__B, <16 x float> %__C) {
 ; X86-LABEL: test_mm512_mask_fnmsub_round_ps:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vfnmsub132ps {rn-sae}, %zmm1, %zmm2, %zmm0 {%k1}
 ; X86-NEXT:    retl
 ;
@@ -4857,8 +4786,7 @@ entry:
 define <16 x float> @test_mm512_mask3_fnmsub_round_ps(<16 x float> %__A, <16 x float> %__B, <16 x float> %__C, i16 zeroext %__U) {
 ; X86-LABEL: test_mm512_mask3_fnmsub_round_ps:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vfnmsub231ps {rn-sae}, %zmm1, %zmm0, %zmm2 {%k1}
 ; X86-NEXT:    vmovaps %zmm2, %zmm0
 ; X86-NEXT:    retl
@@ -4881,8 +4809,7 @@ entry:
 define <16 x float> @test_mm512_mask_fnmsub_ps(<16 x float> %__A, i16 zeroext %__U, <16 x float> %__B, <16 x float> %__C) {
 ; X86-LABEL: test_mm512_mask_fnmsub_ps:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vfnmsub132ps {{.*#+}} zmm0 = -(zmm0 * zmm1) - zmm2
 ; X86-NEXT:    retl
 ;
@@ -4903,8 +4830,7 @@ entry:
 define <16 x float> @test_mm512_mask3_fnmsub_ps(<16 x float> %__A, <16 x float> %__B, <16 x float> %__C, i16 zeroext %__U) {
 ; X86-LABEL: test_mm512_mask3_fnmsub_ps:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vfnmsub231ps {{.*#+}} zmm2 = -(zmm0 * zmm1) - zmm2
 ; X86-NEXT:    vmovaps %zmm2, %zmm0
 ; X86-NEXT:    retl
@@ -6326,8 +6252,7 @@ define <8 x i64> @test_mm512_mask_expandloadu_epi32(<8 x i64> %__W, i16 zeroext 
 ; X86-LABEL: test_mm512_mask_expandloadu_epi32:
 ; X86:       # %bb.0: # %entry
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %ecx
-; X86-NEXT:    kmovw %ecx, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vpexpandd (%eax), %zmm0 {%k1}
 ; X86-NEXT:    retl
 ;
@@ -6349,8 +6274,7 @@ define <8 x i64> @test_mm512_maskz_expandloadu_epi32(i16 zeroext %__U, i8* reado
 ; X86-LABEL: test_mm512_maskz_expandloadu_epi32:
 ; X86:       # %bb.0: # %entry
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %ecx
-; X86-NEXT:    kmovw %ecx, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vpexpandd (%eax), %zmm0 {%k1} {z}
 ; X86-NEXT:    retl
 ;
@@ -6371,8 +6295,7 @@ define <16 x float> @test_mm512_mask_expandloadu_ps(<16 x float> %__W, i16 zeroe
 ; X86-LABEL: test_mm512_mask_expandloadu_ps:
 ; X86:       # %bb.0: # %entry
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %ecx
-; X86-NEXT:    kmovw %ecx, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vexpandps (%eax), %zmm0 {%k1}
 ; X86-NEXT:    retl
 ;
@@ -6392,8 +6315,7 @@ define <16 x float> @test_mm512_maskz_expandloadu_ps(i16 zeroext %__U, i8* reado
 ; X86-LABEL: test_mm512_maskz_expandloadu_ps:
 ; X86:       # %bb.0: # %entry
 ; X86-NEXT:    movl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %ecx
-; X86-NEXT:    kmovw %ecx, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vexpandps (%eax), %zmm0 {%k1} {z}
 ; X86-NEXT:    retl
 ;
@@ -6458,10 +6380,9 @@ entry:
 define void @test_mm512_mask_compressstoreu_ps(i8* %__P, i16 zeroext %__U, <16 x float> %__A) {
 ; X86-LABEL: test_mm512_mask_compressstoreu_ps:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    movl {{[0-9]+}}(%esp), %ecx
-; X86-NEXT:    kmovw %eax, %k1
-; X86-NEXT:    vcompressps %zmm0, (%ecx) {%k1}
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
+; X86-NEXT:    movl {{[0-9]+}}(%esp), %eax
+; X86-NEXT:    vcompressps %zmm0, (%eax) {%k1}
 ; X86-NEXT:    vzeroupper
 ; X86-NEXT:    retl
 ;
@@ -6481,10 +6402,9 @@ entry:
 define void @test_mm512_mask_compressstoreu_epi32(i8* %__P, i16 zeroext %__U, <8 x i64> %__A) {
 ; X86-LABEL: test_mm512_mask_compressstoreu_epi32:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    movl {{[0-9]+}}(%esp), %ecx
-; X86-NEXT:    kmovw %eax, %k1
-; X86-NEXT:    vpcompressd %zmm0, (%ecx) {%k1}
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
+; X86-NEXT:    movl {{[0-9]+}}(%esp), %eax
+; X86-NEXT:    vpcompressd %zmm0, (%eax) {%k1}
 ; X86-NEXT:    vzeroupper
 ; X86-NEXT:    retl
 ;
@@ -7053,8 +6973,7 @@ entry:
 define i32 @test_mm512_mask_reduce_add_epi32(i16 zeroext %__M, <8 x i64> %__W) {
 ; X86-LABEL: test_mm512_mask_reduce_add_epi32:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vmovdqa32 %zmm0, %zmm0 {%k1} {z}
 ; X86-NEXT:    vextracti64x4 $1, %zmm0, %ymm1
 ; X86-NEXT:    vpaddd %ymm1, %ymm0, %ymm0
@@ -7110,8 +7029,7 @@ entry:
 define i32 @test_mm512_mask_reduce_mul_epi32(i16 zeroext %__M, <8 x i64> %__W) {
 ; X86-LABEL: test_mm512_mask_reduce_mul_epi32:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vpbroadcastd {{.*#+}} zmm1 = [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
 ; X86-NEXT:    vmovdqa32 %zmm0, %zmm1 {%k1}
 ; X86-NEXT:    vextracti64x4 $1, %zmm1, %ymm0
@@ -7169,8 +7087,7 @@ entry:
 define i32 @test_mm512_mask_reduce_and_epi32(i16 zeroext %__M, <8 x i64> %__W) {
 ; X86-LABEL: test_mm512_mask_reduce_and_epi32:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vpternlogd $255, %zmm1, %zmm1, %zmm1
 ; X86-NEXT:    vmovdqa32 %zmm0, %zmm1 {%k1}
 ; X86-NEXT:    vextracti64x4 $1, %zmm1, %ymm0
@@ -7224,8 +7141,7 @@ entry:
 define i32 @test_mm512_mask_reduce_or_epi32(i16 zeroext %__M, <8 x i64> %__W) {
 ; X86-LABEL: test_mm512_mask_reduce_or_epi32:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vmovdqa32 %zmm0, %zmm0 {%k1} {z}
 ; X86-NEXT:    vextracti64x4 $1, %zmm0, %ymm1
 ; X86-NEXT:    vpor %ymm1, %ymm0, %ymm0
@@ -7583,8 +7499,7 @@ define float @test_mm512_mask_reduce_add_ps(i16 zeroext %__M, <16 x float> %__W)
 ; X86:       # %bb.0: # %entry
 ; X86-NEXT:    pushl %eax
 ; X86-NEXT:    .cfi_def_cfa_offset 8
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vmovaps %zmm0, %zmm0 {%k1} {z}
 ; X86-NEXT:    vextractf64x4 $1, %zmm0, %ymm1
 ; X86-NEXT:    vaddps %ymm1, %ymm0, %ymm0
@@ -7640,8 +7555,7 @@ define float @test_mm512_mask_reduce_mul_ps(i16 zeroext %__M, <16 x float> %__W)
 ; X86:       # %bb.0: # %entry
 ; X86-NEXT:    pushl %eax
 ; X86-NEXT:    .cfi_def_cfa_offset 8
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vbroadcastss {{.*#+}} zmm1 = [1.0E+0,1.0E+0,1.0E+0,1.0E+0,1.0E+0,1.0E+0,1.0E+0,1.0E+0,1.0E+0,1.0E+0,1.0E+0,1.0E+0,1.0E+0,1.0E+0,1.0E+0,1.0E+0]
 ; X86-NEXT:    vmovaps %zmm0, %zmm1 {%k1}
 ; X86-NEXT:    vextractf64x4 $1, %zmm1, %ymm0
@@ -8501,8 +8415,7 @@ entry:
 define i32 @test_mm512_mask_reduce_max_epi32(i16 zeroext %__M, <8 x i64> %__W) {
 ; X86-LABEL: test_mm512_mask_reduce_max_epi32:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vpbroadcastd {{.*#+}} zmm1 = [2147483648,2147483648,2147483648,2147483648,2147483648,2147483648,2147483648,2147483648,2147483648,2147483648,2147483648,2147483648,2147483648,2147483648,2147483648,2147483648]
 ; X86-NEXT:    vmovdqa32 %zmm0, %zmm1 {%k1}
 ; X86-NEXT:    vextracti64x4 $1, %zmm1, %ymm0
@@ -8564,8 +8477,7 @@ entry:
 define i32 @test_mm512_mask_reduce_max_epu32(i16 zeroext %__M, <8 x i64> %__W) {
 ; X86-LABEL: test_mm512_mask_reduce_max_epu32:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vmovdqa32 %zmm0, %zmm0 {%k1} {z}
 ; X86-NEXT:    vextracti64x4 $1, %zmm0, %ymm1
 ; X86-NEXT:    vpmaxud %ymm1, %ymm0, %ymm0
@@ -8627,8 +8539,7 @@ define float @test_mm512_mask_reduce_max_ps(i16 zeroext %__M, <16 x float> %__W)
 ; X86:       # %bb.0: # %entry
 ; X86-NEXT:    pushl %eax
 ; X86-NEXT:    .cfi_def_cfa_offset 8
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vbroadcastss {{.*#+}} zmm1 = [-Inf,-Inf,-Inf,-Inf,-Inf,-Inf,-Inf,-Inf,-Inf,-Inf,-Inf,-Inf,-Inf,-Inf,-Inf,-Inf]
 ; X86-NEXT:    vmovaps %zmm0, %zmm1 {%k1}
 ; X86-NEXT:    vextractf64x4 $1, %zmm1, %ymm0
@@ -8684,8 +8595,7 @@ entry:
 define i32 @test_mm512_mask_reduce_min_epi32(i16 zeroext %__M, <8 x i64> %__W) {
 ; X86-LABEL: test_mm512_mask_reduce_min_epi32:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vpbroadcastd {{.*#+}} zmm1 = [2147483647,2147483647,2147483647,2147483647,2147483647,2147483647,2147483647,2147483647,2147483647,2147483647,2147483647,2147483647,2147483647,2147483647,2147483647,2147483647]
 ; X86-NEXT:    vmovdqa32 %zmm0, %zmm1 {%k1}
 ; X86-NEXT:    vextracti64x4 $1, %zmm1, %ymm0
@@ -8747,8 +8657,7 @@ entry:
 define i32 @test_mm512_mask_reduce_min_epu32(i16 zeroext %__M, <8 x i64> %__W) {
 ; X86-LABEL: test_mm512_mask_reduce_min_epu32:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vpternlogd $255, %zmm1, %zmm1, %zmm1
 ; X86-NEXT:    vmovdqa32 %zmm0, %zmm1 {%k1}
 ; X86-NEXT:    vextracti64x4 $1, %zmm1, %ymm0
@@ -8812,8 +8721,7 @@ define float @test_mm512_mask_reduce_min_ps(i16 zeroext %__M, <16 x float> %__W)
 ; X86:       # %bb.0: # %entry
 ; X86-NEXT:    pushl %eax
 ; X86-NEXT:    .cfi_def_cfa_offset 8
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vbroadcastss {{.*#+}} zmm1 = [+Inf,+Inf,+Inf,+Inf,+Inf,+Inf,+Inf,+Inf,+Inf,+Inf,+Inf,+Inf,+Inf,+Inf,+Inf,+Inf]
 ; X86-NEXT:    vmovaps %zmm0, %zmm1 {%k1}
 ; X86-NEXT:    vextractf64x4 $1, %zmm1, %ymm0
@@ -8909,8 +8817,7 @@ entry:
 define <16 x float> @test_mm512_mask_max_ps(<16 x float> %__W, i16 zeroext %__U, <16 x float> %__A, <16 x float> %__B) {
 ; X86-LABEL: test_mm512_mask_max_ps:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vmaxps %zmm2, %zmm1, %zmm0 {%k1}
 ; X86-NEXT:    retl
 ;
@@ -8981,8 +8888,7 @@ entry:
 define <16 x float> @test_mm512_maskz_max_ps(i16 zeroext %__U, <16 x float> %__A, <16 x float> %__B) {
 ; X86-LABEL: test_mm512_maskz_max_ps:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vmaxps %zmm1, %zmm0, %zmm0 {%k1} {z}
 ; X86-NEXT:    retl
 ;
@@ -9001,8 +8907,7 @@ entry:
 define <16 x float> @test_mm512_mask_max_round_ps(<16 x float> %__W, i16 zeroext %__U, <16 x float> %__A, <16 x float> %__B) {
 ; X86-LABEL: test_mm512_mask_max_round_ps:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vmaxps %zmm2, %zmm1, %zmm0 {%k1}
 ; X86-NEXT:    retl
 ;
@@ -9023,8 +8928,7 @@ declare <16 x float> @llvm.x86.avx512.max.ps.512(<16 x float>, <16 x float>, i32
 define <16 x float> @test_mm512_maskz_max_round_ps(i16 zeroext %__U, <16 x float> %__A, <16 x float> %__B) {
 ; X86-LABEL: test_mm512_maskz_max_round_ps:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vmaxps %zmm1, %zmm0, %zmm0 {%k1} {z}
 ; X86-NEXT:    retl
 ;
@@ -9145,8 +9049,7 @@ entry:
 define <16 x float> @test_mm512_mask_min_ps(<16 x float> %__W, i16 zeroext %__U, <16 x float> %__A, <16 x float> %__B) {
 ; X86-LABEL: test_mm512_mask_min_ps:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vminps %zmm2, %zmm1, %zmm0 {%k1}
 ; X86-NEXT:    retl
 ;
@@ -9165,8 +9068,7 @@ entry:
 define <16 x float> @test_mm512_maskz_min_ps(i16 zeroext %__U, <16 x float> %__A, <16 x float> %__B) {
 ; X86-LABEL: test_mm512_maskz_min_ps:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vminps %zmm1, %zmm0, %zmm0 {%k1} {z}
 ; X86-NEXT:    retl
 ;
@@ -9185,8 +9087,7 @@ entry:
 define <16 x float> @test_mm512_mask_min_round_ps(<16 x float> %__W, i16 zeroext %__U, <16 x float> %__A, <16 x float> %__B) {
 ; X86-LABEL: test_mm512_mask_min_round_ps:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vminps %zmm2, %zmm1, %zmm0 {%k1}
 ; X86-NEXT:    retl
 ;
@@ -9207,8 +9108,7 @@ declare <16 x float> @llvm.x86.avx512.min.ps.512(<16 x float>, <16 x float>, i32
 define <16 x float> @test_mm512_maskz_min_round_ps(i16 zeroext %__U, <16 x float> %__A, <16 x float> %__B) {
 ; X86-LABEL: test_mm512_maskz_min_round_ps:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vminps %zmm1, %zmm0, %zmm0 {%k1} {z}
 ; X86-NEXT:    retl
 ;
@@ -9349,8 +9249,7 @@ entry:
 define <16 x float> @test_mm512_mask_sqrt_ps(<16 x float> %__W, i16 zeroext %__U, <16 x float> %__A) {
 ; X86-LABEL: test_mm512_mask_sqrt_ps:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vsqrtps %zmm1, %zmm0 {%k1}
 ; X86-NEXT:    retl
 ;
@@ -9369,8 +9268,7 @@ entry:
 define <16 x float> @test_mm512_maskz_sqrt_ps(i16 zeroext %__U, <16 x float> %__A) {
 ; X86-LABEL: test_mm512_maskz_sqrt_ps:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vsqrtps %zmm0, %zmm0 {%k1} {z}
 ; X86-NEXT:    retl
 ;
@@ -9389,8 +9287,7 @@ entry:
 define <16 x float> @test_mm512_mask_sqrt_round_ps(<16 x float> %__W, i16 zeroext %__U, <16 x float> %__A) {
 ; X86-LABEL: test_mm512_mask_sqrt_round_ps:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vsqrtps {rn-sae}, %zmm1, %zmm0 {%k1}
 ; X86-NEXT:    retl
 ;
@@ -9411,8 +9308,7 @@ declare <16 x float> @llvm.x86.avx512.sqrt.ps.512(<16 x float>, i32)
 define <16 x float> @test_mm512_maskz_sqrt_round_ps(i16 zeroext %__U, <16 x float> %__A) {
 ; X86-LABEL: test_mm512_maskz_sqrt_round_ps:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vsqrtps {rn-sae}, %zmm0, %zmm0 {%k1} {z}
 ; X86-NEXT:    retl
 ;
@@ -9453,8 +9349,7 @@ entry:
 define <8 x i64> @test_mm512_mask_rol_epi32(<8 x i64> %__W, i16 zeroext %__U, <8 x i64> %__A) {
 ; X86-LABEL: test_mm512_mask_rol_epi32:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vprold $5, %zmm1, %zmm0 {%k1}
 ; X86-NEXT:    retl
 ;
@@ -9476,8 +9371,7 @@ entry:
 define <8 x i64> @test_mm512_maskz_rol_epi32(i16 zeroext %__U, <8 x i64> %__A) {
 ; X86-LABEL: test_mm512_maskz_rol_epi32:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vprold $5, %zmm0, %zmm0 {%k1} {z}
 ; X86-NEXT:    retl
 ;
@@ -9561,8 +9455,7 @@ entry:
 define <8 x i64> @test_mm512_mask_rolv_epi32(<8 x i64> %__W, i16 zeroext %__U, <8 x i64> %__A, <8 x i64> %__B) {
 ; X86-LABEL: test_mm512_mask_rolv_epi32:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vprolvd %zmm2, %zmm1, %zmm0 {%k1}
 ; X86-NEXT:    retl
 ;
@@ -9585,8 +9478,7 @@ entry:
 define <8 x i64> @test_mm512_maskz_rolv_epi32(i16 zeroext %__U, <8 x i64> %__A, <8 x i64> %__B) {
 ; X86-LABEL: test_mm512_maskz_rolv_epi32:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vprolvd %zmm1, %zmm0, %zmm0 {%k1} {z}
 ; X86-NEXT:    retl
 ;
@@ -9671,8 +9563,7 @@ entry:
 define <8 x i64> @test_mm512_mask_ror_epi32(<8 x i64> %__W, i16 zeroext %__U, <8 x i64> %__A) {
 ; X86-LABEL: test_mm512_mask_ror_epi32:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vprord $5, %zmm1, %zmm0 {%k1}
 ; X86-NEXT:    retl
 ;
@@ -9694,8 +9585,7 @@ entry:
 define <8 x i64> @test_mm512_maskz_ror_epi32(i16 zeroext %__U, <8 x i64> %__A) {
 ; X86-LABEL: test_mm512_maskz_ror_epi32:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vprord $5, %zmm0, %zmm0 {%k1} {z}
 ; X86-NEXT:    retl
 ;
@@ -9779,8 +9669,7 @@ entry:
 define <8 x i64> @test_mm512_mask_rorv_epi32(<8 x i64> %__W, i16 zeroext %__U, <8 x i64> %__A, <8 x i64> %__B) {
 ; X86-LABEL: test_mm512_mask_rorv_epi32:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vprorvd %zmm2, %zmm1, %zmm0 {%k1}
 ; X86-NEXT:    retl
 ;
@@ -9803,8 +9692,7 @@ entry:
 define <8 x i64> @test_mm512_maskz_rorv_epi32(i16 zeroext %__U, <8 x i64> %__A, <8 x i64> %__B) {
 ; X86-LABEL: test_mm512_maskz_rorv_epi32:
 ; X86:       # %bb.0: # %entry
-; X86-NEXT:    movzwl {{[0-9]+}}(%esp), %eax
-; X86-NEXT:    kmovw %eax, %k1
+; X86-NEXT:    kmovw {{[0-9]+}}(%esp), %k1
 ; X86-NEXT:    vprorvd %zmm1, %zmm0, %zmm0 {%k1} {z}
 ; X86-NEXT:    retl
 ;

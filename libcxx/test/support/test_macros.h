@@ -1,27 +1,17 @@
 // -*- C++ -*-
 //===---------------------------- test_macros.h ---------------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is dual licensed under the MIT and the University of Illinois Open
+// Source Licenses. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
 #ifndef SUPPORT_TEST_MACROS_HPP
 #define SUPPORT_TEST_MACROS_HPP
 
-// Attempt to get STL specific macros like _LIBCPP_VERSION using the most
-// minimal header possible. If we're testing libc++, we should use `<__config>`.
-// If <__config> isn't available, fall back to <ciso646>.
-#ifdef __has_include
-# if __has_include("<__config>")
-#   include <__config>
-#   define TEST_IMP_INCLUDED_HEADER
-# endif
-#endif
-#ifndef TEST_IMP_INCLUDED_HEADER
-#include <ciso646>
-#endif
+#include <ciso646> // Get STL specific macros like _LIBCPP_VERSION
 
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
@@ -79,7 +69,6 @@
 #define TEST_CLANG_VER (__clang_major__ * 100) + __clang_minor__
 #elif defined(__GNUC__)
 #define TEST_GCC_VER (__GNUC__ * 100 + __GNUC_MINOR__)
-#define TEST_GCC_VER_NEW (TEST_GCC_VER * 10 + __GNUC_PATCHLEVEL__)
 #endif
 
 /* Make a nice name for the standard version */
@@ -126,11 +115,7 @@
 #   define TEST_THROW_SPEC(...) throw(__VA_ARGS__)
 # endif
 #else
-#if defined(TEST_COMPILER_CLANG)
-# define TEST_ALIGNOF(...) _Alignof(__VA_ARGS__)
-#else
-# define TEST_ALIGNOF(...) __alignof(__VA_ARGS__)
-#endif
+#define TEST_ALIGNOF(...) __alignof(__VA_ARGS__)
 #define TEST_ALIGNAS(...) __attribute__((__aligned__(__VA_ARGS__)))
 #define TEST_CONSTEXPR
 #define TEST_CONSTEXPR_CXX14
@@ -225,9 +210,8 @@
 
 // FIXME: Fix this feature check when either (A) a compiler provides a complete
 // implementation, or (b) a feature check macro is specified
-#if !defined(_MSC_VER) || defined(__clang__) || _MSC_VER < 1920 || _MSVC_LANG <= 201703L
 #define TEST_HAS_NO_SPACESHIP_OPERATOR
-#endif
+
 
 #if TEST_STD_VER < 11
 #define ASSERT_NOEXCEPT(...)

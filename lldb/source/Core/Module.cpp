@@ -23,6 +23,7 @@
 #include "lldb/Symbol/CompileUnit.h"
 #include "lldb/Symbol/Function.h"
 #include "lldb/Symbol/ObjectFile.h"
+#include "lldb/Symbol/SwiftASTContext.h"
 #include "lldb/Symbol/Symbol.h"
 #include "lldb/Symbol/SymbolContext.h"
 #include "lldb/Symbol/SymbolFile.h"
@@ -35,6 +36,7 @@
 #include "lldb/Target/Language.h"
 #include "lldb/Target/Platform.h"
 #include "lldb/Target/Process.h"
+#include "lldb/Target/SwiftLanguageRuntime.h"
 #include "lldb/Target/Target.h"
 #include "lldb/Utility/DataBufferHeap.h"
 #include "lldb/Utility/LLDBAssert.h"
@@ -53,6 +55,9 @@
 #include "Plugins/Language/CPlusPlus/CPlusPlusLanguage.h"
 #include "Plugins/Language/ObjC/ObjCLanguage.h"
 
+#include "swift/Basic/LangOptions.h"
+#include "swift/Frontend/Frontend.h"
+#include "swift/Serialization/Validation.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/FileSystem.h"
@@ -348,7 +353,13 @@ void Module::SetUUID(const lldb_private::UUID &uuid) {
   }
 }
 
-TypeSystem *Module::GetTypeSystemForLanguage(LanguageType language) {
+#ifdef __clang_analyzer__
+// See GetScratchTypeSystemForLanguage() in Target.h for what this block does
+TypeSystem *Module::GetTypeSystemForLanguageImpl(LanguageType language)
+#else
+TypeSystem *Module::GetTypeSystemForLanguage(LanguageType language)
+#endif
+{
   return m_type_system_map.GetTypeSystemForLanguage(language, this, true);
 }
 
@@ -651,6 +662,8 @@ Module::LookupInfo::LookupInfo(const ConstString &name,
               Language::LanguageIsObjC(language)) &&
              ObjCLanguage::IsPossibleObjCMethodName(name_cstr))
       m_name_type_mask = eFunctionNameTypeFull;
+    else if (SwiftLanguageRuntime::IsSwiftMangledName(name_cstr))
+      m_name_type_mask = eFunctionNameTypeFull;
     else if (Language::LanguageIsC(language)) {
       m_name_type_mask = eFunctionNameTypeFull;
     } else {
@@ -660,7 +673,19 @@ Module::LookupInfo::LookupInfo(const ConstString &name,
         m_name_type_mask |= eFunctionNameTypeSelector;
 
       CPlusPlusLanguage::MethodName cpp_method(name);
-      basename = cpp_method.GetBasename();
+      SwiftLanguageRuntime::MethodName swift_method(name, true);
+
+      if ((language == eLanguageTypeUnknown ||
+           language == eLanguageTypeSwift) &&
+          swift_method.IsValid())
+        basename = swift_method.GetBasename();
+      else if ((language == eLanguageTypeUnknown ||
+                Language::LanguageIsCPlusPlus(language) ||
+                Language::LanguageIsC(language) ||
+                language == eLanguageTypeObjC_plus_plus) &&
+               cpp_method.IsValid())
+        basename = cpp_method.GetBasename();
+
       if (basename.empty()) {
         if (CPlusPlusLanguage::ExtractContextAndIdentifier(name_cstr, context,
                                                            basename))
@@ -678,9 +703,12 @@ Module::LookupInfo::LookupInfo(const ConstString &name,
       // If they've asked for a CPP method or function name and it can't be
       // that, we don't even need to search for CPP methods or names.
       CPlusPlusLanguage::MethodName cpp_method(name);
-      if (cpp_method.IsValid()) {
+      SwiftLanguageRuntime::MethodName swift_method(name, true);
+      if (swift_method.IsValid())
+        basename = swift_method.GetBasename();
+      if (cpp_method.IsValid())
         basename = cpp_method.GetBasename();
-
+      if (!basename.empty()) {
         if (!cpp_method.GetQualifiers().empty()) {
           // There is a "const" or other qualifier following the end of the
           // function parens, this can't be a eFunctionNameTypeBase
@@ -1575,6 +1603,10 @@ bool Module::LoadScriptingResourceInTarget(Target *target, Status &error,
 bool Module::SetArchitecture(const ArchSpec &new_arch) {
   if (!m_arch.IsValid()) {
     m_arch = new_arch;
+    if (SwiftASTContext *swift_ast = llvm::dyn_cast_or_null<SwiftASTContext>(
+            m_type_system_map.GetTypeSystemForLanguage(eLanguageTypeSwift, this,
+                                                       false)))
+      swift_ast->SetTriple(new_arch.GetTriple().str().c_str());
     return true;
   }
   return m_arch.IsCompatibleMatch(new_arch);
@@ -1645,6 +1677,13 @@ llvm::VersionTuple Module::GetVersion() {
   if (ObjectFile *obj_file = GetObjectFile())
     return obj_file->GetVersion();
   return llvm::VersionTuple();
+}
+
+void Module::ClearModuleDependentCaches() {
+  if (SwiftASTContext *swift_ast = llvm::dyn_cast_or_null<SwiftASTContext>(
+          m_type_system_map.GetTypeSystemForLanguage(eLanguageTypeSwift, this,
+                                                     false)))
+    swift_ast->ClearModuleDependentCaches();
 }
 
 bool Module::GetIsDynamicLinkEditor() {

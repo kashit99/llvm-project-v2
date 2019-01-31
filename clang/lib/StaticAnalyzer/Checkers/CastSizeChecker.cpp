@@ -1,8 +1,9 @@
 //=== CastSizeChecker.cpp ---------------------------------------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -139,13 +140,10 @@ void CastSizeChecker::checkPreStmt(const CastExpr *CE,CheckerContext &C) const {
 }
 
 void ento::registerCastSizeChecker(CheckerManager &mgr) {
-  mgr.registerChecker<CastSizeChecker>();
-}
-
-bool ento::shouldRegisterCastSizeChecker(const LangOptions &LO) {
   // PR31226: C++ is more complicated than what this checker currently supports.
   // There are derived-to-base casts, there are different rules for 0-size
   // structures, no flexible arrays, etc.
   // FIXME: Disabled on C++ for now.
-  return !LO.CPlusPlus;
+  if (!mgr.getLangOpts().CPlusPlus)
+    mgr.registerChecker<CastSizeChecker>();
 }

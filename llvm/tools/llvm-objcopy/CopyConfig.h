@@ -1,8 +1,9 @@
 //===- CopyConfig.h -------------------------------------------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                      The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -37,17 +38,6 @@ struct SectionRename {
   Optional<uint64_t> NewFlags;
 };
 
-struct SectionFlagsUpdate {
-  StringRef Name;
-  uint64_t NewFlags;
-};
-
-enum class DiscardType {
-  None,   // Default
-  All,    // --discard-all (-x)
-  Locals, // --discard-locals (-X)
-};
-
 // Configuration for copying/stripping a single file.
 struct CopyConfig {
   // Main input/output options
@@ -56,10 +46,8 @@ struct CopyConfig {
   StringRef OutputFilename;
   StringRef OutputFormat;
 
-  // Only applicable for --input-format=binary
+  // Only applicable for --input-format=Binary
   MachineInfo BinaryArch;
-  // Only applicable when --output-format!=binary (e.g. elf64-x86-64).
-  Optional<MachineInfo> OutputArch;
 
   // Advanced options
   StringRef AddGnuDebugLink;
@@ -68,7 +56,6 @@ struct CopyConfig {
   Optional<StringRef> BuildIdLinkOutput;
   StringRef SplitDWO;
   StringRef SymbolsPrefix;
-  DiscardType DiscardMode = DiscardType::None;
 
   // Repeated options
   std::vector<StringRef> AddSection;
@@ -85,11 +72,11 @@ struct CopyConfig {
 
   // Map options
   StringMap<SectionRename> SectionsToRename;
-  StringMap<SectionFlagsUpdate> SetSectionFlags;
   StringMap<StringRef> SymbolsToRename;
 
   // Boolean options
   bool DeterministicArchives = true;
+  bool DiscardAll = false;
   bool ExtractDWO = false;
   bool KeepFileSymbols = false;
   bool LocalizeHidden = false;

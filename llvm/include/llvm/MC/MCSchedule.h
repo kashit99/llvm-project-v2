@@ -1,8 +1,9 @@
 //===-- llvm/MC/MCSchedule.h - Scheduling -----------------------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -14,7 +15,6 @@
 #ifndef LLVM_MC_MCSCHEDULE_H
 #define LLVM_MC_MCSCHEDULE_H
 
-#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/Config/llvm-config.h"
 #include "llvm/Support/DataTypes.h"
@@ -369,11 +369,6 @@ struct MCSchedModel {
   double
   getReciprocalThroughput(const MCSubtargetInfo &STI, const MCInstrInfo &MCII,
                           const MCInst &Inst) const;
-
-  /// Returns the maximum forwarding delay for register reads dependent on
-  /// writes of scheduling class WriteResourceIdx.
-  static unsigned getForwardingDelayCycles(ArrayRef<MCReadAdvanceEntry> Entries,
-                                           unsigned WriteResourceIdx = 0);
 
   /// Returns the default initialized model.
   static const MCSchedModel &GetDefaultSchedModel() { return Default; }

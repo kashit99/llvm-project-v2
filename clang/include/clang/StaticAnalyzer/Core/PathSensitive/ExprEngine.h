@@ -1,8 +1,9 @@
 //===- ExprEngine.h - Path-Sensitive Expression-Level Dataflow --*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -130,9 +131,6 @@ private:
   /// SymMgr - Object that manages the symbol information.
   SymbolManager &SymMgr;
 
-  /// MRMgr - MemRegionManager object that creates memory regions.
-  MemRegionManager &MRMgr;
-
   /// svalBuilder - SValBuilder object that creates SVals from expressions.
   SValBuilder &svalBuilder;
 
@@ -181,10 +179,6 @@ public:
   ASTContext &getContext() const { return AMgr.getASTContext(); }
 
   AnalysisManager &getAnalysisManager() override { return AMgr; }
-
-  AnalysisDeclContextManager &getAnalysisDeclContextManager() {
-    return AMgr.getAnalysisDeclContextManager();
-  }
 
   CheckerManager &getCheckerManager() const {
     return *AMgr.getCheckerManager();
@@ -393,9 +387,9 @@ public:
     return StateMgr.getBasicVals();
   }
 
+  // FIXME: Remove when we migrate over to just using ValueManager.
   SymbolManager &getSymbolManager() { return SymMgr; }
-  MemRegionManager &getRegionManager() { return MRMgr; }
-
+  const SymbolManager &getSymbolManager() const { return SymMgr; }
 
   // Functions for external checking of whether we have unfinished work
   bool wasBlocksExhausted() const { return Engine.wasBlocksExhausted(); }

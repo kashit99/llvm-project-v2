@@ -1,8 +1,9 @@
 //===- SVals.h - Abstract Values for Static Analysis ------------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -529,7 +530,9 @@ public:
     return PTMDataType::getFromOpaqueValue(const_cast<void *>(Data));
   }
 
-  bool isNullMemberPointer() const;
+  bool isNullMemberPointer() const {
+    return getPTMData().isNull();
+  }
 
   const DeclaratorDecl *getDecl() const;
 
@@ -666,5 +669,14 @@ private:
 } // namespace ento
 
 } // namespace clang
+
+namespace llvm {
+
+template <typename T> struct isPodLike;
+template <> struct isPodLike<clang::ento::SVal> {
+  static const bool value = true;
+};
+
+} // namespace llvm
 
 #endif // LLVM_CLANG_STATICANALYZER_CORE_PATHSENSITIVE_SVALS_H

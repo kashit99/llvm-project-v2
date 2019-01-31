@@ -18,18 +18,9 @@ clang_tablegen("AttrImpl") {
   td_file = "../Basic/Attr.td"
 }
 
-clang_tablegen("AttrTextNodeDump") {
+clang_tablegen("AttrDump") {
   args = [
-    "-gen-clang-attr-text-node-dump",
-    "-I",
-    rebase_path("../..", root_out_dir),
-  ]
-  td_file = "../Basic/Attr.td"
-}
-
-clang_tablegen("AttrNodeTraverse") {
-  args = [
-    "-gen-clang-attr-node-traverse",
+    "-gen-clang-attr-dump",
     "-I",
     rebase_path("../..", root_out_dir),
   ]

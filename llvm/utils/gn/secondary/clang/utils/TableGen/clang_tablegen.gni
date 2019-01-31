@@ -35,6 +35,7 @@ template("clang_tablegen") {
                              "visibility",
                            ])
 
+    # FIXME: In cross builds, this should depend on the host binary.
     tblgen_target = "//clang/utils/TableGen:clang-tblgen"
   }
 }

@@ -1,8 +1,9 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is dual licensed under the MIT and the University of Illinois Open
+// Source Licenses. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -141,7 +142,7 @@ constexpr bool test_constexpr() {
   };
   for (auto TC : SpaceshipTestCases)
   {
-    std::weak_ordering Res = (TC.Value <=> 0);
+    std::weak_ordering Res = (0 <=> TC.Value);
     switch (TC.Expect) {
     case ER_Equiv:
       assert(Res == 0);

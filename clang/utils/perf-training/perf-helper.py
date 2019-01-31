@@ -1,8 +1,9 @@
 #===- perf-helper.py - Clang Python Bindings -----------------*- python -*--===#
 #
-# Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
-# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#                     The LLVM Compiler Infrastructure
+#
+# This file is distributed under the University of Illinois Open Source
+# License. See LICENSE.TXT for details.
 #
 #===------------------------------------------------------------------------===#
 
@@ -113,7 +114,7 @@ def get_cc1_command_for_args(cmd, env):
   # Find the cc1 command used by the compiler. To do this we execute the
   # compiler with '-###' to figure out what it wants to do.
   cmd = cmd + ['-###']
-  cc_output = subprocess.check_output(cmd, stderr=subprocess.STDOUT, env=env, universal_newlines=True).strip()
+  cc_output = subprocess.check_output(cmd, stderr=subprocess.STDOUT, env=env).strip()
   cc_commands = []
   for ln in cc_output.split('\n'):
       # Filter out known garbage.
@@ -339,7 +340,7 @@ def genOrderFile(args):
   # If the user gave us a binary, get all the symbols in the binary by
   # snarfing 'nm' output.
   if opts.binary_path is not None:
-     output = subprocess.check_output(['nm', '-P', opts.binary_path], universal_newlines=True)
+     output = subprocess.check_output(['nm', '-P', opts.binary_path])
      lines = output.split("\n")
      all_symbols = [ln.split(' ',1)[0]
                     for ln in lines

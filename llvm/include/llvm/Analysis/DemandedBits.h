@@ -1,8 +1,9 @@
 //===- llvm/Analysis/DemandedBits.h - Determine demanded bits ---*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -64,9 +65,9 @@ public:
 private:
   void performAnalysis();
   void determineLiveOperandBits(const Instruction *UserI,
-    const Value *Val, unsigned OperandNo,
+    const Instruction *I, unsigned OperandNo,
     const APInt &AOut, APInt &AB,
-    KnownBits &Known, KnownBits &Known2, bool &KnownBitsComputed);
+    KnownBits &Known, KnownBits &Known2);
 
   Function &F;
   AssumptionCache &AC;

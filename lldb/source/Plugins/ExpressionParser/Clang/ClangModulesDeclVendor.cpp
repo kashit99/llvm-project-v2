@@ -629,7 +629,7 @@ ClangModulesDeclVendor::Create(Target &target) {
                                                     source_buffer.release());
 
   std::unique_ptr<clang::CompilerInstance> instance(
-      new clang::CompilerInstance);
+      new clang::CompilerInstance());
 
   instance->setDiagnostics(diagnostics_engine.get());
   instance->setInvocation(invocation);

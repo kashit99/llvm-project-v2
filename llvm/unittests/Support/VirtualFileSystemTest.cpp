@@ -1,8 +1,9 @@
 //===- unittests/Support/VirtualFileSystem.cpp -------------- VFS tests ---===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -776,7 +777,7 @@ TEST(ProxyFileSystemTest, Basic) {
 
   bool Local = true;
   ASSERT_FALSE(PFS.isLocal("/a", Local));
-  EXPECT_FALSE(Local);
+  ASSERT_EQ(false, Local);
 }
 
 class InMemoryFileSystemTest : public ::testing::Test {

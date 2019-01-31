@@ -1,8 +1,9 @@
 //===------- ItaniumCXXABI.cpp - Emit LLVM Code from ASTs for a Module ----===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -28,6 +29,7 @@
 #include "clang/AST/Mangle.h"
 #include "clang/AST/Type.h"
 #include "clang/AST/StmtCXX.h"
+#include "llvm/IR/CallSite.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/Instructions.h"
@@ -1313,8 +1315,7 @@ bool ItaniumCXXABI::shouldTypeidBeNullChecked(bool IsDeref,
 
 void ItaniumCXXABI::EmitBadTypeidCall(CodeGenFunction &CGF) {
   llvm::Value *Fn = getBadTypeidFn(CGF);
-  llvm::CallBase *Call = CGF.EmitRuntimeCallOrInvoke(Fn);
-  Call->setDoesNotReturn();
+  CGF.EmitRuntimeCallOrInvoke(Fn).setDoesNotReturn();
   CGF.Builder.CreateUnreachable();
 }
 
@@ -1411,8 +1412,7 @@ llvm::Value *ItaniumCXXABI::EmitDynamicCastToVoid(CodeGenFunction &CGF,
 
 bool ItaniumCXXABI::EmitBadCastCall(CodeGenFunction &CGF) {
   llvm::Value *Fn = getBadCastFn(CGF);
-  llvm::CallBase *Call = CGF.EmitRuntimeCallOrInvoke(Fn);
-  Call->setDoesNotReturn();
+  CGF.EmitRuntimeCallOrInvoke(Fn).setDoesNotReturn();
   CGF.Builder.CreateUnreachable();
   return true;
 }
@@ -2463,12 +2463,10 @@ ItaniumCXXABI::getOrCreateThreadLocalWrapper(const VarDecl *VD,
     CGM.SetLLVMFunctionAttributesForDefinition(nullptr, Wrapper);
 
   // Always resolve references to the wrapper at link time.
-  if (!Wrapper->hasLocalLinkage())
-    if (!isThreadWrapperReplaceable(VD, CGM) ||
-        llvm::GlobalVariable::isLinkOnceLinkage(Wrapper->getLinkage()) ||
-        llvm::GlobalVariable::isWeakODRLinkage(Wrapper->getLinkage()) ||
-        VD->getVisibility() == HiddenVisibility)
-      Wrapper->setVisibility(llvm::GlobalValue::HiddenVisibility);
+  if (!Wrapper->hasLocalLinkage() && !(isThreadWrapperReplaceable(VD, CGM) &&
+      !llvm::GlobalVariable::isLinkOnceLinkage(Wrapper->getLinkage()) &&
+      !llvm::GlobalVariable::isWeakODRLinkage(Wrapper->getLinkage())))
+    Wrapper->setVisibility(llvm::GlobalValue::HiddenVisibility);
 
   if (isThreadWrapperReplaceable(VD, CGM)) {
     Wrapper->setCallingConv(llvm::CallingConv::CXX_FAST_TLS);

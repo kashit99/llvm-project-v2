@@ -1,8 +1,9 @@
 //===-- llvm/CodeGen/GlobalISel/LegalizationArtifactCombiner.h -----*- C++ -*-//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 // This file contains some helper functions which try to cleanup artifacts
@@ -108,10 +109,8 @@ public:
     unsigned TruncSrc;
     if (mi_match(SrcReg, MRI, m_GTrunc(m_Reg(TruncSrc)))) {
       LLT DstTy = MRI.getType(DstReg);
-      // Guess on the RHS shift amount type, which should be re-legalized if
-      // applicable.
-      if (isInstUnsupported({TargetOpcode::G_SHL, {DstTy, DstTy}}) ||
-          isInstUnsupported({TargetOpcode::G_ASHR, {DstTy, DstTy}}) ||
+      if (isInstUnsupported({TargetOpcode::G_SHL, {DstTy}}) ||
+          isInstUnsupported({TargetOpcode::G_ASHR, {DstTy}}) ||
           isInstUnsupported({TargetOpcode::G_CONSTANT, {DstTy}}))
         return false;
       LLVM_DEBUG(dbgs() << ".. Combine MI: " << MI;);

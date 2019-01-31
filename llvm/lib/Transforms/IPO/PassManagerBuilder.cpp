@@ -1,8 +1,9 @@
 //===- PassManagerBuilder.cpp - Build Standard Pass -----------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -103,12 +104,22 @@ static cl::opt<bool>
     EnablePrepareForThinLTO("prepare-for-thinlto", cl::init(false), cl::Hidden,
                             cl::desc("Enable preparation for ThinLTO."));
 
-static cl::opt<bool>
-    EnablePerformThinLTO("perform-thinlto", cl::init(false), cl::Hidden,
-                         cl::desc("Enable performing ThinLTO."));
-
 cl::opt<bool> EnableHotColdSplit("hot-cold-split", cl::init(false), cl::Hidden,
     cl::desc("Enable hot-cold splitting pass"));
+
+
+static cl::opt<bool> RunPGOInstrGen(
+    "profile-generate", cl::init(false), cl::Hidden,
+    cl::desc("Enable PGO instrumentation."));
+
+static cl::opt<std::string>
+    PGOOutputFile("profile-generate-file", cl::init(""), cl::Hidden,
+                      cl::desc("Specify the path of profile data file."));
+
+static cl::opt<std::string> RunPGOInstrUse(
+    "profile-use", cl::init(""), cl::Hidden, cl::value_desc("filename"),
+    cl::desc("Enable use phase of PGO instrumentation and specify the path "
+             "of profile data file"));
 
 static cl::opt<bool> UseLoopVersioningLICM(
     "enable-loop-versioning-licm", cl::init(false), cl::Hidden,
@@ -149,11 +160,6 @@ static cl::opt<bool>
     EnableCHR("enable-chr", cl::init(true), cl::Hidden,
               cl::desc("Enable control height reduction optimization (CHR)"));
 
-cl::opt<bool> FlattenedProfileUsed(
-    "flattened-profile-used", cl::init(false), cl::Hidden,
-    cl::desc("Indicate the sample profile being used is flattened, i.e., "
-             "no inline hierachy exists in the profile. "));
-
 PassManagerBuilder::PassManagerBuilder() {
     OptLevel = 2;
     SizeLevel = 0;
@@ -170,12 +176,11 @@ PassManagerBuilder::PassManagerBuilder() {
     MergeFunctions = false;
     SplitColdCode = false;
     PrepareForLTO = false;
-    EnablePGOInstrGen = false;
-    PGOInstrGen = "";
-    PGOInstrUse = "";
-    PGOSampleUse = "";
+    EnablePGOInstrGen = RunPGOInstrGen;
+    PGOInstrGen = PGOOutputFile;
+    PGOInstrUse = RunPGOInstrUse;
     PrepareForThinLTO = EnablePrepareForThinLTO;
-    PerformThinLTO = EnablePerformThinLTO;
+    PerformThinLTO = false;
     DivergentTarget = false;
 }
 
@@ -427,11 +432,7 @@ void PassManagerBuilder::populateModulePassManager(
 
   if (!PGOSampleUse.empty()) {
     MPM.add(createPruneEHPass());
-    // In ThinLTO mode, when flattened profile is used, all the available
-    // profile information will be annotated in PreLink phase so there is
-    // no need to load the profile again in PostLink.
-    if (!(FlattenedProfileUsed && PerformThinLTO))
-      MPM.add(createSampleProfileLoaderPass(PGOSampleUse));
+    MPM.add(createSampleProfileLoaderPass(PGOSampleUse));
   }
 
   // Allow forcing function attributes as a debugging and tuning aid.
@@ -466,14 +467,12 @@ void PassManagerBuilder::populateModulePassManager(
 
     addExtensionsToPM(EP_EnabledOnOptLevel0, MPM);
 
-    if (PrepareForLTO || PrepareForThinLTO) {
-      MPM.add(createCanonicalizeAliasesPass());
-      // Rename anon globals to be able to export them in the summary.
-      // This has to be done after we add the extensions to the pass manager
-      // as there could be passes (e.g. Adddress sanitizer) which introduce
-      // new unnamed globals.
+    // Rename anon globals to be able to export them in the summary.
+    // This has to be done after we add the extensions to the pass manager
+    // as there could be passes (e.g. Adddress sanitizer) which introduce
+    // new unnamed globals.
+    if (PrepareForLTO || PrepareForThinLTO)
       MPM.add(createNameAnonGlobalPass());
-    }
     return;
   }
 
@@ -596,7 +595,6 @@ void PassManagerBuilder::populateModulePassManager(
     // Ensure we perform any last passes, but do so before renaming anonymous
     // globals in case the passes add any.
     addExtensionsToPM(EP_OptimizerLast, MPM);
-    MPM.add(createCanonicalizeAliasesPass());
     // Rename anon globals to be able to export them in the summary.
     MPM.add(createNameAnonGlobalPass());
     return;
@@ -753,11 +751,9 @@ void PassManagerBuilder::populateModulePassManager(
 
   addExtensionsToPM(EP_OptimizerLast, MPM);
 
-  if (PrepareForLTO) {
-    MPM.add(createCanonicalizeAliasesPass());
-    // Rename anon globals to be able to handle them in the summary
+  // Rename anon globals to be able to handle them in the summary
+  if (PrepareForLTO)
     MPM.add(createNameAnonGlobalPass());
-  }
 }
 
 void PassManagerBuilder::addLTOOptimizationPasses(legacy::PassManagerBase &PM) {

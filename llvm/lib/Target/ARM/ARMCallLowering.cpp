@@ -1,8 +1,9 @@
 //===- llvm/lib/Target/ARM/ARMCallLowering.cpp - Call lowering ------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -131,7 +132,7 @@ struct OutgoingValueHandler : public CallLowering::ValueHandler {
     unsigned ExtReg = extendRegister(ValVReg, VA);
     auto MMO = MIRBuilder.getMF().getMachineMemOperand(
         MPO, MachineMemOperand::MOStore, VA.getLocVT().getStoreSize(),
-        /* Alignment */ 1);
+        /* Alignment */ 0);
     MIRBuilder.buildStore(ExtReg, Addr, *MMO);
   }
 
@@ -331,11 +332,11 @@ struct IncomingValueHandler : public CallLowering::ValueHandler {
       assert(MRI.getType(ValVReg).isScalar() && "Only scalars supported atm");
 
       auto LoadVReg = MRI.createGenericVirtualRegister(LLT::scalar(32));
-      buildLoad(LoadVReg, Addr, Size, /* Alignment */ 1, MPO);
+      buildLoad(LoadVReg, Addr, Size, /* Alignment */ 0, MPO);
       MIRBuilder.buildTrunc(ValVReg, LoadVReg);
     } else {
       // If the value is not extended, a simple load will suffice.
-      buildLoad(ValVReg, Addr, Size, /* Alignment */ 1, MPO);
+      buildLoad(ValVReg, Addr, Size, /* Alignment */ 0, MPO);
     }
   }
 
@@ -539,19 +540,19 @@ bool ARMCallLowering::lowerCall(MachineIRBuilder &MIRBuilder,
 
   // Create the call instruction so we can add the implicit uses of arg
   // registers, but don't insert it yet.
-  bool IsDirect = !Callee.isReg();
-  auto CallOpcode = getCallOpcode(STI, IsDirect);
+  bool isDirect = !Callee.isReg();
+  auto CallOpcode = getCallOpcode(STI, isDirect);
   auto MIB = MIRBuilder.buildInstrNoInsert(CallOpcode);
 
-  bool IsThumb = STI.isThumb();
-  if (IsThumb)
+  bool isThumb = STI.isThumb();
+  if (isThumb)
     MIB.add(predOps(ARMCC::AL));
 
   MIB.add(Callee);
-  if (!IsDirect) {
+  if (!isDirect) {
     auto CalleeReg = Callee.getReg();
     if (CalleeReg && !TRI->isPhysicalRegister(CalleeReg)) {
-      unsigned CalleeIdx = IsThumb ? 2 : 0;
+      unsigned CalleeIdx = isThumb ? 2 : 0;
       MIB->getOperand(CalleeIdx).setReg(constrainOperandRegClass(
           MF, *TRI, MRI, *STI.getInstrInfo(), *STI.getRegBankInfo(),
           *MIB.getInstr(), MIB->getDesc(), Callee, CalleeIdx));
@@ -560,14 +561,13 @@ bool ARMCallLowering::lowerCall(MachineIRBuilder &MIRBuilder,
 
   MIB.addRegMask(TRI->getCallPreservedMask(MF, CallConv));
 
-  bool IsVarArg = false;
   SmallVector<ArgInfo, 8> ArgInfos;
   for (auto Arg : OrigArgs) {
     if (!isSupportedType(DL, TLI, Arg.Ty))
       return false;
 
     if (!Arg.IsFixed)
-      IsVarArg = true;
+      return false;
 
     if (Arg.Flags.isByVal())
       return false;
@@ -581,7 +581,7 @@ bool ARMCallLowering::lowerCall(MachineIRBuilder &MIRBuilder,
       MIRBuilder.buildUnmerge(Regs, Arg.Reg);
   }
 
-  auto ArgAssignFn = TLI.CCAssignFnForCall(CallConv, IsVarArg);
+  auto ArgAssignFn = TLI.CCAssignFnForCall(CallConv, /*IsVarArg=*/false);
   OutgoingValueHandler ArgHandler(MIRBuilder, MRI, MIB, ArgAssignFn);
   if (!handleAssignments(MIRBuilder, ArgInfos, ArgHandler))
     return false;
@@ -600,7 +600,7 @@ bool ARMCallLowering::lowerCall(MachineIRBuilder &MIRBuilder,
                         SplitRegs.push_back(Reg);
                       });
 
-    auto RetAssignFn = TLI.CCAssignFnForReturn(CallConv, IsVarArg);
+    auto RetAssignFn = TLI.CCAssignFnForReturn(CallConv, /*IsVarArg=*/false);
     CallReturnHandler RetHandler(MIRBuilder, MRI, MIB, RetAssignFn);
     if (!handleAssignments(MIRBuilder, ArgInfos, RetHandler))
       return false;

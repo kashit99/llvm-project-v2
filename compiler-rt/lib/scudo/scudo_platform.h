@@ -1,8 +1,9 @@
 //===-- scudo_platform.h ----------------------------------------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 ///
@@ -79,7 +80,7 @@ const uptr RegionSizeLog = SANITIZER_ANDROID ? 19 : 20;
 #endif  // SANITIZER_CAN_USE_ALLOCATOR64
 
 #if !defined(SCUDO_SIZE_CLASS_MAP)
-# define SCUDO_SIZE_CLASS_MAP Dense
+# define SCUDO_SIZE_CLASS_MAP Default
 #endif
 
 #define SIZE_CLASS_MAP_TYPE SIZE_CLASS_MAP_TYPE_(SCUDO_SIZE_CLASS_MAP)

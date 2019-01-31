@@ -23,6 +23,7 @@
 #include "lldb/Initialization/SystemInitializerCommon.h"
 #include "lldb/Interpreter/CommandInterpreter.h"
 #include "lldb/Symbol/ClangASTContext.h"
+#include "lldb/Symbol/SwiftASTContext.h"
 #include "lldb/Utility/Timer.h"
 
 #include "Plugins/ABI/MacOSX-arm/ABIMacOSX_arm.h"
@@ -53,6 +54,7 @@
 #include "Plugins/InstrumentationRuntime/MainThreadChecker/MainThreadCheckerRuntime.h"
 #include "Plugins/InstrumentationRuntime/TSan/TSanRuntime.h"
 #include "Plugins/InstrumentationRuntime/UBSan/UBSanRuntime.h"
+#include "Plugins/InstrumentationRuntime/SwiftRuntimeReporting/SwiftRuntimeReporting.h"
 #include "Plugins/JITLoader/GDB/JITLoaderGDB.h"
 #include "Plugins/Language/CPlusPlus/CPlusPlusLanguage.h"
 #include "Plugins/Language/ObjC/ObjCLanguage.h"
@@ -115,6 +117,11 @@
 #include "lldb/Host/windows/windows.h"
 #endif
 
+#if defined(__APPLE__) || defined(__linux__) || defined(_WIN32)
+#include "Plugins/Language/Swift/SwiftLanguage.h"
+#include "lldb/Target/SwiftLanguageRuntime.h"
+#endif
+
 #include "llvm/Support/TargetSelect.h"
 
 #include <string>
@@ -170,6 +177,18 @@ extern "C" void *LLDBSwigPythonCreateScriptedThreadPlan(
 extern "C" bool LLDBSWIGPythonCallThreadPlan(void *implementor,
                                              const char *method_name,
                                              Event *event_sp, bool &got_error);
+                                             
+extern "C" void *LLDBSwigPythonCreateScriptedBreakpointResolver(
+    const char *python_class_name,
+    const char *session_dictionary_name,
+    lldb_private::StructuredDataImpl *args,
+    lldb::BreakpointSP &bkpt_sp);
+
+extern "C" unsigned int LLDBSwigPythonCallBreakpointResolver(
+    void *implementor,
+    const char *method_name,
+    lldb_private::SymbolContext *sym_ctx
+);
 
 extern "C" void *LLDBSwigPythonCreateScriptedBreakpointResolver(
     const char *python_class_name,
@@ -265,6 +284,20 @@ SystemInitializerFull::SystemInitializerFull() {}
 
 SystemInitializerFull::~SystemInitializerFull() {}
 
+static void SwiftInitialize() {
+#if defined(__APPLE__) || defined(__linux__) || defined(_WIN32)
+  SwiftLanguage::Initialize();
+  SwiftLanguageRuntime::Initialize();
+#endif
+}
+
+static void SwiftTerminate() {
+#if defined(__APPLE__) || defined(__linux__) || defined(_WIN32)
+  SwiftLanguage::Terminate();
+  SwiftLanguageRuntime::Terminate();
+#endif
+}
+
 llvm::Error
 SystemInitializerFull::Initialize(const InitializerOptions &options) {
   if (auto e = SystemInitializerCommon::Initialize(options))
@@ -311,6 +344,7 @@ SystemInitializerFull::Initialize(const InitializerOptions &options) {
   llvm::InitializeAllDisassemblers();
 
   ClangASTContext::Initialize();
+  SwiftASTContext::Initialize();
 
   ABIMacOSX_i386::Initialize();
   ABIMacOSX_arm::Initialize();
@@ -341,6 +375,7 @@ SystemInitializerFull::Initialize(const InitializerOptions &options) {
   ThreadSanitizerRuntime::Initialize();
   UndefinedBehaviorSanitizerRuntime::Initialize();
   MainThreadCheckerRuntime::Initialize();
+  SwiftRuntimeReporting::Initialize();
 
   SymbolVendorELF::Initialize();
   breakpad::SymbolFileBreakpad::Initialize();
@@ -361,6 +396,7 @@ SystemInitializerFull::Initialize(const InitializerOptions &options) {
   CPlusPlusLanguage::Initialize();
   ObjCLanguage::Initialize();
   ObjCPlusPlusLanguage::Initialize();
+  ::SwiftInitialize();
 
 #if defined(_WIN32)
   ProcessWindows::Initialize();
@@ -442,6 +478,7 @@ void SystemInitializerFull::Terminate() {
   PluginManager::Terminate();
 
   ClangASTContext::Terminate();
+  SwiftASTContext::Terminate();
 
   ArchitectureArm::Terminate();
   ArchitectureMips::Terminate();
@@ -471,6 +508,7 @@ void SystemInitializerFull::Terminate() {
   ThreadSanitizerRuntime::Terminate();
   UndefinedBehaviorSanitizerRuntime::Terminate();
   MainThreadCheckerRuntime::Terminate();
+  SwiftRuntimeReporting::Terminate();
   SymbolVendorELF::Terminate();
   breakpad::SymbolFileBreakpad::Terminate();
   SymbolFileDWARF::Terminate();
@@ -486,6 +524,8 @@ void SystemInitializerFull::Terminate() {
   AppleObjCRuntimeV1::Terminate();
   SystemRuntimeMacOSX::Terminate();
   RenderScriptRuntime::Terminate();
+
+  ::SwiftTerminate();
 
   CPlusPlusLanguage::Terminate();
   ObjCLanguage::Terminate();

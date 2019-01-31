@@ -1,8 +1,9 @@
 //===--- SymbolYAML.cpp ------------------------------------------*- C++-*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -27,6 +28,8 @@
 #include "llvm/Support/raw_ostream.h"
 #include <cstdint>
 
+using namespace llvm;
+
 LLVM_YAML_IS_SEQUENCE_VECTOR(clang::clangd::Symbol::IncludeHeaderWithReferences)
 LLVM_YAML_IS_SEQUENCE_VECTOR(clang::clangd::Ref)
 
@@ -35,8 +38,8 @@ using RefBundle =
     std::pair<clang::clangd::SymbolID, std::vector<clang::clangd::Ref>>;
 // This is a pale imitation of std::variant<Symbol, RefBundle>
 struct VariantEntry {
-  llvm::Optional<clang::clangd::Symbol> Symbol;
-  llvm::Optional<RefBundle> Refs;
+  Optional<clang::clangd::Symbol> Symbol;
+  Optional<RefBundle> Refs;
 };
 // A class helps YAML to serialize the 32-bit encoded position (Line&Column),
 // as YAMLIO can't directly map bitfields.
@@ -63,14 +66,14 @@ using clang::index::SymbolLanguage;
 struct NormalizedSymbolID {
   NormalizedSymbolID(IO &) {}
   NormalizedSymbolID(IO &, const SymbolID &ID) {
-    llvm::raw_string_ostream OS(HexString);
+    raw_string_ostream OS(HexString);
     OS << ID;
   }
 
   SymbolID denormalize(IO &I) {
     auto ID = SymbolID::fromStr(HexString);
     if (!ID) {
-      I.setError(llvm::toString(ID.takeError()));
+      I.setError(toString(ID.takeError()));
       return SymbolID();
     }
     return *ID;
@@ -291,8 +294,8 @@ template <> struct MappingTraits<VariantEntry> {
 namespace clang {
 namespace clangd {
 
-void writeYAML(const IndexFileOut &O, llvm::raw_ostream &OS) {
-  llvm::yaml::Output Yout(OS);
+void writeYAML(const IndexFileOut &O, raw_ostream &OS) {
+  yaml::Output Yout(OS);
   for (const auto &Sym : *O.Symbols) {
     VariantEntry Entry;
     Entry.Symbol = Sym;
@@ -306,27 +309,23 @@ void writeYAML(const IndexFileOut &O, llvm::raw_ostream &OS) {
     }
 }
 
-llvm::Expected<IndexFileIn> readYAML(llvm::StringRef Data) {
+Expected<IndexFileIn> readYAML(StringRef Data) {
   SymbolSlab::Builder Symbols;
   RefSlab::Builder Refs;
-  llvm::BumpPtrAllocator
-      Arena; // store the underlying data of Position::FileURI.
-  llvm::UniqueStringSaver Strings(Arena);
-  llvm::yaml::Input Yin(Data, &Strings);
-  while (Yin.setCurrentDocument()) {
-    llvm::yaml::EmptyContext Ctx;
+  BumpPtrAllocator Arena; // store the underlying data of Position::FileURI.
+  UniqueStringSaver Strings(Arena);
+  yaml::Input Yin(Data, &Strings);
+  do {
     VariantEntry Variant;
-    yamlize(Yin, Variant, true, Ctx);
+    Yin >> Variant;
     if (Yin.error())
-      return llvm::errorCodeToError(Yin.error());
-
+      return errorCodeToError(Yin.error());
     if (Variant.Symbol)
       Symbols.insert(*Variant.Symbol);
     if (Variant.Refs)
       for (const auto &Ref : Variant.Refs->second)
         Refs.insert(Variant.Refs->first, Ref);
-    Yin.nextDocument();
-  }
+  } while (Yin.nextDocument());
 
   IndexFileIn Result;
   Result.Symbols.emplace(std::move(Symbols).build());
@@ -337,20 +336,20 @@ llvm::Expected<IndexFileIn> readYAML(llvm::StringRef Data) {
 std::string toYAML(const Symbol &S) {
   std::string Buf;
   {
-    llvm::raw_string_ostream OS(Buf);
-    llvm::yaml::Output Yout(OS);
+    raw_string_ostream OS(Buf);
+    yaml::Output Yout(OS);
     Symbol Sym = S; // copy: Yout<< requires mutability.
     Yout << Sym;
   }
   return Buf;
 }
 
-std::string toYAML(const std::pair<SymbolID, llvm::ArrayRef<Ref>> &Data) {
+std::string toYAML(const std::pair<SymbolID, ArrayRef<Ref>> &Data) {
   RefBundle Refs = {Data.first, Data.second};
   std::string Buf;
   {
-    llvm::raw_string_ostream OS(Buf);
-    llvm::yaml::Output Yout(OS);
+    raw_string_ostream OS(Buf);
+    yaml::Output Yout(OS);
     Yout << Refs;
   }
   return Buf;

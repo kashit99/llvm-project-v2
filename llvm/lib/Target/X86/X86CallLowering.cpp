@@ -1,8 +1,9 @@
 //===- llvm/lib/Target/X86/X86CallLowering.cpp - Call lowering ------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -46,6 +47,8 @@
 #include <cstdint>
 
 using namespace llvm;
+
+#include "X86GenCallingConv.inc"
 
 X86CallLowering::X86CallLowering(const X86TargetLowering &TLI)
     : CallLowering(&TLI) {}
@@ -148,7 +151,7 @@ struct OutgoingValueHandler : public CallLowering::ValueHandler {
     unsigned ExtReg = extendRegister(ValVReg, VA);
     auto MMO = MIRBuilder.getMF().getMachineMemOperand(
         MPO, MachineMemOperand::MOStore, VA.getLocVT().getStoreSize(),
-        /* Alignment */ 1);
+        /* Alignment */ 0);
     MIRBuilder.buildStore(ExtReg, Addr, *MMO);
   }
 
@@ -244,7 +247,7 @@ struct IncomingValueHandler : public CallLowering::ValueHandler {
                             MachinePointerInfo &MPO, CCValAssign &VA) override {
     auto MMO = MIRBuilder.getMF().getMachineMemOperand(
         MPO, MachineMemOperand::MOLoad | MachineMemOperand::MOInvariant, Size,
-        1);
+        0);
     MIRBuilder.buildLoad(ValVReg, Addr, *MMO);
   }
 

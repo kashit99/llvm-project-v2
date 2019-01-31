@@ -1,8 +1,9 @@
 //===-- lib/CodeGen/GlobalISel/GICombinerHelper.cpp -----------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 #include "llvm/CodeGen/GlobalISel/CombinerHelper.h"
@@ -179,14 +180,6 @@ bool CombinerHelper::tryCombineExtendingLoads(MachineInstr &MI) {
 
   LLT LoadValueTy = MRI.getType(LoadValue.getReg());
   if (!LoadValueTy.isScalar())
-    return false;
-
-  // Most architectures are going to legalize <s8 loads into at least a 1 byte
-  // load, and the MMOs can only describe memory accesses in multiples of bytes.
-  // If we try to perform extload combining on those, we can end up with
-  // %a(s8) = extload %ptr (load 1 byte from %ptr)
-  // ... which is an illegal extload instruction.
-  if (LoadValueTy.getSizeInBits() < 8)
     return false;
 
   // Find the preferred type aside from the any-extends (unless it's the only

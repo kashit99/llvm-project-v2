@@ -1,8 +1,9 @@
 //===- HotColdSplitting.cpp -- Outline Cold Regions -------------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 ///
@@ -65,6 +66,7 @@
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "llvm/Transforms/Utils/CodeExtractor.h"
 #include "llvm/Transforms/Utils/Local.h"
+#include "llvm/Transforms/Utils/SSAUpdater.h"
 #include "llvm/Transforms/Utils/ValueMapper.h"
 #include <algorithm>
 #include <cassert>
@@ -360,7 +362,6 @@ Function *HotColdSplitting::extractColdRegion(const BlockSequence &Region,
 /// A pair of (basic block, score).
 using BlockTy = std::pair<BasicBlock *, unsigned>;
 
-namespace {
 /// A maximal outlining region. This contains all blocks post-dominated by a
 /// sink block, the sink block itself, and all blocks dominated by the sink.
 /// If sink-predecessors and sink-successors cannot be extracted in one region,
@@ -535,7 +536,6 @@ public:
     return SubRegion;
   }
 };
-} // namespace
 
 bool HotColdSplitting::outlineColdRegions(Function &F, bool HasProfileSummary) {
   bool Changed = false;

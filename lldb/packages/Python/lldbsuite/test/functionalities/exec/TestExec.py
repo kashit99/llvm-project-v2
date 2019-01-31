@@ -30,7 +30,7 @@ class ExecTestCase(TestBase):
     @expectedFailureAll(oslist=["ios", "tvos", "watchos", "bridgeos"], bugnumber="rdar://problem/34559552") # this exec test has problems on ios systems
     @skipIfSanitized # rdar://problem/43756823
     def test_skipping_exec (self):
-        self.do_test(True)
+        self.do_test(False)
 
     def do_test(self, skip_exec):
         self.build()

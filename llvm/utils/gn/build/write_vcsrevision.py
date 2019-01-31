@@ -12,6 +12,7 @@ import sys
 
 THIS_DIR = os.path.abspath(os.path.dirname(__file__))
 LLVM_DIR = os.path.dirname(os.path.dirname(os.path.dirname(THIS_DIR)))
+MONO_DIR = os.path.dirname(LLVM_DIR)
 
 
 def which(program):
@@ -35,8 +36,13 @@ def main():
     if os.path.isdir(os.path.join(LLVM_DIR, '.svn')):
         print('SVN support not implemented', file=sys.stderr)
         return 1
-    if os.path.exists(os.path.join(LLVM_DIR, '.git')):
+    if os.path.isdir(os.path.join(LLVM_DIR, '.git')):
         print('non-mono-repo git support not implemented', file=sys.stderr)
+        return 1
+
+    git_dir = os.path.join(MONO_DIR, '.git')
+    if not os.path.isdir(git_dir):
+        print('.git dir not found at "%s"' % git_dir, file=sys.stderr)
         return 1
 
     git, use_shell = which('git'), False
@@ -45,17 +51,10 @@ def main():
     if not git:
         git = which('git.bat')
         use_shell = True
-
-    git_dir = subprocess.check_output([git, 'rev-parse', '--git-dir'],
-                                      cwd=LLVM_DIR, shell=use_shell).strip()
-    if not os.path.isdir(git_dir):
-        print('.git dir not found at "%s"' % git_dir, file=sys.stderr)
-        return 1
-
     rev = subprocess.check_output([git, 'rev-parse', '--short', 'HEAD'],
-                                  cwd=git_dir, shell=use_shell).decode().strip()
+                                  cwd=git_dir, shell=use_shell)
     # FIXME: add pizzas such as the svn revision read off a git note?
-    vcsrevision_contents = '#define LLVM_REVISION "git-%s"\n' % rev
+    vcsrevision_contents = '#define LLVM_REVISION "git-%s"\n' % rev.strip()
 
     # If the output already exists and is identical to what we'd write,
     # return to not perturb the existing file's timestamp.

@@ -1,8 +1,9 @@
 //===- AsmPrinter.cpp - Common AsmPrinter code ----------------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -229,12 +230,6 @@ const MCSubtargetInfo &AsmPrinter::getSubtargetInfo() const {
 
 void AsmPrinter::EmitToStreamer(MCStreamer &S, const MCInst &Inst) {
   S.EmitInstruction(Inst, getSubtargetInfo());
-}
-
-void AsmPrinter::emitInitialRawDwarfLocDirective(const MachineFunction &MF) {
-  assert(DD && "Dwarf debug file is not defined.");
-  assert(OutStreamer->hasRawTextSupport() && "Expected assembly output mode.");
-  (void)DD->emitInitialLocDirective(MF, /*CUID=*/0);
 }
 
 /// getCurrentSection() - Return the current section we are emitting to.

@@ -1,8 +1,9 @@
 //===- ObjCARCAliasAnalysis.cpp - ObjC ARC Optimization -------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 /// \file
@@ -105,12 +106,12 @@ FunctionModRefBehavior ObjCARCAAResult::getModRefBehavior(const Function *F) {
   return AAResultBase::getModRefBehavior(F);
 }
 
-ModRefInfo ObjCARCAAResult::getModRefInfo(const CallBase *Call,
+ModRefInfo ObjCARCAAResult::getModRefInfo(ImmutableCallSite CS,
                                           const MemoryLocation &Loc) {
   if (!EnableARCOpts)
-    return AAResultBase::getModRefInfo(Call, Loc);
+    return AAResultBase::getModRefInfo(CS, Loc);
 
-  switch (GetBasicARCInstKind(Call)) {
+  switch (GetBasicARCInstKind(CS.getInstruction())) {
   case ARCInstKind::Retain:
   case ARCInstKind::RetainRV:
   case ARCInstKind::Autorelease:
@@ -127,7 +128,7 @@ ModRefInfo ObjCARCAAResult::getModRefInfo(const CallBase *Call,
     break;
   }
 
-  return AAResultBase::getModRefInfo(Call, Loc);
+  return AAResultBase::getModRefInfo(CS, Loc);
 }
 
 ObjCARCAAResult ObjCARCAA::run(Function &F, FunctionAnalysisManager &AM) {

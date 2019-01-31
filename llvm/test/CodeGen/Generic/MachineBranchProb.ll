@@ -4,6 +4,9 @@
 ; to fail.
 ; XFAIL: hexagon
 
+; Bug: PR31899
+; XFAIL: avr
+
 declare void @foo()
 
 ; Make sure we have the correct weight attached to each successor.

@@ -1,8 +1,9 @@
 //===-- URITests.cpp  ---------------------------------*- C++ -*-----------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -12,6 +13,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
+using namespace llvm;
 namespace clang {
 namespace clangd {
 
@@ -27,15 +29,14 @@ MATCHER_P(Scheme, S, "") { return arg.scheme() == S; }
 MATCHER_P(Authority, A, "") { return arg.authority() == A; }
 MATCHER_P(Body, B, "") { return arg.body() == B; }
 
-std::string createOrDie(llvm::StringRef AbsolutePath,
-                        llvm::StringRef Scheme = "file") {
+std::string createOrDie(StringRef AbsolutePath, StringRef Scheme = "file") {
   auto Uri = URI::create(AbsolutePath, Scheme);
   if (!Uri)
     llvm_unreachable(toString(Uri.takeError()).c_str());
   return Uri->toString();
 }
 
-URI parseOrDie(llvm::StringRef Uri) {
+URI parseOrDie(StringRef Uri) {
   auto U = URI::parse(Uri);
   if (!U)
     llvm_unreachable(toString(U.takeError()).c_str());
@@ -60,7 +61,7 @@ TEST(PercentEncodingTest, Decode) {
   EXPECT_EQ(parseOrDie("x:a:b%3bc").body(), "a:b;c");
 }
 
-std::string resolveOrDie(const URI &U, llvm::StringRef HintPath = "") {
+std::string resolveOrDie(const URI &U, StringRef HintPath = "") {
   auto Path = URI::resolve(U, HintPath);
   if (!Path)
     llvm_unreachable(toString(Path.takeError()).c_str());
@@ -136,8 +137,7 @@ TEST(URITest, Resolve) {
             testPath("a"));
 }
 
-std::string resolvePathOrDie(llvm::StringRef AbsPath,
-                             llvm::StringRef HintPath = "") {
+std::string resolvePathOrDie(StringRef AbsPath, StringRef HintPath = "") {
   auto Path = URI::resolvePath(AbsPath, HintPath);
   if (!Path)
     llvm_unreachable(toString(Path.takeError()).c_str());

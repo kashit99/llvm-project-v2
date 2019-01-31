@@ -1,8 +1,9 @@
 //=- DirectIvarAssignment.cpp - Check rules on ObjC properties -*- C++ ----*-==//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -205,6 +206,12 @@ void DirectIvarAssignment::MethodCrawler::VisitBinaryOperator(
 }
 }
 
+// Register the checker that checks for direct accesses in all functions,
+// except for the initialization and copy routines.
+void ento::registerDirectIvarAssignment(CheckerManager &mgr) {
+  mgr.registerChecker<DirectIvarAssignment>();
+}
+
 // Register the checker that checks for direct accesses in functions annotated
 // with __attribute__((annotate("objc_no_direct_instance_variable_assignment"))).
 static bool AttrFilter(const ObjCMethodDecl *M) {
@@ -214,22 +221,7 @@ static bool AttrFilter(const ObjCMethodDecl *M) {
   return true;
 }
 
-// Register the checker that checks for direct accesses in all functions,
-// except for the initialization and copy routines.
-void ento::registerDirectIvarAssignment(CheckerManager &mgr) {
-  mgr.registerChecker<DirectIvarAssignment>();
-}
-
-bool ento::shouldRegisterDirectIvarAssignment(const LangOptions &LO) {
-  return true;
-}
-
 void ento::registerDirectIvarAssignmentForAnnotatedFunctions(
     CheckerManager &mgr) {
-  mgr.getChecker<DirectIvarAssignment>()->ShouldSkipMethod = &AttrFilter;
-}
-
-bool ento::shouldRegisterDirectIvarAssignmentForAnnotatedFunctions(
-                                                        const LangOptions &LO) {
-  return true;
+  mgr.registerChecker<DirectIvarAssignment>()->ShouldSkipMethod = &AttrFilter;
 }

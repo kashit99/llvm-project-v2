@@ -1,8 +1,9 @@
 //===------ OrcTestCommon.h - Utilities for Orc Unit Tests ------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -21,6 +22,7 @@
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IR/TypeBuilder.h"
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/TargetSelect.h"
@@ -167,8 +169,11 @@ public:
   ModuleBuilder(LLVMContext &Context, StringRef Triple,
                 StringRef Name);
 
-  Function *createFunctionDecl(FunctionType *FTy, StringRef Name) {
-    return Function::Create(FTy, GlobalValue::ExternalLinkage, Name, M.get());
+  template <typename FuncType>
+  Function* createFunctionDecl(StringRef Name) {
+    return Function::Create(
+             TypeBuilder<FuncType, false>::get(M->getContext()),
+             GlobalValue::ExternalLinkage, Name, M.get());
   }
 
   Module* getModule() { return M.get(); }
@@ -184,9 +189,15 @@ struct DummyStruct {
   int X[256];
 };
 
-inline StructType *getDummyStructTy(LLVMContext &Context) {
-  return StructType::get(ArrayType::get(Type::getInt32Ty(Context), 256));
-}
+// TypeBuilder specialization for DummyStruct.
+template <bool XCompile>
+class TypeBuilder<DummyStruct, XCompile> {
+public:
+  static StructType *get(LLVMContext &Context) {
+    return StructType::get(
+        TypeBuilder<types::i<32>[256], XCompile>::get(Context));
+  }
+};
 
 template <typename HandleT, typename ModuleT>
 class MockBaseLayer {

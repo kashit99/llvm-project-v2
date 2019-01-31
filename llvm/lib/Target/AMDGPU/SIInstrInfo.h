@@ -1,8 +1,9 @@
 //===- SIInstrInfo.h - SI Instruction Info Interface ------------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -449,8 +450,6 @@ public:
     return get(Opcode).TSFlags & SIInstrFlags::DS;
   }
 
-  bool isAlwaysGDS(uint16_t Opcode) const;
-
   static bool isMIMG(const MachineInstr &MI) {
     return MI.getDesc().TSFlags & SIInstrFlags::MIMG;
   }
@@ -762,6 +761,10 @@ public:
     return RI.getRegSizeInBits(*getOpRegClass(MI, OpNo)) / 8;
   }
 
+  /// \returns true if it is legal for the operand at index \p OpNo
+  /// to read a VGPR.
+  bool canReadVGPR(const MachineInstr &MI, unsigned OpNo) const;
+
   /// Legalize the \p OpIndex operand of this instruction by inserting
   /// a MOV.  For example:
   /// ADD_I32_e32 VGPR0, 15
@@ -833,7 +836,7 @@ public:
   void insertReturn(MachineBasicBlock &MBB) const;
   /// Return the number of wait states that result from executing this
   /// instruction.
-  static unsigned getNumWaitStates(const MachineInstr &MI);
+  unsigned getNumWaitStates(const MachineInstr &MI) const;
 
   /// Returns the operand named \p Op.  If \p MI does not have an
   /// operand named \c Op, this function returns nullptr.

@@ -22,6 +22,7 @@
 class SymbolFileDWARF;
 class DWARFDebugAranges;
 class DWARFDeclContext;
+class DebugMapModule;
 
 class SymbolFileDWARFDebugMap : public lldb_private::SymbolFile {
 public:
@@ -129,6 +130,9 @@ public:
   std::vector<lldb_private::CallEdge>
   ParseCallEdgesInFunction(lldb_private::UserID func_id) override;
 
+  std::vector<lldb::DataBufferSP>
+  GetASTData(lldb::LanguageType language) override;
+
   void DumpClangAST(lldb_private::Stream &s) override;
 
   //------------------------------------------------------------------
@@ -144,6 +148,7 @@ protected:
   friend class DebugMapModule;
   friend struct DIERef;
   friend class DWARFASTParserClang;
+  friend class DWARFASTParserSwift;
   friend class DWARFUnit;
   friend class SymbolFileDWARF;
   struct OSOInfo {

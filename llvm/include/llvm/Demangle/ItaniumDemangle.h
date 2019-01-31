@@ -1,26 +1,23 @@
 //===------------------------- ItaniumDemangle.h ----------------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
 //
-//===----------------------------------------------------------------------===//
-//
-// Generic itanium demangler library. This file has two byte-per-byte identical
-// copies in the source tree, one in libcxxabi, and the other in llvm.
+// This file is dual licensed under the MIT and the University of Illinois Open
+// Source Licenses. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef DEMANGLE_ITANIUMDEMANGLE_H
-#define DEMANGLE_ITANIUMDEMANGLE_H
+#ifndef LLVM_DEMANGLE_ITANIUMDEMANGLE_H
+#define LLVM_DEMANGLE_ITANIUMDEMANGLE_H
 
 // FIXME: (possibly) incomplete list of features that clang mangles that this
 // file does not yet support:
 //   - C++ modules TS
 
-#include "DemangleConfig.h"
-#include "StringView.h"
-#include "Utility.h"
+#include "llvm/Demangle/Compiler.h"
+#include "llvm/Demangle/StringView.h"
+#include "llvm/Demangle/Utility.h"
+
 #include <cassert>
 #include <cctype>
 #include <cstdio>
@@ -98,8 +95,8 @@
     X(BracedExpr) \
     X(BracedRangeExpr)
 
-DEMANGLE_NAMESPACE_BEGIN
-
+namespace llvm {
+namespace itanium_demangle {
 // Base class of all AST nodes. The AST is built by the parser, then is
 // traversed by the printLeft/Right functions to produce a demangled string.
 class Node {
@@ -197,7 +194,7 @@ public:
   virtual ~Node() = default;
 
 #ifndef NDEBUG
-  DEMANGLE_DUMP_METHOD void dump() const;
+  LLVM_DUMP_METHOD void dump() const;
 #endif
 };
 
@@ -1281,7 +1278,7 @@ public:
     case SpecialSubKind::iostream:
       return StringView("basic_iostream");
     }
-    DEMANGLE_UNREACHABLE;
+    LLVM_BUILTIN_UNREACHABLE;
   }
 
   void printLeft(OutputStream &S) const override {
@@ -1333,7 +1330,7 @@ public:
     case SpecialSubKind::iostream:
       return StringView("iostream");
     }
-    DEMANGLE_UNREACHABLE;
+    LLVM_BUILTIN_UNREACHABLE;
   }
 
   void printLeft(OutputStream &S) const override {
@@ -2479,12 +2476,6 @@ AbstractManglingParser<Derived, Alloc>::parseUnnamedTypeName(NameState *) {
       return nullptr;
     return make<ClosureTypeName>(Params, Count);
   }
-  if (consumeIf("Ub")) {
-    (void)parseNumber();
-    if (!consumeIf('_'))
-      return nullptr;
-    return make<NameType>("'block-literal'");
-  }
   return nullptr;
 }
 
@@ -3476,7 +3467,7 @@ Node *AbstractManglingParser<Derived, Alloc>::parseType() {
       Result = getDerived().parseFunctionType();
       break;
     }
-    DEMANGLE_FALLTHROUGH;
+    LLVM_FALLTHROUGH;
   }
   case 'U': {
     Result = getDerived().parseQualifiedType();
@@ -3763,7 +3754,7 @@ Node *AbstractManglingParser<Derived, Alloc>::parseType() {
       // substitution table.
       return Sub;
     }
-    DEMANGLE_FALLTHROUGH;
+    LLVM_FALLTHROUGH;
   }
   //        ::= <class-enum-type>
   default: {
@@ -5148,7 +5139,7 @@ AbstractManglingParser<Derived, Alloc>::parseTemplateArgs(bool TagTemplates) {
 // extension      ::= ___Z <encoding> _block_invoke_<decimal-digit>+
 template <typename Derived, typename Alloc>
 Node *AbstractManglingParser<Derived, Alloc>::parse() {
-  if (consumeIf("_Z") || consumeIf("__Z")) {
+  if (consumeIf("_Z")) {
     Node *Encoding = getDerived().parseEncoding();
     if (Encoding == nullptr)
       return nullptr;
@@ -5161,7 +5152,7 @@ Node *AbstractManglingParser<Derived, Alloc>::parse() {
     return Encoding;
   }
 
-  if (consumeIf("___Z") || consumeIf("____Z")) {
+  if (consumeIf("___Z")) {
     Node *Encoding = getDerived().parseEncoding();
     if (Encoding == nullptr || !consumeIf("_block_invoke"))
       return nullptr;
@@ -5187,6 +5178,7 @@ struct ManglingParser : AbstractManglingParser<ManglingParser<Alloc>, Alloc> {
                                Alloc>::AbstractManglingParser;
 };
 
-DEMANGLE_NAMESPACE_END
+}  // namespace itanium_demangle
+}  // namespace llvm
 
-#endif // DEMANGLE_ITANIUMDEMANGLE_H
+#endif // LLVM_DEMANGLE_ITANIUMDEMANGLE_H

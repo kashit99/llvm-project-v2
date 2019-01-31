@@ -21,8 +21,6 @@ hsubps    (%rax), %xmm2
 
 lddqu     (%rax), %xmm2
 
-monitor
-
 movddup   %xmm0, %xmm2
 movddup   (%rax), %xmm2
 
@@ -31,8 +29,6 @@ movshdup  (%rax), %xmm2
 
 movsldup  %xmm0, %xmm2
 movsldup  (%rax), %xmm2
-
-mwait
 
 # CHECK:      Instruction Info:
 # CHECK-NEXT: [1]: #uOps
@@ -56,14 +52,12 @@ mwait
 # CHECK-NEXT:  1      3     1.00                        hsubps	%xmm0, %xmm2
 # CHECK-NEXT:  1      6     1.00    *                   hsubps	(%rax), %xmm2
 # CHECK-NEXT:  1      3     1.00    *                   lddqu	(%rax), %xmm2
-# CHECK-NEXT:  1      100   1.00                  U     monitor
 # CHECK-NEXT:  1      1     1.00                        movddup	%xmm0, %xmm2
 # CHECK-NEXT:  1      4     1.00    *                   movddup	(%rax), %xmm2
 # CHECK-NEXT:  1      1     1.00                        movshdup	%xmm0, %xmm2
 # CHECK-NEXT:  1      4     1.00    *                   movshdup	(%rax), %xmm2
 # CHECK-NEXT:  1      1     1.00                        movsldup	%xmm0, %xmm2
 # CHECK-NEXT:  1      4     1.00    *                   movsldup	(%rax), %xmm2
-# CHECK-NEXT:  1      100   1.00    *      *      U     mwait
 
 # CHECK:      Resources:
 # CHECK-NEXT: [0]   - SLMDivider
@@ -77,7 +71,7 @@ mwait
 
 # CHECK:      Resource pressure per iteration:
 # CHECK-NEXT: [0]    [1]    [2]    [3]    [4]    [5]    [6]    [7]
-# CHECK-NEXT:  -      -      -     16.00  12.00   -      -     10.00
+# CHECK-NEXT:  -      -      -     14.00  12.00   -      -     10.00
 
 # CHECK:      Resource pressure by instruction:
 # CHECK-NEXT: [0]    [1]    [2]    [3]    [4]    [5]    [6]    [7]    Instructions:
@@ -94,11 +88,9 @@ mwait
 # CHECK-NEXT:  -      -      -     1.00   1.00    -      -      -     hsubps	%xmm0, %xmm2
 # CHECK-NEXT:  -      -      -     1.00   1.00    -      -     1.00   hsubps	(%rax), %xmm2
 # CHECK-NEXT:  -      -      -      -      -      -      -     1.00   lddqu	(%rax), %xmm2
-# CHECK-NEXT:  -      -      -     1.00    -      -      -      -     monitor
 # CHECK-NEXT:  -      -      -     1.00    -      -      -      -     movddup	%xmm0, %xmm2
 # CHECK-NEXT:  -      -      -     1.00    -      -      -     1.00   movddup	(%rax), %xmm2
 # CHECK-NEXT:  -      -      -     1.00    -      -      -      -     movshdup	%xmm0, %xmm2
 # CHECK-NEXT:  -      -      -     1.00    -      -      -     1.00   movshdup	(%rax), %xmm2
 # CHECK-NEXT:  -      -      -     1.00    -      -      -      -     movsldup	%xmm0, %xmm2
 # CHECK-NEXT:  -      -      -     1.00    -      -      -     1.00   movsldup	(%rax), %xmm2
-# CHECK-NEXT:  -      -      -     1.00    -      -      -      -     mwait

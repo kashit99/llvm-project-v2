@@ -1,8 +1,9 @@
 //===- RegisterPressure.h - Dynamic Register Pressure -----------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -129,6 +130,10 @@ public:
   bool operator==(const PressureChange &RHS) const {
     return PSetID == RHS.PSetID && UnitInc == RHS.UnitInc;
   }
+};
+
+template <> struct isPodLike<PressureChange> {
+   static const bool value = true;
 };
 
 /// List of PressureChanges in order of increasing, unique PSetID.

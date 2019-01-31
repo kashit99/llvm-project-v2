@@ -18,13 +18,12 @@ import subprocess
 
 
 def sync_source_lists():
-    # Use shell=True on Windows in case git is a bat file.
-    gn_files = subprocess.check_output(['git', 'ls-files', '*BUILD.gn'],
-                                       shell=os.name == 'nt').splitlines()
+    gn_files = subprocess.check_output(
+            ['git', 'ls-files', '*BUILD.gn']).splitlines()
 
-    # Matches e.g. |   "foo.cpp",|, captures |foo| in group 1.
+    # Matches e.g. |   "foo.cpp",|.
     gn_cpp_re = re.compile(r'^\s*"([^"]+\.(?:cpp|h))",$', re.MULTILINE)
-    # Matches e.g. |   foo.cpp|, captures |foo| in group 1.
+    # Matches e.g. |   "foo.cpp"|.
     cmake_cpp_re = re.compile(r'^\s*([A-Za-z_0-9/-]+\.(?:cpp|h))$',
                               re.MULTILINE)
 
@@ -58,17 +57,12 @@ def sync_source_lists():
 
 
 def sync_unittests():
-    # Matches e.g. |add_llvm_unittest_with_input_files|.
-    unittest_re = re.compile(r'^add_\S+_unittest', re.MULTILINE)
-
-    checked = [ 'clang', 'lld', 'llvm' ]
+    checked = [ 'clang', 'lld' ]
     for c in checked:
         for root, _, _ in os.walk(os.path.join(c, 'unittests')):
             cmake_file = os.path.join(root, 'CMakeLists.txt')
             if not os.path.exists(cmake_file):
                 continue
-            if not unittest_re.search(open(cmake_file).read()):
-                continue  # Skip CMake files that just add subdirectories.
             gn_file = os.path.join('llvm/utils/gn/secondary', root, 'BUILD.gn')
             if not os.path.exists(gn_file):
                 print('missing GN file %s for unittest CMake file %s' %

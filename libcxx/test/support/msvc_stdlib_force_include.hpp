@@ -1,8 +1,9 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is dual licensed under the MIT and the University of Illinois Open
+// Source Licenses. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -78,14 +79,10 @@ const AssertionDialogAvoider assertion_dialog_avoider{};
 
 #include <ciso646>
 
-#if _HAS_CXX20
-    #define TEST_STD_VER 99
-#elif _HAS_CXX17
+#if _HAS_CXX17
     #define TEST_STD_VER 17
-#else // !(_HAS_CXX20 || _HAS_CXX17)
+#else // _HAS_CXX17
     #define TEST_STD_VER 14
-#endif
-
-#define _LIBCPP_AVAILABILITY_THROW_BAD_ANY_CAST
+#endif // _HAS_CXX17
 
 #endif // SUPPORT_MSVC_STDLIB_FORCE_INCLUDE_HPP

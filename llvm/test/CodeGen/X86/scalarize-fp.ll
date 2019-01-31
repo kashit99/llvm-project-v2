@@ -198,8 +198,9 @@ define <4 x double> @fadd_op1_constant_v4f64(double %x) nounwind {
 ;
 ; AVX-LABEL: fadd_op1_constant_v4f64:
 ; AVX:       # %bb.0:
+; AVX-NEXT:    # kill: def $xmm0 killed $xmm0 def $ymm0
 ; AVX-NEXT:    vmovsd {{.*#+}} xmm1 = mem[0],zero
-; AVX-NEXT:    vaddpd %xmm1, %xmm0, %xmm0
+; AVX-NEXT:    vaddpd %ymm1, %ymm0, %ymm0
 ; AVX-NEXT:    retq
   %v = insertelement <4 x double> undef, double %x, i32 0
   %b = fadd <4 x double> %v, <double 42.0, double undef, double undef, double undef>
@@ -218,7 +219,7 @@ define <4 x double> @load_fadd_op1_constant_v4f64(double* %p) nounwind {
 ; AVX:       # %bb.0:
 ; AVX-NEXT:    vmovsd {{.*#+}} xmm0 = mem[0],zero
 ; AVX-NEXT:    vmovsd {{.*#+}} xmm1 = mem[0],zero
-; AVX-NEXT:    vaddpd %xmm1, %xmm0, %xmm0
+; AVX-NEXT:    vaddpd %ymm1, %ymm0, %ymm0
 ; AVX-NEXT:    retq
   %x = load double, double* %p
   %v = insertelement <4 x double> undef, double %x, i32 0
@@ -236,8 +237,9 @@ define <4 x double> @fsub_op0_constant_v4f64(double %x) nounwind {
 ;
 ; AVX-LABEL: fsub_op0_constant_v4f64:
 ; AVX:       # %bb.0:
+; AVX-NEXT:    # kill: def $xmm0 killed $xmm0 def $ymm0
 ; AVX-NEXT:    vmovsd {{.*#+}} xmm1 = mem[0],zero
-; AVX-NEXT:    vsubpd %xmm0, %xmm1, %xmm0
+; AVX-NEXT:    vsubpd %ymm0, %ymm1, %ymm0
 ; AVX-NEXT:    retq
   %v = insertelement <4 x double> undef, double %x, i32 0
   %b = fsub <4 x double> <double 42.0, double undef, double undef, double undef>, %v
@@ -256,7 +258,7 @@ define <4 x double> @load_fsub_op0_constant_v4f64(double* %p) nounwind {
 ; AVX:       # %bb.0:
 ; AVX-NEXT:    vmovsd {{.*#+}} xmm0 = mem[0],zero
 ; AVX-NEXT:    vmovsd {{.*#+}} xmm1 = mem[0],zero
-; AVX-NEXT:    vsubpd %xmm0, %xmm1, %xmm0
+; AVX-NEXT:    vsubpd %ymm0, %ymm1, %ymm0
 ; AVX-NEXT:    retq
   %x = load double, double* %p
   %v = insertelement <4 x double> undef, double %x, i32 0
@@ -273,8 +275,9 @@ define <4 x double> @fmul_op1_constant_v4f64(double %x) nounwind {
 ;
 ; AVX-LABEL: fmul_op1_constant_v4f64:
 ; AVX:       # %bb.0:
+; AVX-NEXT:    # kill: def $xmm0 killed $xmm0 def $ymm0
 ; AVX-NEXT:    vmovsd {{.*#+}} xmm1 = mem[0],zero
-; AVX-NEXT:    vmulpd %xmm1, %xmm0, %xmm0
+; AVX-NEXT:    vmulpd %ymm1, %ymm0, %ymm0
 ; AVX-NEXT:    retq
   %v = insertelement <4 x double> undef, double %x, i32 0
   %b = fmul <4 x double> %v, <double 42.0, double undef, double undef, double undef>
@@ -293,7 +296,7 @@ define <4 x double> @load_fmul_op1_constant_v4f64(double* %p) nounwind {
 ; AVX:       # %bb.0:
 ; AVX-NEXT:    vmovsd {{.*#+}} xmm0 = mem[0],zero
 ; AVX-NEXT:    vmovsd {{.*#+}} xmm1 = mem[0],zero
-; AVX-NEXT:    vmulpd %xmm1, %xmm0, %xmm0
+; AVX-NEXT:    vmulpd %ymm1, %ymm0, %ymm0
 ; AVX-NEXT:    retq
   %x = load double, double* %p
   %v = insertelement <4 x double> undef, double %x, i32 0
@@ -310,8 +313,9 @@ define <4 x double> @fdiv_op1_constant_v4f64(double %x) nounwind {
 ;
 ; AVX-LABEL: fdiv_op1_constant_v4f64:
 ; AVX:       # %bb.0:
+; AVX-NEXT:    # kill: def $xmm0 killed $xmm0 def $ymm0
 ; AVX-NEXT:    vmovsd {{.*#+}} xmm1 = mem[0],zero
-; AVX-NEXT:    vdivpd %xmm1, %xmm0, %xmm0
+; AVX-NEXT:    vdivpd %ymm1, %ymm0, %ymm0
 ; AVX-NEXT:    retq
   %v = insertelement <4 x double> undef, double %x, i32 0
   %b = fdiv <4 x double> %v, <double 42.0, double undef, double undef, double undef>
@@ -330,7 +334,7 @@ define <4 x double> @load_fdiv_op1_constant_v4f64(double* %p) nounwind {
 ; AVX:       # %bb.0:
 ; AVX-NEXT:    vmovsd {{.*#+}} xmm0 = mem[0],zero
 ; AVX-NEXT:    vmovsd {{.*#+}} xmm1 = mem[0],zero
-; AVX-NEXT:    vdivpd %xmm1, %xmm0, %xmm0
+; AVX-NEXT:    vdivpd %ymm1, %ymm0, %ymm0
 ; AVX-NEXT:    retq
   %x = load double, double* %p
   %v = insertelement <4 x double> undef, double %x, i32 0
@@ -348,8 +352,9 @@ define <4 x double> @fdiv_op0_constant_v4f64(double %x) nounwind {
 ;
 ; AVX-LABEL: fdiv_op0_constant_v4f64:
 ; AVX:       # %bb.0:
+; AVX-NEXT:    # kill: def $xmm0 killed $xmm0 def $ymm0
 ; AVX-NEXT:    vmovsd {{.*#+}} xmm1 = mem[0],zero
-; AVX-NEXT:    vdivpd %xmm0, %xmm1, %xmm0
+; AVX-NEXT:    vdivpd %ymm0, %ymm1, %ymm0
 ; AVX-NEXT:    retq
   %v = insertelement <4 x double> undef, double %x, i32 0
   %b = fdiv <4 x double> <double 42.0, double undef, double undef, double undef>, %v
@@ -368,7 +373,7 @@ define <4 x double> @load_fdiv_op0_constant_v4f64(double* %p) nounwind {
 ; AVX:       # %bb.0:
 ; AVX-NEXT:    vmovsd {{.*#+}} xmm0 = mem[0],zero
 ; AVX-NEXT:    vmovsd {{.*#+}} xmm1 = mem[0],zero
-; AVX-NEXT:    vdivpd %xmm0, %xmm1, %xmm0
+; AVX-NEXT:    vdivpd %ymm0, %ymm1, %ymm0
 ; AVX-NEXT:    retq
   %x = load double, double* %p
   %v = insertelement <4 x double> undef, double %x, i32 0

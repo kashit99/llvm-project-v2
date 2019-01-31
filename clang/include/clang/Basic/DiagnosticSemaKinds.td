@@ -1,8 +1,9 @@
 //==--- DiagnosticSemaKinds.td - libsema diagnostics ----------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -261,14 +262,18 @@ def err_anyx86_interrupt_called : Error<
 def warn_arm_interrupt_calling_convention : Warning<
    "call to function without interrupt attribute could clobber interruptee's VFP registers">,
    InGroup<Extra>;
-def warn_interrupt_attribute_invalid : Warning<
-   "%select{MIPS|MSP430|RISC-V}0 'interrupt' attribute only applies to "
-   "functions that have %select{no parameters|a 'void' return type}1">,
+def warn_mips_interrupt_attribute : Warning<
+   "MIPS 'interrupt' attribute only applies to functions that have "
+   "%select{no parameters|a 'void' return type}0">,
    InGroup<IgnoredAttributes>;
 def warn_riscv_repeated_interrupt_attribute : Warning<
   "repeated RISC-V 'interrupt' attribute">, InGroup<IgnoredAttributes>;
 def note_riscv_repeated_interrupt_attribute : Note<
   "repeated RISC-V 'interrupt' attribute is here">;
+def warn_riscv_interrupt_attribute : Warning<
+   "RISC-V 'interrupt' attribute only applies to functions that have "
+   "%select{no parameters|a 'void' return type}0">,
+   InGroup<IgnoredAttributes>;
 def warn_unused_parameter : Warning<"unused parameter %0">,
   InGroup<UnusedParameter>, DefaultIgnore;
 def warn_unused_variable : Warning<"unused variable %0">,
@@ -1299,8 +1304,8 @@ def ext_unelaborated_friend_type : ExtWarn<
 def warn_cxx98_compat_unelaborated_friend_type : Warning<
   "befriending %1 without '%select{struct|interface|union|class|enum}0' "
   "keyword is incompatible with C++98">, InGroup<CXX98Compat>, DefaultIgnore;
-def err_qualified_friend_no_match : Error<
-  "friend declaration of %0 does not match any declaration in %1">;
+def err_qualified_friend_not_found : Error<
+  "no function named %0 with type %1 was found in the specified scope">;
 def err_introducing_special_friend : Error<
   "%plural{[0,2]:must use a qualified name when declaring|3:cannot declare}0"
   " a %select{constructor|destructor|conversion operator|deduction guide}0 "
@@ -1591,9 +1596,6 @@ def err_explicit_non_ctor_or_conv_function : Error<
 def err_static_not_bitfield : Error<"static member %0 cannot be a bit-field">;
 def err_static_out_of_line : Error<
   "'static' can only be specified inside the class definition">;
-def ext_static_out_of_line : ExtWarn<
-  err_static_out_of_line.Text>,
-  InGroup<MicrosoftTemplate>;
 def err_storage_class_for_static_member : Error<
   "static data member definition cannot specify a storage class">;
 def err_typedef_not_bitfield : Error<"typedef member %0 cannot be a bit-field">;
@@ -1813,7 +1815,11 @@ def err_init_conversion_failed : Error<
   "|: different number of parameters (%5 vs %6)"
   "|: type mismatch at %ordinal5 parameter%diff{ ($ vs $)|}6,7"
   "|: different return type%diff{ ($ vs $)|}5,6"
-  "|: different qualifiers (%5 vs %6)"
+  "|: different qualifiers ("
+  "%select{none|const|restrict|const and restrict|volatile|const and volatile|"
+  "volatile and restrict|const, volatile, and restrict}5 vs "
+  "%select{none|const|restrict|const and restrict|volatile|const and volatile|"
+  "volatile and restrict|const, volatile, and restrict}6)"
   "|: different exception specifications}4">;
 
 def err_lvalue_to_rvalue_ref : Error<"rvalue reference %diff{to type $ cannot "
@@ -2129,12 +2135,6 @@ def warn_cxx14_compat_class_template_argument_deduction : Warning<
   "class template argument deduction is incompatible with C++ standards "
   "before C++17%select{|; for compatibility, use explicit type name %1}0">,
   InGroup<CXXPre17Compat>, DefaultIgnore;
-def warn_ctad_maybe_unsupported : Warning<
-  "%0 may not intend to support class template argument deduction">,
-  InGroup<CTADMaybeUnsupported>, DefaultIgnore;
-def note_suppress_ctad_maybe_unsupported : Note<
-  "add a deduction guide to suppress this warning">;
-
 
 // C++14 deduced return types
 def err_auto_fn_deduction_failure : Error<
@@ -2578,20 +2578,6 @@ def err_format_attribute_result_not : Error<"function does not return %0">;
 def err_format_attribute_implicit_this_format_string : Error<
   "format attribute cannot specify the implicit this argument as the format "
   "string">;
-def err_callback_attribute_no_callee : Error<
-  "'callback' attribute specifies no callback callee">;
-def err_callback_attribute_invalid_callee : Error<
-  "'callback' attribute specifies invalid callback callee">;
-def err_callback_attribute_multiple : Error<
-  "multiple 'callback' attributes specified">;
-def err_callback_attribute_argument_unknown : Error<
-  "'callback' attribute argument %0 is not a known function parameter">;
-def err_callback_callee_no_function_type : Error<
-  "'callback' attribute callee does not have function type">;
-def err_callback_callee_is_variadic : Error<
-  "'callback' attribute callee may not be variadic">;
-def err_callback_implicit_this_not_available : Error<
-  "'callback' argument at position %0 references unavailable implicit 'this'">;
 def err_init_method_bad_return_type : Error<
   "init methods must return an object pointer type, not %0">;
 def err_attribute_invalid_size : Error<
@@ -3204,10 +3190,6 @@ def warn_impcast_bitfield_precision_constant : Warning<
   "implicit truncation from %2 to bit-field changes value from %0 to %1">,
   InGroup<BitFieldConstantConversion>;
 
-def warn_impcast_fixed_point_range : Warning<
-  "implicit conversion from %0 cannot fit within the range of values for %1">,
-  InGroup<ImplicitFixedPointConversion>;
-
 def warn_impcast_literal_float_to_integer : Warning<
   "implicit conversion from %0 to %1 changes value from %2 to %3">,
   InGroup<LiteralConversion>;
@@ -3456,7 +3438,7 @@ def err_ns_attribute_wrong_parameter_type : Error<
   "%select{Objective-C object|pointer|pointer-to-CF-pointer}1 parameters">;
 def warn_ns_attribute_wrong_parameter_type : Warning<
   "%0 attribute only applies to "
-  "%select{Objective-C object|pointer|pointer-to-CF-pointer|pointer/reference-to-OSObject-pointer}1 parameters">,
+  "%select{Objective-C object|pointer|pointer-to-CF-pointer}1 parameters">,
   InGroup<IgnoredAttributes>;
 def warn_objc_requires_super_protocol : Warning<
   "%0 attribute cannot be applied to %select{methods in protocols|dealloc}1">,
@@ -3577,6 +3559,7 @@ def err_attr_swift_error_return_type : Error<
 def warn_swift_newtype_attribute_non_typedef : Warning<
   "'swift_newtype' attribute may be put on a typedef only; "
   "attribute is ignored">, InGroup<DiagGroup<"swift-newtype-attribute">>;
+
 def warn_ignored_objc_externally_retained : Warning<
   "'objc_externally_retained' can only be applied to local variables "
   "%select{of retainable type|with strong ownership}0">,
@@ -3686,7 +3669,11 @@ def note_ovl_candidate : Note<
     "| has type mismatch at %ordinal5 parameter"
     "%diff{ (expected $ but has $)|}6,7"
     "| has different return type%diff{ ($ expected but has $)|}5,6"
-    "| has different qualifiers (expected %5 but found %6)"
+    "| has different qualifiers (expected "
+    "%select{none|const|restrict|const and restrict|volatile|const and volatile"
+    "|volatile and restrict|const, volatile, and restrict}5 but found "
+    "%select{none|const|restrict|const and restrict|volatile|const and volatile"
+    "|volatile and restrict|const, volatile, and restrict}6)"
     "| has different exception specification}4">;
 
 def note_ovl_candidate_inherited_constructor : Note<
@@ -4657,10 +4644,7 @@ def warn_unavailable_fwdclass_message : Warning<
     InGroup<UnavailableDeclarations>;
 def note_availability_specified_here : Note<
   "%0 has been explicitly marked "
-  "%select{unavailable|deleted|deprecated}1 here">;
-def note_partial_availability_specified_here : Note<
-  "%0 has been marked as being introduced in %1 %2 here, "
-  "but the deployment target is %1 %3">;
+  "%select{unavailable|deleted|deprecated|partial}1 here">;
 def note_implicitly_deleted : Note<
   "explicitly defaulted function was implicitly deleted here">;
 def warn_not_enough_argument : Warning<
@@ -5970,8 +5954,7 @@ def ext_typecheck_comparison_of_fptr_to_void : Extension<
 def err_typecheck_comparison_of_fptr_to_void : Error<
   "equality comparison between function pointer and void pointer (%0 and %1)">;
 def ext_typecheck_comparison_of_pointer_integer : ExtWarn<
-  "comparison between pointer and integer (%0 and %1)">,
-  InGroup<DiagGroup<"pointer-integer-compare">>;
+  "comparison between pointer and integer (%0 and %1)">;
 def err_typecheck_comparison_of_pointer_integer : Error<
   "comparison between pointer and integer (%0 and %1)">;
 def ext_typecheck_comparison_of_distinct_pointers : ExtWarn<
@@ -6566,7 +6549,11 @@ def note_hidden_overloaded_virtual_declared_here : Note<
   "|: different number of parameters (%2 vs %3)"
   "|: type mismatch at %ordinal2 parameter%diff{ ($ vs $)|}3,4"
   "|: different return type%diff{ ($ vs $)|}2,3"
-  "|: different qualifiers (%2 vs %3)"
+  "|: different qualifiers ("
+  "%select{none|const|restrict|const and restrict|volatile|const and volatile|"
+  "volatile and restrict|const, volatile, and restrict}2 vs "
+  "%select{none|const|restrict|const and restrict|volatile|const and volatile|"
+  "volatile and restrict|const, volatile, and restrict}3)"
   "|: different exception specifications}1">;
 def warn_using_directive_in_header : Warning<
   "using namespace directive in global context in header">,
@@ -6840,7 +6827,11 @@ def err_typecheck_convert_incompatible : Error<
   "|: different number of parameters (%5 vs %6)"
   "|: type mismatch at %ordinal5 parameter%diff{ ($ vs $)|}6,7"
   "|: different return type%diff{ ($ vs $)|}5,6"
-  "|: different qualifiers (%5 vs %6)"
+  "|: different qualifiers ("
+  "%select{none|const|restrict|const and restrict|volatile|const and volatile|"
+  "volatile and restrict|const, volatile, and restrict}5 vs "
+  "%select{none|const|restrict|const and restrict|volatile|const and volatile|"
+  "volatile and restrict|const, volatile, and restrict}6)"
   "|: different exception specifications}4">;
 def err_typecheck_missing_return_type_incompatible : Error<
   "%diff{return type $ must match previous return type $|"
@@ -6899,7 +6890,7 @@ def ext_typecheck_convert_int_pointer : ExtWarn<
   "; take the address with &|"
   "; remove *|"
   "; remove &}3">,
-  InGroup<IntConversion>, SFINAEFailure;
+  InGroup<IntConversion>;
 def ext_typecheck_convert_pointer_void_func : Extension<
   "%select{%diff{assigning to $ from $|assigning to different types}0,1"
   "|%diff{passing $ to parameter of type $|"
@@ -8891,10 +8882,8 @@ def err_omp_required_access : Error<
   "%0 variable must be %1">;
 def err_omp_const_variable : Error<
   "const-qualified variable cannot be %0">;
-def err_omp_const_not_mutable_variable : Error<
-  "const-qualified variable without mutable fields cannot be %0">;
-def err_omp_const_list_item : Error<
-  "const-qualified list item cannot be %0">;
+def err_omp_const_reduction_list_item : Error<
+  "const-qualified list item cannot be reduction">;
 def err_omp_linear_incomplete_type : Error<
   "a linear variable with incomplete type %0">;
 def err_omp_linear_expected_int_or_ptr : Error<

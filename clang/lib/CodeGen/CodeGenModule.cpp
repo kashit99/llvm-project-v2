@@ -1,8 +1,9 @@
 //===--- CodeGenModule.cpp - Emit LLVM Code from ASTs for a Module --------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -33,7 +34,6 @@
 #include "clang/AST/Mangle.h"
 #include "clang/AST/RecordLayout.h"
 #include "clang/AST/RecursiveASTVisitor.h"
-#include "clang/AST/StmtVisitor.h"
 #include "clang/Basic/Builtins.h"
 #include "clang/Basic/CharInfo.h"
 #include "clang/Basic/CodeGenOptions.h"
@@ -47,6 +47,7 @@
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/ADT/Triple.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
+#include "llvm/IR/CallSite.h"
 #include "llvm/IR/CallingConv.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Intrinsics.h"
@@ -730,11 +731,9 @@ void CodeGenModule::setGlobalVisibility(llvm::GlobalValue *GV,
   }
   if (!D)
     return;
-  // Set visibility for definitions, and for declarations if requested globally
-  // or set explicitly.
+  // Set visibility for definitions.
   LinkageInfo LV = D->getLinkageAndVisibility();
-  if (LV.isVisibilityExplicit() || getLangOpts().SetVisibilityForExternDecls ||
-      !GV->isDeclarationForLinker())
+  if (LV.isVisibilityExplicit() || !GV->isDeclarationForLinker())
     GV->setVisibility(GetLLVMVisibility(LV.getVisibility()));
 }
 
@@ -1604,23 +1603,6 @@ void CodeGenModule::SetFunctionAttributes(GlobalDecl GD, llvm::Function *F,
 
   if (getLangOpts().OpenMP && FD->hasAttr<OMPDeclareSimdDeclAttr>())
     getOpenMPRuntime().emitDeclareSimdFunction(FD, F);
-
-  if (const auto *CB = FD->getAttr<CallbackAttr>()) {
-    // Annotate the callback behavior as metadata:
-    //  - The callback callee (as argument number).
-    //  - The callback payloads (as argument numbers).
-    llvm::LLVMContext &Ctx = F->getContext();
-    llvm::MDBuilder MDB(Ctx);
-
-    // The payload indices are all but the first one in the encoding. The first
-    // identifies the callback callee.
-    int CalleeIdx = *CB->encoding_begin();
-    ArrayRef<int> PayloadIndices(CB->encoding_begin() + 1, CB->encoding_end());
-    F->addMetadata(llvm::LLVMContext::MD_callback,
-                   *llvm::MDNode::get(Ctx, {MDB.createCallbackEncoding(
-                                               CalleeIdx, PayloadIndices,
-                                               /* VarArgsArePassed */ false)}));
-  }
 }
 
 void CodeGenModule::addUsedGlobal(llvm::GlobalValue *GV) {
@@ -1774,14 +1756,16 @@ void CodeGenModule::EmitModuleLinkOptions() {
     bool AnyChildren = false;
 
     // Visit the submodules of this module.
-    for (const auto &SM : Mod->submodules()) {
+    for (clang::Module::submodule_iterator Sub = Mod->submodule_begin(),
+                                        SubEnd = Mod->submodule_end();
+         Sub != SubEnd; ++Sub) {
       // Skip explicit children; they need to be explicitly imported to be
       // linked against.
-      if (SM->IsExplicit)
+      if ((*Sub)->IsExplicit)
         continue;
 
-      if (Visited.insert(SM).second) {
-        Stack.push_back(SM);
+      if (Visited.insert(*Sub).second) {
+        Stack.push_back(*Sub);
         AnyChildren = true;
       }
     }
@@ -2283,36 +2267,35 @@ static bool HasNonDllImportDtor(QualType T) {
 }
 
 namespace {
-  struct FunctionIsDirectlyRecursive
-      : public ConstStmtVisitor<FunctionIsDirectlyRecursive, bool> {
+  struct FunctionIsDirectlyRecursive :
+    public RecursiveASTVisitor<FunctionIsDirectlyRecursive> {
     const StringRef Name;
     const Builtin::Context &BI;
-    FunctionIsDirectlyRecursive(StringRef N, const Builtin::Context &C)
-        : Name(N), BI(C) {}
+    bool Result;
+    FunctionIsDirectlyRecursive(StringRef N, const Builtin::Context &C) :
+      Name(N), BI(C), Result(false) {
+    }
+    typedef RecursiveASTVisitor<FunctionIsDirectlyRecursive> Base;
 
-    bool VisitCallExpr(const CallExpr *E) {
+    bool TraverseCallExpr(CallExpr *E) {
       const FunctionDecl *FD = E->getDirectCallee();
       if (!FD)
-        return false;
-      AsmLabelAttr *Attr = FD->getAttr<AsmLabelAttr>();
-      if (Attr && Name == Attr->getLabel())
         return true;
+      AsmLabelAttr *Attr = FD->getAttr<AsmLabelAttr>();
+      if (Attr && Name == Attr->getLabel()) {
+        Result = true;
+        return false;
+      }
       unsigned BuiltinID = FD->getBuiltinID();
       if (!BuiltinID || !BI.isLibFunction(BuiltinID))
-        return false;
+        return true;
       StringRef BuiltinName = BI.getName(BuiltinID);
       if (BuiltinName.startswith("__builtin_") &&
           Name == BuiltinName.slice(strlen("__builtin_"), StringRef::npos)) {
-        return true;
+        Result = true;
+        return false;
       }
-      return false;
-    }
-
-    bool VisitStmt(const Stmt *S) {
-      for (const Stmt *Child : S->children())
-        if (Child && this->Visit(Child))
-          return true;
-      return false;
+      return true;
     }
   };
 
@@ -2397,8 +2380,8 @@ CodeGenModule::isTriviallyRecursive(const FunctionDecl *FD) {
   }
 
   FunctionIsDirectlyRecursive Walker(Name, Context.BuiltinInfo);
-  const Stmt *Body = FD->getBody();
-  return Body ? Walker.Visit(Body) : false;
+  Walker.TraverseFunctionDecl(const_cast<FunctionDecl*>(FD));
+  return Walker.Result;
 }
 
 bool CodeGenModule::shouldEmitFunction(GlobalDecl GD) {
@@ -3781,15 +3764,6 @@ static bool isVarDeclStrongDefinition(const ASTContext &Context,
     }
   }
 
-  // Microsoft's link.exe doesn't support alignments greater than 32 for common
-  // symbols, so symbols with greater alignment requirements cannot be common.
-  // Other COFF linkers (ld.bfd and LLD) support arbitrary power-of-two
-  // alignments for common symbols via the aligncomm directive, so this
-  // restriction only applies to MSVC environments.
-  if (Context.getTargetInfo().getTriple().isKnownWindowsMSVCEnvironment() &&
-      Context.getTypeAlignIfKnown(D->getType()) > 32)
-    return true;
-
   return false;
 }
 
@@ -3896,10 +3870,9 @@ static void replaceUsesOfNonProtoConstant(llvm::Constant *old,
     }
 
     // Recognize calls to the function.
-    llvm::CallBase *callSite = dyn_cast<llvm::CallBase>(user);
+    llvm::CallSite callSite(user);
     if (!callSite) continue;
-    if (!callSite->isCallee(&*use))
-      continue;
+    if (!callSite.isCallee(&*use)) continue;
 
     // If the return types don't match exactly, then we can't
     // transform this call unless it's dead.
@@ -3908,19 +3881,18 @@ static void replaceUsesOfNonProtoConstant(llvm::Constant *old,
 
     // Get the call site's attribute list.
     SmallVector<llvm::AttributeSet, 8> newArgAttrs;
-    llvm::AttributeList oldAttrs = callSite->getAttributes();
+    llvm::AttributeList oldAttrs = callSite.getAttributes();
 
     // If the function was passed too few arguments, don't transform.
     unsigned newNumArgs = newFn->arg_size();
-    if (callSite->arg_size() < newNumArgs)
-      continue;
+    if (callSite.arg_size() < newNumArgs) continue;
 
     // If extra arguments were passed, we silently drop them.
     // If any of the types mismatch, we don't transform.
     unsigned argNo = 0;
     bool dontTransform = false;
     for (llvm::Argument &A : newFn->args()) {
-      if (callSite->getArgOperand(argNo)->getType() != A.getType()) {
+      if (callSite.getArgument(argNo)->getType() != A.getType()) {
         dontTransform = true;
         break;
       }
@@ -3934,33 +3906,35 @@ static void replaceUsesOfNonProtoConstant(llvm::Constant *old,
 
     // Okay, we can transform this.  Create the new call instruction and copy
     // over the required information.
-    newArgs.append(callSite->arg_begin(), callSite->arg_begin() + argNo);
+    newArgs.append(callSite.arg_begin(), callSite.arg_begin() + argNo);
 
     // Copy over any operand bundles.
-    callSite->getOperandBundlesAsDefs(newBundles);
+    callSite.getOperandBundlesAsDefs(newBundles);
 
-    llvm::CallBase *newCall;
-    if (dyn_cast<llvm::CallInst>(callSite)) {
-      newCall =
-          llvm::CallInst::Create(newFn, newArgs, newBundles, "", callSite);
+    llvm::CallSite newCall;
+    if (callSite.isCall()) {
+      newCall = llvm::CallInst::Create(newFn, newArgs, newBundles, "",
+                                       callSite.getInstruction());
     } else {
-      auto *oldInvoke = cast<llvm::InvokeInst>(callSite);
-      newCall = llvm::InvokeInst::Create(newFn, oldInvoke->getNormalDest(),
-                                         oldInvoke->getUnwindDest(), newArgs,
-                                         newBundles, "", callSite);
+      auto *oldInvoke = cast<llvm::InvokeInst>(callSite.getInstruction());
+      newCall = llvm::InvokeInst::Create(newFn,
+                                         oldInvoke->getNormalDest(),
+                                         oldInvoke->getUnwindDest(),
+                                         newArgs, newBundles, "",
+                                         callSite.getInstruction());
     }
     newArgs.clear(); // for the next iteration
 
     if (!newCall->getType()->isVoidTy())
-      newCall->takeName(callSite);
-    newCall->setAttributes(llvm::AttributeList::get(
+      newCall->takeName(callSite.getInstruction());
+    newCall.setAttributes(llvm::AttributeList::get(
         newFn->getContext(), oldAttrs.getFnAttributes(),
         oldAttrs.getRetAttributes(), newArgAttrs));
-    newCall->setCallingConv(callSite->getCallingConv());
+    newCall.setCallingConv(callSite.getCallingConv());
 
     // Finally, remove the old call, replacing any uses with the new one.
     if (!callSite->use_empty())
-      callSite->replaceAllUsesWith(newCall);
+      callSite->replaceAllUsesWith(newCall.getInstruction());
 
     // Copy debug location attached to CI.
     if (callSite->getDebugLoc())

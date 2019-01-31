@@ -1,8 +1,9 @@
 //===- HexagonLoopIdiomRecognition.cpp ------------------------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -1000,7 +1001,6 @@ bool PolynomialMultiplyRecognize::isPromotableTo(Value *Val,
 void PolynomialMultiplyRecognize::promoteTo(Instruction *In,
       IntegerType *DestTy, BasicBlock *LoopB) {
   Type *OrigTy = In->getType();
-  assert(!OrigTy->isVoidTy() && "Invalid instruction to promote");
 
   // Leave boolean values alone.
   if (!In->getType()->isIntegerTy(1))
@@ -1081,8 +1081,7 @@ bool PolynomialMultiplyRecognize::promoteTypes(BasicBlock *LoopB,
   std::transform(LoopB->begin(), LoopB->end(), std::back_inserter(LoopIns),
                  [](Instruction &In) { return &In; });
   for (Instruction *In : LoopIns)
-    if (!In->isTerminator())
-      promoteTo(In, DestTy, LoopB);
+    promoteTo(In, DestTy, LoopB);
 
   // Fix up the PHI nodes in the exit block.
   Instruction *EndI = ExitB->getFirstNonPHI();

@@ -1,8 +1,9 @@
 //===- WasmYAML.cpp - Wasm YAMLIO implementation --------------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -71,14 +72,6 @@ static void sectionMapping(IO &IO, WasmYAML::LinkingSection &Section) {
   IO.mapOptional("SegmentInfo", Section.SegmentInfos);
   IO.mapOptional("InitFunctions", Section.InitFunctions);
   IO.mapOptional("Comdats", Section.Comdats);
-}
-
-static void sectionMapping(IO &IO, WasmYAML::ProducersSection &Section) {
-  commonSectionMapping(IO, Section);
-  IO.mapRequired("Name", Section.Name);
-  IO.mapOptional("Languages", Section.Languages);
-  IO.mapOptional("Tools", Section.Tools);
-  IO.mapOptional("SDKs", Section.SDKs);
 }
 
 static void sectionMapping(IO &IO, WasmYAML::CustomSection &Section) {
@@ -176,10 +169,6 @@ void MappingTraits<std::unique_ptr<WasmYAML::Section>>::mapping(
       if (!IO.outputting())
         Section.reset(new WasmYAML::NameSection());
       sectionMapping(IO, *cast<WasmYAML::NameSection>(Section.get()));
-    } else if (SectionName == "producers") {
-      if (!IO.outputting())
-        Section.reset(new WasmYAML::ProducersSection());
-      sectionMapping(IO, *cast<WasmYAML::ProducersSection>(Section.get()));
     } else {
       if (!IO.outputting())
         Section.reset(new WasmYAML::CustomSection(SectionName));
@@ -304,12 +293,6 @@ void MappingTraits<WasmYAML::NameEntry>::mapping(
   IO.mapRequired("Name", NameEntry.Name);
 }
 
-void MappingTraits<WasmYAML::ProducerEntry>::mapping(
-    IO &IO, WasmYAML::ProducerEntry &ProducerEntry) {
-  IO.mapRequired("Name", ProducerEntry.Name);
-  IO.mapRequired("Version", ProducerEntry.Version);
-}
-
 void MappingTraits<WasmYAML::SegmentInfo>::mapping(
     IO &IO, WasmYAML::SegmentInfo &SegmentInfo) {
   IO.mapRequired("Index", SegmentInfo.Index);
@@ -394,7 +377,7 @@ void MappingTraits<wasm::WasmInitExpr>::mapping(IO &IO,
   case wasm::WASM_OPCODE_F64_CONST:
     IO.mapRequired("Value", Expr.Value.Float64);
     break;
-  case wasm::WASM_OPCODE_GLOBAL_GET:
+  case wasm::WASM_OPCODE_GET_GLOBAL:
     IO.mapRequired("Index", Expr.Value.Global);
     break;
   }
@@ -508,7 +491,7 @@ void ScalarEnumerationTraits<WasmYAML::ValueType>::enumeration(
   ECase(F32);
   ECase(F64);
   ECase(V128);
-  ECase(FUNCREF);
+  ECase(ANYFUNC);
   ECase(FUNC);
   ECase(NORESULT);
 #undef ECase
@@ -533,14 +516,14 @@ void ScalarEnumerationTraits<WasmYAML::Opcode>::enumeration(
   ECase(I64_CONST);
   ECase(F64_CONST);
   ECase(F32_CONST);
-  ECase(GLOBAL_GET);
+  ECase(GET_GLOBAL);
 #undef ECase
 }
 
 void ScalarEnumerationTraits<WasmYAML::TableType>::enumeration(
     IO &IO, WasmYAML::TableType &Type) {
 #define ECase(X) IO.enumCase(Type, #X, wasm::WASM_TYPE_##X);
-  ECase(FUNCREF);
+  ECase(ANYFUNC);
 #undef ECase
 }
 

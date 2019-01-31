@@ -1,8 +1,9 @@
 //===- llvm/MC/MCSubtargetInfo.h - Subtarget Information --------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -150,16 +151,6 @@ public:
       }
     }
     return 0;
-  }
-
-  /// Return the set of ReadAdvance entries declared by the scheduling class
-  /// descriptor in input.
-  ArrayRef<MCReadAdvanceEntry>
-  getReadAdvanceEntries(const MCSchedClassDesc &SC) const {
-    if (!SC.NumReadAdvanceEntries)
-      return ArrayRef<MCReadAdvanceEntry>();
-    return ArrayRef<MCReadAdvanceEntry>(&ReadAdvanceTable[SC.ReadAdvanceIdx],
-                                        SC.NumReadAdvanceEntries);
   }
 
   /// Get scheduling itinerary of a CPU.

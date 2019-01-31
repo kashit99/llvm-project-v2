@@ -1,8 +1,9 @@
 //===----- LegalizeIntegerTypes.cpp - Legalization of integer types -------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -554,7 +555,7 @@ SDValue DAGTypeLegalizer::PromoteIntRes_MLOAD(MaskedLoadSDNode *N) {
   SDLoc dl(N);
   SDValue Res = DAG.getMaskedLoad(NVT, dl, N->getChain(), N->getBasePtr(),
                                   N->getMask(), ExtPassThru, N->getMemoryVT(),
-                                  N->getMemOperand(), ISD::EXTLOAD);
+                                  N->getMemOperand(), ISD::SEXTLOAD);
   // Legalize the chain result - switch anything that used the old chain to
   // use the new one.
   ReplaceValueWith(SDValue(N, 1), Res.getValue(1));
@@ -1498,8 +1499,7 @@ void DAGTypeLegalizer::ExpandIntegerResult(SDNode *N, unsigned ResNo) {
     dbgs() << "ExpandIntegerResult #" << ResNo << ": ";
     N->dump(&DAG); dbgs() << "\n";
 #endif
-    report_fatal_error("Do not know how to expand the result of this "
-                       "operator!");
+    llvm_unreachable("Do not know how to expand the result of this operator!");
 
   case ISD::MERGE_VALUES: SplitRes_MERGE_VALUES(N, ResNo, Lo, Hi); break;
   case ISD::SELECT:       SplitRes_SELECT(N, Lo, Hi); break;
@@ -2577,7 +2577,7 @@ void DAGTypeLegalizer::ExpandIntRes_READCYCLECOUNTER(SDNode *N, SDValue &Lo,
 
 void DAGTypeLegalizer::ExpandIntRes_ADDSUBSAT(SDNode *N, SDValue &Lo,
                                               SDValue &Hi) {
-  SDValue Result = TLI.expandAddSubSat(N, DAG);
+  SDValue Result = TLI.getExpandedSaturationAdditionSubtraction(N, DAG);
   SplitInteger(Result, Lo, Hi);
 }
 
@@ -2765,15 +2765,11 @@ void DAGTypeLegalizer::ExpandIntRes_Shift(SDNode *N,
   }
 
   // Next check to see if the target supports this SHL_PARTS operation or if it
-  // will custom expand it. Don't lower this to SHL_PARTS when we optimise for
-  // size, but create a libcall instead.
+  // will custom expand it.
   EVT NVT = TLI.getTypeToTransformTo(*DAG.getContext(), VT);
   TargetLowering::LegalizeAction Action = TLI.getOperationAction(PartsOpc, NVT);
-  const bool LegalOrCustom =
-    (Action == TargetLowering::Legal && TLI.isTypeLegal(NVT)) ||
-    Action == TargetLowering::Custom;
-
-  if (LegalOrCustom && TLI.shouldExpandShift(DAG, N)) {
+  if ((Action == TargetLowering::Legal && TLI.isTypeLegal(NVT)) ||
+      Action == TargetLowering::Custom) {
     // Expand the subcomponents.
     SDValue LHSL, LHSH;
     GetExpandedInteger(N->getOperand(0), LHSL, LHSH);
@@ -3171,7 +3167,7 @@ bool DAGTypeLegalizer::ExpandIntegerOperand(SDNode *N, unsigned OpNo) {
     dbgs() << "ExpandIntegerOperand Op #" << OpNo << ": ";
     N->dump(&DAG); dbgs() << "\n";
   #endif
-    report_fatal_error("Do not know how to expand this operator's operand!");
+    llvm_unreachable("Do not know how to expand this operator's operand!");
 
   case ISD::BITCAST:           Res = ExpandOp_BITCAST(N); break;
   case ISD::BR_CC:             Res = ExpandIntOp_BR_CC(N); break;

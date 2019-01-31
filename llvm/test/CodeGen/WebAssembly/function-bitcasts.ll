@@ -1,4 +1,4 @@
-; RUN: llc < %s -asm-verbose=false -wasm-disable-explicit-locals -wasm-keep-registers -enable-emscripten-cxx-exceptions | FileCheck %s
+; RUN: llc < %s -asm-verbose=false -wasm-disable-explicit-locals -wasm-keep-registers -enable-emscripten-cxx-exceptions -wasm-temporary-workarounds=false | FileCheck %s
 
 ; Test that function pointer casts are replaced with wrappers.
 
@@ -79,7 +79,7 @@ entry:
 }
 
 ; CHECK-LABEL: test_varargs:
-; CHECK:      global.set
+; CHECK:      set_global
 ; CHECK:      i32.const   $push[[L3:[0-9]+]]=, 0{{$}}
 ; CHECK-NEXT: call        .Lvararg_bitcast@FUNCTION, $pop[[L3]]{{$}}
 ; CHECK-NEXT: i32.const   $push[[L4:[0-9]+]]=, 0{{$}}
@@ -199,5 +199,5 @@ end:
 ; CHECK-LABEL: .Lfoo1_bitcast:
 ; CHECK-NEXT: .functype .Lfoo1_bitcast () -> (i32)
 ; CHECK-NEXT: call        foo1@FUNCTION{{$}}
-; CHECK-NEXT: local.copy  $push0=, $0
+; CHECK-NEXT: copy_local  $push0=, $0
 ; CHECK-NEXT: end_function

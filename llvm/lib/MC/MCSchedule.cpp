@@ -1,8 +1,9 @@
 //===- MCSchedule.cpp - Scheduling ------------------------------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -148,20 +149,4 @@ MCSchedModel::getReciprocalThroughput(unsigned SchedClass,
   // If there are no execution resources specified for this class, then assume
   // that it can execute at the maximum default issue width.
   return 1.0 / DefaultIssueWidth;
-}
-
-unsigned
-MCSchedModel::getForwardingDelayCycles(ArrayRef<MCReadAdvanceEntry> Entries,
-                                       unsigned WriteResourceID) {
-  if (Entries.empty())
-    return 0;
-
-  int DelayCycles = 0;
-  for (const MCReadAdvanceEntry &E : Entries) {
-    if (E.WriteResourceID != WriteResourceID)
-      continue;
-    DelayCycles = std::min(DelayCycles, E.Cycles);
-  }
-
-  return std::abs(DelayCycles);
 }

@@ -1,8 +1,9 @@
 //===- HeaderSearch.cpp - Resolve Header File Locations -------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -1677,8 +1678,9 @@ std::string HeaderSearch::suggestPathToFileForDiagnostics(
     StringRef Dir = SearchDirs[I].getDir()->getName();
     llvm::SmallString<32> DirPath(Dir.begin(), Dir.end());
     if (!WorkingDir.empty() && !path::is_absolute(Dir)) {
-      fs::make_absolute(WorkingDir, DirPath);
-      path::remove_dots(DirPath, /*remove_dot_dot=*/true);
+      auto err = fs::make_absolute(WorkingDir, DirPath);
+      if (!err)
+        path::remove_dots(DirPath, /*remove_dot_dot=*/true);
       Dir = DirPath;
     }
     for (auto NI = path::begin(File), NE = path::end(File),

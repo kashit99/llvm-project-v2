@@ -100,6 +100,12 @@ public:
   virtual TypeAndOrName FixUpDynamicType(const TypeAndOrName &type_and_or_name,
                                          ValueObject &static_value) = 0;
 
+  /// This allows a language runtime to adjust references depending on the type.
+  /// \return true on success.
+  virtual bool FixupReference(lldb::addr_t &addr, CompilerType type) {
+    return true;
+  }
+
   virtual void SetExceptionBreakpoints() {}
 
   virtual void ClearExceptionBreakpoints() {}
@@ -131,6 +137,9 @@ public:
 
   Process *GetProcess() { return m_process; }
 
+  static lldb::LanguageType
+  GuessLanguageForSymbolByName(Target &target, const char *symbol_name);
+
   Target &GetTargetRef() { return m_process->GetTarget(); }
 
   virtual lldb::BreakpointResolverSP
@@ -160,6 +169,8 @@ public:
   virtual bool GetIRPasses(LLVMUserExpression::IRPasses &custom_passes) {
     return false;
   }
+
+  static bool IsSymbolAnyRuntimeThunk(Symbol &symbol);
 
 protected:
   //------------------------------------------------------------------

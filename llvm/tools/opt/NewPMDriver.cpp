@@ -1,8 +1,9 @@
 //===- NewPMDriver.cpp - Driver for opt with new PM -----------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 /// \file
@@ -100,8 +101,19 @@ static cl::opt<std::string> OptimizerLastEPPipeline(
              "the OptimizerLast extension point into default pipelines"),
     cl::Hidden);
 
-extern cl::opt<PGOKind> PGOKindFlag;
-extern cl::opt<std::string> ProfileFile;
+enum PGOKind { NoPGO, InstrGen, InstrUse, SampleUse };
+static cl::opt<PGOKind> PGOKindFlag(
+    "pgo-kind", cl::init(NoPGO), cl::Hidden,
+    cl::desc("The kind of profile guided optimization"),
+    cl::values(clEnumValN(NoPGO, "nopgo", "Do not use PGO."),
+               clEnumValN(InstrGen, "new-pm-pgo-instr-gen-pipeline",
+                          "Instrument the IR to generate profile."),
+               clEnumValN(InstrUse, "new-pm-pgo-instr-use-pipeline",
+                          "Use instrumented profile to guide PGO."),
+               clEnumValN(SampleUse, "new-pm-pgo-sample-use-pipeline",
+                          "Use sampled profile to guide PGO.")));
+static cl::opt<std::string> ProfileFile(
+    "profile-file", cl::desc("Path to the profile."), cl::Hidden);
 static cl::opt<std::string>
     ProfileRemappingFile("profile-remapping-file",
                          cl::desc("Path to the profile remapping file."),

@@ -1,8 +1,9 @@
 //=====-- NVPTXTargetStreamer.h - NVPTX Target Streamer ------*- C++ -*--=====//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -18,7 +19,6 @@ class MCSection;
 class NVPTXTargetStreamer : public MCTargetStreamer {
 private:
   SmallVector<std::string, 4> DwarfFiles;
-  bool HasSections = false;
 
 public:
   NVPTXTargetStreamer(MCStreamer &S);
@@ -26,8 +26,6 @@ public:
 
   /// Outputs the list of the DWARF '.file' directives to the streamer.
   void outputDwarfFileDirectives();
-  /// Close last section.
-  void closeLastSection();
 
   /// Record DWARF file directives for later output.
   /// According to PTX ISA, CUDA Toolkit documentation, 11.5.3. Debugging

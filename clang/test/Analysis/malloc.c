@@ -1758,8 +1758,8 @@ void constEscape(const void *ptr);
 void testConstEscapeThroughAnotherField() {
   struct IntAndPtr s;
   s.p = malloc(sizeof(int));
-  constEscape(&(s.x));
-} // expected-warning {{Potential leak of memory pointed to by 's.p'}}
+  constEscape(&(s.x)); // could free s->p!
+} // no-warning
 
 // PR15623
 int testNoCheckerDataPropogationFromLogicalOpOperandToOpResult(void) {

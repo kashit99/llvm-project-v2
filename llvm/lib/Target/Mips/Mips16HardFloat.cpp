@@ -1,8 +1,9 @@
 //===- Mips16HardFloat.cpp for Mips16 Hard Float --------------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -73,18 +74,16 @@ static FPReturnVariant whichFPReturnVariant(Type *T) {
     return FRet;
   case Type::DoubleTyID:
     return DRet;
-  case Type::StructTyID: {
-    StructType *ST = cast<StructType>(T);
-    if (ST->getNumElements() != 2)
+  case Type::StructTyID:
+    if (T->getStructNumElements() != 2)
       break;
-    if ((ST->getElementType(0)->isFloatTy()) &&
-        (ST->getElementType(1)->isFloatTy()))
+    if ((T->getContainedType(0)->isFloatTy()) &&
+        (T->getContainedType(1)->isFloatTy()))
       return CFRet;
-    if ((ST->getElementType(0)->isDoubleTy()) &&
-        (ST->getElementType(1)->isDoubleTy()))
+    if ((T->getContainedType(0)->isDoubleTy()) &&
+        (T->getContainedType(1)->isDoubleTy()))
       return CDRet;
     break;
-  }
   default:
     break;
   }

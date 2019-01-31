@@ -1,8 +1,9 @@
 //===- DeclarationName.h - Representation of declaration names --*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -728,10 +729,9 @@ public:
   /// getNamedTypeInfo - Returns the source type info associated to
   /// the name. Assumes it is a constructor, destructor or conversion.
   TypeSourceInfo *getNamedTypeInfo() const {
-    if (Name.getNameKind() != DeclarationName::CXXConstructorName &&
-        Name.getNameKind() != DeclarationName::CXXDestructorName &&
-        Name.getNameKind() != DeclarationName::CXXConversionFunctionName)
-      return nullptr;
+    assert(Name.getNameKind() == DeclarationName::CXXConstructorName ||
+           Name.getNameKind() == DeclarationName::CXXDestructorName ||
+           Name.getNameKind() == DeclarationName::CXXConversionFunctionName);
     return LocInfo.NamedType.TInfo;
   }
 
@@ -747,8 +747,7 @@ public:
   /// getCXXOperatorNameRange - Gets the range of the operator name
   /// (without the operator keyword). Assumes it is a (non-literal) operator.
   SourceRange getCXXOperatorNameRange() const {
-    if (Name.getNameKind() != DeclarationName::CXXOperatorName)
-      return SourceRange();
+    assert(Name.getNameKind() == DeclarationName::CXXOperatorName);
     return SourceRange(
      SourceLocation::getFromRawEncoding(LocInfo.CXXOperatorName.BeginOpNameLoc),
      SourceLocation::getFromRawEncoding(LocInfo.CXXOperatorName.EndOpNameLoc)
@@ -767,8 +766,7 @@ public:
   /// operator name (not the operator keyword).
   /// Assumes it is a literal operator.
   SourceLocation getCXXLiteralOperatorNameLoc() const {
-    if (Name.getNameKind() != DeclarationName::CXXLiteralOperatorName)
-      return SourceLocation();
+    assert(Name.getNameKind() == DeclarationName::CXXLiteralOperatorName);
     return SourceLocation::
       getFromRawEncoding(LocInfo.CXXLiteralOperatorName.OpNameLoc);
   }
@@ -860,6 +858,9 @@ struct DenseMapInfo<clang::DeclarationName> {
     return LHS == RHS;
   }
 };
+
+template <>
+struct isPodLike<clang::DeclarationName> { static const bool value = true; };
 
 } // namespace llvm
 

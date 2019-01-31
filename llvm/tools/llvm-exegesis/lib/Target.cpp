@@ -1,8 +1,9 @@
 //===-- Target.cpp ----------------------------------------------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 #include "Target.h"
@@ -45,7 +46,6 @@ ExegesisTarget::createSnippetGenerator(InstructionBenchmark::ModeE Mode,
   case InstructionBenchmark::Latency:
     return createLatencySnippetGenerator(State);
   case InstructionBenchmark::Uops:
-  case InstructionBenchmark::InverseThroughput:
     return createUopsSnippetGenerator(State);
   }
   return nullptr;
@@ -58,8 +58,7 @@ ExegesisTarget::createBenchmarkRunner(InstructionBenchmark::ModeE Mode,
   case InstructionBenchmark::Unknown:
     return nullptr;
   case InstructionBenchmark::Latency:
-  case InstructionBenchmark::InverseThroughput:
-    return createLatencyBenchmarkRunner(State, Mode);
+    return createLatencyBenchmarkRunner(State);
   case InstructionBenchmark::Uops:
     return createUopsBenchmarkRunner(State);
   }
@@ -76,9 +75,9 @@ ExegesisTarget::createUopsSnippetGenerator(const LLVMState &State) const {
   return llvm::make_unique<UopsSnippetGenerator>(State);
 }
 
-std::unique_ptr<BenchmarkRunner> ExegesisTarget::createLatencyBenchmarkRunner(
-    const LLVMState &State, InstructionBenchmark::ModeE Mode) const {
-  return llvm::make_unique<LatencyBenchmarkRunner>(State, Mode);
+std::unique_ptr<BenchmarkRunner>
+ExegesisTarget::createLatencyBenchmarkRunner(const LLVMState &State) const {
+  return llvm::make_unique<LatencyBenchmarkRunner>(State);
 }
 
 std::unique_ptr<BenchmarkRunner>

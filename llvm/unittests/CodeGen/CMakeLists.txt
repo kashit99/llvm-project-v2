@@ -19,7 +19,6 @@ add_llvm_unittest(CodeGenTests
   MachineInstrTest.cpp
   MachineOperandTest.cpp
   ScalableVectorMVTsTest.cpp
-  TypeTraitsTest.cpp
   )
 
 add_subdirectory(GlobalISel)

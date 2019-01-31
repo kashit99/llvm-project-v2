@@ -1,8 +1,9 @@
 //===--- FS.cpp - File system related utils ----------------------*- C++-*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -11,17 +12,17 @@
 #include "llvm/ADT/None.h"
 #include "llvm/Support/Path.h"
 
+using namespace llvm;
 namespace clang {
 namespace clangd {
 
-PreambleFileStatusCache::PreambleFileStatusCache(llvm::StringRef MainFilePath)
+PreambleFileStatusCache::PreambleFileStatusCache(StringRef MainFilePath)
     : MainFilePath(MainFilePath) {
-  assert(llvm::sys::path::is_absolute(MainFilePath));
+  assert(sys::path::is_absolute(MainFilePath));
 }
 
-void PreambleFileStatusCache::update(const llvm::vfs::FileSystem &FS,
-                                     llvm::vfs::Status S) {
-  llvm::SmallString<32> PathStore(S.getName());
+void PreambleFileStatusCache::update(const vfs::FileSystem &FS, vfs::Status S) {
+  SmallString<32> PathStore(S.getName());
   if (FS.makeAbsolute(PathStore))
     return;
   // Do not cache status for the main file.
@@ -31,27 +32,25 @@ void PreambleFileStatusCache::update(const llvm::vfs::FileSystem &FS,
   StatCache.insert({PathStore, std::move(S)});
 }
 
-llvm::Optional<llvm::vfs::Status>
-PreambleFileStatusCache::lookup(llvm::StringRef File) const {
+Optional<vfs::Status> PreambleFileStatusCache::lookup(StringRef File) const {
   auto I = StatCache.find(File);
   if (I != StatCache.end())
     return I->getValue();
   return None;
 }
 
-llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem>
-PreambleFileStatusCache::getProducingFS(
-    llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> FS) {
+IntrusiveRefCntPtr<vfs::FileSystem> PreambleFileStatusCache::getProducingFS(
+    IntrusiveRefCntPtr<vfs::FileSystem> FS) {
   // This invalidates old status in cache if files are re-`open()`ed or
   // re-`stat()`ed in case file status has changed during preamble build.
-  class CollectFS : public llvm::vfs::ProxyFileSystem {
+  class CollectFS : public vfs::ProxyFileSystem {
   public:
-    CollectFS(llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> FS,
+    CollectFS(IntrusiveRefCntPtr<vfs::FileSystem> FS,
               PreambleFileStatusCache &StatCache)
         : ProxyFileSystem(std::move(FS)), StatCache(StatCache) {}
 
-    llvm::ErrorOr<std::unique_ptr<llvm::vfs::File>>
-    openFileForRead(const llvm::Twine &Path) override {
+    ErrorOr<std::unique_ptr<vfs::File>>
+    openFileForRead(const Twine &Path) override {
       auto File = getUnderlyingFS().openFileForRead(Path);
       if (!File || !*File)
         return File;
@@ -65,7 +64,7 @@ PreambleFileStatusCache::getProducingFS(
       return File;
     }
 
-    llvm::ErrorOr<llvm::vfs::Status> status(const llvm::Twine &Path) override {
+    ErrorOr<vfs::Status> status(const Twine &Path) override {
       auto S = getUnderlyingFS().status(Path);
       if (S)
         StatCache.update(getUnderlyingFS(), *S);
@@ -75,20 +74,18 @@ PreambleFileStatusCache::getProducingFS(
   private:
     PreambleFileStatusCache &StatCache;
   };
-  return llvm::IntrusiveRefCntPtr<CollectFS>(
-      new CollectFS(std::move(FS), *this));
+  return IntrusiveRefCntPtr<CollectFS>(new CollectFS(std::move(FS), *this));
 }
 
-llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem>
-PreambleFileStatusCache::getConsumingFS(
-    llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> FS) const {
-  class CacheVFS : public llvm::vfs::ProxyFileSystem {
+IntrusiveRefCntPtr<vfs::FileSystem> PreambleFileStatusCache::getConsumingFS(
+    IntrusiveRefCntPtr<vfs::FileSystem> FS) const {
+  class CacheVFS : public vfs::ProxyFileSystem {
   public:
-    CacheVFS(llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> FS,
+    CacheVFS(IntrusiveRefCntPtr<vfs::FileSystem> FS,
              const PreambleFileStatusCache &StatCache)
         : ProxyFileSystem(std::move(FS)), StatCache(StatCache) {}
 
-    llvm::ErrorOr<llvm::vfs::Status> status(const llvm::Twine &Path) override {
+    ErrorOr<vfs::Status> status(const Twine &Path) override {
       if (auto S = StatCache.lookup(Path.str()))
         return *S;
       return getUnderlyingFS().status(Path);
@@ -97,7 +94,7 @@ PreambleFileStatusCache::getConsumingFS(
   private:
     const PreambleFileStatusCache &StatCache;
   };
-  return llvm::IntrusiveRefCntPtr<CacheVFS>(new CacheVFS(std::move(FS), *this));
+  return IntrusiveRefCntPtr<CacheVFS>(new CacheVFS(std::move(FS), *this));
 }
 
 } // namespace clangd

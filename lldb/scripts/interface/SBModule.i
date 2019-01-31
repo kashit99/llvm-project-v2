@@ -331,6 +331,9 @@ public:
     lldb::SBAddress
     GetObjectFileHeaderAddress() const;
 
+    lldb::SBError
+    IsTypeSystemCompatible (lldb::LanguageType language);
+
     lldb::SBAddress
     GetObjectFileEntryPointAddress() const;
 

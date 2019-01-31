@@ -1,8 +1,9 @@
 //===- COFFObjcopy.h --------------------------------------------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                      The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -10,7 +11,6 @@
 #define LLVM_TOOLS_OBJCOPY_COFFOBJCOPY_H
 
 namespace llvm {
-class Error;
 
 namespace object {
 class COFFObjectFile;
@@ -21,8 +21,8 @@ struct CopyConfig;
 class Buffer;
 
 namespace coff {
-Error executeObjcopyOnBinary(const CopyConfig &Config,
-                             object::COFFObjectFile &In, Buffer &Out);
+void executeObjcopyOnBinary(const CopyConfig &Config,
+                            object::COFFObjectFile &In, Buffer &Out);
 
 } // end namespace coff
 } // end namespace objcopy

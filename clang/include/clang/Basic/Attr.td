@@ -1,8 +1,9 @@
 //==--- Attr.td - attribute definitions -----------------------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -193,9 +194,6 @@ class VariadicIdentifierArgument<string name> : Argument<name, 1>;
 // Like VariadicUnsignedArgument except values are ParamIdx.
 class VariadicParamIdxArgument<string name> : Argument<name, 1>;
 
-// A list of identifiers matching parameters or ParamIdx indices.
-class VariadicParamOrParamIdxArgument<string name> : Argument<name, 1>;
-
 // Like VariadicParamIdxArgument but for a single function parameter index.
 class ParamIdxArgument<string name, bit opt = 0> : Argument<name, opt>;
 
@@ -338,7 +336,6 @@ def TargetMSP430 : TargetArch<["msp430"]>;
 def TargetRISCV : TargetArch<["riscv32", "riscv64"]>;
 def TargetX86 : TargetArch<["x86"]>;
 def TargetAnyX86 : TargetArch<["x86", "x86_64"]>;
-def TargetWebAssembly : TargetArch<["wasm32", "wasm64"]>;
 def TargetWindows : TargetArch<["x86", "x86_64", "arm", "thumb", "aarch64"]> {
   let OSes = ["Win32"];
 }
@@ -852,25 +849,13 @@ def OSConsumed : InheritableParamAttr {
 
 def OSReturnsRetained : InheritableAttr {
   let Spellings = [Clang<"os_returns_retained">];
-  let Subjects = SubjectList<[Function, ObjCMethod, ObjCProperty, ParmVar]>;
+  let Subjects = SubjectList<[Function, ObjCMethod, ObjCProperty]>;
   let Documentation = [RetainBehaviorDocs];
 }
 
 def OSReturnsNotRetained : InheritableAttr {
   let Spellings = [Clang<"os_returns_not_retained">];
-  let Subjects = SubjectList<[Function, ObjCMethod, ObjCProperty, ParmVar]>;
-  let Documentation = [RetainBehaviorDocs];
-}
-
-def OSReturnsRetainedOnZero : InheritableAttr {
-  let Spellings = [Clang<"os_returns_retained_on_zero">];
-  let Subjects = SubjectList<[ParmVar]>;
-  let Documentation = [RetainBehaviorDocs];
-}
-
-def OSReturnsRetainedOnNonZero : InheritableAttr {
-  let Spellings = [Clang<"os_returns_retained_on_non_zero">];
-  let Subjects = SubjectList<[ParmVar]>;
+  let Subjects = SubjectList<[Function, ObjCMethod, ObjCProperty]>;
   let Documentation = [RetainBehaviorDocs];
 }
 
@@ -1221,13 +1206,6 @@ def FormatArg : InheritableAttr {
   let Documentation = [Undocumented];
 }
 
-def Callback : InheritableAttr {
-  let Spellings = [Clang<"callback">];
-  let Args = [VariadicParamOrParamIdxArgument<"Encoding">];
-  let Subjects = SubjectList<[Function]>;
-  let Documentation = [CallbackDocs];
-}
-
 def GNUInline : InheritableAttr {
   let Spellings = [GCC<"gnu_inline">];
   let Subjects = SubjectList<[Function]>;
@@ -1516,14 +1494,6 @@ def AMDGPUNumVGPR : InheritableAttr {
   let Args = [UnsignedArgument<"NumVGPR">];
   let Documentation = [AMDGPUNumSGPRNumVGPRDocs];
   let Subjects = SubjectList<[Function], ErrorDiag, "kernel functions">;
-}
-
-def WebAssemblyImportModule : InheritableAttr,
-                              TargetSpecificAttr<TargetWebAssembly> {
-  let Spellings = [Clang<"import_module">];
-  let Args = [StringArgument<"ImportModuleName">];
-  let Documentation = [WebAssemblyImportModuleDocs];
-  let Subjects = SubjectList<[Function], ErrorDiag>;
 }
 
 def NoSplitStack : InheritableAttr {
@@ -3013,9 +2983,7 @@ def LoopHint : Attr {
   /// unroll_count: unrolls loop 'Value' times.
   /// unroll_and_jam: attempt to unroll and jam loop if State == Enable.
   /// unroll_and_jam_count: unroll and jams loop 'Value' times.
-  /// distribute: attempt to distribute loop if State == Enable.
-  /// pipeline: disable pipelining loop if State == Disable.
-  /// pipeline_initiation_interval: create loop schedule with initiation interval equal to 'Value'.
+  /// distribute: attempt to distribute loop if State == Enable
 
   /// #pragma unroll <argument> directive
   /// <no arg>: fully unrolls loop.
@@ -3030,10 +2998,10 @@ def LoopHint : Attr {
   let Args = [EnumArgument<"Option", "OptionType",
                           ["vectorize", "vectorize_width", "interleave", "interleave_count",
                            "unroll", "unroll_count", "unroll_and_jam", "unroll_and_jam_count",
-                           "pipeline", "pipeline_initiation_interval", "distribute"],
+                           "distribute"],
                           ["Vectorize", "VectorizeWidth", "Interleave", "InterleaveCount",
                            "Unroll", "UnrollCount", "UnrollAndJam", "UnrollAndJamCount",
-                           "PipelineDisabled", "PipelineInitiationInterval", "Distribute"]>,
+                           "Distribute"]>,
               EnumArgument<"State", "LoopHintState",
                            ["enable", "disable", "numeric", "assume_safety", "full"],
                            ["Enable", "Disable", "Numeric", "AssumeSafety", "Full"]>,
@@ -3050,8 +3018,6 @@ def LoopHint : Attr {
     case UnrollCount: return "unroll_count";
     case UnrollAndJam: return "unroll_and_jam";
     case UnrollAndJamCount: return "unroll_and_jam_count";
-    case PipelineDisabled: return "pipeline";
-    case PipelineInitiationInterval: return "pipeline_initiation_interval";
     case Distribute: return "distribute";
     }
     llvm_unreachable("Unhandled LoopHint option.");
@@ -3280,12 +3246,6 @@ def SpeculativeLoadHardening : InheritableAttr {
   let Spellings = [Clang<"speculative_load_hardening">];
   let Subjects = SubjectList<[Function, ObjCMethod], ErrorDiag>;
   let Documentation = [SpeculativeLoadHardeningDocs];
-}
-
-def NoSpeculativeLoadHardening : InheritableAttr {
-  let Spellings = [Clang<"no_speculative_load_hardening">];
-  let Subjects = SubjectList<[Function, ObjCMethod], ErrorDiag>;
-  let Documentation = [NoSpeculativeLoadHardeningDocs];
 }
 
 def Uninitialized : InheritableAttr {

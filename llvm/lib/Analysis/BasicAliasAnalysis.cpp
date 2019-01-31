@@ -1,8 +1,9 @@
 //===- BasicAliasAnalysis.cpp - Stateless Alias Analysis Impl -------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -30,6 +31,7 @@
 #include "llvm/Analysis/PhiValues.h"
 #include "llvm/IR/Argument.h"
 #include "llvm/IR/Attributes.h"
+#include "llvm/IR/CallSite.h"
 #include "llvm/IR/Constant.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DataLayout.h"
@@ -142,7 +144,7 @@ static bool isNonEscapingLocalObject(const Value *V) {
 /// Returns true if the pointer is one which would have been considered an
 /// escape by isNonEscapingLocalObject.
 static bool isEscapeSource(const Value *V) {
-  if (isa<CallBase>(V))
+  if (ImmutableCallSite(V))
     return true;
 
   if (isa<Argument>(V))
@@ -452,7 +454,7 @@ bool BasicAAResult::DecomposeGEPExpression(const Value *V,
 
     const GEPOperator *GEPOp = dyn_cast<GEPOperator>(Op);
     if (!GEPOp) {
-      if (const auto *Call = dyn_cast<CallBase>(V)) {
+      if (auto CS = ImmutableCallSite(V)) {
         // CaptureTracking can know about special capturing properties of some
         // intrinsics like launder.invariant.group, that can't be expressed with
         // the attributes, but have properties like returning aliasing pointer.
@@ -462,7 +464,7 @@ bool BasicAAResult::DecomposeGEPExpression(const Value *V,
         // because it should be in sync with CaptureTracking. Not using it may
         // cause weird miscompilations where 2 aliasing pointers are assumed to
         // noalias.
-        if (auto *RP = getArgumentAliasingToReturnedPointer(Call)) {
+        if (auto *RP = getArgumentAliasingToReturnedPointer(CS)) {
           V = RP;
           continue;
         }
@@ -671,8 +673,8 @@ bool BasicAAResult::pointsToConstantMemory(const MemoryLocation &Loc,
 }
 
 /// Returns the behavior when calling the given call site.
-FunctionModRefBehavior BasicAAResult::getModRefBehavior(const CallBase *Call) {
-  if (Call->doesNotAccessMemory())
+FunctionModRefBehavior BasicAAResult::getModRefBehavior(ImmutableCallSite CS) {
+  if (CS.doesNotAccessMemory())
     // Can't do better than this.
     return FMRB_DoesNotAccessMemory;
 
@@ -680,23 +682,23 @@ FunctionModRefBehavior BasicAAResult::getModRefBehavior(const CallBase *Call) {
 
   // If the callsite knows it only reads memory, don't return worse
   // than that.
-  if (Call->onlyReadsMemory())
+  if (CS.onlyReadsMemory())
     Min = FMRB_OnlyReadsMemory;
-  else if (Call->doesNotReadMemory())
+  else if (CS.doesNotReadMemory())
     Min = FMRB_DoesNotReadMemory;
 
-  if (Call->onlyAccessesArgMemory())
+  if (CS.onlyAccessesArgMemory())
     Min = FunctionModRefBehavior(Min & FMRB_OnlyAccessesArgumentPointees);
-  else if (Call->onlyAccessesInaccessibleMemory())
+  else if (CS.onlyAccessesInaccessibleMemory())
     Min = FunctionModRefBehavior(Min & FMRB_OnlyAccessesInaccessibleMem);
-  else if (Call->onlyAccessesInaccessibleMemOrArgMem())
+  else if (CS.onlyAccessesInaccessibleMemOrArgMem())
     Min = FunctionModRefBehavior(Min & FMRB_OnlyAccessesInaccessibleOrArgMem);
 
-  // If the call has operand bundles then aliasing attributes from the function
-  // it calls do not directly apply to the call.  This can be made more precise
-  // in the future.
-  if (!Call->hasOperandBundles())
-    if (const Function *F = Call->getCalledFunction())
+  // If CS has operand bundles then aliasing attributes from the function it
+  // calls do not directly apply to the CallSite.  This can be made more
+  // precise in the future.
+  if (!CS.hasOperandBundles())
+    if (const Function *F = CS.getCalledFunction())
       Min =
           FunctionModRefBehavior(Min & getBestAAResults().getModRefBehavior(F));
 
@@ -729,9 +731,9 @@ FunctionModRefBehavior BasicAAResult::getModRefBehavior(const Function *F) {
 }
 
 /// Returns true if this is a writeonly (i.e Mod only) parameter.
-static bool isWriteOnlyParam(const CallBase *Call, unsigned ArgIdx,
+static bool isWriteOnlyParam(ImmutableCallSite CS, unsigned ArgIdx,
                              const TargetLibraryInfo &TLI) {
-  if (Call->paramHasAttr(ArgIdx, Attribute::WriteOnly))
+  if (CS.paramHasAttr(ArgIdx, Attribute::WriteOnly))
     return true;
 
   // We can bound the aliasing properties of memset_pattern16 just as we can
@@ -741,8 +743,7 @@ static bool isWriteOnlyParam(const CallBase *Call, unsigned ArgIdx,
   // FIXME Consider handling this in InferFunctionAttr.cpp together with other
   // attributes.
   LibFunc F;
-  if (Call->getCalledFunction() &&
-      TLI.getLibFunc(*Call->getCalledFunction(), F) &&
+  if (CS.getCalledFunction() && TLI.getLibFunc(*CS.getCalledFunction(), F) &&
       F == LibFunc_memset_pattern16 && TLI.has(F))
     if (ArgIdx == 0)
       return true;
@@ -754,23 +755,23 @@ static bool isWriteOnlyParam(const CallBase *Call, unsigned ArgIdx,
   return false;
 }
 
-ModRefInfo BasicAAResult::getArgModRefInfo(const CallBase *Call,
+ModRefInfo BasicAAResult::getArgModRefInfo(ImmutableCallSite CS,
                                            unsigned ArgIdx) {
   // Checking for known builtin intrinsics and target library functions.
-  if (isWriteOnlyParam(Call, ArgIdx, TLI))
+  if (isWriteOnlyParam(CS, ArgIdx, TLI))
     return ModRefInfo::Mod;
 
-  if (Call->paramHasAttr(ArgIdx, Attribute::ReadOnly))
+  if (CS.paramHasAttr(ArgIdx, Attribute::ReadOnly))
     return ModRefInfo::Ref;
 
-  if (Call->paramHasAttr(ArgIdx, Attribute::ReadNone))
+  if (CS.paramHasAttr(ArgIdx, Attribute::ReadNone))
     return ModRefInfo::NoModRef;
 
-  return AAResultBase::getArgModRefInfo(Call, ArgIdx);
+  return AAResultBase::getArgModRefInfo(CS, ArgIdx);
 }
 
-static bool isIntrinsicCall(const CallBase *Call, Intrinsic::ID IID) {
-  const IntrinsicInst *II = dyn_cast<IntrinsicInst>(Call);
+static bool isIntrinsicCall(ImmutableCallSite CS, Intrinsic::ID IID) {
+  const IntrinsicInst *II = dyn_cast<IntrinsicInst>(CS.getInstruction());
   return II && II->getIntrinsicID() == IID;
 }
 
@@ -826,9 +827,9 @@ AliasResult BasicAAResult::alias(const MemoryLocation &LocA,
 /// Since we only look at local properties of this function, we really can't
 /// say much about this query.  We do, however, use simple "address taken"
 /// analysis on local objects.
-ModRefInfo BasicAAResult::getModRefInfo(const CallBase *Call,
+ModRefInfo BasicAAResult::getModRefInfo(ImmutableCallSite CS,
                                         const MemoryLocation &Loc) {
-  assert(notDifferentParent(Call, Loc.Ptr) &&
+  assert(notDifferentParent(CS.getInstruction(), Loc.Ptr) &&
          "AliasAnalysis query involving multiple functions!");
 
   const Value *Object = GetUnderlyingObject(Loc.Ptr, DL);
@@ -839,7 +840,7 @@ ModRefInfo BasicAAResult::getModRefInfo(const CallBase *Call,
   // contents of the alloca into argument registers or stack slots, so there is
   // no lifetime issue.
   if (isa<AllocaInst>(Object))
-    if (const CallInst *CI = dyn_cast<CallInst>(Call))
+    if (const CallInst *CI = dyn_cast<CallInst>(CS.getInstruction()))
       if (CI->isTailCall() &&
           !CI->getAttributes().hasAttrSomewhere(Attribute::ByVal))
         return ModRefInfo::NoModRef;
@@ -847,13 +848,13 @@ ModRefInfo BasicAAResult::getModRefInfo(const CallBase *Call,
   // Stack restore is able to modify unescaped dynamic allocas. Assume it may
   // modify them even though the alloca is not escaped.
   if (auto *AI = dyn_cast<AllocaInst>(Object))
-    if (!AI->isStaticAlloca() && isIntrinsicCall(Call, Intrinsic::stackrestore))
+    if (!AI->isStaticAlloca() && isIntrinsicCall(CS, Intrinsic::stackrestore))
       return ModRefInfo::Mod;
 
   // If the pointer is to a locally allocated object that does not escape,
   // then the call can not mod/ref the pointer unless the call takes the pointer
   // as an argument, and itself doesn't capture it.
-  if (!isa<Constant>(Object) && Call != Object &&
+  if (!isa<Constant>(Object) && CS.getInstruction() != Object &&
       isNonEscapingLocalObject(Object)) {
 
     // Optimistically assume that call doesn't touch Object and check this
@@ -862,20 +863,19 @@ ModRefInfo BasicAAResult::getModRefInfo(const CallBase *Call,
     bool IsMustAlias = true;
 
     unsigned OperandNo = 0;
-    for (auto CI = Call->data_operands_begin(), CE = Call->data_operands_end();
+    for (auto CI = CS.data_operands_begin(), CE = CS.data_operands_end();
          CI != CE; ++CI, ++OperandNo) {
       // Only look at the no-capture or byval pointer arguments.  If this
       // pointer were passed to arguments that were neither of these, then it
       // couldn't be no-capture.
       if (!(*CI)->getType()->isPointerTy() ||
-          (!Call->doesNotCapture(OperandNo) &&
-           OperandNo < Call->getNumArgOperands() &&
-           !Call->isByValArgument(OperandNo)))
+          (!CS.doesNotCapture(OperandNo) &&
+           OperandNo < CS.getNumArgOperands() && !CS.isByValArgument(OperandNo)))
         continue;
 
       // Call doesn't access memory through this operand, so we don't care
       // if it aliases with Object.
-      if (Call->doesNotAccessMemory(OperandNo))
+      if (CS.doesNotAccessMemory(OperandNo))
         continue;
 
       // If this is a no-capture pointer argument, see if we can tell that it
@@ -889,12 +889,12 @@ ModRefInfo BasicAAResult::getModRefInfo(const CallBase *Call,
         continue;
       // Operand aliases 'Object', but call doesn't modify it. Strengthen
       // initial assumption and keep looking in case if there are more aliases.
-      if (Call->onlyReadsMemory(OperandNo)) {
+      if (CS.onlyReadsMemory(OperandNo)) {
         Result = setRef(Result);
         continue;
       }
       // Operand aliases 'Object' but call only writes into it.
-      if (Call->doesNotReadMemory(OperandNo)) {
+      if (CS.doesNotReadMemory(OperandNo)) {
         Result = setMod(Result);
         continue;
       }
@@ -918,16 +918,17 @@ ModRefInfo BasicAAResult::getModRefInfo(const CallBase *Call,
     }
   }
 
-  // If the call is to malloc or calloc, we can assume that it doesn't
+  // If the CallSite is to malloc or calloc, we can assume that it doesn't
   // modify any IR visible value.  This is only valid because we assume these
   // routines do not read values visible in the IR.  TODO: Consider special
   // casing realloc and strdup routines which access only their arguments as
   // well.  Or alternatively, replace all of this with inaccessiblememonly once
   // that's implemented fully.
-  if (isMallocOrCallocLikeFn(Call, &TLI)) {
+  auto *Inst = CS.getInstruction();
+  if (isMallocOrCallocLikeFn(Inst, &TLI)) {
     // Be conservative if the accessed pointer may alias the allocation -
     // fallback to the generic handling below.
-    if (getBestAAResults().alias(MemoryLocation(Call), Loc) == NoAlias)
+    if (getBestAAResults().alias(MemoryLocation(Inst), Loc) == NoAlias)
       return ModRefInfo::NoModRef;
   }
 
@@ -935,7 +936,7 @@ ModRefInfo BasicAAResult::getModRefInfo(const CallBase *Call,
   // operands, i.e., source and destination of any given memcpy must no-alias.
   // If Loc must-aliases either one of these two locations, then it necessarily
   // no-aliases the other.
-  if (auto *Inst = dyn_cast<AnyMemCpyInst>(Call)) {
+  if (auto *Inst = dyn_cast<AnyMemCpyInst>(CS.getInstruction())) {
     AliasResult SrcAA, DestAA;
 
     if ((SrcAA = getBestAAResults().alias(MemoryLocation::getForSource(Inst),
@@ -959,7 +960,7 @@ ModRefInfo BasicAAResult::getModRefInfo(const CallBase *Call,
   // While the assume intrinsic is marked as arbitrarily writing so that
   // proper control dependencies will be maintained, it never aliases any
   // particular memory location.
-  if (isIntrinsicCall(Call, Intrinsic::assume))
+  if (isIntrinsicCall(CS, Intrinsic::assume))
     return ModRefInfo::NoModRef;
 
   // Like assumes, guard intrinsics are also marked as arbitrarily writing so
@@ -969,7 +970,7 @@ ModRefInfo BasicAAResult::getModRefInfo(const CallBase *Call,
   // *Unlike* assumes, guard intrinsics are modeled as reading memory since the
   // heap state at the point the guard is issued needs to be consistent in case
   // the guard invokes the "deopt" continuation.
-  if (isIntrinsicCall(Call, Intrinsic::experimental_guard))
+  if (isIntrinsicCall(CS, Intrinsic::experimental_guard))
     return ModRefInfo::Ref;
 
   // Like assumes, invariant.start intrinsics were also marked as arbitrarily
@@ -995,20 +996,20 @@ ModRefInfo BasicAAResult::getModRefInfo(const CallBase *Call,
   // The transformation will cause the second store to be ignored (based on
   // rules of invariant.start)  and print 40, while the first program always
   // prints 50.
-  if (isIntrinsicCall(Call, Intrinsic::invariant_start))
+  if (isIntrinsicCall(CS, Intrinsic::invariant_start))
     return ModRefInfo::Ref;
 
   // The AAResultBase base class has some smarts, lets use them.
-  return AAResultBase::getModRefInfo(Call, Loc);
+  return AAResultBase::getModRefInfo(CS, Loc);
 }
 
-ModRefInfo BasicAAResult::getModRefInfo(const CallBase *Call1,
-                                        const CallBase *Call2) {
+ModRefInfo BasicAAResult::getModRefInfo(ImmutableCallSite CS1,
+                                        ImmutableCallSite CS2) {
   // While the assume intrinsic is marked as arbitrarily writing so that
   // proper control dependencies will be maintained, it never aliases any
   // particular memory location.
-  if (isIntrinsicCall(Call1, Intrinsic::assume) ||
-      isIntrinsicCall(Call2, Intrinsic::assume))
+  if (isIntrinsicCall(CS1, Intrinsic::assume) ||
+      isIntrinsicCall(CS2, Intrinsic::assume))
     return ModRefInfo::NoModRef;
 
   // Like assumes, guard intrinsics are also marked as arbitrarily writing so
@@ -1022,18 +1023,18 @@ ModRefInfo BasicAAResult::getModRefInfo(const CallBase *Call1,
   // NB! This function is *not* commutative, so we specical case two
   // possibilities for guard intrinsics.
 
-  if (isIntrinsicCall(Call1, Intrinsic::experimental_guard))
-    return isModSet(createModRefInfo(getModRefBehavior(Call2)))
+  if (isIntrinsicCall(CS1, Intrinsic::experimental_guard))
+    return isModSet(createModRefInfo(getModRefBehavior(CS2)))
                ? ModRefInfo::Ref
                : ModRefInfo::NoModRef;
 
-  if (isIntrinsicCall(Call2, Intrinsic::experimental_guard))
-    return isModSet(createModRefInfo(getModRefBehavior(Call1)))
+  if (isIntrinsicCall(CS2, Intrinsic::experimental_guard))
+    return isModSet(createModRefInfo(getModRefBehavior(CS1)))
                ? ModRefInfo::Mod
                : ModRefInfo::NoModRef;
 
   // The AAResultBase base class has some smarts, lets use them.
-  return AAResultBase::getModRefInfo(Call1, Call2);
+  return AAResultBase::getModRefInfo(CS1, CS2);
 }
 
 /// Provide ad-hoc rules to disambiguate accesses through two GEP operators,

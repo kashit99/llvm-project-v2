@@ -1,8 +1,9 @@
 //===---- llvm/MDBuilder.h - Builder for LLVM metadata ----------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -92,17 +93,6 @@ public:
   /// Return metadata indicating the possible callees of indirect
   /// calls.
   MDNode *createCallees(ArrayRef<Function *> Callees);
-
-  //===------------------------------------------------------------------===//
-  // Callback metadata.
-  //===------------------------------------------------------------------===//
-
-  /// Return metadata describing a callback (see llvm::AbstractCallSite).
-  MDNode *createCallbackEncoding(unsigned CalleeArgNo, ArrayRef<int> Arguments,
-                                 bool VarArgsArePassed);
-
-  /// Merge the new callback encoding \p NewCB into \p ExistingCallbacks.
-  MDNode *mergeCallbackEncodings(MDNode *ExistingCallbacks, MDNode *NewCB);
 
   //===------------------------------------------------------------------===//
   // AA metadata.

@@ -1,8 +1,9 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is dual licensed under the MIT and the University of Illinois Open
+// Source Licenses. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -11,12 +12,11 @@
 
 // optional<T>& operator=(optional<T>&& rhs)
 //     noexcept(is_nothrow_move_assignable<T>::value &&
-//              is_nothrow_move_constructible<T>::value); // constexpr in C++20
+//              is_nothrow_move_constructible<T>::value);
 
 #include <optional>
-#include <cassert>
 #include <type_traits>
-#include <utility>
+#include <cassert>
 
 #include "test_macros.h"
 #include "archetypes.hpp"
@@ -50,21 +50,6 @@ struct Y {};
 
 bool X::throw_now = false;
 int X::alive = 0;
-
-
-template <class Tp>
-constexpr bool assign_empty(optional<Tp>&& lhs) {
-    optional<Tp> rhs;
-    lhs = std::move(rhs);
-    return !lhs.has_value() && !rhs.has_value();
-}
-
-template <class Tp>
-constexpr bool assign_value(optional<Tp>&& lhs) {
-    optional<Tp> rhs(101);
-    lhs = std::move(rhs);
-    return lhs.has_value() && rhs.has_value() && *lhs == Tp{101};
-}
 
 int main()
 {
@@ -111,24 +96,6 @@ int main()
         static_assert(*opt2 == 2, "");
         assert(static_cast<bool>(opt) == static_cast<bool>(opt2));
         assert(*opt == *opt2);
-    }
-    {
-        using O = optional<int>;
-#if TEST_STD_VER > 17
-        LIBCPP_STATIC_ASSERT(assign_empty(O{42}), "");
-        LIBCPP_STATIC_ASSERT(assign_value(O{42}), "");
-#endif
-        assert(assign_empty(O{42}));
-        assert(assign_value(O{42}));
-    }
-    {
-        using O = optional<TrivialTestTypes::TestType>;
-#if TEST_STD_VER > 17
-        LIBCPP_STATIC_ASSERT(assign_empty(O{42}), "");
-        LIBCPP_STATIC_ASSERT(assign_value(O{42}), "");
-#endif
-        assert(assign_empty(O{42}));
-        assert(assign_value(O{42}));
     }
 #ifndef TEST_HAS_NO_EXCEPTIONS
     {

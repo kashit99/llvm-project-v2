@@ -1,8 +1,9 @@
 //===--- SourceCode.h - Manipulating source code as strings -----*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 #include "SourceCode.h"
@@ -15,6 +16,7 @@
 #include "llvm/Support/Error.h"
 #include "llvm/Support/Path.h"
 
+using namespace llvm;
 namespace clang {
 namespace clangd {
 
@@ -25,7 +27,7 @@ namespace clangd {
 // invokes CB(UTF-8 length, UTF-16 length), and breaks if it returns true.
 // Returns true if CB returned true, false if we hit the end of string.
 template <typename Callback>
-static bool iterateCodepoints(llvm::StringRef U8, const Callback &CB) {
+static bool iterateCodepoints(StringRef U8, const Callback &CB) {
   for (size_t I = 0; I < U8.size();) {
     unsigned char C = static_cast<unsigned char>(U8[I]);
     if (LLVM_LIKELY(!(C & 0x80))) { // ASCII character.
@@ -35,7 +37,7 @@ static bool iterateCodepoints(llvm::StringRef U8, const Callback &CB) {
       continue;
     }
     // This convenient property of UTF-8 holds for all non-ASCII characters.
-    size_t UTF8Length = llvm::countLeadingOnes(C);
+    size_t UTF8Length = countLeadingOnes(C);
     // 0xxx is ASCII, handled above. 10xxx is a trailing byte, invalid here.
     // 11111xxx is not valid UTF-8 at all. Assert because it's probably our bug.
     assert((UTF8Length >= 2 && UTF8Length <= 4) &&
@@ -52,7 +54,7 @@ static bool iterateCodepoints(llvm::StringRef U8, const Callback &CB) {
 // Returns the offset into the string that matches \p Units UTF-16 code units.
 // Conceptually, this converts to UTF-16, truncates to CodeUnits, converts back
 // to UTF-8, and returns the length in bytes.
-static size_t measureUTF16(llvm::StringRef U8, int U16Units, bool &Valid) {
+static size_t measureUTF16(StringRef U8, int U16Units, bool &Valid) {
   size_t Result = 0;
   Valid = U16Units == 0 || iterateCodepoints(U8, [&](int U8Len, int U16Len) {
             Result += U8Len;
@@ -66,7 +68,7 @@ static size_t measureUTF16(llvm::StringRef U8, int U16Units, bool &Valid) {
 }
 
 // Like most strings in clangd, the input is UTF-8 encoded.
-size_t lspLength(llvm::StringRef Code) {
+size_t lspLength(StringRef Code) {
   // A codepoint takes two UTF-16 code unit if it's astral (outside BMP).
   // Astral codepoints are encoded as 4 bytes in UTF-8, starting with 11110xxx.
   size_t Count = 0;
@@ -77,47 +79,47 @@ size_t lspLength(llvm::StringRef Code) {
   return Count;
 }
 
-llvm::Expected<size_t> positionToOffset(llvm::StringRef Code, Position P,
-                                        bool AllowColumnsBeyondLineLength) {
+Expected<size_t> positionToOffset(StringRef Code, Position P,
+                                  bool AllowColumnsBeyondLineLength) {
   if (P.line < 0)
-    return llvm::make_error<llvm::StringError>(
-        llvm::formatv("Line value can't be negative ({0})", P.line),
-        llvm::errc::invalid_argument);
+    return make_error<StringError>(
+        formatv("Line value can't be negative ({0})", P.line),
+        errc::invalid_argument);
   if (P.character < 0)
-    return llvm::make_error<llvm::StringError>(
-        llvm::formatv("Character value can't be negative ({0})", P.character),
-        llvm::errc::invalid_argument);
+    return make_error<StringError>(
+        formatv("Character value can't be negative ({0})", P.character),
+        errc::invalid_argument);
   size_t StartOfLine = 0;
   for (int I = 0; I != P.line; ++I) {
     size_t NextNL = Code.find('\n', StartOfLine);
-    if (NextNL == llvm::StringRef::npos)
-      return llvm::make_error<llvm::StringError>(
-          llvm::formatv("Line value is out of range ({0})", P.line),
-          llvm::errc::invalid_argument);
+    if (NextNL == StringRef::npos)
+      return make_error<StringError>(
+          formatv("Line value is out of range ({0})", P.line),
+          errc::invalid_argument);
     StartOfLine = NextNL + 1;
   }
 
   size_t NextNL = Code.find('\n', StartOfLine);
-  if (NextNL == llvm::StringRef::npos)
+  if (NextNL == StringRef::npos)
     NextNL = Code.size();
 
   bool Valid;
   size_t ByteOffsetInLine = measureUTF16(
       Code.substr(StartOfLine, NextNL - StartOfLine), P.character, Valid);
   if (!Valid && !AllowColumnsBeyondLineLength)
-    return llvm::make_error<llvm::StringError>(
-        llvm::formatv("UTF-16 offset {0} is invalid for line {1}", P.character,
-                      P.line),
-        llvm::errc::invalid_argument);
+    return make_error<StringError>(
+        formatv("UTF-16 offset {0} is invalid for line {1}", P.character,
+                P.line),
+        errc::invalid_argument);
   return StartOfLine + ByteOffsetInLine;
 }
 
-Position offsetToPosition(llvm::StringRef Code, size_t Offset) {
+Position offsetToPosition(StringRef Code, size_t Offset) {
   Offset = std::min(Code.size(), Offset);
-  llvm::StringRef Before = Code.substr(0, Offset);
+  StringRef Before = Code.substr(0, Offset);
   int Lines = Before.count('\n');
   size_t PrevNL = Before.rfind('\n');
-  size_t StartOfLine = (PrevNL == llvm::StringRef::npos) ? 0 : (PrevNL + 1);
+  size_t StartOfLine = (PrevNL == StringRef::npos) ? 0 : (PrevNL + 1);
   Position Pos;
   Pos.line = Lines;
   Pos.character = lspLength(Before.substr(StartOfLine));
@@ -132,23 +134,13 @@ Position sourceLocToPosition(const SourceManager &SM, SourceLocation Loc) {
   Position P;
   P.line = static_cast<int>(SM.getLineNumber(FID, Offset)) - 1;
   bool Invalid = false;
-  llvm::StringRef Code = SM.getBufferData(FID, &Invalid);
+  StringRef Code = SM.getBufferData(FID, &Invalid);
   if (!Invalid) {
     auto ColumnInBytes = SM.getColumnNumber(FID, Offset) - 1;
     auto LineSoFar = Code.substr(Offset - ColumnInBytes, ColumnInBytes);
     P.character = lspLength(LineSoFar);
   }
   return P;
-}
-
-llvm::Expected<SourceLocation> sourceLocationInMainFile(const SourceManager &SM,
-                                                        Position P) {
-  llvm::StringRef Code = SM.getBuffer(SM.getMainFileID())->getBuffer();
-  auto Offset =
-      positionToOffset(Code, P, /*AllowColumnBeyondLineLength=*/false);
-  if (!Offset)
-    return Offset.takeError();
-  return SM.getLocForStartOfFile(SM.getMainFileID()).getLocWithOffset(*Offset);
 }
 
 Range halfOpenToRange(const SourceManager &SM, CharSourceRange R) {
@@ -159,33 +151,31 @@ Range halfOpenToRange(const SourceManager &SM, CharSourceRange R) {
   return {Begin, End};
 }
 
-std::pair<size_t, size_t> offsetToClangLineColumn(llvm::StringRef Code,
+std::pair<size_t, size_t> offsetToClangLineColumn(StringRef Code,
                                                   size_t Offset) {
   Offset = std::min(Code.size(), Offset);
-  llvm::StringRef Before = Code.substr(0, Offset);
+  StringRef Before = Code.substr(0, Offset);
   int Lines = Before.count('\n');
   size_t PrevNL = Before.rfind('\n');
-  size_t StartOfLine = (PrevNL == llvm::StringRef::npos) ? 0 : (PrevNL + 1);
+  size_t StartOfLine = (PrevNL == StringRef::npos) ? 0 : (PrevNL + 1);
   return {Lines + 1, Offset - StartOfLine + 1};
 }
 
-std::pair<llvm::StringRef, llvm::StringRef>
-splitQualifiedName(llvm::StringRef QName) {
+std::pair<StringRef, StringRef> splitQualifiedName(StringRef QName) {
   size_t Pos = QName.rfind("::");
-  if (Pos == llvm::StringRef::npos)
-    return {llvm::StringRef(), QName};
+  if (Pos == StringRef::npos)
+    return {StringRef(), QName};
   return {QName.substr(0, Pos + 2), QName.substr(Pos + 2)};
 }
 
-TextEdit replacementToEdit(llvm::StringRef Code,
-                           const tooling::Replacement &R) {
+TextEdit replacementToEdit(StringRef Code, const tooling::Replacement &R) {
   Range ReplacementRange = {
       offsetToPosition(Code, R.getOffset()),
       offsetToPosition(Code, R.getOffset() + R.getLength())};
   return {ReplacementRange, R.getReplacementText()};
 }
 
-std::vector<TextEdit> replacementsToEdits(llvm::StringRef Code,
+std::vector<TextEdit> replacementsToEdits(StringRef Code,
                                           const tooling::Replacements &Repls) {
   std::vector<TextEdit> Edits;
   for (const auto &R : Repls)
@@ -193,13 +183,13 @@ std::vector<TextEdit> replacementsToEdits(llvm::StringRef Code,
   return Edits;
 }
 
-llvm::Optional<std::string> getCanonicalPath(const FileEntry *F,
-                                             const SourceManager &SourceMgr) {
+Optional<std::string> getCanonicalPath(const FileEntry *F,
+                                       const SourceManager &SourceMgr) {
   if (!F)
     return None;
 
-  llvm::SmallString<128> FilePath = F->getName();
-  if (!llvm::sys::path::is_absolute(FilePath)) {
+  SmallString<128> FilePath = F->getName();
+  if (!sys::path::is_absolute(FilePath)) {
     if (auto EC =
             SourceMgr.getFileManager().getVirtualFileSystem()->makeAbsolute(
                 FilePath)) {
@@ -221,11 +211,10 @@ llvm::Optional<std::string> getCanonicalPath(const FileEntry *F,
   //  The file path of Symbol is "/project/src/foo.h" instead of
   //  "/tmp/build/foo.h"
   if (const DirectoryEntry *Dir = SourceMgr.getFileManager().getDirectory(
-          llvm::sys::path::parent_path(FilePath))) {
-    llvm::SmallString<128> RealPath;
-    llvm::StringRef DirName = SourceMgr.getFileManager().getCanonicalName(Dir);
-    llvm::sys::path::append(RealPath, DirName,
-                            llvm::sys::path::filename(FilePath));
+          sys::path::parent_path(FilePath))) {
+    SmallString<128> RealPath;
+    StringRef DirName = SourceMgr.getFileManager().getCanonicalName(Dir);
+    sys::path::append(RealPath, DirName, sys::path::filename(FilePath));
     return RealPath.str().str();
   }
 
@@ -241,34 +230,21 @@ TextEdit toTextEdit(const FixItHint &FixIt, const SourceManager &M,
   return Result;
 }
 
-bool isRangeConsecutive(const Range &Left, const Range &Right) {
+bool IsRangeConsecutive(const Range &Left, const Range &Right) {
   return Left.end.line == Right.start.line &&
          Left.end.character == Right.start.character;
 }
 
-FileDigest digest(llvm::StringRef Content) {
+FileDigest digest(StringRef Content) {
   return llvm::SHA1::hash({(const uint8_t *)Content.data(), Content.size()});
 }
 
-llvm::Optional<FileDigest> digestFile(const SourceManager &SM, FileID FID) {
+Optional<FileDigest> digestFile(const SourceManager &SM, FileID FID) {
   bool Invalid = false;
-  llvm::StringRef Content = SM.getBufferData(FID, &Invalid);
+  StringRef Content = SM.getBufferData(FID, &Invalid);
   if (Invalid)
     return None;
   return digest(Content);
-}
-
-format::FormatStyle getFormatStyleForFile(llvm::StringRef File,
-                                          llvm::StringRef Content,
-                                          llvm::vfs::FileSystem *FS) {
-  auto Style = format::getStyle(format::DefaultFormatStyle, File,
-                                format::DefaultFallbackStyle, Content, FS);
-  if (!Style) {
-    log("getStyle() failed for file {0}: {1}. Fallback is LLVM style.", File,
-        Style.takeError());
-    Style = format::getLLVMStyle();
-  }
-  return *Style;
 }
 
 } // namespace clangd

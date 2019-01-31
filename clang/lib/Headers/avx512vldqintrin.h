@@ -523,21 +523,23 @@ _mm_maskz_cvtepi64_ps (__mmask8 __U, __m128i __A) {
 
 static __inline__ __m128 __DEFAULT_FN_ATTRS256
 _mm256_cvtepi64_ps (__m256i __A) {
-  return (__m128)__builtin_convertvector((__v4di)__A, __v4sf);
+  return (__m128) __builtin_ia32_cvtqq2ps256_mask ((__v4di) __A,
+                (__v4sf) _mm_setzero_ps(),
+                (__mmask8) -1);
 }
 
 static __inline__ __m128 __DEFAULT_FN_ATTRS256
 _mm256_mask_cvtepi64_ps (__m128 __W, __mmask8 __U, __m256i __A) {
-  return (__m128)__builtin_ia32_selectps_128((__mmask8)__U,
-                                             (__v4sf)_mm256_cvtepi64_ps(__A),
-                                             (__v4sf)__W);
+  return (__m128) __builtin_ia32_cvtqq2ps256_mask ((__v4di) __A,
+                (__v4sf) __W,
+                (__mmask8) __U);
 }
 
 static __inline__ __m128 __DEFAULT_FN_ATTRS256
 _mm256_maskz_cvtepi64_ps (__mmask8 __U, __m256i __A) {
-  return (__m128)__builtin_ia32_selectps_128((__mmask8)__U,
-                                             (__v4sf)_mm256_cvtepi64_ps(__A),
-                                             (__v4sf)_mm_setzero_ps());
+  return (__m128) __builtin_ia32_cvtqq2ps256_mask ((__v4di) __A,
+                (__v4sf) _mm_setzero_ps(),
+                (__mmask8) __U);
 }
 
 static __inline__ __m128i __DEFAULT_FN_ATTRS128
@@ -769,21 +771,23 @@ _mm_maskz_cvtepu64_ps (__mmask8 __U, __m128i __A) {
 
 static __inline__ __m128 __DEFAULT_FN_ATTRS256
 _mm256_cvtepu64_ps (__m256i __A) {
-  return (__m128)__builtin_convertvector((__v4du)__A, __v4sf);
+  return (__m128) __builtin_ia32_cvtuqq2ps256_mask ((__v4di) __A,
+                (__v4sf) _mm_setzero_ps(),
+                (__mmask8) -1);
 }
 
 static __inline__ __m128 __DEFAULT_FN_ATTRS256
 _mm256_mask_cvtepu64_ps (__m128 __W, __mmask8 __U, __m256i __A) {
-  return (__m128)__builtin_ia32_selectps_128((__mmask8)__U,
-                                             (__v4sf)_mm256_cvtepu64_ps(__A),
-                                             (__v4sf)__W);
+  return (__m128) __builtin_ia32_cvtuqq2ps256_mask ((__v4di) __A,
+                (__v4sf) __W,
+                (__mmask8) __U);
 }
 
 static __inline__ __m128 __DEFAULT_FN_ATTRS256
 _mm256_maskz_cvtepu64_ps (__mmask8 __U, __m256i __A) {
-  return (__m128)__builtin_ia32_selectps_128((__mmask8)__U,
-                                             (__v4sf)_mm256_cvtepu64_ps(__A),
-                                             (__v4sf)_mm_setzero_ps());
+  return (__m128) __builtin_ia32_cvtuqq2ps256_mask ((__v4di) __A,
+                (__v4sf) _mm_setzero_ps(),
+                (__mmask8) __U);
 }
 
 #define _mm_range_pd(A, B, C) \

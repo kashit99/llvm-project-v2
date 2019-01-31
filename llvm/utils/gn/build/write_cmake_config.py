@@ -53,9 +53,6 @@ def main():
     values = {}
     for value in args.values:
         key, val = value.split('=', 1)
-        if key in values:
-            print('duplicate key "%s" in args' % key, file=sys.stderr)
-            return 1
         values[key] = val.replace('\\n', '\n')
     unused_values = set(values.keys())
 
@@ -101,7 +98,6 @@ def main():
 
     if not os.path.exists(args.output) or open(args.output).read() != output:
         open(args.output, 'w').write(output)
-        os.chmod(args.output, os.stat(args.input).st_mode & 0o777)
 
 
 if __name__ == '__main__':

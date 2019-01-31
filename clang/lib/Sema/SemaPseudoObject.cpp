@@ -1,8 +1,9 @@
 //===--- SemaPseudoObject.cpp - Semantic Analysis for Pseudo-Objects ------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -140,24 +141,25 @@ namespace {
         unsigned resultIndex = gse->getResultIndex();
         unsigned numAssocs = gse->getNumAssocs();
 
-        SmallVector<Expr *, 8> assocExprs;
-        SmallVector<TypeSourceInfo *, 8> assocTypes;
-        assocExprs.reserve(numAssocs);
-        assocTypes.reserve(numAssocs);
+        SmallVector<Expr*, 8> assocs(numAssocs);
+        SmallVector<TypeSourceInfo*, 8> assocTypes(numAssocs);
 
-        for (const GenericSelectionExpr::Association &assoc :
-             gse->associations()) {
-          Expr *assocExpr = assoc.getAssociationExpr();
-          if (assoc.isSelected())
-            assocExpr = rebuild(assocExpr);
-          assocExprs.push_back(assocExpr);
-          assocTypes.push_back(assoc.getTypeSourceInfo());
+        for (unsigned i = 0; i != numAssocs; ++i) {
+          Expr *assoc = gse->getAssocExpr(i);
+          if (i == resultIndex) assoc = rebuild(assoc);
+          assocs[i] = assoc;
+          assocTypes[i] = gse->getAssocTypeSourceInfo(i);
         }
 
-        return GenericSelectionExpr::Create(
-            S.Context, gse->getGenericLoc(), gse->getControllingExpr(),
-            assocTypes, assocExprs, gse->getDefaultLoc(), gse->getRParenLoc(),
-            gse->containsUnexpandedParameterPack(), resultIndex);
+        return new (S.Context) GenericSelectionExpr(S.Context,
+                                                    gse->getGenericLoc(),
+                                                    gse->getControllingExpr(),
+                                                    assocTypes,
+                                                    assocs,
+                                                    gse->getDefaultLoc(),
+                                                    gse->getRParenLoc(),
+                                      gse->containsUnexpandedParameterPack(),
+                                                    resultIndex);
       }
 
       if (ChooseExpr *ce = dyn_cast<ChooseExpr>(e)) {

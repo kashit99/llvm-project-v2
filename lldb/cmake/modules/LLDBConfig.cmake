@@ -1,5 +1,34 @@
 include(CheckCXXSymbolExists)
 
+# BEGIN Swift Mods
+# We want this in a cmake cache
+list(APPEND swift_lldb_framework_tools
+  darwin-debug
+  lldb-argdumper
+  lldb-server
+  repl_swift
+)
+
+set(LLVM_ENABLE_MODULES        ON CACHE BOOL "" FORCE)
+set(LLVM_EXTERNALIZE_DEBUGINFO OFF CACHE BOOL "" FORCE)
+set(LLVM_TARGETS_TO_BUILD      X86;ARM;AArch64 CACHE STRING "" FORCE)
+
+set(LLDB_VERSION_MAJOR   992 CACHE STRING "" FORCE)
+set(LLDB_VERSION_MINOR   8   CACHE STRING "" FORCE)
+set(LLDB_VERSION_PATCH   1   CACHE STRING "" FORCE)
+set(LLDB_VERSION_SUFFIX  svn CACHE STRING "" FORCE)
+
+if(APPLE)
+  set(LLDB_USE_SYSTEM_DEBUGSERVER ON CACHE BOOL "" FORCE)
+  set(LLDB_BUILD_FRAMEWORK ON CACHE BOOL "" FORCE)
+  set(LLDB_FRAMEWORK_TOOLS ${swift_lldb_framework_tools} CACHE STRING "" FORCE)
+endif()
+
+if(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
+  set(LLDB_ALLOW_STATIC_BINDINGS ON CACHE BOOL "" FORCE)
+endif()
+# END Swift Mods
+
 set(LLDB_PROJECT_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
 set(LLDB_SOURCE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/source")
 set(LLDB_INCLUDE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/include")
@@ -50,6 +79,10 @@ option(LLDB_USE_ENTITLEMENTS "When codesigning, use entitlements if available" O
 option(LLDB_BUILD_FRAMEWORK "Build LLDB.framework (Darwin only)" OFF)
 option(LLDB_NO_INSTALL_DEFAULT_RPATH "Disable default RPATH settings in binaries" OFF)
 
+# BEGIN SWIFT CODE
+option(LLDB_ALLOW_STATIC_BINDINGS "Enable using static/baked language bindings if swig is not present." OFF)
+# END SWIFT CODE
+
 if(LLDB_BUILD_FRAMEWORK)
   if(NOT APPLE)
     message(FATAL_ERROR "LLDB.framework can only be generated when targeting Apple platforms")
@@ -62,6 +95,7 @@ if(LLDB_BUILD_FRAMEWORK)
   set(LLDB_FRAMEWORK_VERSION A CACHE STRING "LLDB.framework version (default is A)")
   set(LLDB_FRAMEWORK_BUILD_DIR bin CACHE STRING "Output directory for LLDB.framework")
   set(LLDB_FRAMEWORK_INSTALL_DIR Library/Frameworks CACHE STRING "Install directory for LLDB.framework")
+  set(LLDB_FRAMEWORK_RESOURCE_DIR Versions/${LLDB_FRAMEWORK_VERSION}/Resources)
   set(LLDB_FRAMEWORK_TOOLS darwin-debug;debugserver;lldb-argdumper;lldb-server CACHE STRING
       "List of tools to include in LLDB.framework/Resources")
 
@@ -220,7 +254,7 @@ if (NOT LLDB_DISABLE_PYTHON)
   else()
     find_package(PythonLibs REQUIRED)
   endif()
-  
+
   if (PYTHON_INCLUDE_DIRS)
     include_directories(${PYTHON_INCLUDE_DIRS})
   endif()
@@ -238,6 +272,17 @@ else ()
   include_directories(${CMAKE_SOURCE_DIR}/tools/clang/include)
 endif ()
 include_directories("${CMAKE_CURRENT_BINARY_DIR}/../clang/include")
+
+if(NOT LLDB_BUILT_STANDALONE)
+  if (LLVM_EXTERNAL_SWIFT_SOURCE_DIR)
+    include_directories(${LLVM_EXTERNAL_SWIFT_SOURCE_DIR}/include)
+  else ()
+    include_directories(${CMAKE_SOURCE_DIR}/tools/swift/include)
+  endif ()
+  include_directories("${CMAKE_CURRENT_BINARY_DIR}/../swift/include")
+else ()
+  include_directories("${LLDB_PATH_TO_SWIFT_BUILD}/include")
+endif()
 
 # Disable GCC warnings
 check_cxx_compiler_flag("-Wno-deprecated-declarations"
@@ -368,7 +413,7 @@ if (APPLE)
        ${CORE_SERVICES_LIBRARY}
        ${SECURITY_LIBRARY}
        ${DEBUG_SYMBOLS_LIBRARY})
-  include_directories(${LIBXML2_INCLUDE_DIR})
+  include_directories(AFTER "${CMAKE_OSX_SYSROOT}/usr/include/libxml2")
 elseif(LIBXML2_FOUND AND LIBXML2_VERSION_STRING VERSION_GREATER 2.8)
   add_definitions( -DLIBXML2_DEFINED )
   list(APPEND system_libs ${LIBXML2_LIBRARIES})

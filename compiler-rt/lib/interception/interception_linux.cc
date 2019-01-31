@@ -1,8 +1,9 @@
 //===-- interception_linux.cc -----------------------------------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -18,27 +19,16 @@
 
 #include <dlfcn.h>   // for dlsym() and dlvsym()
 
-namespace __interception {
-
 #if SANITIZER_NETBSD
-static int StrCmp(const char *s1, const char *s2) {
-  while (true) {
-    if (*s1 != *s2)
-      return false;
-    if (*s1 == 0)
-      return true;
-    s1++;
-    s2++;
-  }
-}
+#include "sanitizer_common/sanitizer_libc.h"
 #endif
 
+namespace __interception {
 bool GetRealFunctionAddress(const char *func_name, uptr *func_addr,
     uptr real, uptr wrapper) {
 #if SANITIZER_NETBSD
-  // FIXME: Find a better way to handle renames
-  if (StrCmp(func_name, "sigaction"))
-    func_name = "__sigaction14";
+  // XXX: Find a better way to handle renames
+  if (internal_strcmp(func_name, "sigaction") == 0) func_name = "__sigaction14";
 #endif
   *func_addr = (uptr)dlsym(RTLD_NEXT, func_name);
   if (!*func_addr) {

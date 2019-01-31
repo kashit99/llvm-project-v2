@@ -9,7 +9,7 @@
 
     /*
      * Automatic numbering is described in this article:
-     * https://dev.opera.com/articles/view/automatic-numbering-with-css-counters/
+     * http://dev.opera.com/articles/view/automatic-numbering-with-css-counters/
      */
     /*
      * Automatic numbering for the TOC.

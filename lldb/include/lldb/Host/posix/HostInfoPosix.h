@@ -37,7 +37,9 @@ public:
 
 protected:
   static bool ComputeSupportExeDirectory(FileSpec &file_spec);
+  static bool ComputeSupportFileDirectory(FileSpec &file_spec);
   static bool ComputeHeaderDirectory(FileSpec &file_spec);
+  static bool ComputeSwiftDirectory(FileSpec &file_spec);
 };
 }
 

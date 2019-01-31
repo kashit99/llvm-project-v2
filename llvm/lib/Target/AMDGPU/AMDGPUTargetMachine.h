@@ -1,8 +1,9 @@
 //===-- AMDGPUTargetMachine.h - AMDGPU TargetMachine Interface --*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -14,6 +15,7 @@
 #ifndef LLVM_LIB_TARGET_AMDGPU_AMDGPUTARGETMACHINE_H
 #define LLVM_LIB_TARGET_AMDGPU_AMDGPUTARGETMACHINE_H
 
+#include "AMDGPUIntrinsicInfo.h"
 #include "AMDGPUSubtarget.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/StringMap.h"
@@ -93,6 +95,7 @@ public:
 
 class GCNTargetMachine final : public AMDGPUTargetMachine {
 private:
+  AMDGPUIntrinsicInfo IntrinsicInfo;
   mutable StringMap<std::unique_ptr<GCNSubtarget>> SubtargetMap;
 
 public:
@@ -106,6 +109,10 @@ public:
   const GCNSubtarget *getSubtargetImpl(const Function &) const override;
 
   TargetTransformInfo getTargetTransformInfo(const Function &F) override;
+
+  const AMDGPUIntrinsicInfo *getIntrinsicInfo() const override {
+    return &IntrinsicInfo;
+  }
 
   bool useIPRA() const override {
     return true;

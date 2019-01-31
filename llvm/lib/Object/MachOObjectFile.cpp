@@ -1,8 +1,9 @@
 //===- MachOObjectFile.cpp - Mach-O object file binding -------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -2241,18 +2242,9 @@ uint8_t MachOObjectFile::getRelocationLength(DataRefImpl Rel) const {
 // one of the two following forms:
 //      libFoo.A.dylib
 //      libFoo.dylib
-//
 // The library may have a suffix trailing the name Foo of the form:
 //      libFoo_profile.A.dylib
 //      libFoo_profile.dylib
-// These dyld image suffixes are separated from the short name by a '_'
-// character. Because the '_' character is commonly used to separate words in
-// filenames guessLibraryShortName() cannot reliably separate a dylib's short
-// name from an arbitrary image suffix; imagine if both the short name and the
-// suffix contains an '_' character! To better deal with this ambiguity,
-// guessLibraryShortName() will recognize only "_debug" and "_profile" as valid
-// Suffix values. Calling code needs to be tolerant of guessLibraryShortName()
-// guessing incorrectly.
 //
 // The Name of the dynamic library is also recognized as a library name if it
 // has the following form:
@@ -2260,6 +2252,7 @@ uint8_t MachOObjectFile::getRelocationLength(DataRefImpl Rel) const {
 //
 // If the Name of the dynamic library is none of the forms above then a NULL
 // StringRef is returned.
+//
 StringRef MachOObjectFile::guessLibraryShortName(StringRef Name,
                                                  bool &isFramework,
                                                  StringRef &Suffix) {
@@ -2279,10 +2272,7 @@ StringRef MachOObjectFile::guessLibraryShortName(StringRef Name,
   Idx = Foo.rfind('_');
   if (Idx != Foo.npos && Foo.size() >= 2) {
     Suffix = Foo.slice(Idx, Foo.npos);
-    if (Suffix != "_debug" && Suffix != "_profile")
-      Suffix = StringRef();
-    else
-      Foo = Foo.slice(0, Idx);
+    Foo = Foo.slice(0, Idx);
   }
 
   // First look for the form Foo.framework/Foo
@@ -2343,14 +2333,10 @@ guess_library:
   else
     b = b+1;
   // ignore any suffix after an underbar like Foo_profile.A.dylib
-  Idx = Name.rfind('_');
+  Idx = Name.find('_', b);
   if (Idx != Name.npos && Idx != b) {
     Lib = Name.slice(b, Idx);
     Suffix = Name.slice(Idx, a);
-    if (Suffix != "_debug" && Suffix != "_profile") {
-      Suffix = StringRef();
-      Lib = Name.slice(b, a);
-    }
   }
   else
     Lib = Name.slice(b, a);
@@ -2452,7 +2438,7 @@ basic_symbol_iterator MachOObjectFile::symbol_end() const {
   return basic_symbol_iterator(SymbolRef(DRI, this));
 }
 
-symbol_iterator MachOObjectFile::getSymbolByIndex(unsigned Index) const {
+basic_symbol_iterator MachOObjectFile::getSymbolByIndex(unsigned Index) const {
   MachO::symtab_command Symtab = getSymtabLoadCommand();
   if (!SymtabLoadCmd || Index >= Symtab.nsyms)
     report_fatal_error("Requested symbol index is out of range.");

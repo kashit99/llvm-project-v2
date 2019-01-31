@@ -1,8 +1,9 @@
 //===--- TokenAnnotator.cpp - Format C++ code -----------------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 ///
@@ -1127,7 +1128,6 @@ private:
            (Tok.Next->Next->TokenText == "module" ||
             Tok.Next->Next->TokenText == "provide" ||
             Tok.Next->Next->TokenText == "require" ||
-            Tok.Next->Next->TokenText == "requireType" ||
             Tok.Next->Next->TokenText == "forwardDeclare") &&
            Tok.Next->Next->Next && Tok.Next->Next->Next->is(tok::l_paren);
   }

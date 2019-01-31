@@ -74,17 +74,15 @@ if(NOT COMPILER_RT_STANDALONE_BUILD)
     opt
     sanstats
   )
-  if(LLVM_ENABLE_PIC)
-    if(LLVM_BINUTILS_INCDIR)
-      list(APPEND CFI_TEST_DEPS
-        LLVMgold
-      )
-    endif()
-    if(APPLE)
-      list(APPEND CFI_TEST_DEPS
-        LTO
-      )
-    endif()
+  if(LLVM_ENABLE_PIC AND LLVM_BINUTILS_INCDIR)
+    list(APPEND CFI_TEST_DEPS
+      LLVMgold
+    )
+  endif()
+  if(APPLE)
+    list(APPEND CFI_TEST_DEPS
+      LTO
+    )
   endif()
   if(NOT APPLE AND COMPILER_RT_HAS_LLD)
     list(APPEND CFI_TEST_DEPS

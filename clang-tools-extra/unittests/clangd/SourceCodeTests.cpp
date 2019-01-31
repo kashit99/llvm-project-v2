@@ -1,11 +1,11 @@
 //===-- SourceCodeTests.cpp  ------------------------------------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
-#include "Annotations.h"
 #include "SourceCode.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/raw_os_ostream.h"
@@ -13,12 +13,10 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
+using namespace llvm;
 namespace clang {
 namespace clangd {
 namespace {
-
-using llvm::Failed;
-using llvm::HasValue;
 
 MATCHER_P2(Pos, Line, Col, "") {
   return arg.line == Line && arg.character == Col;
@@ -56,63 +54,63 @@ TEST(SourceCodeTests, lspLength) {
 
 TEST(SourceCodeTests, PositionToOffset) {
   // line out of bounds
-  EXPECT_THAT_EXPECTED(positionToOffset(File, position(-1, 2)), llvm::Failed());
+  EXPECT_THAT_EXPECTED(positionToOffset(File, position(-1, 2)), Failed());
   // first line
   EXPECT_THAT_EXPECTED(positionToOffset(File, position(0, -1)),
-                       llvm::Failed()); // out of range
+                       Failed()); // out of range
   EXPECT_THAT_EXPECTED(positionToOffset(File, position(0, 0)),
-                       llvm::HasValue(0)); // first character
+                       HasValue(0)); // first character
   EXPECT_THAT_EXPECTED(positionToOffset(File, position(0, 3)),
-                       llvm::HasValue(3)); // middle character
+                       HasValue(3)); // middle character
   EXPECT_THAT_EXPECTED(positionToOffset(File, position(0, 6)),
-                       llvm::HasValue(6)); // last character
+                       HasValue(6)); // last character
   EXPECT_THAT_EXPECTED(positionToOffset(File, position(0, 7)),
-                       llvm::HasValue(7)); // the newline itself
+                       HasValue(7)); // the newline itself
   EXPECT_THAT_EXPECTED(positionToOffset(File, position(0, 7), false),
-                       llvm::HasValue(7));
+                       HasValue(7));
   EXPECT_THAT_EXPECTED(positionToOffset(File, position(0, 8)),
-                       llvm::HasValue(7)); // out of range
+                       HasValue(7)); // out of range
   EXPECT_THAT_EXPECTED(positionToOffset(File, position(0, 8), false),
-                       llvm::Failed()); // out of range
+                       Failed()); // out of range
   // middle line
   EXPECT_THAT_EXPECTED(positionToOffset(File, position(1, -1)),
-                       llvm::Failed()); // out of range
+                       Failed()); // out of range
   EXPECT_THAT_EXPECTED(positionToOffset(File, position(1, 0)),
-                       llvm::HasValue(8)); // first character
+                       HasValue(8)); // first character
   EXPECT_THAT_EXPECTED(positionToOffset(File, position(1, 3)),
-                       llvm::HasValue(11)); // middle character
+                       HasValue(11)); // middle character
   EXPECT_THAT_EXPECTED(positionToOffset(File, position(1, 3), false),
-                       llvm::HasValue(11));
+                       HasValue(11));
   EXPECT_THAT_EXPECTED(positionToOffset(File, position(1, 6)),
-                       llvm::HasValue(16)); // last character
+                       HasValue(16)); // last character
   EXPECT_THAT_EXPECTED(positionToOffset(File, position(1, 7)),
-                       llvm::HasValue(17)); // the newline itself
+                       HasValue(17)); // the newline itself
   EXPECT_THAT_EXPECTED(positionToOffset(File, position(1, 8)),
-                       llvm::HasValue(17)); // out of range
+                       HasValue(17)); // out of range
   EXPECT_THAT_EXPECTED(positionToOffset(File, position(1, 8), false),
-                       llvm::Failed()); // out of range
+                       Failed()); // out of range
   // last line
   EXPECT_THAT_EXPECTED(positionToOffset(File, position(2, -1)),
-                       llvm::Failed()); // out of range
+                       Failed()); // out of range
   EXPECT_THAT_EXPECTED(positionToOffset(File, position(2, 0)),
-                       llvm::HasValue(18)); // first character
+                       HasValue(18)); // first character
   EXPECT_THAT_EXPECTED(positionToOffset(File, position(2, 3)),
-                       llvm::HasValue(21)); // middle character
+                       HasValue(21)); // middle character
   EXPECT_THAT_EXPECTED(positionToOffset(File, position(2, 5), false),
-                       llvm::Failed()); // middle of surrogate pair
+                       Failed()); // middle of surrogate pair
   EXPECT_THAT_EXPECTED(positionToOffset(File, position(2, 5)),
-                       llvm::HasValue(26)); // middle of surrogate pair
+                       HasValue(26)); // middle of surrogate pair
   EXPECT_THAT_EXPECTED(positionToOffset(File, position(2, 6), false),
-                       llvm::HasValue(26)); // end of surrogate pair
+                       HasValue(26)); // end of surrogate pair
   EXPECT_THAT_EXPECTED(positionToOffset(File, position(2, 8)),
-                       llvm::HasValue(28)); // last character
+                       HasValue(28)); // last character
   EXPECT_THAT_EXPECTED(positionToOffset(File, position(2, 9)),
-                       llvm::HasValue(29)); // EOF
+                       HasValue(29)); // EOF
   EXPECT_THAT_EXPECTED(positionToOffset(File, position(2, 10), false),
-                       llvm::Failed()); // out of range
+                       Failed()); // out of range
   // line out of bounds
-  EXPECT_THAT_EXPECTED(positionToOffset(File, position(3, 0)), llvm::Failed());
-  EXPECT_THAT_EXPECTED(positionToOffset(File, position(3, 1)), llvm::Failed());
+  EXPECT_THAT_EXPECTED(positionToOffset(File, position(3, 0)), Failed());
+  EXPECT_THAT_EXPECTED(positionToOffset(File, position(3, 1)), Failed());
 }
 
 TEST(SourceCodeTests, OffsetToPosition) {
@@ -137,43 +135,11 @@ TEST(SourceCodeTests, OffsetToPosition) {
 }
 
 TEST(SourceCodeTests, IsRangeConsecutive) {
-  EXPECT_TRUE(isRangeConsecutive(range({2, 2}, {2, 3}), range({2, 3}, {2, 4})));
+  EXPECT_TRUE(IsRangeConsecutive(range({2, 2}, {2, 3}), range({2, 3}, {2, 4})));
   EXPECT_FALSE(
-      isRangeConsecutive(range({0, 2}, {0, 3}), range({2, 3}, {2, 4})));
+      IsRangeConsecutive(range({0, 2}, {0, 3}), range({2, 3}, {2, 4})));
   EXPECT_FALSE(
-      isRangeConsecutive(range({2, 2}, {2, 3}), range({2, 4}, {2, 5})));
-}
-
-TEST(SourceCodeTests, SourceLocationInMainFile) {
-  Annotations Source(R"cpp(
-    ^in^t ^foo
-    ^bar
-    ^baz ^() {}  {} {} {} { }^
-)cpp");
-
-  SourceManagerForFile Owner("foo.cpp", Source.code());
-  SourceManager &SM = Owner.get();
-
-  SourceLocation StartOfFile = SM.getLocForStartOfFile(SM.getMainFileID());
-  EXPECT_THAT_EXPECTED(sourceLocationInMainFile(SM, position(0, 0)),
-                       HasValue(StartOfFile));
-  // End of file.
-  EXPECT_THAT_EXPECTED(
-      sourceLocationInMainFile(SM, position(4, 0)),
-      HasValue(StartOfFile.getLocWithOffset(Source.code().size())));
-  // Column number is too large.
-  EXPECT_THAT_EXPECTED(sourceLocationInMainFile(SM, position(0, 1)), Failed());
-  EXPECT_THAT_EXPECTED(sourceLocationInMainFile(SM, position(0, 100)),
-                       Failed());
-  EXPECT_THAT_EXPECTED(sourceLocationInMainFile(SM, position(4, 1)), Failed());
-  // Line number is too large.
-  EXPECT_THAT_EXPECTED(sourceLocationInMainFile(SM, position(5, 0)), Failed());
-  // Check all positions mentioned in the test return valid results.
-  for (auto P : Source.points()) {
-    size_t Offset = llvm::cantFail(positionToOffset(Source.code(), P));
-    EXPECT_THAT_EXPECTED(sourceLocationInMainFile(SM, P),
-                         HasValue(StartOfFile.getLocWithOffset(Offset)));
-  }
+      IsRangeConsecutive(range({2, 2}, {2, 3}), range({2, 4}, {2, 5})));
 }
 
 } // namespace

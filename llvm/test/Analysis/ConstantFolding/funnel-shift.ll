@@ -85,7 +85,8 @@ define <4 x i8> @fshr_v4i8() {
 
 define i32 @fshl_scalar_all_undef() {
 ; CHECK-LABEL: @fshl_scalar_all_undef(
-; CHECK-NEXT:    ret i32 undef
+; CHECK-NEXT:    [[F:%.*]] = call i32 @llvm.fshl.i32(i32 undef, i32 undef, i32 undef)
+; CHECK-NEXT:    ret i32 [[F]]
 ;
   %f = call i32 @llvm.fshl.i32(i32 undef, i32 undef, i32 undef)
   ret i32 %f
@@ -93,7 +94,8 @@ define i32 @fshl_scalar_all_undef() {
 
 define i32 @fshr_scalar_all_undef() {
 ; CHECK-LABEL: @fshr_scalar_all_undef(
-; CHECK-NEXT:    ret i32 undef
+; CHECK-NEXT:    [[F:%.*]] = call i32 @llvm.fshr.i32(i32 undef, i32 undef, i32 undef)
+; CHECK-NEXT:    ret i32 [[F]]
 ;
   %f = call i32 @llvm.fshr.i32(i32 undef, i32 undef, i32 undef)
   ret i32 %f
@@ -101,7 +103,8 @@ define i32 @fshr_scalar_all_undef() {
 
 define i32 @fshl_scalar_undef_shamt() {
 ; CHECK-LABEL: @fshl_scalar_undef_shamt(
-; CHECK-NEXT:    ret i32 1
+; CHECK-NEXT:    [[F:%.*]] = call i32 @llvm.fshl.i32(i32 1, i32 2, i32 undef)
+; CHECK-NEXT:    ret i32 [[F]]
 ;
   %f = call i32 @llvm.fshl.i32(i32 1, i32 2, i32 undef)
   ret i32 %f
@@ -109,7 +112,8 @@ define i32 @fshl_scalar_undef_shamt() {
 
 define i32 @fshr_scalar_undef_shamt() {
 ; CHECK-LABEL: @fshr_scalar_undef_shamt(
-; CHECK-NEXT:    ret i32 2
+; CHECK-NEXT:    [[F:%.*]] = call i32 @llvm.fshr.i32(i32 1, i32 2, i32 undef)
+; CHECK-NEXT:    ret i32 [[F]]
 ;
   %f = call i32 @llvm.fshr.i32(i32 1, i32 2, i32 undef)
   ret i32 %f
@@ -117,7 +121,8 @@ define i32 @fshr_scalar_undef_shamt() {
 
 define i32 @fshl_scalar_undef_ops() {
 ; CHECK-LABEL: @fshl_scalar_undef_ops(
-; CHECK-NEXT:    ret i32 undef
+; CHECK-NEXT:    [[F:%.*]] = call i32 @llvm.fshl.i32(i32 undef, i32 undef, i32 7)
+; CHECK-NEXT:    ret i32 [[F]]
 ;
   %f = call i32 @llvm.fshl.i32(i32 undef, i32 undef, i32 7)
   ret i32 %f
@@ -125,7 +130,8 @@ define i32 @fshl_scalar_undef_ops() {
 
 define i32 @fshr_scalar_undef_ops() {
 ; CHECK-LABEL: @fshr_scalar_undef_ops(
-; CHECK-NEXT:    ret i32 undef
+; CHECK-NEXT:    [[F:%.*]] = call i32 @llvm.fshr.i32(i32 undef, i32 undef, i32 7)
+; CHECK-NEXT:    ret i32 [[F]]
 ;
   %f = call i32 @llvm.fshr.i32(i32 undef, i32 undef, i32 7)
   ret i32 %f
@@ -133,7 +139,8 @@ define i32 @fshr_scalar_undef_ops() {
 
 define i32 @fshl_scalar_undef_op1_zero_shift() {
 ; CHECK-LABEL: @fshl_scalar_undef_op1_zero_shift(
-; CHECK-NEXT:    ret i32 undef
+; CHECK-NEXT:    [[F:%.*]] = call i32 @llvm.fshl.i32(i32 undef, i32 1, i32 0)
+; CHECK-NEXT:    ret i32 [[F]]
 ;
   %f = call i32 @llvm.fshl.i32(i32 undef, i32 1, i32 0)
   ret i32 %f
@@ -141,7 +148,8 @@ define i32 @fshl_scalar_undef_op1_zero_shift() {
 
 define i32 @fshl_scalar_undef_op2_zero_shift() {
 ; CHECK-LABEL: @fshl_scalar_undef_op2_zero_shift(
-; CHECK-NEXT:    ret i32 1
+; CHECK-NEXT:    [[F:%.*]] = call i32 @llvm.fshl.i32(i32 1, i32 undef, i32 32)
+; CHECK-NEXT:    ret i32 [[F]]
 ;
   %f = call i32 @llvm.fshl.i32(i32 1, i32 undef, i32 32)
   ret i32 %f
@@ -149,7 +157,8 @@ define i32 @fshl_scalar_undef_op2_zero_shift() {
 
 define i32 @fshr_scalar_undef_op1_zero_shift() {
 ; CHECK-LABEL: @fshr_scalar_undef_op1_zero_shift(
-; CHECK-NEXT:    ret i32 1
+; CHECK-NEXT:    [[F:%.*]] = call i32 @llvm.fshr.i32(i32 undef, i32 1, i32 64)
+; CHECK-NEXT:    ret i32 [[F]]
 ;
   %f = call i32 @llvm.fshr.i32(i32 undef, i32 1, i32 64)
   ret i32 %f
@@ -157,7 +166,8 @@ define i32 @fshr_scalar_undef_op1_zero_shift() {
 
 define i32 @fshr_scalar_undef_op2_zero_shift() {
 ; CHECK-LABEL: @fshr_scalar_undef_op2_zero_shift(
-; CHECK-NEXT:    ret i32 undef
+; CHECK-NEXT:    [[F:%.*]] = call i32 @llvm.fshr.i32(i32 1, i32 undef, i32 0)
+; CHECK-NEXT:    ret i32 [[F]]
 ;
   %f = call i32 @llvm.fshr.i32(i32 1, i32 undef, i32 0)
   ret i32 %f
@@ -165,7 +175,8 @@ define i32 @fshr_scalar_undef_op2_zero_shift() {
 
 define i32 @fshl_scalar_undef_op1_nonzero_shift() {
 ; CHECK-LABEL: @fshl_scalar_undef_op1_nonzero_shift(
-; CHECK-NEXT:    ret i32 255
+; CHECK-NEXT:    [[F:%.*]] = call i32 @llvm.fshl.i32(i32 undef, i32 -1, i32 8)
+; CHECK-NEXT:    ret i32 [[F]]
 ;
   %f = call i32 @llvm.fshl.i32(i32 undef, i32 -1, i32 8)
   ret i32 %f
@@ -173,7 +184,8 @@ define i32 @fshl_scalar_undef_op1_nonzero_shift() {
 
 define i32 @fshl_scalar_undef_op2_nonzero_shift() {
 ; CHECK-LABEL: @fshl_scalar_undef_op2_nonzero_shift(
-; CHECK-NEXT:    ret i32 -256
+; CHECK-NEXT:    [[F:%.*]] = call i32 @llvm.fshl.i32(i32 -1, i32 undef, i32 8)
+; CHECK-NEXT:    ret i32 [[F]]
 ;
   %f = call i32 @llvm.fshl.i32(i32 -1, i32 undef, i32 8)
   ret i32 %f
@@ -181,7 +193,8 @@ define i32 @fshl_scalar_undef_op2_nonzero_shift() {
 
 define i32 @fshr_scalar_undef_op1_nonzero_shift() {
 ; CHECK-LABEL: @fshr_scalar_undef_op1_nonzero_shift(
-; CHECK-NEXT:    ret i32 16777215
+; CHECK-NEXT:    [[F:%.*]] = call i32 @llvm.fshr.i32(i32 undef, i32 -1, i32 8)
+; CHECK-NEXT:    ret i32 [[F]]
 ;
   %f = call i32 @llvm.fshr.i32(i32 undef, i32 -1, i32 8)
   ret i32 %f
@@ -189,7 +202,8 @@ define i32 @fshr_scalar_undef_op1_nonzero_shift() {
 
 define i32 @fshr_scalar_undef_op2_nonzero_shift() {
 ; CHECK-LABEL: @fshr_scalar_undef_op2_nonzero_shift(
-; CHECK-NEXT:    ret i32 -16777216
+; CHECK-NEXT:    [[F:%.*]] = call i32 @llvm.fshr.i32(i32 -1, i32 undef, i32 8)
+; CHECK-NEXT:    ret i32 [[F]]
 ;
   %f = call i32 @llvm.fshr.i32(i32 -1, i32 undef, i32 8)
   ret i32 %f
@@ -198,7 +212,8 @@ define i32 @fshr_scalar_undef_op2_nonzero_shift() {
 ; Undef/Undef/Undef; 1/2/Undef; Undef/Undef/3; Undef/1/0
 define <4 x i8> @fshl_vector_mix1() {
 ; CHECK-LABEL: @fshl_vector_mix1(
-; CHECK-NEXT:    ret <4 x i8> <i8 undef, i8 1, i8 undef, i8 undef>
+; CHECK-NEXT:    [[F:%.*]] = call <4 x i8> @llvm.fshl.v4i8(<4 x i8> <i8 undef, i8 1, i8 undef, i8 undef>, <4 x i8> <i8 undef, i8 2, i8 undef, i8 1>, <4 x i8> <i8 undef, i8 undef, i8 3, i8 0>)
+; CHECK-NEXT:    ret <4 x i8> [[F]]
 ;
   %f = call <4 x i8> @llvm.fshl.v4i8(<4 x i8> <i8 undef, i8 1, i8 undef, i8 undef>, <4 x i8> <i8 undef, i8 2, i8 undef, i8 1>, <4 x i8> <i8 undef, i8 undef, i8 3, i8 0>)
   ret <4 x i8> %f
@@ -207,7 +222,8 @@ define <4 x i8> @fshl_vector_mix1() {
 ; 1/Undef/8; Undef/-1/2; -1/Undef/2; 7/8/4
 define <4 x i8> @fshl_vector_mix2() {
 ; CHECK-LABEL: @fshl_vector_mix2(
-; CHECK-NEXT:    ret <4 x i8> <i8 1, i8 3, i8 -4, i8 112>
+; CHECK-NEXT:    [[F:%.*]] = call <4 x i8> @llvm.fshl.v4i8(<4 x i8> <i8 1, i8 undef, i8 -1, i8 7>, <4 x i8> <i8 undef, i8 -1, i8 undef, i8 8>, <4 x i8> <i8 8, i8 2, i8 2, i8 4>)
+; CHECK-NEXT:    ret <4 x i8> [[F]]
 ;
   %f = call <4 x i8> @llvm.fshl.v4i8(<4 x i8> <i8 1, i8 undef, i8 -1, i8 7>, <4 x i8> <i8 undef, i8 -1, i8 undef, i8 8>, <4 x i8> <i8 8, i8 2, i8 2, i8 4>)
   ret <4 x i8> %f
@@ -216,7 +232,8 @@ define <4 x i8> @fshl_vector_mix2() {
 ; Undef/Undef/Undef; 1/2/Undef; Undef/Undef/3; Undef/1/0
 define <4 x i8> @fshr_vector_mix1() {
 ; CHECK-LABEL: @fshr_vector_mix1(
-; CHECK-NEXT:    ret <4 x i8> <i8 undef, i8 2, i8 undef, i8 1>
+; CHECK-NEXT:    [[F:%.*]] = call <4 x i8> @llvm.fshr.v4i8(<4 x i8> <i8 undef, i8 1, i8 undef, i8 undef>, <4 x i8> <i8 undef, i8 2, i8 undef, i8 1>, <4 x i8> <i8 undef, i8 undef, i8 3, i8 0>)
+; CHECK-NEXT:    ret <4 x i8> [[F]]
 ;
   %f = call <4 x i8> @llvm.fshr.v4i8(<4 x i8> <i8 undef, i8 1, i8 undef, i8 undef>, <4 x i8> <i8 undef, i8 2, i8 undef, i8 1>, <4 x i8> <i8 undef, i8 undef, i8 3, i8 0>)
   ret <4 x i8> %f
@@ -225,7 +242,8 @@ define <4 x i8> @fshr_vector_mix1() {
 ; 1/Undef/8; Undef/-1/2; -1/Undef/2; 7/8/4
 define <4 x i8> @fshr_vector_mix2() {
 ; CHECK-LABEL: @fshr_vector_mix2(
-; CHECK-NEXT:    ret <4 x i8> <i8 undef, i8 63, i8 -64, i8 112>
+; CHECK-NEXT:    [[F:%.*]] = call <4 x i8> @llvm.fshr.v4i8(<4 x i8> <i8 1, i8 undef, i8 -1, i8 7>, <4 x i8> <i8 undef, i8 -1, i8 undef, i8 8>, <4 x i8> <i8 8, i8 2, i8 2, i8 4>)
+; CHECK-NEXT:    ret <4 x i8> [[F]]
 ;
   %f = call <4 x i8> @llvm.fshr.v4i8(<4 x i8> <i8 1, i8 undef, i8 -1, i8 7>, <4 x i8> <i8 undef, i8 -1, i8 undef, i8 8>, <4 x i8> <i8 8, i8 2, i8 2, i8 4>)
   ret <4 x i8> %f

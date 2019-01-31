@@ -105,15 +105,3 @@ void foo() {
     }
   }
 }
-
-extern int *g();
-extern void h(int **x);
-
-int *decl_in_condition() {
-  if (int *x = g()) {
-    return x;
-  } else {
-    h(&x);
-    return x;
-  }
-}

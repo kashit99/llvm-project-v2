@@ -1,8 +1,9 @@
 //===- llvm/InstrTypes.h - Important Instruction subclasses -----*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -1181,17 +1182,6 @@ public:
     return dyn_cast_or_null<Function>(getCalledOperand());
   }
 
-  /// Return true if the callsite is an indirect call.
-  bool isIndirectCall() const;
-
-  /// Determine whether the passed iterator points to the callee operand's Use.
-  bool isCallee(Value::const_user_iterator UI) const {
-    return isCallee(&UI.getUse());
-  }
-
-  /// Determine whether this Use is the callee operand's Use.
-  bool isCallee(const Use *U) const { return &getCalledOperandUse() == U; }
-
   /// Helper to get the caller (the parent function).
   Function *getCaller();
   const Function *getCaller() const {
@@ -1231,9 +1221,6 @@ public:
     setInstructionSubclassData((getSubclassDataFromInstruction() & 3) |
                                (ID << 2));
   }
-
-  /// Check if this call is an inline asm statement.
-  bool isInlineAsm() const { return isa<InlineAsm>(getCalledOperand()); }
 
   /// \name Attribute API
   ///

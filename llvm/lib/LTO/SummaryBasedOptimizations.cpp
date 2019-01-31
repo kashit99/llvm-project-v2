@@ -1,8 +1,9 @@
 //==-SummaryBasedOptimizations.cpp - Optimizations based on ThinLTO summary-==//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -59,27 +60,21 @@ void llvm::computeSyntheticCounts(ModuleSummaryIndex &Index) {
       return UINT64_C(0);
     }
   };
-  auto AddToEntryCount = [](ValueInfo V, Scaled64 New) {
+  auto AddToEntryCount = [](ValueInfo V, uint64_t New) {
     if (!V.getSummaryList().size())
       return;
     for (auto &GVS : V.getSummaryList()) {
       auto S = GVS.get()->getBaseObject();
       auto *F = cast<FunctionSummary>(S);
-      F->setEntryCount(
-          SaturatingAdd(F->entryCount(), New.template toInt<uint64_t>()));
+      F->setEntryCount(SaturatingAdd(F->entryCount(), New));
     }
   };
 
-  auto GetProfileCount = [&](ValueInfo V, FunctionSummary::EdgeTy &Edge) {
-    auto RelFreq = GetCallSiteRelFreq(Edge);
-    Scaled64 EC(GetEntryCount(V), 0);
-    return RelFreq * EC;
-  };
   // After initializing the counts in initializeCounts above, the counts have to
   // be propagated across the combined callgraph.
   // SyntheticCountsUtils::propagate takes care of this propagation on any
   // callgraph that specialized GraphTraits.
-  SyntheticCountsUtils<ModuleSummaryIndex *>::propagate(&Index, GetProfileCount,
-                                                        AddToEntryCount);
+  SyntheticCountsUtils<ModuleSummaryIndex *>::propagate(
+      &Index, GetCallSiteRelFreq, GetEntryCount, AddToEntryCount);
   Index.setHasSyntheticEntryCounts();
 }

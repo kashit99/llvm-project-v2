@@ -1,8 +1,9 @@
 //===- Tooling.h - Framework for standalone Clang tools ---------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -204,7 +205,7 @@ bool runToolOnCodeWithArgs(
 ///
 /// \return The resulting AST or null if an error occurred.
 std::unique_ptr<ASTUnit>
-buildASTFromCode(StringRef Code, StringRef FileName = "input.cc",
+buildASTFromCode(const Twine &Code, const Twine &FileName = "input.cc",
                  std::shared_ptr<PCHContainerOperations> PCHContainerOps =
                      std::make_shared<PCHContainerOperations>());
 
@@ -222,10 +223,10 @@ buildASTFromCode(StringRef Code, StringRef FileName = "input.cc",
 ///
 /// \return The resulting AST or null if an error occurred.
 std::unique_ptr<ASTUnit> buildASTFromCodeWithArgs(
-    StringRef Code, const std::vector<std::string> &Args,
-    StringRef FileName = "input.cc", StringRef ToolName = "clang-tool",
+    const Twine &Code, const std::vector<std::string> &Args,
+    const Twine &FileName = "input.cc", const Twine &ToolName = "clang-tool",
     std::shared_ptr<PCHContainerOperations> PCHContainerOps =
-        std::make_shared<PCHContainerOperations>(),
+      std::make_shared<PCHContainerOperations>(),
     ArgumentsAdjuster Adjuster = getClangStripDependencyFileAdjuster());
 
 /// Utility to run a FrontendAction in a single clang invocation.

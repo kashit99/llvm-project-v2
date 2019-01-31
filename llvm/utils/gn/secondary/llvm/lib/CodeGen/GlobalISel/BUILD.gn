@@ -12,8 +12,6 @@ static_library("GlobalISel") {
     "//llvm/lib/Transforms/Utils",
   ]
   sources = [
-    "CSEInfo.cpp",
-    "CSEMIRBuilder.cpp",
     "CallLowering.cpp",
     "Combiner.cpp",
     "CombinerHelper.cpp",

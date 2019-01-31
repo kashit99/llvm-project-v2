@@ -1,5 +1,4 @@
 // RUN: %clang_cc1 -std=c++11 -fsyntax-only -verify -Winitializer-overrides %s
-// RUN: %clang_cc1 -std=c++11 -fsyntax-only -verify -Woverride-init %s
 
 template <typename T> struct Foo {
   struct SubFoo {

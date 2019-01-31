@@ -87,9 +87,9 @@ End-user Options
 
    llvm-as < /dev/null | llc -march=xyz -mattr=help
 
-.. option:: --frame-pointer
+.. option:: --disable-fp-elim
 
- Specify effect of frame pointer elimination optimization (all,non-leaf,none).
+ Disable frame pointer elimination optimization.
 
 .. option:: --disable-excess-fp-precision
 

@@ -22,6 +22,7 @@
 #include "lldb/Symbol/DWARFCallFrameInfo.h"
 #include "lldb/Symbol/SymbolContext.h"
 #include "lldb/Target/SectionLoadList.h"
+#include "lldb/Target/SwiftLanguageRuntime.h"
 #include "lldb/Target/Target.h"
 #include "lldb/Utility/ArchSpec.h"
 #include "lldb/Utility/DataBufferHeap.h"
@@ -1778,6 +1779,9 @@ static SectionType GetSectionTypeFromName(llvm::StringRef Name) {
       .Case(".gnu_debugaltlink", eSectionTypeDWARFGNUDebugAltLink)
       .Case(".gosymtab", eSectionTypeGoSymtab)
       .Case(".text", eSectionTypeCode)
+      // Swift support:
+      .Case(".swift_ast", eSectionTypeSwiftModules)
+      //
       .Default(eSectionTypeOther);
 }
 
@@ -2323,7 +2327,8 @@ unsigned ObjectFileELF::ParseSymbols(Symtab *symtab, user_id_t start_id,
 
     bool is_global = symbol.getBinding() == STB_GLOBAL;
     uint32_t flags = symbol.st_other << 8 | symbol.st_info | additional_flags;
-    bool is_mangled = (symbol_name[0] == '_' && symbol_name[1] == 'Z');
+    bool is_mangled =
+        (symbol_name && symbol_name[0] == '_' && symbol_name[1] == 'Z');
 
     llvm::StringRef symbol_ref(symbol_name);
 
@@ -2332,6 +2337,12 @@ unsigned ObjectFileELF::ParseSymbols(Symtab *symtab, user_id_t start_id,
     size_t version_pos = symbol_ref.find('@');
     bool has_suffix = version_pos != llvm::StringRef::npos;
     llvm::StringRef symbol_bare = symbol_ref.substr(0, version_pos);
+
+    Mangled guess_the_language(ConstString(symbol_bare), true);
+    if (guess_the_language.GuessLanguage() != lldb::eLanguageTypeUnknown) {
+      is_mangled = true;
+    }
+
     Mangled mangled(ConstString(symbol_bare), is_mangled);
 
     // Now append the suffix back to mangled and unmangled names. Only do it if

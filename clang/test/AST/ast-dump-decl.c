@@ -128,9 +128,6 @@ int TestFunctionDeclProto(int x);
 // CHECK:      FunctionDecl{{.*}} TestFunctionDeclProto 'int (int)'
 // CHECK-NEXT:   ParmVarDecl{{.*}} x
 
-void TestFunctionDeclNoProto();
-// CHECK:      FunctionDecl{{.*}} TestFunctionDeclNoProto 'void ()'
-
 extern int TestFunctionDeclSC();
 // CHECK:      FunctionDecl{{.*}} TestFunctionDeclSC 'int ()' extern
 

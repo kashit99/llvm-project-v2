@@ -1,8 +1,9 @@
 //===- Object.h -------------------------------------------------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                      The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -193,8 +194,8 @@ protected:
 
 public:
   virtual ~Writer();
-  virtual Error finalize() = 0;
-  virtual Error write() = 0;
+  virtual void finalize() = 0;
+  virtual void write() = 0;
 
   Writer(Object &O, Buffer &B) : Obj(O), Buf(B) {}
 };
@@ -226,8 +227,8 @@ public:
   virtual ~ELFWriter() {}
   bool WriteSectionHeaders = true;
 
-  Error finalize() override;
-  Error write() override;
+  void finalize() override;
+  void write() override;
   ELFWriter(Object &Obj, Buffer &Buf, bool WSH)
       : Writer(Obj, Buf), WriteSectionHeaders(WSH) {}
 };
@@ -240,8 +241,8 @@ private:
 
 public:
   ~BinaryWriter() {}
-  Error finalize() override;
-  Error write() override;
+  void finalize() override;
+  void write() override;
   BinaryWriter(Object &Obj, Buffer &Buf) : Writer(Obj, Buf) {}
 };
 

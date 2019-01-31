@@ -1,8 +1,9 @@
 //===--- AArch64.cpp - Implement AArch64 target feature support -----------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -49,7 +50,6 @@ AArch64TargetInfo::AArch64TargetInfo(const llvm::Triple &Triple,
 
   // All AArch64 implementations support ARMv8 FP, which makes half a legal type.
   HasLegalHalfType = true;
-  HasFloat16 = true;
 
   LongWidth = LongAlign = PointerWidth = PointerAlign = 64;
   MaxVectorAlign = 128;

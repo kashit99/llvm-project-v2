@@ -1,8 +1,9 @@
 //===- llvm/Analysis/AliasSetTracker.h - Build Alias Sets -------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -309,10 +310,10 @@ private:
   }
 
 public:
-  /// If the specified pointer "may" (or must) alias one of the members in the
-  /// set return the appropriate AliasResult. Otherwise return NoAlias.
-  AliasResult aliasesPointer(const Value *Ptr, LocationSize Size,
-                             const AAMDNodes &AAInfo, AliasAnalysis &AA) const;
+  /// Return true if the specified pointer "may" (or must) alias one of the
+  /// members in the set.
+  bool aliasesPointer(const Value *Ptr, LocationSize Size,
+                      const AAMDNodes &AAInfo, AliasAnalysis &AA) const;
   bool aliasesUnknownInst(const Instruction *Inst, AliasAnalysis &AA) const;
 };
 

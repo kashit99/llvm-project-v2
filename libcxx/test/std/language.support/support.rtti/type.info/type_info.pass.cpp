@@ -1,8 +1,9 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is dual licensed under the MIT and the University of Illinois Open
+// Source Licenses. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -25,8 +26,8 @@ int main()
     const std::type_info& t3 = typeid(short);
     assert(t1 != t3);
     assert(!t1.before(t2));
-    assert(std::strcmp(t1.name(), t2.name()) == 0);
-    assert(std::strcmp(t1.name(), t3.name()) != 0);
+    assert(strcmp(t1.name(), t2.name()) == 0);
+    assert(strcmp(t1.name(), t3.name()) != 0);
   }
   {
     // type_info has a protected constructor taking a string literal. This

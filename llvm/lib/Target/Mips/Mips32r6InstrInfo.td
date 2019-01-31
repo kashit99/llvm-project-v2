@@ -1,8 +1,9 @@
 //=- Mips32r6InstrInfo.td - Mips32r6 Instruction Information -*- tablegen -*-=//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -1104,7 +1105,7 @@ def : MipsPat<(select i32:$cond, immz, i32:$f),
 
 // Pseudo instructions
 let isCall = 1, isTerminator = 1, isReturn = 1, isBarrier = 1, hasDelaySlot = 1,
-    hasExtraSrcRegAllocReq = 1, isCTI = 1, Defs = [AT], hasPostISelHook = 1 in {
+    hasExtraSrcRegAllocReq = 1, isCTI = 1, Defs = [AT] in {
   class TailCallRegR6<Instruction JumpInst, Register RT, RegisterOperand RO> :
     PseudoSE<(outs), (ins RO:$rs), [(MipsTailCall RO:$rs)], II_JR>,
     PseudoInstExpansion<(JumpInst RT:$rt, RO:$rs)>;

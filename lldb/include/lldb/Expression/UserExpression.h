@@ -91,7 +91,8 @@ public:
   virtual bool Parse(DiagnosticManager &diagnostic_manager,
                      ExecutionContext &exe_ctx,
                      lldb_private::ExecutionPolicy execution_policy,
-                     bool keep_result_in_memory, bool generate_debug_info) = 0;
+                     bool keep_result_in_memory, bool generate_debug_info,
+                     uint32_t line_offset) = 0;
 
   //------------------------------------------------------------------
   /// Attempts to find possible command line completions for the given
@@ -233,6 +234,8 @@ public:
     return lldb::ExpressionVariableSP();
   }
 
+  // FIXME: This doesn't make sense in UserExpression.  It is only used in
+  // UserExpression::Evaluate.
   virtual lldb::ModuleSP GetJITModule() { return lldb::ModuleSP(); }
 
   //------------------------------------------------------------------

@@ -40,11 +40,6 @@ class FileStatus {
         this.statusBarItem.show();
     }
 
-    clear() {
-        this.statuses.clear();
-        this.statusBarItem.hide();
-    }
-
     dispose() {
         this.statusBarItem.dispose();
     }
@@ -117,16 +112,9 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(() => {
         status.updateStatus();
     }));
-    clangdClient.onDidChangeState(
-        ({ newState }) => {
-            if (newState == vscodelc.State.Running) {
-                // clangd starts or restarts after crash.
-                clangdClient.onNotification(
-                    'textDocument/clangd.fileStatus',
-                    (fileStatus) => { status.onFileUpdated(fileStatus); });
-            } else if (newState == vscodelc.State.Stopped) {
-                // Clear all cached statuses when clangd crashes.
-                status.clear();
-            }
-        })
+    clangdClient.onReady().then(() => {
+        clangdClient.onNotification(
+            'textDocument/clangd.fileStatus',
+            (fileStatus) => { status.onFileUpdated(fileStatus); });
+    })
 }

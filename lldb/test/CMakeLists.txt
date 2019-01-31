@@ -25,6 +25,16 @@ set(LLDB_TEST_ARCH
   ${LLDB_DEFAULT_TEST_ARCH}
   CACHE STRING "Specify the architecture to run LLDB tests as (x86|x64).  Determines whether tests are compiled with -m32 or -m64")
 
+# BEGIN - Swift Mods
+option(LLDB_TEST_SWIFT "Use in-tree swift when testing lldb" On)
+
+if(LLDB_TEST_SWIFT)
+  set(SWIFT_TEST_ARGS
+    --swift-compiler ${LLDB_SWIFTC}
+    --swift-library ${LLDB_SWIFT_LIBS})
+endif()
+# END - Swift Mods
+
 # Users can override LLDB_TEST_USER_ARGS to specify arbitrary arguments to pass to the script
 set(LLDB_TEST_USER_ARGS
   ""
@@ -51,6 +61,7 @@ list(APPEND LLDB_TEST_COMMON_ARGS
   --dsymutil ${LLDB_TEST_DSYMUTIL}
   --filecheck ${LLDB_TEST_FILECHECK}
   -C ${LLDB_TEST_C_COMPILER}
+  ${SWIFT_TEST_ARGS}
   )
 
 if ( CMAKE_SYSTEM_NAME MATCHES "Windows" )
@@ -119,6 +130,11 @@ add_custom_target(check-lldb)
 # to run tests.
 if (TARGET clang)
   add_dependencies(check-lldb clang)
+endif()
+
+# If we build the framework, tests will use the tools in there.
+if (TARGET lldb-framework)
+  add_dependencies(check-lldb lldb-framework)
 endif()
 
 # LLD is required to link test executables on Windows.

@@ -1,8 +1,9 @@
 //===--- ParseExprCXX.cpp - C++ Expression Parsing ------------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -1205,8 +1206,12 @@ ExprResult Parser::ParseLambdaExpressionAfterIntroducer(
                       /*hasProto=*/true,
                       /*isAmbiguous=*/false, LParenLoc, ParamInfo.data(),
                       ParamInfo.size(), EllipsisLoc, RParenLoc,
+                      DS.getTypeQualifiers(),
                       /*RefQualifierIsLValueRef=*/true,
-                      /*RefQualifierLoc=*/NoLoc, MutableLoc, ESpecType,
+                      /*RefQualifierLoc=*/NoLoc,
+                      /*ConstQualifierLoc=*/NoLoc,
+                      /*VolatileQualifierLoc=*/NoLoc,
+                      /*RestrictQualifierLoc=*/NoLoc, MutableLoc, ESpecType,
                       ESpecRange, DynamicExceptions.data(),
                       DynamicExceptionRanges.data(), DynamicExceptions.size(),
                       NoexceptExpr.isUsable() ? NoexceptExpr.get() : nullptr,
@@ -1268,8 +1273,12 @@ ExprResult Parser::ParseLambdaExpressionAfterIntroducer(
                       /*NumParams=*/0,
                       /*EllipsisLoc=*/NoLoc,
                       /*RParenLoc=*/NoLoc,
+                      /*TypeQuals=*/0,
                       /*RefQualifierIsLValueRef=*/true,
-                      /*RefQualifierLoc=*/NoLoc, MutableLoc, EST_None,
+                      /*RefQualifierLoc=*/NoLoc,
+                      /*ConstQualifierLoc=*/NoLoc,
+                      /*VolatileQualifierLoc=*/NoLoc,
+                      /*RestrictQualifierLoc=*/NoLoc, MutableLoc, EST_None,
                       /*ESpecRange=*/SourceRange(),
                       /*Exceptions=*/nullptr,
                       /*ExceptionRanges=*/nullptr,

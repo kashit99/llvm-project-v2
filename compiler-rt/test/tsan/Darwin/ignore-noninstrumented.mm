@@ -1,7 +1,4 @@
-// Check that ignore_noninstrumented_modules=1 suppresses reporting races from
-// system libraries on OS X. There are currently false positives coming from
-// libxpc, libdispatch, CoreFoundation and others, because these libraries use
-// TSan-invisible atomics as synchronization.
+// Check that ignore_noninstrumented_modules=1 suppresses races from system libraries on OS X.
 
 // RUN: %clang_tsan %s -o %t -framework Foundation
 

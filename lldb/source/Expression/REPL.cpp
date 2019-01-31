@@ -283,9 +283,20 @@ void REPL::IOHandlerInputComplete(IOHandler &io_handler, std::string &code) {
       expr_options.SetTryAllThreads(m_command_options.try_all_threads);
       expr_options.SetGenerateDebugInfo(true);
       expr_options.SetREPLEnabled(true);
+      expr_options.SetTrapExceptions(false);
       expr_options.SetColorizeErrors(colorize_err);
       expr_options.SetPoundLine(m_repl_source_path.c_str(),
                                 m_code.GetSize() + 1);
+
+      // There is no point in trying to run REPL expressions on just the
+      // current thread of the program, since the REPL tracks the states of
+      // individual threads as you would in a regular debugging session.
+      // Interrupting the process to switch from one thread to many has
+      // observable effects (for instance it causes anything waiting in the
+      // kernel to be interrupted). Since we aren't getting any benefit from
+      // doing this in the REPL, let's not.
+      expr_options.SetStopOthers(false);
+
       if (m_command_options.timeout > 0)
         expr_options.SetTimeout(std::chrono::microseconds(m_command_options.timeout));
       else
@@ -296,6 +307,13 @@ void REPL::IOHandlerInputComplete(IOHandler &io_handler, std::string &code) {
       PersistentExpressionState *persistent_state =
           m_target.GetPersistentExpressionStateForLanguage(GetLanguage());
 
+      if (!persistent_state)
+      {
+        error_sp->PutCString("error getting the expression "
+                             "context for the REPL.\n");
+        io_handler.SetIsDone(true);
+        return;
+      }
       const size_t var_count_before = persistent_state->GetSize();
 
       const char *expr_prefix = nullptr;

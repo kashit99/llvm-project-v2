@@ -1,8 +1,9 @@
 //===- MicrosoftDemangle.cpp ----------------------------------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is dual licensed under the MIT and the University of Illinois Open
+// Source Licenses. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -11,7 +12,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Demangle/MicrosoftDemangleNodes.h"
-#include "llvm/Demangle/DemangleConfig.h"
+#include "llvm/Demangle/Compiler.h"
 #include "llvm/Demangle/Utility.h"
 #include <cctype>
 #include <string>
@@ -421,9 +422,6 @@ void FunctionSignatureNode::outputPost(OutputStream &OS,
     OS << " __restrict";
   if (Quals & Q_Unaligned)
     OS << " __unaligned";
-
-  if (IsNoexcept)
-    OS << " noexcept";
 
   if (RefQualifier == FunctionRefQualifier::Reference)
     OS << " &";

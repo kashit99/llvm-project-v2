@@ -1,8 +1,9 @@
 //===- llvm/ADT/STLExtras.h - Useful STL related functions ------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -74,12 +75,6 @@ template <typename T> struct make_const_ptr {
   using type =
       typename std::add_pointer<typename std::add_const<T>::type>::type;
 };
-
-template <typename T> struct make_const_ref {
-  using type = typename std::add_lvalue_reference<
-      typename std::add_const<T>::type>::type;
-};
-
 //===----------------------------------------------------------------------===//
 //     Extra additions to <functional>
 //===----------------------------------------------------------------------===//

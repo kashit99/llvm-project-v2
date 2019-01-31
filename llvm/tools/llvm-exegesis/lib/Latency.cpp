@@ -1,8 +1,9 @@
 //===-- Latency.cpp ---------------------------------------------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -165,14 +166,6 @@ LatencySnippetGenerator::generateCodeTemplates(const Instruction &Instr) const {
   return std::move(Results);
 }
 
-LatencyBenchmarkRunner::LatencyBenchmarkRunner(const LLVMState &State,
-                                               InstructionBenchmark::ModeE Mode)
-    : BenchmarkRunner(State, Mode) {
-  assert((Mode == InstructionBenchmark::Latency ||
-          Mode == InstructionBenchmark::InverseThroughput) &&
-         "invalid mode");
-}
-
 LatencyBenchmarkRunner::~LatencyBenchmarkRunner() = default;
 
 llvm::Expected<std::vector<BenchmarkMeasure>>
@@ -192,17 +185,8 @@ LatencyBenchmarkRunner::runMeasurements(
     if (*ExpectedCounterValue < MinValue)
       MinValue = *ExpectedCounterValue;
   }
-  std::vector<BenchmarkMeasure> Result;
-  switch (Mode) {
-  case InstructionBenchmark::Latency:
-    Result = {BenchmarkMeasure::Create("latency", MinValue)};
-    break;
-  case InstructionBenchmark::InverseThroughput:
-    Result = {BenchmarkMeasure::Create("inverse_throughput", MinValue)};
-    break;
-  default:
-    break;
-  }
+  std::vector<BenchmarkMeasure> Result = {
+      BenchmarkMeasure::Create("latency", MinValue)};
   return std::move(Result);
 }
 

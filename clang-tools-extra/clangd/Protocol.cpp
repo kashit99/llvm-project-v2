@@ -1,8 +1,9 @@
 //===--- Protocol.cpp - Language Server Protocol Implementation -----------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -23,14 +24,14 @@
 #include "llvm/Support/Path.h"
 #include "llvm/Support/raw_ostream.h"
 
+using namespace llvm;
 namespace clang {
 namespace clangd {
 
 char LSPError::ID;
 
-URIForFile URIForFile::canonicalize(llvm::StringRef AbsPath,
-                                    llvm::StringRef TUPath) {
-  assert(llvm::sys::path::is_absolute(AbsPath) && "the path is relative");
+URIForFile URIForFile::canonicalize(StringRef AbsPath, StringRef TUPath) {
+  assert(sys::path::is_absolute(AbsPath) && "the path is relative");
   auto Resolved = URI::resolvePath(AbsPath, TUPath);
   if (!Resolved) {
     elog("URIForFile: failed to resolve path {0} with TU path {1}: "
@@ -41,15 +42,14 @@ URIForFile URIForFile::canonicalize(llvm::StringRef AbsPath,
   return URIForFile(std::move(*Resolved));
 }
 
-llvm::Expected<URIForFile> URIForFile::fromURI(const URI &U,
-                                               llvm::StringRef HintPath) {
+Expected<URIForFile> URIForFile::fromURI(const URI &U, StringRef HintPath) {
   auto Resolved = URI::resolve(U, HintPath);
   if (!Resolved)
     return Resolved.takeError();
   return URIForFile(std::move(*Resolved));
 }
 
-bool fromJSON(const llvm::json::Value &E, URIForFile &R) {
+bool fromJSON(const json::Value &E, URIForFile &R) {
   if (auto S = E.getAsString()) {
     auto Parsed = URI::parse(*S);
     if (!Parsed) {
@@ -73,89 +73,89 @@ bool fromJSON(const llvm::json::Value &E, URIForFile &R) {
   return false;
 }
 
-llvm::json::Value toJSON(const URIForFile &U) { return U.uri(); }
+json::Value toJSON(const URIForFile &U) { return U.uri(); }
 
-llvm::raw_ostream &operator<<(llvm::raw_ostream &OS, const URIForFile &U) {
+raw_ostream &operator<<(raw_ostream &OS, const URIForFile &U) {
   return OS << U.uri();
 }
 
-llvm::json::Value toJSON(const TextDocumentIdentifier &R) {
-  return llvm::json::Object{{"uri", R.uri}};
+json::Value toJSON(const TextDocumentIdentifier &R) {
+  return json::Object{{"uri", R.uri}};
 }
 
-bool fromJSON(const llvm::json::Value &Params, TextDocumentIdentifier &R) {
-  llvm::json::ObjectMapper O(Params);
+bool fromJSON(const json::Value &Params, TextDocumentIdentifier &R) {
+  json::ObjectMapper O(Params);
   return O && O.map("uri", R.uri);
 }
 
-bool fromJSON(const llvm::json::Value &Params, Position &R) {
-  llvm::json::ObjectMapper O(Params);
+bool fromJSON(const json::Value &Params, Position &R) {
+  json::ObjectMapper O(Params);
   return O && O.map("line", R.line) && O.map("character", R.character);
 }
 
-llvm::json::Value toJSON(const Position &P) {
-  return llvm::json::Object{
+json::Value toJSON(const Position &P) {
+  return json::Object{
       {"line", P.line},
       {"character", P.character},
   };
 }
 
-llvm::raw_ostream &operator<<(llvm::raw_ostream &OS, const Position &P) {
+raw_ostream &operator<<(raw_ostream &OS, const Position &P) {
   return OS << P.line << ':' << P.character;
 }
 
-bool fromJSON(const llvm::json::Value &Params, Range &R) {
-  llvm::json::ObjectMapper O(Params);
+bool fromJSON(const json::Value &Params, Range &R) {
+  json::ObjectMapper O(Params);
   return O && O.map("start", R.start) && O.map("end", R.end);
 }
 
-llvm::json::Value toJSON(const Range &P) {
-  return llvm::json::Object{
+json::Value toJSON(const Range &P) {
+  return json::Object{
       {"start", P.start},
       {"end", P.end},
   };
 }
 
-llvm::raw_ostream &operator<<(llvm::raw_ostream &OS, const Range &R) {
+raw_ostream &operator<<(raw_ostream &OS, const Range &R) {
   return OS << R.start << '-' << R.end;
 }
 
-llvm::json::Value toJSON(const Location &P) {
-  return llvm::json::Object{
+json::Value toJSON(const Location &P) {
+  return json::Object{
       {"uri", P.uri},
       {"range", P.range},
   };
 }
 
-llvm::raw_ostream &operator<<(llvm::raw_ostream &OS, const Location &L) {
+raw_ostream &operator<<(raw_ostream &OS, const Location &L) {
   return OS << L.range << '@' << L.uri;
 }
 
-bool fromJSON(const llvm::json::Value &Params, TextDocumentItem &R) {
-  llvm::json::ObjectMapper O(Params);
+bool fromJSON(const json::Value &Params, TextDocumentItem &R) {
+  json::ObjectMapper O(Params);
   return O && O.map("uri", R.uri) && O.map("languageId", R.languageId) &&
          O.map("version", R.version) && O.map("text", R.text);
 }
 
-bool fromJSON(const llvm::json::Value &Params, TextEdit &R) {
-  llvm::json::ObjectMapper O(Params);
+bool fromJSON(const json::Value &Params, TextEdit &R) {
+  json::ObjectMapper O(Params);
   return O && O.map("range", R.range) && O.map("newText", R.newText);
 }
 
-llvm::json::Value toJSON(const TextEdit &P) {
-  return llvm::json::Object{
+json::Value toJSON(const TextEdit &P) {
+  return json::Object{
       {"range", P.range},
       {"newText", P.newText},
   };
 }
 
-llvm::raw_ostream &operator<<(llvm::raw_ostream &OS, const TextEdit &TE) {
+raw_ostream &operator<<(raw_ostream &OS, const TextEdit &TE) {
   OS << TE.range << " => \"";
-  llvm::printEscapedString(TE.newText, OS);
+  printEscapedString(TE.newText, OS);
   return OS << '"';
 }
 
-bool fromJSON(const llvm::json::Value &E, TraceLevel &Out) {
+bool fromJSON(const json::Value &E, TraceLevel &Out) {
   if (auto S = E.getAsString()) {
     if (*S == "off") {
       Out = TraceLevel::Off;
@@ -171,7 +171,7 @@ bool fromJSON(const llvm::json::Value &E, TraceLevel &Out) {
   return false;
 }
 
-bool fromJSON(const llvm::json::Value &E, SymbolKind &Out) {
+bool fromJSON(const json::Value &E, SymbolKind &Out) {
   if (auto T = E.getAsInteger()) {
     if (*T < static_cast<int>(SymbolKind::File) ||
         *T > static_cast<int>(SymbolKind::TypeParameter))
@@ -182,7 +182,7 @@ bool fromJSON(const llvm::json::Value &E, SymbolKind &Out) {
   return false;
 }
 
-bool fromJSON(const llvm::json::Value &E, SymbolKindBitset &Out) {
+bool fromJSON(const json::Value &E, SymbolKindBitset &Out) {
   if (auto *A = E.getAsArray()) {
     for (size_t I = 0; I < A->size(); ++I) {
       SymbolKind KindOut;
@@ -212,8 +212,8 @@ SymbolKind adjustKindToCapability(SymbolKind Kind,
   }
 }
 
-bool fromJSON(const llvm::json::Value &Params, ClientCapabilities &R) {
-  const llvm::json::Object *O = Params.getAsObject();
+bool fromJSON(const json::Value &Params, ClientCapabilities &R) {
+  const json::Object *O = Params.getAsObject();
   if (!O)
     return false;
   if (auto *TextDocument = O->getObject("textDocument")) {
@@ -260,8 +260,8 @@ bool fromJSON(const llvm::json::Value &Params, ClientCapabilities &R) {
   return true;
 }
 
-bool fromJSON(const llvm::json::Value &Params, InitializeParams &R) {
-  llvm::json::ObjectMapper O(Params);
+bool fromJSON(const json::Value &Params, InitializeParams &R) {
+  json::ObjectMapper O(Params);
   if (!O)
     return false;
   // We deliberately don't fail if we can't parse individual fields.
@@ -275,24 +275,24 @@ bool fromJSON(const llvm::json::Value &Params, InitializeParams &R) {
   return true;
 }
 
-bool fromJSON(const llvm::json::Value &Params, DidOpenTextDocumentParams &R) {
-  llvm::json::ObjectMapper O(Params);
+bool fromJSON(const json::Value &Params, DidOpenTextDocumentParams &R) {
+  json::ObjectMapper O(Params);
   return O && O.map("textDocument", R.textDocument);
 }
 
-bool fromJSON(const llvm::json::Value &Params, DidCloseTextDocumentParams &R) {
-  llvm::json::ObjectMapper O(Params);
+bool fromJSON(const json::Value &Params, DidCloseTextDocumentParams &R) {
+  json::ObjectMapper O(Params);
   return O && O.map("textDocument", R.textDocument);
 }
 
-bool fromJSON(const llvm::json::Value &Params, DidChangeTextDocumentParams &R) {
-  llvm::json::ObjectMapper O(Params);
+bool fromJSON(const json::Value &Params, DidChangeTextDocumentParams &R) {
+  json::ObjectMapper O(Params);
   return O && O.map("textDocument", R.textDocument) &&
          O.map("contentChanges", R.contentChanges) &&
          O.map("wantDiagnostics", R.wantDiagnostics);
 }
 
-bool fromJSON(const llvm::json::Value &E, FileChangeType &Out) {
+bool fromJSON(const json::Value &E, FileChangeType &Out) {
   if (auto T = E.getAsInteger()) {
     if (*T < static_cast<int>(FileChangeType::Created) ||
         *T > static_cast<int>(FileChangeType::Deleted))
@@ -303,64 +303,61 @@ bool fromJSON(const llvm::json::Value &E, FileChangeType &Out) {
   return false;
 }
 
-bool fromJSON(const llvm::json::Value &Params, FileEvent &R) {
-  llvm::json::ObjectMapper O(Params);
+bool fromJSON(const json::Value &Params, FileEvent &R) {
+  json::ObjectMapper O(Params);
   return O && O.map("uri", R.uri) && O.map("type", R.type);
 }
 
-bool fromJSON(const llvm::json::Value &Params, DidChangeWatchedFilesParams &R) {
-  llvm::json::ObjectMapper O(Params);
+bool fromJSON(const json::Value &Params, DidChangeWatchedFilesParams &R) {
+  json::ObjectMapper O(Params);
   return O && O.map("changes", R.changes);
 }
 
-bool fromJSON(const llvm::json::Value &Params,
-              TextDocumentContentChangeEvent &R) {
-  llvm::json::ObjectMapper O(Params);
+bool fromJSON(const json::Value &Params, TextDocumentContentChangeEvent &R) {
+  json::ObjectMapper O(Params);
   return O && O.map("range", R.range) && O.map("rangeLength", R.rangeLength) &&
          O.map("text", R.text);
 }
 
-bool fromJSON(const llvm::json::Value &Params, FormattingOptions &R) {
-  llvm::json::ObjectMapper O(Params);
+bool fromJSON(const json::Value &Params, FormattingOptions &R) {
+  json::ObjectMapper O(Params);
   return O && O.map("tabSize", R.tabSize) &&
          O.map("insertSpaces", R.insertSpaces);
 }
 
-llvm::json::Value toJSON(const FormattingOptions &P) {
-  return llvm::json::Object{
+json::Value toJSON(const FormattingOptions &P) {
+  return json::Object{
       {"tabSize", P.tabSize},
       {"insertSpaces", P.insertSpaces},
   };
 }
 
-bool fromJSON(const llvm::json::Value &Params,
-              DocumentRangeFormattingParams &R) {
-  llvm::json::ObjectMapper O(Params);
+bool fromJSON(const json::Value &Params, DocumentRangeFormattingParams &R) {
+  json::ObjectMapper O(Params);
   return O && O.map("textDocument", R.textDocument) &&
          O.map("range", R.range) && O.map("options", R.options);
 }
 
-bool fromJSON(const llvm::json::Value &Params,
-              DocumentOnTypeFormattingParams &R) {
-  llvm::json::ObjectMapper O(Params);
+bool fromJSON(const json::Value &Params, DocumentOnTypeFormattingParams &R) {
+  json::ObjectMapper O(Params);
   return O && O.map("textDocument", R.textDocument) &&
          O.map("position", R.position) && O.map("ch", R.ch) &&
          O.map("options", R.options);
 }
 
-bool fromJSON(const llvm::json::Value &Params, DocumentFormattingParams &R) {
-  llvm::json::ObjectMapper O(Params);
+bool fromJSON(const json::Value &Params, DocumentFormattingParams &R) {
+  json::ObjectMapper O(Params);
   return O && O.map("textDocument", R.textDocument) &&
          O.map("options", R.options);
 }
 
-bool fromJSON(const llvm::json::Value &Params, DocumentSymbolParams &R) {
-  llvm::json::ObjectMapper O(Params);
+bool fromJSON(const json::Value &Params, DocumentSymbolParams &R) {
+  json::ObjectMapper O(Params);
   return O && O.map("textDocument", R.textDocument);
 }
 
-llvm::json::Value toJSON(const Diagnostic &D) {
-  llvm::json::Object Diag{
+json::Value toJSON(const Diagnostic &D) {
+  json::Object Diag{
       {"range", D.range},
       {"severity", D.severity},
       {"message", D.message},
@@ -372,8 +369,8 @@ llvm::json::Value toJSON(const Diagnostic &D) {
   return std::move(Diag);
 }
 
-bool fromJSON(const llvm::json::Value &Params, Diagnostic &R) {
-  llvm::json::ObjectMapper O(Params);
+bool fromJSON(const json::Value &Params, Diagnostic &R) {
+  json::ObjectMapper O(Params);
   if (!O || !O.map("range", R.range) || !O.map("message", R.message))
     return false;
   O.map("severity", R.severity);
@@ -381,12 +378,12 @@ bool fromJSON(const llvm::json::Value &Params, Diagnostic &R) {
   return true;
 }
 
-bool fromJSON(const llvm::json::Value &Params, CodeActionContext &R) {
-  llvm::json::ObjectMapper O(Params);
+bool fromJSON(const json::Value &Params, CodeActionContext &R) {
+  json::ObjectMapper O(Params);
   return O && O.map("diagnostics", R.diagnostics);
 }
 
-llvm::raw_ostream &operator<<(llvm::raw_ostream &OS, const Diagnostic &D) {
+raw_ostream &operator<<(raw_ostream &OS, const Diagnostic &D) {
   OS << D.range << " [";
   switch (D.severity) {
   case 1:
@@ -408,24 +405,21 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &OS, const Diagnostic &D) {
   return OS << '(' << D.severity << "): " << D.message << "]";
 }
 
-bool fromJSON(const llvm::json::Value &Params, CodeActionParams &R) {
-  llvm::json::ObjectMapper O(Params);
+bool fromJSON(const json::Value &Params, CodeActionParams &R) {
+  json::ObjectMapper O(Params);
   return O && O.map("textDocument", R.textDocument) &&
          O.map("range", R.range) && O.map("context", R.context);
 }
 
-bool fromJSON(const llvm::json::Value &Params, WorkspaceEdit &R) {
-  llvm::json::ObjectMapper O(Params);
+bool fromJSON(const json::Value &Params, WorkspaceEdit &R) {
+  json::ObjectMapper O(Params);
   return O && O.map("changes", R.changes);
 }
 
-const llvm::StringLiteral ExecuteCommandParams::CLANGD_APPLY_FIX_COMMAND =
+const StringLiteral ExecuteCommandParams::CLANGD_APPLY_FIX_COMMAND =
     "clangd.applyFix";
-const llvm::StringLiteral ExecuteCommandParams::CLANGD_APPLY_TWEAK =
-    "clangd.applyTweak";
-
-bool fromJSON(const llvm::json::Value &Params, ExecuteCommandParams &R) {
-  llvm::json::ObjectMapper O(Params);
+bool fromJSON(const json::Value &Params, ExecuteCommandParams &R) {
+  json::ObjectMapper O(Params);
   if (!O || !O.map("command", R.command))
     return false;
 
@@ -434,13 +428,11 @@ bool fromJSON(const llvm::json::Value &Params, ExecuteCommandParams &R) {
     return Args && Args->size() == 1 &&
            fromJSON(Args->front(), R.workspaceEdit);
   }
-  if (R.command == ExecuteCommandParams::CLANGD_APPLY_TWEAK)
-    return Args && Args->size() == 1 && fromJSON(Args->front(), R.tweakArgs);
   return false; // Unrecognized command.
 }
 
-llvm::json::Value toJSON(const SymbolInformation &P) {
-  return llvm::json::Object{
+json::Value toJSON(const SymbolInformation &P) {
+  return json::Object{
       {"name", P.name},
       {"kind", static_cast<int>(P.kind)},
       {"location", P.location},
@@ -448,8 +440,7 @@ llvm::json::Value toJSON(const SymbolInformation &P) {
   };
 }
 
-llvm::raw_ostream &operator<<(llvm::raw_ostream &O,
-                              const SymbolInformation &SI) {
+raw_ostream &operator<<(raw_ostream &O, const SymbolInformation &SI) {
   O << SI.containerName << "::" << SI.name << " - " << toJSON(SI);
   return O;
 }
@@ -460,31 +451,31 @@ bool operator==(const SymbolDetails &LHS, const SymbolDetails &RHS) {
 }
 
 llvm::json::Value toJSON(const SymbolDetails &P) {
-  llvm::json::Object Result{{"name", llvm::json::Value(nullptr)},
-                            {"containerName", llvm::json::Value(nullptr)},
-                            {"usr", llvm::json::Value(nullptr)},
-                            {"id", llvm::json::Value(nullptr)}};
+  json::Object result{{"name", llvm::json::Value(nullptr)},
+                      {"containerName", llvm::json::Value(nullptr)},
+                      {"usr", llvm::json::Value(nullptr)},
+                      {"id", llvm::json::Value(nullptr)}};
 
   if (!P.name.empty())
-    Result["name"] = P.name;
+    result["name"] = P.name;
 
   if (!P.containerName.empty())
-    Result["containerName"] = P.containerName;
+    result["containerName"] = P.containerName;
 
   if (!P.USR.empty())
-    Result["usr"] = P.USR;
+    result["usr"] = P.USR;
 
   if (P.ID.hasValue())
-    Result["id"] = P.ID.getValue().str();
+    result["id"] = P.ID.getValue().str();
 
   // Older clang cannot compile 'return Result', even though it is legal.
-  return llvm::json::Value(std::move(Result));
+  return json::Value(std::move(result));
 }
 
 llvm::raw_ostream &operator<<(llvm::raw_ostream &O, const SymbolDetails &S) {
   if (!S.containerName.empty()) {
     O << S.containerName;
-    llvm::StringRef ContNameRef;
+    StringRef ContNameRef;
     if (!ContNameRef.endswith("::")) {
       O << " ";
     }
@@ -493,29 +484,26 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &O, const SymbolDetails &S) {
   return O;
 }
 
-bool fromJSON(const llvm::json::Value &Params, WorkspaceSymbolParams &R) {
-  llvm::json::ObjectMapper O(Params);
+bool fromJSON(const json::Value &Params, WorkspaceSymbolParams &R) {
+  json::ObjectMapper O(Params);
   return O && O.map("query", R.query);
 }
 
-llvm::json::Value toJSON(const Command &C) {
-  auto Cmd = llvm::json::Object{{"title", C.title}, {"command", C.command}};
+json::Value toJSON(const Command &C) {
+  auto Cmd = json::Object{{"title", C.title}, {"command", C.command}};
   if (C.workspaceEdit)
     Cmd["arguments"] = {*C.workspaceEdit};
-  if (C.tweakArgs)
-    Cmd["arguments"] = {*C.tweakArgs};
   return std::move(Cmd);
 }
 
-const llvm::StringLiteral CodeAction::QUICKFIX_KIND = "quickfix";
-const llvm::StringLiteral CodeAction::REFACTOR_KIND = "refactor";
+const StringLiteral CodeAction::QUICKFIX_KIND = "quickfix";
 
-llvm::json::Value toJSON(const CodeAction &CA) {
-  auto CodeAction = llvm::json::Object{{"title", CA.title}};
+json::Value toJSON(const CodeAction &CA) {
+  auto CodeAction = json::Object{{"title", CA.title}};
   if (CA.kind)
     CodeAction["kind"] = *CA.kind;
   if (CA.diagnostics)
-    CodeAction["diagnostics"] = llvm::json::Array(*CA.diagnostics);
+    CodeAction["diagnostics"] = json::Array(*CA.diagnostics);
   if (CA.edit)
     CodeAction["edit"] = *CA.edit;
   if (CA.command)
@@ -523,15 +511,15 @@ llvm::json::Value toJSON(const CodeAction &CA) {
   return std::move(CodeAction);
 }
 
-llvm::raw_ostream &operator<<(llvm::raw_ostream &O, const DocumentSymbol &S) {
+raw_ostream &operator<<(raw_ostream &O, const DocumentSymbol &S) {
   return O << S.name << " - " << toJSON(S);
 }
 
-llvm::json::Value toJSON(const DocumentSymbol &S) {
-  llvm::json::Object Result{{"name", S.name},
-                            {"kind", static_cast<int>(S.kind)},
-                            {"range", S.range},
-                            {"selectionRange", S.selectionRange}};
+json::Value toJSON(const DocumentSymbol &S) {
+  json::Object Result{{"name", S.name},
+                      {"kind", static_cast<int>(S.kind)},
+                      {"range", S.range},
+                      {"selectionRange", S.selectionRange}};
 
   if (!S.detail.empty())
     Result["detail"] = S.detail;
@@ -540,48 +528,37 @@ llvm::json::Value toJSON(const DocumentSymbol &S) {
   if (S.deprecated)
     Result["deprecated"] = true;
   // Older gcc cannot compile 'return Result', even though it is legal.
-  return llvm::json::Value(std::move(Result));
+  return json::Value(std::move(Result));
 }
 
-llvm::json::Value toJSON(const WorkspaceEdit &WE) {
+json::Value toJSON(const WorkspaceEdit &WE) {
   if (!WE.changes)
-    return llvm::json::Object{};
-  llvm::json::Object FileChanges;
+    return json::Object{};
+  json::Object FileChanges;
   for (auto &Change : *WE.changes)
-    FileChanges[Change.first] = llvm::json::Array(Change.second);
-  return llvm::json::Object{{"changes", std::move(FileChanges)}};
+    FileChanges[Change.first] = json::Array(Change.second);
+  return json::Object{{"changes", std::move(FileChanges)}};
 }
 
-bool fromJSON(const llvm::json::Value &Params, TweakArgs &A) {
-  llvm::json::ObjectMapper O(Params);
-  return O && O.map("file", A.file) && O.map("selection", A.selection) &&
-         O.map("tweakID", A.tweakID);
+json::Value toJSON(const ApplyWorkspaceEditParams &Params) {
+  return json::Object{{"edit", Params.edit}};
 }
 
-llvm::json::Value toJSON(const TweakArgs &A) {
-  return llvm::json::Object{
-      {"tweakID", A.tweakID}, {"selection", A.selection}, {"file", A.file}};
-}
-
-llvm::json::Value toJSON(const ApplyWorkspaceEditParams &Params) {
-  return llvm::json::Object{{"edit", Params.edit}};
-}
-
-bool fromJSON(const llvm::json::Value &Params, TextDocumentPositionParams &R) {
-  llvm::json::ObjectMapper O(Params);
+bool fromJSON(const json::Value &Params, TextDocumentPositionParams &R) {
+  json::ObjectMapper O(Params);
   return O && O.map("textDocument", R.textDocument) &&
          O.map("position", R.position);
 }
 
 bool fromJSON(const llvm::json::Value &Params, CompletionContext &R) {
-  llvm::json::ObjectMapper O(Params);
+  json::ObjectMapper O(Params);
   if (!O)
     return false;
 
-  int TriggerKind;
-  if (!O.map("triggerKind", TriggerKind))
+  int triggerKind;
+  if (!O.map("triggerKind", triggerKind))
     return false;
-  R.triggerKind = static_cast<CompletionTriggerKind>(TriggerKind);
+  R.triggerKind = static_cast<CompletionTriggerKind>(triggerKind);
 
   if (auto *TC = Params.getAsObject()->get("triggerCharacter"))
     return fromJSON(*TC, R.triggerCharacter);
@@ -596,7 +573,7 @@ bool fromJSON(const llvm::json::Value &Params, CompletionParams &R) {
   return true;
 }
 
-static llvm::StringRef toTextKind(MarkupKind Kind) {
+static StringRef toTextKind(MarkupKind Kind) {
   switch (Kind) {
   case MarkupKind::PlainText:
     return "plaintext";
@@ -606,18 +583,18 @@ static llvm::StringRef toTextKind(MarkupKind Kind) {
   llvm_unreachable("Invalid MarkupKind");
 }
 
-llvm::json::Value toJSON(const MarkupContent &MC) {
+json::Value toJSON(const MarkupContent &MC) {
   if (MC.value.empty())
     return nullptr;
 
-  return llvm::json::Object{
+  return json::Object{
       {"kind", toTextKind(MC.kind)},
       {"value", MC.value},
   };
 }
 
-llvm::json::Value toJSON(const Hover &H) {
-  llvm::json::Object Result{{"contents", toJSON(H.contents)}};
+json::Value toJSON(const Hover &H) {
+  json::Object Result{{"contents", toJSON(H.contents)}};
 
   if (H.range.hasValue())
     Result["range"] = toJSON(*H.range);
@@ -625,7 +602,7 @@ llvm::json::Value toJSON(const Hover &H) {
   return std::move(Result);
 }
 
-bool fromJSON(const llvm::json::Value &E, CompletionItemKind &Out) {
+bool fromJSON(const json::Value &E, CompletionItemKind &Out) {
   if (auto T = E.getAsInteger()) {
     if (*T < static_cast<int>(CompletionItemKind::Text) ||
         *T > static_cast<int>(CompletionItemKind::TypeParameter))
@@ -638,11 +615,11 @@ bool fromJSON(const llvm::json::Value &E, CompletionItemKind &Out) {
 
 CompletionItemKind
 adjustKindToCapability(CompletionItemKind Kind,
-                       CompletionItemKindBitset &SupportedCompletionItemKinds) {
+                       CompletionItemKindBitset &supportedCompletionItemKinds) {
   auto KindVal = static_cast<size_t>(Kind);
   if (KindVal >= CompletionItemKindMin &&
-      KindVal <= SupportedCompletionItemKinds.size() &&
-      SupportedCompletionItemKinds[KindVal])
+      KindVal <= supportedCompletionItemKinds.size() &&
+      supportedCompletionItemKinds[KindVal])
     return Kind;
 
   switch (Kind) {
@@ -658,7 +635,7 @@ adjustKindToCapability(CompletionItemKind Kind,
   }
 }
 
-bool fromJSON(const llvm::json::Value &E, CompletionItemKindBitset &Out) {
+bool fromJSON(const json::Value &E, CompletionItemKindBitset &Out) {
   if (auto *A = E.getAsArray()) {
     for (size_t I = 0; I < A->size(); ++I) {
       CompletionItemKind KindOut;
@@ -670,9 +647,9 @@ bool fromJSON(const llvm::json::Value &E, CompletionItemKindBitset &Out) {
   return false;
 }
 
-llvm::json::Value toJSON(const CompletionItem &CI) {
+json::Value toJSON(const CompletionItem &CI) {
   assert(!CI.label.empty() && "completion item label is required");
-  llvm::json::Object Result{{"label", CI.label}};
+  json::Object Result{{"label", CI.label}};
   if (CI.kind != CompletionItemKind::Missing)
     Result["kind"] = static_cast<int>(CI.kind);
   if (!CI.detail.empty())
@@ -690,13 +667,13 @@ llvm::json::Value toJSON(const CompletionItem &CI) {
   if (CI.textEdit)
     Result["textEdit"] = *CI.textEdit;
   if (!CI.additionalTextEdits.empty())
-    Result["additionalTextEdits"] = llvm::json::Array(CI.additionalTextEdits);
+    Result["additionalTextEdits"] = json::Array(CI.additionalTextEdits);
   if (CI.deprecated)
     Result["deprecated"] = CI.deprecated;
   return std::move(Result);
 }
 
-llvm::raw_ostream &operator<<(llvm::raw_ostream &O, const CompletionItem &I) {
+raw_ostream &operator<<(raw_ostream &O, const CompletionItem &I) {
   O << I.label << " - " << toJSON(I);
   return O;
 }
@@ -706,72 +683,70 @@ bool operator<(const CompletionItem &L, const CompletionItem &R) {
          (R.sortText.empty() ? R.label : R.sortText);
 }
 
-llvm::json::Value toJSON(const CompletionList &L) {
-  return llvm::json::Object{
+json::Value toJSON(const CompletionList &L) {
+  return json::Object{
       {"isIncomplete", L.isIncomplete},
-      {"items", llvm::json::Array(L.items)},
+      {"items", json::Array(L.items)},
   };
 }
 
-llvm::json::Value toJSON(const ParameterInformation &PI) {
+json::Value toJSON(const ParameterInformation &PI) {
   assert(!PI.label.empty() && "parameter information label is required");
-  llvm::json::Object Result{{"label", PI.label}};
+  json::Object Result{{"label", PI.label}};
   if (!PI.documentation.empty())
     Result["documentation"] = PI.documentation;
   return std::move(Result);
 }
 
-llvm::json::Value toJSON(const SignatureInformation &SI) {
+json::Value toJSON(const SignatureInformation &SI) {
   assert(!SI.label.empty() && "signature information label is required");
-  llvm::json::Object Result{
+  json::Object Result{
       {"label", SI.label},
-      {"parameters", llvm::json::Array(SI.parameters)},
+      {"parameters", json::Array(SI.parameters)},
   };
   if (!SI.documentation.empty())
     Result["documentation"] = SI.documentation;
   return std::move(Result);
 }
 
-llvm::raw_ostream &operator<<(llvm::raw_ostream &O,
-                              const SignatureInformation &I) {
+raw_ostream &operator<<(raw_ostream &O, const SignatureInformation &I) {
   O << I.label << " - " << toJSON(I);
   return O;
 }
 
-llvm::json::Value toJSON(const SignatureHelp &SH) {
+json::Value toJSON(const SignatureHelp &SH) {
   assert(SH.activeSignature >= 0 &&
          "Unexpected negative value for number of active signatures.");
   assert(SH.activeParameter >= 0 &&
          "Unexpected negative value for active parameter index");
-  return llvm::json::Object{
+  return json::Object{
       {"activeSignature", SH.activeSignature},
       {"activeParameter", SH.activeParameter},
-      {"signatures", llvm::json::Array(SH.signatures)},
+      {"signatures", json::Array(SH.signatures)},
   };
 }
 
-bool fromJSON(const llvm::json::Value &Params, RenameParams &R) {
-  llvm::json::ObjectMapper O(Params);
+bool fromJSON(const json::Value &Params, RenameParams &R) {
+  json::ObjectMapper O(Params);
   return O && O.map("textDocument", R.textDocument) &&
          O.map("position", R.position) && O.map("newName", R.newName);
 }
 
-llvm::json::Value toJSON(const DocumentHighlight &DH) {
-  return llvm::json::Object{
+json::Value toJSON(const DocumentHighlight &DH) {
+  return json::Object{
       {"range", toJSON(DH.range)},
       {"kind", static_cast<int>(DH.kind)},
   };
 }
 
 llvm::json::Value toJSON(const FileStatus &FStatus) {
-  return llvm::json::Object{
+  return json::Object{
       {"uri", FStatus.uri},
       {"state", FStatus.state},
   };
 }
 
-llvm::raw_ostream &operator<<(llvm::raw_ostream &O,
-                              const DocumentHighlight &V) {
+raw_ostream &operator<<(raw_ostream &O, const DocumentHighlight &V) {
   O << V.range;
   if (V.kind == DocumentHighlightKind::Read)
     O << "(r)";
@@ -780,29 +755,27 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &O,
   return O;
 }
 
-bool fromJSON(const llvm::json::Value &Params,
-              DidChangeConfigurationParams &CCP) {
-  llvm::json::ObjectMapper O(Params);
+bool fromJSON(const json::Value &Params, DidChangeConfigurationParams &CCP) {
+  json::ObjectMapper O(Params);
   return O && O.map("settings", CCP.settings);
 }
 
-bool fromJSON(const llvm::json::Value &Params,
-              ClangdCompileCommand &CDbUpdate) {
-  llvm::json::ObjectMapper O(Params);
+bool fromJSON(const json::Value &Params, ClangdCompileCommand &CDbUpdate) {
+  json::ObjectMapper O(Params);
   return O && O.map("workingDirectory", CDbUpdate.workingDirectory) &&
          O.map("compilationCommand", CDbUpdate.compilationCommand);
 }
 
-bool fromJSON(const llvm::json::Value &Params, ConfigurationSettings &S) {
-  llvm::json::ObjectMapper O(Params);
+bool fromJSON(const json::Value &Params, ConfigurationSettings &S) {
+  json::ObjectMapper O(Params);
   if (!O)
     return true; // 'any' type in LSP.
   O.map("compilationDatabaseChanges", S.compilationDatabaseChanges);
   return true;
 }
 
-bool fromJSON(const llvm::json::Value &Params, InitializationOptions &Opts) {
-  llvm::json::ObjectMapper O(Params);
+bool fromJSON(const json::Value &Params, InitializationOptions &Opts) {
+  json::ObjectMapper O(Params);
   if (!O)
     return true; // 'any' type in LSP.
 
@@ -813,7 +786,7 @@ bool fromJSON(const llvm::json::Value &Params, InitializationOptions &Opts) {
   return true;
 }
 
-bool fromJSON(const llvm::json::Value &Params, ReferenceParams &R) {
+bool fromJSON(const json::Value &Params, ReferenceParams &R) {
   TextDocumentPositionParams &Base = R;
   return fromJSON(Params, Base);
 }

@@ -1,8 +1,9 @@
 //===--- AArch64CallLowering.cpp - Call lowering --------------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 ///
@@ -85,10 +86,9 @@ struct IncomingArgHandler : public CallLowering::ValueHandler {
 
   void assignValueToAddress(unsigned ValVReg, unsigned Addr, uint64_t Size,
                             MachinePointerInfo &MPO, CCValAssign &VA) override {
-    // FIXME: Get alignment
     auto MMO = MIRBuilder.getMF().getMachineMemOperand(
         MPO, MachineMemOperand::MOLoad | MachineMemOperand::MOInvariant, Size,
-        1);
+        0);
     MIRBuilder.buildLoad(ValVReg, Addr, *MMO);
   }
 
@@ -162,7 +162,7 @@ struct OutgoingArgHandler : public CallLowering::ValueHandler {
                     .getReg();
     }
     auto MMO = MIRBuilder.getMF().getMachineMemOperand(
-        MPO, MachineMemOperand::MOStore, Size, 1);
+        MPO, MachineMemOperand::MOStore, Size, 0);
     MIRBuilder.buildStore(ValVReg, Addr, *MMO);
   }
 

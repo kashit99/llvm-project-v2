@@ -1,8 +1,9 @@
 //===-- X86AsmBackend.cpp - X86 Assembler Backend -------------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -539,6 +540,7 @@ protected:
     unsigned InstrOffset = 0;
     unsigned StackAdjust = 0;
     unsigned StackSize = 0;
+    unsigned PrevStackSize = 0;
     unsigned NumDefCFAOffsets = 0;
 
     for (unsigned i = 0, e = Instrs.size(); i != e; ++i) {
@@ -586,6 +588,7 @@ protected:
         //  L0:
         //     .cfi_def_cfa_offset 80
         //
+        PrevStackSize = StackSize;
         StackSize = std::abs(Inst.getOffset()) / StackDivide;
         ++NumDefCFAOffsets;
         break;

@@ -1,8 +1,9 @@
 //===- unittest/Tooling/CleanupTest.cpp - Include insertion/deletion tests ===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -13,6 +14,9 @@
 #include "clang/Tooling/Core/Replacement.h"
 
 #include "gtest/gtest.h"
+
+using clang::tooling::ReplacementTest;
+using clang::tooling::toReplacements;
 
 namespace clang {
 namespace tooling {
@@ -309,17 +313,6 @@ TEST_F(HeaderIncludesTest, RealHeaderGuardAfterComments) {
                          "#include <vector>\n"
                          "int x;\n"
                          "#define Y 1\n";
-  EXPECT_EQ(Expected, insert(Code, "<vector>"));
-}
-
-TEST_F(HeaderIncludesTest, PragmaOnce) {
-  std::string Code = "// comment \n"
-                     "#pragma once\n"
-                     "int x;\n";
-  std::string Expected = "// comment \n"
-                         "#pragma once\n"
-                         "#include <vector>\n"
-                         "int x;\n";
   EXPECT_EQ(Expected, insert(Code, "<vector>"));
 }
 

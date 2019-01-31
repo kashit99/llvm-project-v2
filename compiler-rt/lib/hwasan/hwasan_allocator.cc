@@ -1,8 +1,9 @@
 //===-- hwasan_allocator.cc ------------------------- ---------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -19,11 +20,6 @@
 #include "hwasan_mapping.h"
 #include "hwasan_thread.h"
 #include "hwasan_report.h"
-
-#if HWASAN_WITH_INTERCEPTORS
-DEFINE_REAL(void *, realloc, void *ptr, uptr size)
-DEFINE_REAL(void, free, void *ptr)
-#endif
 
 namespace __hwasan {
 
@@ -203,7 +199,7 @@ static bool PointerAndMemoryTagsMatch(void *tagged_ptr) {
   return ptr_tag == mem_tag;
 }
 
-static void HwasanDeallocate(StackTrace *stack, void *tagged_ptr) {
+void HwasanDeallocate(StackTrace *stack, void *tagged_ptr) {
   CHECK(tagged_ptr);
   HWASAN_FREE_HOOK(tagged_ptr);
 
@@ -257,8 +253,8 @@ static void HwasanDeallocate(StackTrace *stack, void *tagged_ptr) {
   }
 }
 
-static void *HwasanReallocate(StackTrace *stack, void *tagged_ptr_old,
-                              uptr new_size, uptr alignment) {
+void *HwasanReallocate(StackTrace *stack, void *tagged_ptr_old, uptr new_size,
+                     uptr alignment) {
   if (!PointerAndMemoryTagsMatch(tagged_ptr_old))
     ReportInvalidFree(stack, reinterpret_cast<uptr>(tagged_ptr_old));
 
@@ -275,7 +271,7 @@ static void *HwasanReallocate(StackTrace *stack, void *tagged_ptr_old,
   return tagged_ptr_new;
 }
 
-static void *HwasanCalloc(StackTrace *stack, uptr nmemb, uptr size) {
+void *HwasanCalloc(StackTrace *stack, uptr nmemb, uptr size) {
   if (UNLIKELY(CheckForCallocOverflow(size, nmemb))) {
     if (AllocatorMayReturnNull())
       return nullptr;
@@ -319,14 +315,6 @@ void *hwasan_calloc(uptr nmemb, uptr size, StackTrace *stack) {
 void *hwasan_realloc(void *ptr, uptr size, StackTrace *stack) {
   if (!ptr)
     return SetErrnoOnNull(HwasanAllocate(stack, size, sizeof(u64), false));
-
-#if HWASAN_WITH_INTERCEPTORS
-  // A tag of 0 means that this is a system allocator allocation, so we must use
-  // the system allocator to realloc it.
-  if (!flags()->disable_allocator_tagging && GetTagFromPointer((uptr)ptr) == 0)
-    return REAL(realloc)(ptr, size);
-#endif
-
   if (size == 0) {
     HwasanDeallocate(stack, ptr);
     return nullptr;
@@ -388,17 +376,6 @@ int hwasan_posix_memalign(void **memptr, uptr alignment, uptr size,
   return 0;
 }
 
-void hwasan_free(void *ptr, StackTrace *stack) {
-#if HWASAN_WITH_INTERCEPTORS
-  // A tag of 0 means that this is a system allocator allocation, so we must use
-  // the system allocator to free it.
-  if (!flags()->disable_allocator_tagging && GetTagFromPointer((uptr)ptr) == 0)
-    return REAL(free)(ptr);
-#endif
-
-  return HwasanDeallocate(stack, ptr);
-}
-
 }  // namespace __hwasan
 
 using namespace __hwasan;
@@ -408,15 +385,6 @@ void __hwasan_enable_allocator_tagging() {
 }
 
 void __hwasan_disable_allocator_tagging() {
-#if HWASAN_WITH_INTERCEPTORS
-  // Allocator tagging must be enabled for the system allocator fallback to work
-  // correctly. This means that we can't disable it at runtime if it was enabled
-  // at startup since that might result in our deallocations going to the system
-  // allocator. If tagging was disabled at startup we avoid this problem by
-  // disabling the fallback altogether.
-  CHECK(flags()->disable_allocator_tagging);
-#endif
-
   atomic_store_relaxed(&hwasan_allocator_tagging_enabled, 0);
 }
 

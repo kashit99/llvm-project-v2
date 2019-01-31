@@ -1,8 +1,9 @@
 //===- DIContext.h ----------------------------------------------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -80,7 +81,7 @@ class DIInliningInfo {
 public:
   DIInliningInfo() = default;
 
-  const DILineInfo & getFrame(unsigned Index) const {
+  DILineInfo getFrame(unsigned Index) const {
     assert(Index < Frames.size());
     return Frames[Index];
   }
@@ -97,11 +98,6 @@ public:
   void addFrame(const DILineInfo &Frame) {
     Frames.push_back(Frame);
   }
-  
-  void resize(unsigned i) {
-    Frames.resize(i);
-  }
-  
 };
 
 /// Container for description of a global variable.

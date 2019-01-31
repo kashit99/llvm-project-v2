@@ -1,8 +1,9 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is dual licensed under the MIT and the University of Illinois Open
+// Source Licenses. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -11,7 +12,7 @@
 // template <class... Types> class tuple;
 
 // template <class... Types>
-//   struct tuple_size<tuple<Types...>>
+//   class tuple_size<tuple<Types...>>
 //     : public integral_constant<size_t, sizeof...(Types)> { };
 
 // UNSUPPORTED: c++98, c++03
@@ -25,19 +26,19 @@ struct Dummy2 {};
 struct Dummy3 {};
 
 template <>
-struct std::tuple_size<Dummy1> {
+class std::tuple_size<Dummy1> {
 public:
   static size_t value;
 };
 
 template <>
-struct std::tuple_size<Dummy2> {
+class std::tuple_size<Dummy2> {
 public:
   static void value() {}
 };
 
 template <>
-struct std::tuple_size<Dummy3> {};
+class std::tuple_size<Dummy3> {};
 
 int main()
 {

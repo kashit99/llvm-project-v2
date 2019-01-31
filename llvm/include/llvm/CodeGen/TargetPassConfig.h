@@ -1,8 +1,9 @@
 //===- TargetPassConfig.h - Code Generation pass options --------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -74,6 +75,9 @@ public:
   }
 };
 
+template <> struct isPodLike<IdentifyingPassPtr> {
+  static const bool value = true;
+};
 
 /// Target-Independent Code Generator Pass Configuration Options.
 ///
@@ -314,10 +318,6 @@ public:
   /// uses the fallback path. In other words, it will emit a diagnostic
   /// when GlobalISel failed and isGlobalISelAbortEnabled is false.
   virtual bool reportDiagnosticWhenGlobalISelFallback() const;
-
-  /// Check whether continuous CSE should be enabled in GISel passes.
-  /// By default, it's enabled for non O0 levels.
-  virtual bool isGISelCSEEnabled() const;
 
 protected:
   // Helper to verify the analysis is really immutable.

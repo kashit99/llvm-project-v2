@@ -1,8 +1,9 @@
 //===----- CGCXXABI.cpp - Interface to C++ ABIs ---------------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -131,7 +132,7 @@ void CGCXXABI::buildThisParam(CodeGenFunction &CGF, FunctionArgList &params) {
   // generation. Maybe we can come up with a better way?
   auto *ThisDecl = ImplicitParamDecl::Create(
       CGM.getContext(), nullptr, MD->getLocation(),
-      &CGM.getContext().Idents.get("this"), MD->getThisType(),
+      &CGM.getContext().Idents.get("this"), MD->getThisType(CGM.getContext()),
       ImplicitParamDecl::CXXThis);
   params.push_back(ThisDecl);
   CGF.CXXABIThisDecl = ThisDecl;

@@ -1,8 +1,9 @@
 //===-- ExternalFunctions.cpp - Implement External Functions --------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -102,9 +103,8 @@ static ExFunc lookupFunction(const Function *F) {
   // composite function name should be.
   std::string ExtName = "lle_";
   FunctionType *FT = F->getFunctionType();
-  ExtName += getTypeID(FT->getReturnType());
-  for (Type *T : FT->params())
-    ExtName += getTypeID(T);
+  for (unsigned i = 0, e = FT->getNumContainedTypes(); i != e; ++i)
+    ExtName += getTypeID(FT->getContainedType(i));
   ExtName += ("_" + F->getName()).str();
 
   sys::ScopedLock Writer(*FunctionsLock);

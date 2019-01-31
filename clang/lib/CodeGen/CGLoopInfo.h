@@ -1,8 +1,9 @@
 //===---- CGLoopInfo.h - LLVM CodeGen for loop metadata -*- C++ -*---------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -65,12 +66,6 @@ struct LoopAttributes {
 
   /// Value for llvm.loop.distribute.enable metadata.
   LVEnableState DistributeEnable;
-
-  /// Value for llvm.loop.pipeline.disable metadata.
-  bool PipelineDisabled;
-
-  /// Value for llvm.loop.pipeline.iicount metadata.
-  unsigned PipelineInitiationInterval;
 };
 
 /// Information used when generating a structured loop.
@@ -175,14 +170,6 @@ public:
 
   /// \brief Set the unroll count for the next loop pushed.
   void setUnrollAndJamCount(unsigned C) { StagedAttrs.UnrollAndJamCount = C; }
-
-  /// Set the pipeline disabled state.
-  void setPipelineDisabled(bool S) { StagedAttrs.PipelineDisabled = S; }
-
-  /// Set the pipeline initiation interval.
-  void setPipelineInitiationInterval(unsigned C) {
-    StagedAttrs.PipelineInitiationInterval = C;
-  }
 
 private:
   /// Returns true if there is LoopInfo on the stack.

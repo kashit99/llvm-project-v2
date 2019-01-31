@@ -89,7 +89,6 @@ public:
   void destroy();
   void clear();
   void resize(std::size_t);
-  void assign(const A &);
   bool empty() const;
   bool isEmpty() const;
   operator bool() const;
@@ -529,13 +528,6 @@ void moveStateResetFunctionsTest() {
     A a;
     A b = std::move(a);
     a.resize(0); // no-warning
-    a.foo();   // no-warning
-    a.b.foo(); // no-warning
-  }
-  {
-    A a;
-    A b = std::move(a);
-    a.assign(A()); // no-warning
     a.foo();   // no-warning
     a.b.foo(); // no-warning
   }

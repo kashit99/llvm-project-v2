@@ -1,77 +1,43 @@
 //===--- GlobalCompilationDatabase.cpp ---------------------------*- C++-*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
 #include "GlobalCompilationDatabase.h"
 #include "Logger.h"
-#include "clang/Frontend/CompilerInvocation.h"
-#include "clang/Tooling/ArgumentsAdjusters.h"
 #include "clang/Tooling/CompilationDatabase.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
 
+using namespace llvm;
 namespace clang {
 namespace clangd {
-namespace {
-
-void adjustArguments(tooling::CompileCommand &Cmd,
-                     llvm::StringRef ResourceDir) {
-  // Strip plugin related command line arguments. Clangd does
-  // not support plugins currently. Therefore it breaks if
-  // compiler tries to load plugins.
-  Cmd.CommandLine =
-      tooling::getStripPluginsAdjuster()(Cmd.CommandLine, Cmd.Filename);
-  // Inject the resource dir.
-  // FIXME: Don't overwrite it if it's already there.
-  if (!ResourceDir.empty())
-    Cmd.CommandLine.push_back(("-resource-dir=" + ResourceDir).str());
-}
-
-std::string getStandardResourceDir() {
-  static int Dummy; // Just an address in this process.
-  return CompilerInvocation::GetResourcesPath("clangd", (void *)&Dummy);
-}
-
-} // namespace
-
-static std::string getFallbackClangPath() {
-  static int Dummy;
-  std::string ClangdExecutable =
-      llvm::sys::fs::getMainExecutable("clangd", (void *)&Dummy);
-  SmallString<128> ClangPath;
-  ClangPath = llvm::sys::path::parent_path(ClangdExecutable);
-  llvm::sys::path::append(ClangPath, "clang");
-  return ClangPath.str();
-}
 
 tooling::CompileCommand
 GlobalCompilationDatabase::getFallbackCommand(PathRef File) const {
-  std::vector<std::string> Argv = {getFallbackClangPath()};
+  std::vector<std::string> Argv = {"clang"};
   // Clang treats .h files as C by default, resulting in unhelpful diagnostics.
   // Parsing as Objective C++ is friendly to more cases.
-  if (llvm::sys::path::extension(File) == ".h")
+  if (sys::path::extension(File) == ".h")
     Argv.push_back("-xobjective-c++-header");
   Argv.push_back(File);
-  return tooling::CompileCommand(llvm::sys::path::parent_path(File),
-                                 llvm::sys::path::filename(File),
-                                 std::move(Argv),
+  return tooling::CompileCommand(sys::path::parent_path(File),
+                                 sys::path::filename(File), std::move(Argv),
                                  /*Output=*/"");
 }
 
 DirectoryBasedGlobalCompilationDatabase::
-    DirectoryBasedGlobalCompilationDatabase(
-        llvm::Optional<Path> CompileCommandsDir)
+    DirectoryBasedGlobalCompilationDatabase(Optional<Path> CompileCommandsDir)
     : CompileCommandsDir(std::move(CompileCommandsDir)) {}
 
 DirectoryBasedGlobalCompilationDatabase::
     ~DirectoryBasedGlobalCompilationDatabase() = default;
 
-llvm::Optional<tooling::CompileCommand>
+Optional<tooling::CompileCommand>
 DirectoryBasedGlobalCompilationDatabase::getCompileCommand(
     PathRef File, ProjectInfo *Project) const {
   if (auto CDB = getCDBForFile(File, Project)) {
@@ -101,7 +67,7 @@ DirectoryBasedGlobalCompilationDatabase::getCDBInDirLocked(PathRef Dir) const {
 tooling::CompilationDatabase *
 DirectoryBasedGlobalCompilationDatabase::getCDBForFile(
     PathRef File, ProjectInfo *Project) const {
-  namespace path = llvm::sys::path;
+  namespace path = sys::path;
   assert((path::is_absolute(File, path::Style::posix) ||
           path::is_absolute(File, path::Style::windows)) &&
          "path must be absolute");
@@ -129,35 +95,26 @@ DirectoryBasedGlobalCompilationDatabase::getCDBForFile(
 }
 
 OverlayCDB::OverlayCDB(const GlobalCompilationDatabase *Base,
-                       std::vector<std::string> FallbackFlags,
-                       llvm::Optional<std::string> ResourceDir)
-    : Base(Base), ResourceDir(ResourceDir ? std::move(*ResourceDir)
-                                          : getStandardResourceDir()),
-      FallbackFlags(std::move(FallbackFlags)) {
+                       std::vector<std::string> FallbackFlags)
+    : Base(Base), FallbackFlags(std::move(FallbackFlags)) {
   if (Base)
     BaseChanged = Base->watch([this](const std::vector<std::string> Changes) {
       OnCommandChanged.broadcast(Changes);
     });
 }
 
-llvm::Optional<tooling::CompileCommand>
+Optional<tooling::CompileCommand>
 OverlayCDB::getCompileCommand(PathRef File, ProjectInfo *Project) const {
-  llvm::Optional<tooling::CompileCommand> Cmd;
   {
     std::lock_guard<std::mutex> Lock(Mutex);
     auto It = Commands.find(File);
     if (It != Commands.end()) {
       if (Project)
         Project->SourceRoot = "";
-      Cmd = It->second;
+      return It->second;
     }
   }
-  if (!Cmd && Base)
-    Cmd = Base->getCompileCommand(File, Project);
-  if (!Cmd)
-    return llvm::None;
-  adjustArguments(*Cmd, ResourceDir);
-  return Cmd;
+  return Base ? Base->getCompileCommand(File, Project) : None;
 }
 
 tooling::CompileCommand OverlayCDB::getFallbackCommand(PathRef File) const {

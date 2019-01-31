@@ -1,8 +1,9 @@
 //===- Instructions.cpp - Implement the LLVM instructions -----------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -256,16 +257,6 @@ void LandingPadInst::addClause(Constant *Val) {
 
 Function *CallBase::getCaller() { return getParent()->getParent(); }
 
-bool CallBase::isIndirectCall() const {
-  const Value *V = getCalledValue();
-  if (isa<Function>(V) || isa<Constant>(V))
-    return false;
-  if (const CallInst *CI = dyn_cast<CallInst>(this))
-    if (CI->isInlineAsm())
-      return false;
-  return true;
-}
-
 Intrinsic::ID CallBase::getIntrinsicID() const {
   if (auto *F = getCalledFunction())
     return F->getIntrinsicID();
@@ -387,8 +378,9 @@ void CallInst::init(FunctionType *FTy, Value *Func, ArrayRef<Value *> Args,
   setName(NameStr);
 }
 
-void CallInst::init(FunctionType *FTy, Value *Func, const Twine &NameStr) {
-  this->FTy = FTy;
+void CallInst::init(Value *Func, const Twine &NameStr) {
+  FTy =
+      cast<FunctionType>(cast<PointerType>(Func->getType())->getElementType());
   assert(getNumOperands() == 1 && "NumOperands not set up?");
   setCalledOperand(Func);
 
@@ -397,18 +389,22 @@ void CallInst::init(FunctionType *FTy, Value *Func, const Twine &NameStr) {
   setName(NameStr);
 }
 
-CallInst::CallInst(FunctionType *Ty, Value *Func, const Twine &Name,
-                   Instruction *InsertBefore)
-    : CallBase(Ty->getReturnType(), Instruction::Call,
-               OperandTraits<CallBase>::op_end(this) - 1, 1, InsertBefore) {
-  init(Ty, Func, Name);
+CallInst::CallInst(Value *Func, const Twine &Name, Instruction *InsertBefore)
+    : CallBase(cast<FunctionType>(
+                   cast<PointerType>(Func->getType())->getElementType())
+                   ->getReturnType(),
+               Instruction::Call, OperandTraits<CallBase>::op_end(this) - 1, 1,
+               InsertBefore) {
+  init(Func, Name);
 }
 
-CallInst::CallInst(FunctionType *Ty, Value *Func, const Twine &Name,
-                   BasicBlock *InsertAtEnd)
-    : CallBase(Ty->getReturnType(), Instruction::Call,
-               OperandTraits<CallBase>::op_end(this) - 1, 1, InsertAtEnd) {
-  init(Ty, Func, Name);
+CallInst::CallInst(Value *Func, const Twine &Name, BasicBlock *InsertAtEnd)
+    : CallBase(cast<FunctionType>(
+                   cast<PointerType>(Func->getType())->getElementType())
+                   ->getReturnType(),
+               Instruction::Call, OperandTraits<CallBase>::op_end(this) - 1, 1,
+               InsertAtEnd) {
+  init(Func, Name);
 }
 
 CallInst::CallInst(const CallInst &CI)
@@ -1137,30 +1133,28 @@ void LoadInst::AssertOK() {
          "Alignment required for atomic load");
 }
 
-LoadInst::LoadInst(Type *Ty, Value *Ptr, const Twine &Name,
-                   Instruction *InsertBef)
-    : LoadInst(Ty, Ptr, Name, /*isVolatile=*/false, InsertBef) {}
+LoadInst::LoadInst(Value *Ptr, const Twine &Name, Instruction *InsertBef)
+    : LoadInst(Ptr, Name, /*isVolatile=*/false, InsertBef) {}
 
-LoadInst::LoadInst(Type *Ty, Value *Ptr, const Twine &Name,
-                   BasicBlock *InsertAE)
-    : LoadInst(Ty, Ptr, Name, /*isVolatile=*/false, InsertAE) {}
+LoadInst::LoadInst(Value *Ptr, const Twine &Name, BasicBlock *InsertAE)
+    : LoadInst(Ptr, Name, /*isVolatile=*/false, InsertAE) {}
 
 LoadInst::LoadInst(Type *Ty, Value *Ptr, const Twine &Name, bool isVolatile,
                    Instruction *InsertBef)
     : LoadInst(Ty, Ptr, Name, isVolatile, /*Align=*/0, InsertBef) {}
 
-LoadInst::LoadInst(Type *Ty, Value *Ptr, const Twine &Name, bool isVolatile,
+LoadInst::LoadInst(Value *Ptr, const Twine &Name, bool isVolatile,
                    BasicBlock *InsertAE)
-    : LoadInst(Ty, Ptr, Name, isVolatile, /*Align=*/0, InsertAE) {}
+    : LoadInst(Ptr, Name, isVolatile, /*Align=*/0, InsertAE) {}
 
 LoadInst::LoadInst(Type *Ty, Value *Ptr, const Twine &Name, bool isVolatile,
                    unsigned Align, Instruction *InsertBef)
     : LoadInst(Ty, Ptr, Name, isVolatile, Align, AtomicOrdering::NotAtomic,
                SyncScope::System, InsertBef) {}
 
-LoadInst::LoadInst(Type *Ty, Value *Ptr, const Twine &Name, bool isVolatile,
+LoadInst::LoadInst(Value *Ptr, const Twine &Name, bool isVolatile,
                    unsigned Align, BasicBlock *InsertAE)
-    : LoadInst(Ty, Ptr, Name, isVolatile, Align, AtomicOrdering::NotAtomic,
+    : LoadInst(Ptr, Name, isVolatile, Align, AtomicOrdering::NotAtomic,
                SyncScope::System, InsertAE) {}
 
 LoadInst::LoadInst(Type *Ty, Value *Ptr, const Twine &Name, bool isVolatile,
@@ -1175,16 +1169,59 @@ LoadInst::LoadInst(Type *Ty, Value *Ptr, const Twine &Name, bool isVolatile,
   setName(Name);
 }
 
-LoadInst::LoadInst(Type *Ty, Value *Ptr, const Twine &Name, bool isVolatile,
-                   unsigned Align, AtomicOrdering Order, SyncScope::ID SSID,
+LoadInst::LoadInst(Value *Ptr, const Twine &Name, bool isVolatile,
+                   unsigned Align, AtomicOrdering Order,
+                   SyncScope::ID SSID,
                    BasicBlock *InsertAE)
-    : UnaryInstruction(Ty, Load, Ptr, InsertAE) {
-  assert(Ty == cast<PointerType>(Ptr->getType())->getElementType());
+  : UnaryInstruction(cast<PointerType>(Ptr->getType())->getElementType(),
+                     Load, Ptr, InsertAE) {
   setVolatile(isVolatile);
   setAlignment(Align);
   setAtomic(Order, SSID);
   AssertOK();
   setName(Name);
+}
+
+LoadInst::LoadInst(Value *Ptr, const char *Name, Instruction *InsertBef)
+  : UnaryInstruction(cast<PointerType>(Ptr->getType())->getElementType(),
+                     Load, Ptr, InsertBef) {
+  setVolatile(false);
+  setAlignment(0);
+  setAtomic(AtomicOrdering::NotAtomic);
+  AssertOK();
+  if (Name && Name[0]) setName(Name);
+}
+
+LoadInst::LoadInst(Value *Ptr, const char *Name, BasicBlock *InsertAE)
+  : UnaryInstruction(cast<PointerType>(Ptr->getType())->getElementType(),
+                     Load, Ptr, InsertAE) {
+  setVolatile(false);
+  setAlignment(0);
+  setAtomic(AtomicOrdering::NotAtomic);
+  AssertOK();
+  if (Name && Name[0]) setName(Name);
+}
+
+LoadInst::LoadInst(Type *Ty, Value *Ptr, const char *Name, bool isVolatile,
+                   Instruction *InsertBef)
+    : UnaryInstruction(Ty, Load, Ptr, InsertBef) {
+  assert(Ty == cast<PointerType>(Ptr->getType())->getElementType());
+  setVolatile(isVolatile);
+  setAlignment(0);
+  setAtomic(AtomicOrdering::NotAtomic);
+  AssertOK();
+  if (Name && Name[0]) setName(Name);
+}
+
+LoadInst::LoadInst(Value *Ptr, const char *Name, bool isVolatile,
+                   BasicBlock *InsertAE)
+  : UnaryInstruction(cast<PointerType>(Ptr->getType())->getElementType(),
+                     Load, Ptr, InsertAE) {
+  setVolatile(isVolatile);
+  setAlignment(0);
+  setAtomic(AtomicOrdering::NotAtomic);
+  AssertOK();
+  if (Name && Name[0]) setName(Name);
 }
 
 void LoadInst::setAlignment(unsigned Align) {
@@ -1407,10 +1444,6 @@ StringRef AtomicRMWInst::getOperationName(BinOp Op) {
     return "umax";
   case AtomicRMWInst::UMin:
     return "umin";
-  case AtomicRMWInst::FAdd:
-    return "fadd";
-  case AtomicRMWInst::FSub:
-    return "fsub";
   case AtomicRMWInst::BAD_BINOP:
     return "<invalid operation>";
   }
@@ -3841,7 +3874,7 @@ AllocaInst *AllocaInst::cloneImpl() const {
 }
 
 LoadInst *LoadInst::cloneImpl() const {
-  return new LoadInst(getType(), getOperand(0), Twine(), isVolatile(),
+  return new LoadInst(getOperand(0), Twine(), isVolatile(),
                       getAlignment(), getOrdering(), getSyncScopeID());
 }
 

@@ -1,8 +1,9 @@
 //===- llvm/Support/ScaledNumber.h - Support for scaled numbers -*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -886,6 +887,10 @@ template <class DigitsT> void ScaledNumber<DigitsT>::shiftRight(int32_t Shift) {
   Digits >>= Shift;
 }
 
+template <typename T> struct isPodLike;
+template <typename T> struct isPodLike<ScaledNumber<T>> {
+  static const bool value = true;
+};
 
 } // end namespace llvm
 

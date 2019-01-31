@@ -1,8 +1,9 @@
 //===- DeclCXX.h - Classes for representing C++ declarations --*- C++ -*-=====//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -2179,13 +2180,13 @@ public:
   /// that for the call operator of a lambda closure type, this returns the
   /// desugared 'this' type (a pointer to the closure type), not the captured
   /// 'this' type.
-  QualType getThisType() const;
+  QualType getThisType(ASTContext &C) const;
 
   static QualType getThisType(const FunctionProtoType *FPT,
                               const CXXRecordDecl *Decl);
 
-  Qualifiers getMethodQualifiers() const {
-    return getType()->getAs<FunctionProtoType>()->getMethodQuals();
+  Qualifiers getTypeQualifiers() const {
+    return getType()->getAs<FunctionProtoType>()->getTypeQuals();
   }
 
   /// Retrieve the ref-qualifier associated with this method.

@@ -1,8 +1,9 @@
 //===--- ParentVirtualCallCheck.cpp - clang-tidy---------------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -49,7 +50,9 @@ static BasesVector getParentsByGrandParent(const CXXRecordDecl &GrandParent,
     // TypePtr is the nearest base class to ThisClass between ThisClass and
     // GrandParent, where MemberDecl is overridden. TypePtr is the class the
     // check proposes to fix to.
-    const Type *TypePtr = ActualMemberDecl->getThisType().getTypePtr();
+    const Type *TypePtr =
+        ActualMemberDecl->getThisType(ActualMemberDecl->getASTContext())
+            .getTypePtr();
     const CXXRecordDecl *RecordDeclType = TypePtr->getPointeeCXXRecordDecl();
     assert(RecordDeclType && "TypePtr is not a pointer to CXXRecordDecl!");
     if (RecordDeclType->getCanonicalDecl()->isDerivedFrom(&GrandParent))

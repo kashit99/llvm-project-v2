@@ -1,8 +1,9 @@
 //===- BasicAliasAnalysis.h - Stateless, local Alias Analysis ---*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 /// \file
@@ -20,7 +21,7 @@
 #include "llvm/Analysis/AliasAnalysis.h"
 #include "llvm/Analysis/AssumptionCache.h"
 #include "llvm/Analysis/MemoryLocation.h"
-#include "llvm/IR/InstrTypes.h"
+#include "llvm/IR/CallSite.h"
 #include "llvm/IR/PassManager.h"
 #include "llvm/Pass.h"
 #include <algorithm>
@@ -83,18 +84,18 @@ public:
 
   AliasResult alias(const MemoryLocation &LocA, const MemoryLocation &LocB);
 
-  ModRefInfo getModRefInfo(const CallBase *Call, const MemoryLocation &Loc);
+  ModRefInfo getModRefInfo(ImmutableCallSite CS, const MemoryLocation &Loc);
 
-  ModRefInfo getModRefInfo(const CallBase *Call1, const CallBase *Call2);
+  ModRefInfo getModRefInfo(ImmutableCallSite CS1, ImmutableCallSite CS2);
 
   /// Chases pointers until we find a (constant global) or not.
   bool pointsToConstantMemory(const MemoryLocation &Loc, bool OrLocal);
 
   /// Get the location associated with a pointer argument of a callsite.
-  ModRefInfo getArgModRefInfo(const CallBase *Call, unsigned ArgIdx);
+  ModRefInfo getArgModRefInfo(ImmutableCallSite CS, unsigned ArgIdx);
 
   /// Returns the behavior when calling the given call site.
-  FunctionModRefBehavior getModRefBehavior(const CallBase *Call);
+  FunctionModRefBehavior getModRefBehavior(ImmutableCallSite CS);
 
   /// Returns the behavior when calling the given function. For use when the
   /// call site is not known.

@@ -165,6 +165,11 @@ bool HostInfoMacOSX::ComputeSupportExeDirectory(FileSpec &file_spec) {
   return (bool)file_spec.GetDirectory();
 }
 
+bool HostInfoMacOSX::ComputeSupportFileDirectory(FileSpec &file_spec) {
+  // The bundle's Resources directory, just like for executables
+  return HostInfoMacOSX::ComputeSupportExeDirectory(file_spec);
+}
+
 bool HostInfoMacOSX::ComputeHeaderDirectory(FileSpec &file_spec) {
   FileSpec lldb_file_spec = GetShlibDir();
   if (!lldb_file_spec)
@@ -276,4 +281,25 @@ void HostInfoMacOSX::ComputeHostArchitectureSupport(ArchSpec &arch_32,
       arch_64.Clear();
     }
   }
+}
+
+// Swift additions.
+
+bool HostInfoMacOSX::ComputeSwiftDirectory(FileSpec &file_spec) {
+  FileSpec lldb_file_spec = GetShlibDir();
+  if (!lldb_file_spec)
+    return false;
+
+  std::string raw_path = lldb_file_spec.GetPath();
+  size_t framework_pos = raw_path.find("LLDB.framework");
+  if (framework_pos == std::string::npos)
+    return HostInfoPosix::ComputeSwiftDirectory(file_spec);
+
+  if (framework_pos != std::string::npos) {
+    framework_pos += strlen("LLDB.framework");
+    raw_path.resize(framework_pos);
+    raw_path.append("/Resources/Swift");
+  }
+  file_spec.SetFile(raw_path.c_str(), FileSpec::Style::native);
+  return true;
 }

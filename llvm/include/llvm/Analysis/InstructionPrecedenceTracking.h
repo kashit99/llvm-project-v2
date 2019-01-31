@@ -1,8 +1,9 @@
 //===-- InstructionPrecedenceTracking.h -------------------------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 // Implements a class that is able to define some instructions as "special"
@@ -74,14 +75,8 @@ protected:
   virtual ~InstructionPrecedenceTracking() = default;
 
 public:
-  /// Notifies this tracking that we are going to insert a new instruction \p
-  /// Inst to the basic block \p BB. It makes all necessary updates to internal
-  /// caches to keep them consistent.
-  void insertInstructionTo(const Instruction *Inst, const BasicBlock *BB);
-
-  /// Notifies this tracking that we are going to remove the instruction \p Inst
-  /// It makes all necessary updates to internal caches to keep them consistent.
-  void removeInstruction(const Instruction *Inst);
+  /// Clears cached information about this particular block.
+  void invalidateBlock(const BasicBlock *BB);
 
   /// Invalidates all information from this tracking.
   void clear();

@@ -1,8 +1,9 @@
 //===--- Solaris.cpp - Solaris ToolChain Implementations --------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -100,7 +101,7 @@ void solaris::Linker::ConstructJob(Compilation &C, const JobAction &JA,
   // __start_SECNAME labels.
   CmdArgs.push_back("--whole-archive");
   CmdArgs.push_back(
-      getToolChain().getCompilerRTArgString(Args, "sancov_begin"));
+      getToolChain().getCompilerRTArgString(Args, "sancov_begin", false));
   CmdArgs.push_back("--no-whole-archive");
 
   getToolChain().AddFilePathLibArgs(Args, CmdArgs);
@@ -135,7 +136,7 @@ void solaris::Linker::ConstructJob(Compilation &C, const JobAction &JA,
   // __stop_SECNAME labels.
   CmdArgs.push_back("--whole-archive");
   CmdArgs.push_back(
-      getToolChain().getCompilerRTArgString(Args, "sancov_end"));
+      getToolChain().getCompilerRTArgString(Args, "sancov_end", false));
   CmdArgs.push_back("--no-whole-archive");
 
   if (!Args.hasArg(options::OPT_nostdlib, options::OPT_nostartfiles)) {

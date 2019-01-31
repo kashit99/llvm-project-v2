@@ -1,8 +1,9 @@
 //===- MustExecute.cpp - Printer for isGuaranteedToExecute ----------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -82,15 +83,16 @@ void ICFLoopSafetyInfo::computeLoopSafetyInfo(const Loop *CurLoop) {
   computeBlockColors(CurLoop);
 }
 
-void ICFLoopSafetyInfo::insertInstructionTo(const Instruction *Inst,
-                                            const BasicBlock *BB) {
-  ICF.insertInstructionTo(Inst, BB);
-  MW.insertInstructionTo(Inst, BB);
+void ICFLoopSafetyInfo::insertInstructionTo(const BasicBlock *BB) {
+  ICF.invalidateBlock(BB);
+  MW.invalidateBlock(BB);
 }
 
 void ICFLoopSafetyInfo::removeInstruction(const Instruction *Inst) {
-  ICF.removeInstruction(Inst);
-  MW.removeInstruction(Inst);
+  // TODO: So far we just conservatively drop cache, but maybe we can not do it
+  // when Inst is not an ICF instruction. Follow-up on that.
+  ICF.invalidateBlock(Inst->getParent());
+  MW.invalidateBlock(Inst->getParent());
 }
 
 void LoopSafetyInfo::computeBlockColors(const Loop *CurLoop) {

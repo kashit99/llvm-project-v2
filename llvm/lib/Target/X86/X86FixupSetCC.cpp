@@ -1,8 +1,9 @@
 //===---- X86FixupSetCC.cpp - optimize usage of LEA instructions ----------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -102,7 +103,7 @@ X86FixupSetCCPass::findFlagsImpDef(MachineBasicBlock *MBB,
   auto MBBStart = MBB->rend();
   for (int i = 0; (i < SearchBound) && (MI != MBBStart); ++i, ++MI)
     for (auto &Op : MI->implicit_operands())
-      if (Op.isReg() && (Op.getReg() == X86::EFLAGS) && Op.isDef())
+      if ((Op.getReg() == X86::EFLAGS) && (Op.isDef()))
         return &*MI;
 
   return nullptr;
@@ -110,7 +111,7 @@ X86FixupSetCCPass::findFlagsImpDef(MachineBasicBlock *MBB,
 
 bool X86FixupSetCCPass::impUsesFlags(MachineInstr *MI) {
   for (auto &Op : MI->implicit_operands())
-    if (Op.isReg() && (Op.getReg() == X86::EFLAGS) && Op.isUse())
+    if ((Op.getReg() == X86::EFLAGS) && (Op.isUse()))
       return true;
 
   return false;

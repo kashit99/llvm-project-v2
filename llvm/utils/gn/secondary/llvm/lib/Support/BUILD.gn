@@ -88,7 +88,6 @@ static_library("Support") {
     "MathExtras.cpp",
     "MemoryBuffer.cpp",
     "NativeFormatting.cpp",
-    "Optional.cpp",
     "Options.cpp",
     "Parallel.cpp",
     "PluginLoader.cpp",
@@ -156,7 +155,7 @@ static_library("Support") {
 
   libs = []
 
-  if (current_os == "linux" || current_os == "android") {
+  if (host_os == "linux") {
     libs += [ "dl" ]
   }
 }

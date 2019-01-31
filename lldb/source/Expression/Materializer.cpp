@@ -11,13 +11,13 @@
 #include "lldb/Core/ValueObjectConstResult.h"
 #include "lldb/Core/ValueObjectVariable.h"
 #include "lldb/Expression/ExpressionVariable.h"
-#include "lldb/Symbol/ClangASTContext.h"
 #include "lldb/Symbol/Symbol.h"
 #include "lldb/Symbol/Type.h"
 #include "lldb/Symbol/Variable.h"
 #include "lldb/Target/ExecutionContext.h"
 #include "lldb/Target/RegisterContext.h"
 #include "lldb/Target/StackFrame.h"
+#include "lldb/Target/SwiftLanguageRuntime.h"
 #include "lldb/Target/Target.h"
 #include "lldb/Target/Thread.h"
 #include "lldb/Utility/Log.h"
@@ -423,7 +423,7 @@ class EntityVariable : public Materializer::Entity {
 public:
   EntityVariable(lldb::VariableSP &variable_sp)
       : Entity(), m_variable_sp(variable_sp), m_is_reference(false),
-        m_temporary_allocation(LLDB_INVALID_ADDRESS),
+        m_is_generic(false), m_temporary_allocation(LLDB_INVALID_ADDRESS),
         m_temporary_allocation_size(0) {
     // Hard-coding to maximum size of a pointer since all variables are
     // materialized by reference
@@ -431,6 +431,8 @@ public:
     m_alignment = 8;
     m_is_reference =
         m_variable_sp->GetType()->GetForwardCompilerType().IsReferenceType();
+    m_is_generic = SwiftASTContext::IsGenericType(
+        m_variable_sp->GetType()->GetForwardCompilerType());
   }
 
   void Materialize(lldb::StackFrameSP &frame_sp, IRMemoryMap &map,
@@ -468,6 +470,18 @@ public:
       return;
     }
 
+    // In the case where the value is of Swift generic type, unbox it.
+    CompilerType valobj_type = valobj_sp->GetCompilerType();
+
+    if (m_is_generic) {
+      auto dyn_obj = valobj_sp->GetDynamicValue(lldb::eDynamicDontRunTarget);
+      if (dyn_obj) {
+        // Update the type to refer to the dynamic type.
+        valobj_sp = dyn_obj;
+        valobj_type = valobj_sp->GetCompilerType();
+      }
+    }
+
     if (m_is_reference) {
       DataExtractor valobj_extractor;
       Status extract_error;
@@ -495,9 +509,19 @@ public:
       }
     } else {
       AddressType address_type = eAddressTypeInvalid;
-      const bool scalar_is_load_address = false;
+      const bool is_dynamic_class_type =
+          m_is_generic &&
+          (valobj_type.GetTypeClass() == lldb::eTypeClassClass);
+      const bool scalar_is_load_address = m_is_generic; // this is the only
+                                                          // time we're dealing
+                                                          // with dynamic values
+
+      // if the dynamic type is a class, bypass the GetAddressOf() optimization
+      // as it doesn't do the right thing
       lldb::addr_t addr_of_valobj =
-          valobj_sp->GetAddressOf(scalar_is_load_address, &address_type);
+          is_dynamic_class_type
+              ? LLDB_INVALID_ADDRESS
+              : valobj_sp->GetAddressOf(scalar_is_load_address, &address_type);
       if (addr_of_valobj != LLDB_INVALID_ADDRESS) {
         Status write_error;
         map.WritePointerToMemory(load_addr, addr_of_valobj, write_error);
@@ -513,6 +537,14 @@ public:
         Status extract_error;
         valobj_sp->GetData(data, extract_error);
         if (!extract_error.Success()) {
+          if (valobj_type.GetMinimumLanguage() == lldb::eLanguageTypeSwift) {
+            llvm::Optional<uint64_t> size =
+                valobj_type.GetByteSize(frame_sp.get());
+            if (size && *size == 0) {
+              // We don't need to materialize empty structs in Swift.
+              return;
+            }
+          }
           err.SetErrorStringWithFormat("couldn't get the value of %s: %s",
                                        m_variable_sp->GetName().AsCString(),
                                        extract_error.AsCString());
@@ -543,8 +575,23 @@ public:
           return;
         }
 
-        size_t bit_align =
-            m_variable_sp->GetType()->GetLayoutCompilerType().GetTypeBitAlign();
+        // FIXME: It would be better to map the type into the context when the
+        //        variable is created. 
+        auto layout_type = m_variable_sp->GetType()->GetLayoutCompilerType();
+
+        // IRGen wants a fully realized type so we do archetype binding
+        // before asking informations about this type (e.g. its size).
+        if (layout_type.GetMinimumLanguage() == lldb::eLanguageTypeSwift) {
+          lldb::ProcessSP process_sp =
+              map.GetBestExecutionContextScope()->CalculateProcess();
+          SwiftLanguageRuntime *language_runtime =
+              process_sp->GetSwiftLanguageRuntime();
+          if (language_runtime && frame_sp)
+            layout_type = language_runtime->DoArchetypeBindingForType(
+                *frame_sp, layout_type);
+        }
+
+        size_t bit_align = layout_type.GetTypeBitAlign();
         size_t byte_align = (bit_align + 7) / 8;
 
         if (!byte_align)
@@ -625,6 +672,16 @@ public:
         return;
       }
 
+      // In the case where the value is of Swift generic type, resolve its
+      // dynamic type, because we may
+      // need to unbox the target.
+
+      CompilerType valobj_type = valobj_sp->GetCompilerType();
+
+      if (SwiftASTContext::IsGenericType(valobj_type)) {
+        valobj_sp = valobj_sp->GetDynamicValue(lldb::eDynamicDontRunTarget);
+      }
+
       lldb_private::DataExtractor data;
 
       Status extract_error;
@@ -633,6 +690,14 @@ public:
                         extract_error);
 
       if (!extract_error.Success()) {
+        if (valobj_type.GetMinimumLanguage() == lldb::eLanguageTypeSwift) {
+          llvm::Optional<uint64_t> size =
+              valobj_type.GetByteSize(frame_sp.get());
+          if (size && *size == 0)
+            // We don't need to dematerialize empty structs in Swift.
+            return;
+        }
+        
         err.SetErrorStringWithFormat("couldn't get the data for variable %s",
                                      m_variable_sp->GetName().AsCString());
         return;
@@ -754,6 +819,7 @@ public:
 private:
   lldb::VariableSP m_variable_sp;
   bool m_is_reference;
+  bool m_is_generic;
   lldb::addr_t m_temporary_allocation;
   size_t m_temporary_allocation_size;
   lldb::DataBufferSP m_original_data;
@@ -867,8 +933,21 @@ public:
       return;
     }
 
+    lldb::LanguageType lang =
+        (m_type.GetMinimumLanguage() == lldb::eLanguageTypeSwift)
+            ? lldb::eLanguageTypeSwift
+            : lldb::eLanguageTypeObjC_plus_plus;
+
     Status type_system_error;
-    TypeSystem *type_system = target_sp->GetScratchTypeSystemForLanguage(
+    TypeSystem *type_system;
+
+    if (lang == lldb::eLanguageTypeSwift)
+      // We already acquired the lock in the SwiftUserExpression.
+      type_system =
+          target_sp->GetScratchSwiftASTContext(type_system_error, *frame_sp)
+              .get();
+    else
+      type_system = target_sp->GetScratchTypeSystemForLanguage(
         &type_system_error, m_type.GetMinimumLanguage());
 
     if (!type_system) {
@@ -879,8 +958,12 @@ public:
       return;
     }
 
-    PersistentExpressionState *persistent_state =
-        type_system->GetPersistentExpressionState();
+    PersistentExpressionState *persistent_state;
+    if (lang == lldb::eLanguageTypeSwift)
+      persistent_state =
+        target_sp->GetSwiftPersistentExpressionState(*frame_sp);
+    else
+      persistent_state = type_system->GetPersistentExpressionState();
 
     if (!persistent_state) {
       err.SetErrorString("Couldn't dematerialize a result variable: "
@@ -895,6 +978,16 @@ public:
             : persistent_state->GetNextPersistentVariableName(
                   *target_sp, persistent_state->GetPersistentVariablePrefix());
 
+    lldb::ProcessSP process_sp =
+        map.GetBestExecutionContextScope()->CalculateProcess();
+
+    if (lang == lldb::eLanguageTypeSwift) {
+      SwiftLanguageRuntime *language_runtime =
+          process_sp->GetSwiftLanguageRuntime();
+      if (language_runtime && frame_sp)
+        m_type = language_runtime->DoArchetypeBindingForType(*frame_sp, m_type);
+    }
+
     lldb::ExpressionVariableSP ret = persistent_state->CreatePersistentVariable(
         exe_scope, name, m_type, map.GetByteOrder(), map.GetAddressByteSize());
 
@@ -904,9 +997,6 @@ public:
                                    name.AsCString());
       return;
     }
-
-    lldb::ProcessSP process_sp =
-        map.GetBestExecutionContextScope()->CalculateProcess();
 
     if (m_delegate) {
       m_delegate->DidDematerialize(ret);
@@ -1336,8 +1426,13 @@ uint32_t Materializer::AddRegister(const RegisterInfo &register_info,
   return ret;
 }
 
+Materializer::Materializer(LLVMCastKind kind)
+    : m_kind(kind), m_dematerializer_wp(), m_current_offset(0),
+      m_struct_alignment(8) {}
+
 Materializer::Materializer()
-    : m_dematerializer_wp(), m_current_offset(0), m_struct_alignment(8) {}
+    : m_kind(eKindBasic), m_dematerializer_wp(), m_current_offset(0),
+      m_struct_alignment(8) {}
 
 Materializer::~Materializer() {
   DematerializerSP dematerializer_sp = m_dematerializer_wp.lock();
@@ -1427,6 +1522,9 @@ void Materializer::Dematerializer::Dematerialize(Status &error,
       if (!error.Success())
         break;
     }
+
+    // Okay now if there's an error and it is not empty, then report that,
+    // otherwise report the regular error...
   }
 
   Wipe();

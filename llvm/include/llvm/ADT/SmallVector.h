@@ -1,8 +1,9 @@
 //===- llvm/ADT/SmallVector.h - 'Normally small' vectors --------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -124,9 +125,13 @@ public:
   using const_pointer = const T *;
 
   // forward iterator creation methods.
+  LLVM_ATTRIBUTE_ALWAYS_INLINE
   iterator begin() { return (iterator)this->BeginX; }
+  LLVM_ATTRIBUTE_ALWAYS_INLINE
   const_iterator begin() const { return (const_iterator)this->BeginX; }
+  LLVM_ATTRIBUTE_ALWAYS_INLINE
   iterator end() { return begin() + size(); }
+  LLVM_ATTRIBUTE_ALWAYS_INLINE
   const_iterator end() const { return begin() + size(); }
 
   // reverse iterator creation methods.
@@ -145,10 +150,12 @@ public:
   /// Return a pointer to the vector's buffer, even if empty().
   const_pointer data() const { return const_pointer(begin()); }
 
+  LLVM_ATTRIBUTE_ALWAYS_INLINE
   reference operator[](size_type idx) {
     assert(idx < size());
     return begin()[idx];
   }
+  LLVM_ATTRIBUTE_ALWAYS_INLINE
   const_reference operator[](size_type idx) const {
     assert(idx < size());
     return begin()[idx];
@@ -173,9 +180,9 @@ public:
   }
 };
 
-/// SmallVectorTemplateBase<TriviallyCopyable = false> - This is where we put method
+/// SmallVectorTemplateBase<isPodLike = false> - This is where we put method
 /// implementations that are designed to work with non-POD-like T's.
-template <typename T, bool = is_trivially_copyable<T>::value>
+template <typename T, bool = isPodLike<T>::value>
 class SmallVectorTemplateBase : public SmallVectorTemplateCommon<T> {
 protected:
   SmallVectorTemplateBase(size_t Size) : SmallVectorTemplateCommon<T>(Size) {}
@@ -229,8 +236,8 @@ public:
 };
 
 // Define this out-of-line to dissuade the C++ compiler from inlining it.
-template <typename T, bool TriviallyCopyable>
-void SmallVectorTemplateBase<T, TriviallyCopyable>::grow(size_t MinSize) {
+template <typename T, bool isPodLike>
+void SmallVectorTemplateBase<T, isPodLike>::grow(size_t MinSize) {
   if (MinSize > UINT32_MAX)
     report_bad_alloc_error("SmallVector capacity overflow during allocation");
 
@@ -253,8 +260,9 @@ void SmallVectorTemplateBase<T, TriviallyCopyable>::grow(size_t MinSize) {
   this->Capacity = NewCapacity;
 }
 
-/// SmallVectorTemplateBase<TriviallyCopyable = true> - This is where we put
-/// method implementations that are designed to work with POD-like T's.
+
+/// SmallVectorTemplateBase<isPodLike = true> - This is where we put method
+/// implementations that are designed to work with POD-like T's.
 template <typename T>
 class SmallVectorTemplateBase<T, true> : public SmallVectorTemplateCommon<T> {
 protected:
@@ -323,7 +331,7 @@ public:
 protected:
   // Default ctor - Initialize to empty.
   explicit SmallVectorImpl(unsigned N)
-      : SmallVectorTemplateBase<T>(N) {}
+      : SmallVectorTemplateBase<T, isPodLike<T>::value>(N) {}
 
 public:
   SmallVectorImpl(const SmallVectorImpl &) = delete;

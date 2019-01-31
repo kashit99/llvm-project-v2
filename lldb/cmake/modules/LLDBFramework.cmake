@@ -6,7 +6,7 @@ get_filename_component(
 
 message(STATUS "LLDB.framework: build path is '${framework_target_dir}'")
 message(STATUS "LLDB.framework: install path is '${LLDB_FRAMEWORK_INSTALL_DIR}'")
-message(STATUS "LLDB.framework: resources subdirectory is 'Versions/${LLDB_FRAMEWORK_VERSION}/Resources'")
+message(STATUS "LLDB.framework: resources subdirectory is '${LLDB_FRAMEWORK_RESOURCE_DIR}'")
 
 # Configure liblldb as a framework bundle
 set_target_properties(liblldb PROPERTIES
@@ -97,12 +97,10 @@ add_custom_command(TARGET lldb-framework-headers POST_BUILD
 )
 
 # Copy vendor-specific headers from clang (without staging).
-if(NOT IOS AND NOT LLDB_BUILT_STANDALONE)
-  add_dependencies(lldb-framework clang-headers)
-  add_custom_command(TARGET lldb-framework POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-            $<TARGET_PROPERTY:clang-headers,RUNTIME_OUTPUT_DIRECTORY>
-            $<TARGET_FILE_DIR:liblldb>/Resources/Clang/include
+if(NOT IOS)
+  add_custom_command(TARGET lldb-framework-headers POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${LLDB_PATH_TO_SWIFT_BUILD}/lib/swift/clang/ $<TARGET_FILE_DIR:liblldb>/Resources/Clang
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${LLDB_PATH_TO_SWIFT_BUILD}/lib/swift $<TARGET_FILE_DIR:liblldb>/Resources/Swift
     COMMENT "LLDB.framework: copy clang vendor-specific headers"
   )
 endif()

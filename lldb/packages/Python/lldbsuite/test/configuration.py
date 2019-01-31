@@ -31,7 +31,10 @@ categoriesList = None
 # set to true if we are going to use categories for cherry-picking test cases
 useCategories = False
 # Categories we want to skip
-skipCategories = ["darwin-log"]
+skipCategories = ["darwin-log", "frame-diagnose"]
+if platform.system() == 'Linux':
+    skipCategories.append('watchpoints')
+
 # use this to track per-category failures
 failuresPerCategory = {}
 
@@ -44,6 +47,8 @@ count = 1
 # The 'arch' and 'compiler' can be specified via command line.
 arch = None        # Must be initialized after option parsing
 compiler = None    # Must be initialized after option parsing
+swiftCompiler = None
+swiftLibrary = None
 
 # Path to the FileCheck testing tool. Not optional.
 filecheck = None

@@ -127,6 +127,10 @@ void Driver::OptionData::AddLocalLLDBInit() {
     InitialCmdEntry entry(path, true, true, true);
     m_after_file_commands.push_back(entry);
   }
+
+  // Swift support.
+  m_repl = false;
+  m_repl_options.erase();
 }
 
 void Driver::OptionData::AddInitialCommand(std::string command,

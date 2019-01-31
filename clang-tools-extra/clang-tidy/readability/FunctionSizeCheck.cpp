@@ -1,8 +1,9 @@
 //===--- FunctionSize.cpp - clang-tidy ------------------------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -144,12 +145,7 @@ void FunctionSizeCheck::storeOptions(ClangTidyOptions::OptionMap &Opts) {
 }
 
 void FunctionSizeCheck::registerMatchers(MatchFinder *Finder) {
-  // Lambdas ignored - historically considered part of enclosing function.
-  // FIXME: include them instead? Top-level lambdas are currently never counted.
-  Finder->addMatcher(functionDecl(unless(isInstantiated()),
-                                  unless(cxxMethodDecl(ofClass(isLambda()))))
-                         .bind("func"),
-                     this);
+  Finder->addMatcher(functionDecl(unless(isInstantiated())).bind("func"), this);
 }
 
 void FunctionSizeCheck::check(const MatchFinder::MatchResult &Result) {

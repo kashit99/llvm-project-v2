@@ -1,8 +1,9 @@
 //===-- llvm/CodeGen/GlobalISel/Legalizer.cpp -----------------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -15,8 +16,6 @@
 #include "llvm/CodeGen/GlobalISel/Legalizer.h"
 #include "llvm/ADT/PostOrderIterator.h"
 #include "llvm/ADT/SetVector.h"
-#include "llvm/CodeGen/GlobalISel/CSEInfo.h"
-#include "llvm/CodeGen/GlobalISel/CSEMIRBuilder.h"
 #include "llvm/CodeGen/GlobalISel/GISelChangeObserver.h"
 #include "llvm/CodeGen/GlobalISel/GISelWorkList.h"
 #include "llvm/CodeGen/GlobalISel/LegalizationArtifactCombiner.h"
@@ -34,17 +33,11 @@
 
 using namespace llvm;
 
-static cl::opt<bool>
-    EnableCSEInLegalizer("enable-cse-in-legalizer",
-                         cl::desc("Should enable CSE in Legalizer"),
-                         cl::Optional, cl::init(false));
-
 char Legalizer::ID = 0;
 INITIALIZE_PASS_BEGIN(Legalizer, DEBUG_TYPE,
                       "Legalize the Machine IR a function's Machine IR", false,
                       false)
 INITIALIZE_PASS_DEPENDENCY(TargetPassConfig)
-INITIALIZE_PASS_DEPENDENCY(GISelCSEAnalysisWrapperPass)
 INITIALIZE_PASS_END(Legalizer, DEBUG_TYPE,
                     "Legalize the Machine IR a function's Machine IR", false,
                     false)
@@ -55,8 +48,6 @@ Legalizer::Legalizer() : MachineFunctionPass(ID) {
 
 void Legalizer::getAnalysisUsage(AnalysisUsage &AU) const {
   AU.addRequired<TargetPassConfig>();
-  AU.addRequired<GISelCSEAnalysisWrapperPass>();
-  AU.addPreserved<GISelCSEAnalysisWrapperPass>();
   getSelectionDAGFallbackAnalysisUsage(AU);
   MachineFunctionPass::getAnalysisUsage(AU);
 }
@@ -82,7 +73,6 @@ static bool isArtifact(const MachineInstr &MI) {
 using InstListTy = GISelWorkList<256>;
 using ArtifactListTy = GISelWorkList<128>;
 
-namespace {
 class LegalizerWorkListManager : public GISelChangeObserver {
   InstListTy &InstList;
   ArtifactListTy &ArtifactList;
@@ -91,7 +81,7 @@ public:
   LegalizerWorkListManager(InstListTy &Insts, ArtifactListTy &Arts)
       : InstList(Insts), ArtifactList(Arts) {}
 
-  void createdInstr(MachineInstr &MI) override {
+  void createdInstr(const MachineInstr &MI) override {
     // Only legalize pre-isel generic instructions.
     // Legalization process could generate Target specific pseudo
     // instructions with generic types. Don't record them
@@ -104,24 +94,23 @@ public:
     LLVM_DEBUG(dbgs() << ".. .. New MI: " << MI);
   }
 
-  void erasingInstr(MachineInstr &MI) override {
+  void erasingInstr(const MachineInstr &MI) override {
     LLVM_DEBUG(dbgs() << ".. .. Erasing: " << MI);
     InstList.remove(&MI);
     ArtifactList.remove(&MI);
   }
 
-  void changingInstr(MachineInstr &MI) override {
+  void changingInstr(const MachineInstr &MI) override {
     LLVM_DEBUG(dbgs() << ".. .. Changing MI: " << MI);
   }
 
-  void changedInstr(MachineInstr &MI) override {
+  void changedInstr(const MachineInstr &MI) override {
     // When insts change, we want to revisit them to legalize them again.
     // We'll consider them the same as created.
     LLVM_DEBUG(dbgs() << ".. .. Changed MI: " << MI);
     createdInstr(MI);
   }
 };
-} // namespace
 
 bool Legalizer::runOnMachineFunction(MachineFunction &MF) {
   // If the ISel pipeline failed, do not bother running that pass.
@@ -131,16 +120,14 @@ bool Legalizer::runOnMachineFunction(MachineFunction &MF) {
   LLVM_DEBUG(dbgs() << "Legalize Machine IR for: " << MF.getName() << '\n');
   init(MF);
   const TargetPassConfig &TPC = getAnalysis<TargetPassConfig>();
-  GISelCSEAnalysisWrapper &Wrapper =
-      getAnalysis<GISelCSEAnalysisWrapperPass>().getCSEWrapper();
   MachineOptimizationRemarkEmitter MORE(MF, /*MBFI=*/nullptr);
 
   const size_t NumBlocks = MF.size();
   MachineRegisterInfo &MRI = MF.getRegInfo();
 
   // Populate Insts
-  InstListTy InstList;
-  ArtifactListTy ArtifactList;
+  InstListTy InstList(&MF);
+  ArtifactListTy ArtifactList(&MF);
   ReversePostOrderTraversal<MachineFunction *> RPOT(&MF);
   // Perform legalization bottom up so we can DCE as we legalize.
   // Traverse BB in RPOT and within each basic block, add insts top down,
@@ -159,35 +146,12 @@ bool Legalizer::runOnMachineFunction(MachineFunction &MF) {
         InstList.insert(&MI);
     }
   }
-  std::unique_ptr<MachineIRBuilder> MIRBuilder;
-  GISelCSEInfo *CSEInfo = nullptr;
-  bool EnableCSE = EnableCSEInLegalizer.getNumOccurrences()
-                       ? EnableCSEInLegalizer
-                       : TPC.isGISelCSEEnabled();
-
-  if (EnableCSE) {
-    MIRBuilder = make_unique<CSEMIRBuilder>();
-    std::unique_ptr<CSEConfig> Config = make_unique<CSEConfig>();
-    CSEInfo = &Wrapper.get(std::move(Config));
-    MIRBuilder->setCSEInfo(CSEInfo);
-  } else
-    MIRBuilder = make_unique<MachineIRBuilder>();
-  // This observer keeps the worklist updated.
   LegalizerWorkListManager WorkListObserver(InstList, ArtifactList);
-  // We want both WorkListObserver as well as CSEInfo to observe all changes.
-  // Use the wrapper observer.
-  GISelObserverWrapper WrapperObserver(&WorkListObserver);
-  if (EnableCSE && CSEInfo)
-    WrapperObserver.addObserver(CSEInfo);
-  // Now install the observer as the delegate to MF.
-  // This will keep all the observers notified about new insertions/deletions.
-  RAIIDelegateInstaller DelInstall(MF, &WrapperObserver);
-  LegalizerHelper Helper(MF, WrapperObserver, *MIRBuilder.get());
+  LegalizerHelper Helper(MF, WorkListObserver);
   const LegalizerInfo &LInfo(Helper.getLegalizerInfo());
-  LegalizationArtifactCombiner ArtCombiner(*MIRBuilder.get(), MF.getRegInfo(),
-                                           LInfo);
-  auto RemoveDeadInstFromLists = [&WrapperObserver](MachineInstr *DeadMI) {
-    WrapperObserver.erasingInstr(*DeadMI);
+  LegalizationArtifactCombiner ArtCombiner(Helper.MIRBuilder, MF.getRegInfo(), LInfo);
+  auto RemoveDeadInstFromLists = [&WorkListObserver](MachineInstr *DeadMI) {
+    WorkListObserver.erasingInstr(*DeadMI);
   };
   bool Changed = false;
   do {

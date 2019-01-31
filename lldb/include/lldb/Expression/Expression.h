@@ -15,8 +15,11 @@
 
 
 #include "lldb/Expression/ExpressionTypeSystemHelper.h"
+#include "lldb/Symbol/CompilerType.h"
 #include "lldb/lldb-forward.h"
 #include "lldb/lldb-private.h"
+
+#include "llvm/ADT/SmallVector.h"
 
 namespace lldb_private {
 
@@ -64,6 +67,14 @@ public:
   virtual lldb::LanguageType Language() { return lldb::eLanguageTypeUnknown; }
 
   //------------------------------------------------------------------
+  /// Return the object that the parser should use when registering external
+  /// values (assuming it doesn't use a ClangExpressionDeclMap).  May be
+  /// NULL if there is a ClangExpressionDeclMap or everything should be
+  /// self-contained.
+  //------------------------------------------------------------------
+  virtual Materializer *GetMaterializer() { return NULL; }
+
+  //------------------------------------------------------------------
   /// Return the desired result type of the function, or eResultTypeAny if
   /// indifferent.
   //------------------------------------------------------------------
@@ -101,6 +112,16 @@ public:
   //------------------------------------------------------------------
   virtual void DidFinishExecuting() {}
 
+  struct SwiftGenericInfo {
+    struct Binding {
+      const char *name;
+      CompilerType type;
+    };
+    llvm::SmallVector<Binding, 3> class_bindings;
+  };
+
+  const SwiftGenericInfo &GetSwiftGenericInfo() { return m_swift_generic_info; }
+
   virtual ExpressionTypeSystemHelper *GetTypeSystemHelper() { return nullptr; }
 
 protected:
@@ -114,6 +135,7 @@ protected:
   lldb::addr_t m_jit_end_addr;   ///< The address of the JITted function within
                                  ///the JIT allocation.  LLDB_INVALID_ADDRESS if
                                  ///invalid.
+  SwiftGenericInfo m_swift_generic_info;
 };
 
 } // namespace lldb_private

@@ -1,8 +1,9 @@
 //===---- CGObjC.cpp - Emit LLVM Code for Objective-C ---------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -21,6 +22,7 @@
 #include "clang/Basic/Diagnostic.h"
 #include "clang/CodeGen/CGFunctionInfo.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/IR/CallSite.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/InlineAsm.h"
 using namespace clang;
@@ -1050,7 +1052,7 @@ CodeGenFunction::generateObjCGetterBody(const ObjCImplementationDecl *classImpl,
 
     // FIXME: We shouldn't need to get the function info here, the
     // runtime already should have computed it to build the function.
-    llvm::CallBase *CallInstruction;
+    llvm::Instruction *CallInstruction;
     RValue RV = EmitCall(
         getTypes().arrangeBuiltinFunctionCall(propType, args),
         callee, ReturnValueSlot(), args, &CallInstruction);
@@ -2043,9 +2045,9 @@ static llvm::Value *emitObjCValueOperation(CodeGenFunction &CGF,
   value = CGF.Builder.CreateBitCast(value, CGF.Int8PtrTy);
 
   // Call the function.
-  llvm::CallBase *Inst = nullptr;
+  llvm::Instruction *Inst = nullptr;
   if (MayThrow)
-    Inst = CGF.EmitCallOrInvoke(fn, value);
+    Inst = CGF.EmitCallOrInvoke(fn, value).getInstruction();
   else
     Inst = CGF.EmitNounwindRuntimeCall(fn, value);
 

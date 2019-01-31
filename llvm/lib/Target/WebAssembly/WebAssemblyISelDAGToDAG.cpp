@@ -1,8 +1,9 @@
 //- WebAssemblyISelDAGToDAG.cpp - A dag to dag inst selector for WebAssembly -//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 ///
@@ -23,6 +24,8 @@
 using namespace llvm;
 
 #define DEBUG_TYPE "wasm-isel"
+
+extern cl::opt<bool> EnableUnimplementedWasmSIMDInstrs;
 
 //===--------------------------------------------------------------------===//
 /// WebAssembly-specific code to select WebAssembly machine instructions for
@@ -47,10 +50,6 @@ public:
   }
 
   bool runOnMachineFunction(MachineFunction &MF) override {
-    LLVM_DEBUG(dbgs() << "********** ISelDAGToDAG **********\n"
-                         "********** Function: "
-                      << MF.getName() << '\n');
-
     ForCodeSize = MF.getFunction().hasFnAttribute(Attribute::OptimizeForSize) ||
                   MF.getFunction().hasFnAttribute(Attribute::MinSize);
     Subtarget = &MF.getSubtarget<WebAssemblySubtarget>();

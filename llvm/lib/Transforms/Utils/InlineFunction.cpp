@@ -1,8 +1,9 @@
 //===- InlineFunction.cpp - Code to perform function inlining -------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -998,22 +999,22 @@ static void AddAliasScopeMetadata(CallSite CS, ValueToValueMapTy &VMap,
         PtrArgs.push_back(CXI->getPointerOperand());
       else if (const AtomicRMWInst *RMWI = dyn_cast<AtomicRMWInst>(I))
         PtrArgs.push_back(RMWI->getPointerOperand());
-      else if (const auto *Call = dyn_cast<CallBase>(I)) {
+      else if (ImmutableCallSite ICS = ImmutableCallSite(I)) {
         // If we know that the call does not access memory, then we'll still
         // know that about the inlined clone of this call site, and we don't
         // need to add metadata.
-        if (Call->doesNotAccessMemory())
+        if (ICS.doesNotAccessMemory())
           continue;
 
         IsFuncCall = true;
         if (CalleeAAR) {
-          FunctionModRefBehavior MRB = CalleeAAR->getModRefBehavior(Call);
+          FunctionModRefBehavior MRB = CalleeAAR->getModRefBehavior(ICS);
           if (MRB == FMRB_OnlyAccessesArgumentPointees ||
               MRB == FMRB_OnlyReadsArgumentPointees)
             IsArgMemOnlyCall = true;
         }
 
-        for (Value *Arg : Call->args()) {
+        for (Value *Arg : ICS.args()) {
           // We need to check the underlying objects of all arguments, not just
           // the pointer arguments, because we might be passing pointers as
           // integers, etc.
@@ -1447,45 +1448,47 @@ static void updateCallProfile(Function *Callee, const ValueToValueMapTy &VMap,
       CalleeEntryCount.getCount() < 1)
     return;
   auto CallSiteCount = PSI ? PSI->getProfileCount(TheCall, CallerBFI) : None;
-  int64_t CallCount =
+  uint64_t CallCount =
       std::min(CallSiteCount.hasValue() ? CallSiteCount.getValue() : 0,
                CalleeEntryCount.getCount());
-  updateProfileCallee(Callee, -CallCount, &VMap);
-}
 
-void llvm::updateProfileCallee(
-    Function *Callee, int64_t entryDelta,
-    const ValueMap<const Value *, WeakTrackingVH> *VMap) {
-  auto CalleeCount = Callee->getEntryCount();
-  if (!CalleeCount.hasValue())
-    return;
-
-  uint64_t priorEntryCount = CalleeCount.getCount();
-  uint64_t newEntryCount = priorEntryCount;
-
-  // Since CallSiteCount is an estimate, it could exceed the original callee
-  // count and has to be set to 0 so guard against underflow.
-  if (entryDelta < 0 && static_cast<uint64_t>(-entryDelta) > priorEntryCount)
-    newEntryCount = 0;
-  else
-    newEntryCount = priorEntryCount + entryDelta;
-
-  Callee->setEntryCount(newEntryCount);
-
-  // During inlining ?
-  if (VMap) {
-    uint64_t cloneEntryCount = priorEntryCount - newEntryCount;
-    for (auto const &Entry : *VMap)
-      if (isa<CallInst>(Entry.first))
-        if (auto *CI = dyn_cast_or_null<CallInst>(Entry.second))
-          CI->updateProfWeight(cloneEntryCount, priorEntryCount);
-  }
+  for (auto const &Entry : VMap)
+    if (isa<CallInst>(Entry.first))
+      if (auto *CI = dyn_cast_or_null<CallInst>(Entry.second))
+        CI->updateProfWeight(CallCount, CalleeEntryCount.getCount());
   for (BasicBlock &BB : *Callee)
     // No need to update the callsite if it is pruned during inlining.
-    if (!VMap || VMap->count(&BB))
+    if (VMap.count(&BB))
       for (Instruction &I : BB)
         if (CallInst *CI = dyn_cast<CallInst>(&I))
-          CI->updateProfWeight(newEntryCount, priorEntryCount);
+          CI->updateProfWeight(CalleeEntryCount.getCount() - CallCount,
+                               CalleeEntryCount.getCount());
+}
+
+/// Update the entry count of callee after inlining.
+///
+/// The callsite's block count is subtracted from the callee's function entry
+/// count.
+static void updateCalleeCount(BlockFrequencyInfo *CallerBFI, BasicBlock *CallBB,
+                              Instruction *CallInst, Function *Callee,
+                              ProfileSummaryInfo *PSI) {
+  // If the callee has a original count of N, and the estimated count of
+  // callsite is M, the new callee count is set to N - M. M is estimated from
+  // the caller's entry count, its entry block frequency and the block frequency
+  // of the callsite.
+  auto CalleeCount = Callee->getEntryCount();
+  if (!CalleeCount.hasValue() || !PSI)
+    return;
+  auto CallCount = PSI->getProfileCount(CallInst, CallerBFI);
+  if (!CallCount.hasValue())
+    return;
+  // Since CallSiteCount is an estimate, it could exceed the original callee
+  // count and has to be set to 0.
+  if (CallCount.getValue() > CalleeCount.getCount())
+    CalleeCount.setCount(0);
+  else
+    CalleeCount.setCount(CalleeCount.getCount() - CallCount.getValue());
+  Callee->setEntryCount(CalleeCount);
 }
 
 /// This function inlines the called function into the basic block of the
@@ -1681,6 +1684,8 @@ llvm::InlineResult llvm::InlineFunction(CallSite CS, InlineFunctionInfo &IFI,
 
     updateCallProfile(CalledFunc, VMap, CalledFunc->getEntryCount(), TheCall,
                       IFI.PSI, IFI.CallerBFI);
+    // Update the profile count of callee.
+    updateCalleeCount(IFI.CallerBFI, OrigBB, TheCall, CalledFunc, IFI.PSI);
 
     // Inject byval arguments initialization.
     for (std::pair<Value*, Value*> &Init : ByValInit)

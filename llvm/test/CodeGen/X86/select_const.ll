@@ -193,8 +193,9 @@ define i32 @select_C_Cplus1_zeroext(i1 zeroext %cond) {
 define i32 @select_C_Cplus1_signext(i1 signext %cond) {
 ; CHECK-LABEL: select_C_Cplus1_signext:
 ; CHECK:       # %bb.0:
-; CHECK-NEXT:    # kill: def $edi killed $edi def $rdi
-; CHECK-NEXT:    leal 42(%rdi), %eax
+; CHECK-NEXT:    andl $1, %edi
+; CHECK-NEXT:    movl $42, %eax
+; CHECK-NEXT:    subl %edi, %eax
 ; CHECK-NEXT:    retq
   %sel = select i1 %cond, i32 41, i32 42
   ret i32 %sel

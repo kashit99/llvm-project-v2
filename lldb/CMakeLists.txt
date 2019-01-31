@@ -11,6 +11,14 @@ include(LLDBStandalone)
 include(LLDBConfig)
 include(AddLLDB)
 
+# BEGIN - Swift Mods
+if(NOT LLDB_BUILT_STANDALONE AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/../swift)
+   list(APPEND CMAKE_MODULE_PATH
+        "${CMAKE_CURRENT_SOURCE_DIR}/../swift/cmake"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../swift/cmake/modules")
+endif()
+# END - Swift Mods
+
 # Define the LLDB_CONFIGURATION_xxx matching the build type
 if( uppercase_CMAKE_BUILD_TYPE STREQUAL "DEBUG" )
   add_definitions( -DLLDB_CONFIGURATION_DEBUG )
@@ -47,17 +55,10 @@ if(LLDB_INCLUDE_TESTS)
   set(LLDB_DEFAULT_TEST_DSYMUTIL "${LLVM_BINARY_DIR}/${CMAKE_CFG_INTDIR}/bin/dsymutil${CMAKE_EXECUTABLE_SUFFIX}")
   set(LLDB_DEFAULT_TEST_FILECHECK "${LLVM_BINARY_DIR}/${CMAKE_CFG_INTDIR}/bin/FileCheck${CMAKE_EXECUTABLE_SUFFIX}")
 
-  if (NOT LLDB_TEST_USE_CUSTOM_C_COMPILER AND TARGET clang)
-    set(LLDB_DEFAULT_TEST_C_COMPILER "${LLVM_BINARY_DIR}/${CMAKE_CFG_INTDIR}/bin/clang${CMAKE_EXECUTABLE_SUFFIX}")
-  else()
-    set(LLDB_DEFAULT_TEST_C_COMPILER "")
-  endif()
-
-  if (NOT LLDB_TEST_USE_CUSTOM_CXX_COMPILER AND TARGET clang)
-    set(LLDB_DEFAULT_TEST_CXX_COMPILER "${LLVM_BINARY_DIR}/${CMAKE_CFG_INTDIR}/bin/clang++${CMAKE_EXECUTABLE_SUFFIX}")
-  else()
-    set(LLDB_DEFAULT_TEST_CXX_COMPILER "")
-  endif()
+  # BEGIN - Swift Mods
+  set(LLDB_DEFAULT_TEST_C_COMPILER "${LLVM_BINARY_DIR}/bin/clang${CMAKE_EXECUTABLE_SUFFIX}")
+  set(LLDB_DEFAULT_TEST_CXX_COMPILER "${LLVM_BINARY_DIR}/bin/clang++${CMAKE_EXECUTABLE_SUFFIX}")
+  # END - Swift Mods
 
   set(LLDB_TEST_EXECUTABLE "${LLDB_DEFAULT_TEST_EXECUTABLE}" CACHE PATH "lldb executable used for testing")
   set(LLDB_TEST_C_COMPILER "${LLDB_DEFAULT_TEST_C_COMPILER}" CACHE PATH "C Compiler to use for building LLDB test inferiors")
@@ -140,6 +141,29 @@ if (NOT LLDB_DISABLE_PYTHON)
 
     # Add a Post-Build Event to copy over Python files and create the symlink
     # to liblldb.so for the Python API(hardlink on Windows)
+    if (APPLE)
+        # FIXME: This replicates the Xcode project. It was the original way of
+        # finalizing the swig generator step. We should get rid of this special
+        # path and use the same script that every other platform is using. For
+        # the time being, the arguments are:
+        #  1) path to lldb source tree
+        #  2) path to lldb framework/shared library
+        #  3) path to lldb.py
+        #  4) not relevant on Darwin
+        #  5) additional flags
+        add_custom_target(finish_swig ALL
+        COMMAND
+           ${LLDB_SOURCE_DIR}/scripts/finish-swig-wrapper-classes.sh
+               ${LLDB_SOURCE_DIR}
+               ${liblldb_build_dir}
+               ${lldb_scripts_dir}
+               ""
+               ${use_python_wrapper_from_src_dir}
+        VERBATIM
+        DEPENDS ${LLDB_SOURCE_DIR}/scripts/finishSwigWrapperClasses.py
+        DEPENDS ${lldb_scripts_dir}/lldb.py
+        COMMENT "Python script sym-linking LLDB Python API")
+    else()
     add_custom_target(finish_swig ALL
         COMMAND
            ${PYTHON_EXECUTABLE} ${LLDB_SOURCE_DIR}/scripts/finishSwigWrapperClasses.py
@@ -155,6 +179,7 @@ if (NOT LLDB_DISABLE_PYTHON)
         DEPENDS ${LLDB_SOURCE_DIR}/scripts/finishSwigWrapperClasses.py
         DEPENDS ${lldb_scripts_dir}/lldb.py
         COMMENT "Python script sym-linking LLDB Python API")
+    endif()
 
     if (TARGET readline)
       set(readline_dep readline)

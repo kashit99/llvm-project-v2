@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
-# Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
-# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#                     The LLVM Compiler Infrastructure
+#
+# This file is distributed under the University of Illinois Open Source
+# License. See LICENSE.TXT for details.
 
 import unittest
 import re
@@ -348,14 +349,14 @@ class PrefixWithTest(unittest.TestCase):
 class MergeCtuMapTest(unittest.TestCase):
 
     def test_no_map_gives_empty(self):
-        pairs = sut.create_global_ctu_extdef_map([])
+        pairs = sut.create_global_ctu_function_map([])
         self.assertFalse(pairs)
 
     def test_multiple_maps_merged(self):
         concat_map = ['c:@F@fun1#I# ast/fun1.c.ast',
                       'c:@F@fun2#I# ast/fun2.c.ast',
                       'c:@F@fun3#I# ast/fun3.c.ast']
-        pairs = sut.create_global_ctu_extdef_map(concat_map)
+        pairs = sut.create_global_ctu_function_map(concat_map)
         self.assertTrue(('c:@F@fun1#I#', 'ast/fun1.c.ast') in pairs)
         self.assertTrue(('c:@F@fun2#I#', 'ast/fun2.c.ast') in pairs)
         self.assertTrue(('c:@F@fun3#I#', 'ast/fun3.c.ast') in pairs)
@@ -365,7 +366,7 @@ class MergeCtuMapTest(unittest.TestCase):
         concat_map = ['c:@F@fun1#I# ast/fun1.c.ast',
                       'c:@F@fun2#I# ast/fun2.c.ast',
                       'c:@F@fun1#I# ast/fun7.c.ast']
-        pairs = sut.create_global_ctu_extdef_map(concat_map)
+        pairs = sut.create_global_ctu_function_map(concat_map)
         self.assertFalse(('c:@F@fun1#I#', 'ast/fun1.c.ast') in pairs)
         self.assertFalse(('c:@F@fun1#I#', 'ast/fun7.c.ast') in pairs)
         self.assertTrue(('c:@F@fun2#I#', 'ast/fun2.c.ast') in pairs)
@@ -375,28 +376,28 @@ class MergeCtuMapTest(unittest.TestCase):
         concat_map = ['c:@F@fun1#I# ast/fun1.c.ast',
                       'c:@F@fun2#I# ast/fun2.c.ast',
                       'c:@F@fun1#I# ast/fun1.c.ast']
-        pairs = sut.create_global_ctu_extdef_map(concat_map)
+        pairs = sut.create_global_ctu_function_map(concat_map)
         self.assertTrue(('c:@F@fun1#I#', 'ast/fun1.c.ast') in pairs)
         self.assertTrue(('c:@F@fun2#I#', 'ast/fun2.c.ast') in pairs)
         self.assertEqual(2, len(pairs))
 
     def test_space_handled_in_source(self):
         concat_map = ['c:@F@fun1#I# ast/f un.c.ast']
-        pairs = sut.create_global_ctu_extdef_map(concat_map)
+        pairs = sut.create_global_ctu_function_map(concat_map)
         self.assertTrue(('c:@F@fun1#I#', 'ast/f un.c.ast') in pairs)
         self.assertEqual(1, len(pairs))
 
 
-class ExtdefMapSrcToAstTest(unittest.TestCase):
+class FuncMapSrcToAstTest(unittest.TestCase):
 
     def test_empty_gives_empty(self):
-        fun_ast_lst = sut.extdef_map_list_src_to_ast([])
+        fun_ast_lst = sut.func_map_list_src_to_ast([])
         self.assertFalse(fun_ast_lst)
 
     def test_sources_to_asts(self):
         fun_src_lst = ['c:@F@f1#I# ' + os.path.join(os.sep + 'path', 'f1.c'),
                        'c:@F@f2#I# ' + os.path.join(os.sep + 'path', 'f2.c')]
-        fun_ast_lst = sut.extdef_map_list_src_to_ast(fun_src_lst)
+        fun_ast_lst = sut.func_map_list_src_to_ast(fun_src_lst)
         self.assertTrue('c:@F@f1#I# ' +
                         os.path.join('ast', 'path', 'f1.c.ast')
                         in fun_ast_lst)
@@ -407,7 +408,7 @@ class ExtdefMapSrcToAstTest(unittest.TestCase):
 
     def test_spaces_handled(self):
         fun_src_lst = ['c:@F@f1#I# ' + os.path.join(os.sep + 'path', 'f 1.c')]
-        fun_ast_lst = sut.extdef_map_list_src_to_ast(fun_src_lst)
+        fun_ast_lst = sut.func_map_list_src_to_ast(fun_src_lst)
         self.assertTrue('c:@F@f1#I# ' +
                         os.path.join('ast', 'path', 'f 1.c.ast')
                         in fun_ast_lst)

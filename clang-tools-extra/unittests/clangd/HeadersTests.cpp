@@ -1,8 +1,9 @@
 //===-- HeadersTests.cpp - Include headers unit tests -----------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -18,6 +19,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
+using namespace llvm;
 namespace clang {
 namespace clangd {
 namespace {
@@ -51,7 +53,7 @@ private:
     CI->getDiagnosticOpts().IgnoreWarnings = true;
     auto Clang = prepareCompilerInstance(
         std::move(CI), /*Preamble=*/nullptr,
-        llvm::MemoryBuffer::getMemBuffer(FS.Files[MainFile], MainFile),
+        MemoryBuffer::getMemBuffer(FS.Files[MainFile], MainFile),
         std::make_shared<PCHContainerOperations>(), VFS, IgnoreDiags);
 
     EXPECT_FALSE(Clang->getFrontendOpts().Inputs.empty());
@@ -83,9 +85,9 @@ protected:
 
     if (Preferred.empty())
       Preferred = Original;
-    auto ToHeaderFile = [](llvm::StringRef Header) {
+    auto ToHeaderFile = [](StringRef Header) {
       return HeaderFile{Header,
-                        /*Verbatim=*/!llvm::sys::path::is_absolute(Header)};
+                        /*Verbatim=*/!sys::path::is_absolute(Header)};
     };
 
     IncludeInserter Inserter(MainFile, /*Code=*/"", format::getLLVMStyle(),
@@ -102,7 +104,7 @@ protected:
     return Path;
   }
 
-  llvm::Optional<TextEdit> insert(llvm::StringRef VerbatimHeader) {
+  Optional<TextEdit> insert(StringRef VerbatimHeader) {
     auto Clang = setupClang();
     PreprocessOnlyAction Action;
     EXPECT_TRUE(
@@ -120,7 +122,7 @@ protected:
   MockCompilationDatabase CDB;
   std::string MainFile = testPath("main.cpp");
   std::string Subdir = testPath("sub");
-  std::string SearchDirArg = (llvm::Twine("-I") + Subdir).str();
+  std::string SearchDirArg = (Twine("-I") + Subdir).str();
   IgnoringDiagConsumer IgnoreDiags;
 };
 

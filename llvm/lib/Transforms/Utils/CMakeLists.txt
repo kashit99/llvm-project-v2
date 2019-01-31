@@ -6,7 +6,6 @@ add_llvm_library(LLVMTransformUtils
   BuildLibCalls.cpp
   BypassSlowDivision.cpp
   CallPromotionUtils.cpp
-  CanonicalizeAliases.cpp
   CloneFunction.cpp
   CloneModule.cpp
   CodeExtractor.cpp

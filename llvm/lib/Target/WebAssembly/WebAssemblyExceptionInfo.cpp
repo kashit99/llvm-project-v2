@@ -1,8 +1,9 @@
 //===--- WebAssemblyExceptionInfo.cpp - Exception Infomation --------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 ///
@@ -31,10 +32,7 @@ INITIALIZE_PASS_DEPENDENCY(MachineDominanceFrontier)
 INITIALIZE_PASS_END(WebAssemblyExceptionInfo, DEBUG_TYPE,
                     "WebAssembly Exception Information", true, true)
 
-bool WebAssemblyExceptionInfo::runOnMachineFunction(MachineFunction &MF) {
-  LLVM_DEBUG(dbgs() << "********** Exception Info Calculation **********\n"
-                       "********** Function: "
-                    << MF.getName() << '\n');
+bool WebAssemblyExceptionInfo::runOnMachineFunction(MachineFunction &F) {
   releaseMemory();
   auto &MDT = getAnalysis<MachineDominatorTree>();
   auto &MDF = getAnalysis<MachineDominanceFrontier>();
@@ -49,6 +47,10 @@ void WebAssemblyExceptionInfo::recalculate(
   for (auto DomNode : post_order(&MDT)) {
     MachineBasicBlock *EHPad = DomNode->getBlock();
     if (!EHPad->isEHPad())
+      continue;
+    // We group catch & catch-all terminate pads together, so skip the second
+    // one
+    if (WebAssembly::isCatchAllTerminatePad(*EHPad))
       continue;
     auto *WE = new WebAssemblyException(EHPad);
     discoverAndMapException(WE, MDT, MDF);
@@ -100,6 +102,16 @@ void WebAssemblyExceptionInfo::discoverAndMapException(
 
   // Map blocks that belong to a catchpad / cleanuppad
   MachineBasicBlock *EHPad = WE->getEHPad();
+
+  // We group catch & catch-all terminate pads together within an exception
+  if (WebAssembly::isCatchTerminatePad(*EHPad)) {
+    assert(EHPad->succ_size() == 1 &&
+           "Catch terminate pad has more than one successors");
+    changeExceptionFor(EHPad, WE);
+    changeExceptionFor(*(EHPad->succ_begin()), WE);
+    return;
+  }
+
   SmallVector<MachineBasicBlock *, 8> WL;
   WL.push_back(EHPad);
   while (!WL.empty()) {

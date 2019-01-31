@@ -1,8 +1,9 @@
 /*===-- InstrProfData.inc - instr profiling runtime structures -*- C++ -*-=== *\
 |*
-|* Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-|* See https://llvm.org/LICENSE.txt for license information.
-|* SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+|*                     The LLVM Compiler Infrastructure
+|*
+|* This file is distributed under the University of Illinois Open Source
+|* License. See LICENSE.TXT for details.
 |*
 \*===----------------------------------------------------------------------===*/
 /*
@@ -307,14 +308,14 @@ typedef struct ValueProfRecord {
 
 #ifdef __cplusplus
   /*!
-   * Return the number of value sites.
+   * \brief Return the number of value sites.
    */
   uint32_t getNumValueSites() const { return NumValueSites; }
   /*!
-   * Read data from this record and save it to Record.
+   * \brief Read data from this record and save it to Record.
    */
   void deserializeTo(InstrProfRecord &Record,
-                     InstrProfSymtab *SymTab);
+                     InstrProfRecord::ValueMapType *VMap);
   /*
    * In-place byte swap:
    * Do byte swap for this instance. \c Old is the original order before
@@ -392,7 +393,7 @@ typedef struct ValueProfData {
    * Read data from this data and save it to \c Record.
    */
   void deserializeTo(InstrProfRecord &Record,
-                     InstrProfSymtab *SymTab);
+                     InstrProfRecord::ValueMapType *VMap);
   void operator delete(void *ptr) { ::operator delete(ptr); }
 #endif
 } ValueProfData;
@@ -457,7 +458,7 @@ getValueProfRecordHeaderSize(uint32_t NumValueSites);
 #endif
 
 /*!
- * Return the \c ValueProfRecord header size including the
+ * \brief Return the \c ValueProfRecord header size including the
  * padding bytes.
  */
 INSTR_PROF_VISIBILITY INSTR_PROF_INLINE
@@ -470,7 +471,7 @@ uint32_t getValueProfRecordHeaderSize(uint32_t NumValueSites) {
 }
 
 /*!
- * Return the total size of the value profile record including the
+ * \brief Return the total size of the value profile record including the
  * header and the value data.
  */
 INSTR_PROF_VISIBILITY INSTR_PROF_INLINE
@@ -481,7 +482,7 @@ uint32_t getValueProfRecordSize(uint32_t NumValueSites,
 }
 
 /*!
- * Return the pointer to the start of value data array.
+ * \brief Return the pointer to the start of value data array.
  */
 INSTR_PROF_VISIBILITY INSTR_PROF_INLINE
 InstrProfValueData *getValueProfRecordValueData(ValueProfRecord *This) {
@@ -490,7 +491,7 @@ InstrProfValueData *getValueProfRecordValueData(ValueProfRecord *This) {
 }
 
 /*!
- * Return the total number of value data for \c This record.
+ * \brief Return the total number of value data for \c This record.
  */
 INSTR_PROF_VISIBILITY INSTR_PROF_INLINE
 uint32_t getValueProfRecordNumValueData(ValueProfRecord *This) {
@@ -502,7 +503,7 @@ uint32_t getValueProfRecordNumValueData(ValueProfRecord *This) {
 }
 
 /*!
- * Use this method to advance to the next \c This \c ValueProfRecord.
+ * \brief Use this method to advance to the next \c This \c ValueProfRecord.
  */
 INSTR_PROF_VISIBILITY INSTR_PROF_INLINE
 ValueProfRecord *getValueProfRecordNext(ValueProfRecord *This) {
@@ -513,7 +514,7 @@ ValueProfRecord *getValueProfRecordNext(ValueProfRecord *This) {
 }
 
 /*!
- * Return the first \c ValueProfRecord instance.
+ * \brief Return the first \c ValueProfRecord instance.
  */
 INSTR_PROF_VISIBILITY INSTR_PROF_INLINE
 ValueProfRecord *getFirstValueProfRecord(ValueProfData *This) {

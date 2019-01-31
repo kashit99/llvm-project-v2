@@ -3833,6 +3833,7 @@ void GDBRemoteCommunicationClient::ServeSymbolLookups(
                       case eSymbolTypeCompiler:
                       case eSymbolTypeInstrumentation:
                       case eSymbolTypeTrampoline:
+                      case eSymbolTypeASTFile:
                         break;
 
                       case eSymbolTypeCode:
@@ -3846,6 +3847,9 @@ void GDBRemoteCommunicationClient::ServeSymbolLookups(
                       case eSymbolTypeReExported:
                         symbol_load_addr =
                             sc.symbol->GetLoadAddress(&process->GetTarget());
+                        break;
+
+                      case eSymbolTypeIVarOffset:
                         break;
                       }
                     }

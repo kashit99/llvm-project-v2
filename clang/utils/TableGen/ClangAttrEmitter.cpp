@@ -1,8 +1,9 @@
 //===- ClangAttrEmitter.cpp - Generate Clang attribute handling =-*- C++ -*--=//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -602,15 +603,14 @@ namespace {
       OS << "    OS << \"";
     }
 
-    void writeDump(raw_ostream &OS) const override {
-      OS << "    if (!SA->is" << getUpperName() << "Expr())\n";
-      OS << "      dumpType(SA->get" << getUpperName()
-         << "Type()->getType());\n";
-    }
+    void writeDump(raw_ostream &OS) const override {}
 
     void writeDumpChildren(raw_ostream &OS) const override {
       OS << "    if (SA->is" << getUpperName() << "Expr())\n";
-      OS << "      Visit(SA->get" << getUpperName() << "Expr());\n";
+      OS << "      dumpStmt(SA->get" << getUpperName() << "Expr());\n";
+      OS << "    else\n";
+      OS << "      dumpType(SA->get" << getUpperName()
+         << "Type()->getType());\n";
     }
 
     void writeHasChildren(raw_ostream &OS) const override {
@@ -773,11 +773,6 @@ namespace {
     void writeDumpImpl(raw_ostream &OS) const override {
       OS << "      OS << \" \" << Val.getSourceIndex();\n";
     }
-  };
-
-  struct VariadicParamOrParamIdxArgument : public VariadicArgument {
-    VariadicParamOrParamIdxArgument(const Record &Arg, StringRef Attr)
-        : VariadicArgument(Arg, Attr, "int") {}
   };
 
   // Unique the enums, but maintain the original declaration ordering.
@@ -1113,7 +1108,7 @@ namespace {
     void writeDump(raw_ostream &OS) const override {}
 
     void writeDumpChildren(raw_ostream &OS) const override {
-      OS << "    Visit(SA->get" << getUpperName() << "());\n";
+      OS << "    dumpStmt(SA->get" << getUpperName() << "());\n";
     }
 
     void writeHasChildren(raw_ostream &OS) const override { OS << "true"; }
@@ -1169,7 +1164,7 @@ namespace {
       OS << "    for (" << getAttrName() << "Attr::" << getLowerName()
          << "_iterator I = SA->" << getLowerName() << "_begin(), E = SA->"
          << getLowerName() << "_end(); I != E; ++I)\n";
-      OS << "      Visit(*I);\n";
+      OS << "      dumpStmt(*I);\n";
     }
 
     void writeHasChildren(raw_ostream &OS) const override {
@@ -1256,7 +1251,7 @@ namespace {
     void writeDump(raw_ostream &OS) const override {}
   
     void writeDumpChildren(raw_ostream &OS) const override {
-      OS << "    Visit(SA->get" << getUpperName() << "());\n";
+      OS << "    dumpAttr(SA->get" << getUpperName() << "());\n";
     }
 
     void writeHasChildren(raw_ostream &OS) const override { OS << "true"; }
@@ -1311,8 +1306,6 @@ createArgument(const Record &Arg, StringRef Attr,
     Ptr = llvm::make_unique<VariadicExprArgument>(Arg, Attr);
   else if (ArgName == "VariadicParamIdxArgument")
     Ptr = llvm::make_unique<VariadicParamIdxArgument>(Arg, Attr);
-  else if (ArgName == "VariadicParamOrParamIdxArgument")
-    Ptr = llvm::make_unique<VariadicParamOrParamIdxArgument>(Arg, Attr);
   else if (ArgName == "ParamIdxArgument")
     Ptr = llvm::make_unique<SimpleArgument>(Arg, Attr, "ParamIdx");
   else if (ArgName == "VariadicIdentifierArgument")
@@ -2148,7 +2141,6 @@ static bool isVariadicIdentifierArgument(Record *Arg) {
          llvm::StringSwitch<bool>(
              Arg->getSuperClasses().back().first->getName())
              .Case("VariadicIdentifierArgument", true)
-             .Case("VariadicParamOrParamIdxArgument", true)
              .Default(false);
 }
 
@@ -2189,34 +2181,6 @@ static void emitClangAttrIdentifierArgList(RecordKeeper &Records, raw_ostream &O
     });
   }
   OS << "#endif // CLANG_ATTR_IDENTIFIER_ARG_LIST\n\n";
-}
-
-static bool keywordThisIsaIdentifierInArgument(const Record *Arg) {
-  return !Arg->getSuperClasses().empty() &&
-         llvm::StringSwitch<bool>(
-             Arg->getSuperClasses().back().first->getName())
-             .Case("VariadicParamOrParamIdxArgument", true)
-             .Default(false);
-}
-
-static void emitClangAttrThisIsaIdentifierArgList(RecordKeeper &Records,
-                                                  raw_ostream &OS) {
-  OS << "#if defined(CLANG_ATTR_THIS_ISA_IDENTIFIER_ARG_LIST)\n";
-  std::vector<Record *> Attrs = Records.getAllDerivedDefinitions("Attr");
-  for (const auto *A : Attrs) {
-    // Determine whether the first argument is a variadic identifier.
-    std::vector<Record *> Args = A->getValueAsListOfDefs("Args");
-    if (Args.empty() || !keywordThisIsaIdentifierInArgument(Args[0]))
-      continue;
-
-    // All these spellings take an identifier argument.
-    forEachUniqueSpelling(*A, [&](const FlattenedSpelling &S) {
-      OS << ".Case(\"" << S.name() << "\", "
-         << "true"
-         << ")\n";
-    });
-  }
-  OS << "#endif // CLANG_ATTR_THIS_ISA_IDENTIFIER_ARG_LIST\n\n";
 }
 
 namespace clang {
@@ -3758,67 +3722,39 @@ void EmitClangAttrParsedAttrKinds(RecordKeeper &Records, raw_ostream &OS) {
 }
 
 // Emits the code to dump an attribute.
-void EmitClangAttrTextNodeDump(RecordKeeper &Records, raw_ostream &OS) {
-  emitSourceFileHeader("Attribute text node dumper", OS);
+void EmitClangAttrDump(RecordKeeper &Records, raw_ostream &OS) {
+  emitSourceFileHeader("Attribute dumper", OS);
 
+  OS << "  switch (A->getKind()) {\n";
   std::vector<Record*> Attrs = Records.getAllDerivedDefinitions("Attr"), Args;
   for (const auto *Attr : Attrs) {
     const Record &R = *Attr;
     if (!R.getValueAsBit("ASTNode"))
       continue;
+    OS << "  case attr::" << R.getName() << ": {\n";
 
     // If the attribute has a semantically-meaningful name (which is determined
     // by whether there is a Spelling enumeration for it), then write out the
     // spelling used for the attribute.
-
-    std::string FunctionContent;
-    llvm::raw_string_ostream SS(FunctionContent);
-
     std::vector<FlattenedSpelling> Spellings = GetFlattenedSpellings(R);
     if (Spellings.size() > 1 && !SpellingNamesAreCommon(Spellings))
-      SS << "    OS << \" \" << A->getSpelling();\n";
+      OS << "    OS << \" \" << A->getSpelling();\n";
 
     Args = R.getValueAsListOfDefs("Args");
-    for (const auto *Arg : Args)
-      createArgument(*Arg, R.getName())->writeDump(SS);
+    if (!Args.empty()) {
+      OS << "    const auto *SA = cast<" << R.getName()
+         << "Attr>(A);\n";
+      for (const auto *Arg : Args)
+        createArgument(*Arg, R.getName())->writeDump(OS);
 
-    if (SS.tell()) {
-      OS << "  void Visit" << R.getName() << "Attr(const " << R.getName()
-         << "Attr *A) {\n";
-      if (!Args.empty())
-        OS << "    const auto *SA = cast<" << R.getName()
-           << "Attr>(A); (void)SA;\n";
-      OS << SS.str();
-      OS << "  }\n";
+      for (const auto *AI : Args)
+        createArgument(*AI, R.getName())->writeDumpChildren(OS);
     }
+    OS <<
+      "    break;\n"
+      "  }\n";
   }
-}
-
-void EmitClangAttrNodeTraverse(RecordKeeper &Records, raw_ostream &OS) {
-  emitSourceFileHeader("Attribute text node traverser", OS);
-
-  std::vector<Record *> Attrs = Records.getAllDerivedDefinitions("Attr"), Args;
-  for (const auto *Attr : Attrs) {
-    const Record &R = *Attr;
-    if (!R.getValueAsBit("ASTNode"))
-      continue;
-
-    std::string FunctionContent;
-    llvm::raw_string_ostream SS(FunctionContent);
-
-    Args = R.getValueAsListOfDefs("Args");
-    for (const auto *Arg : Args)
-      createArgument(*Arg, R.getName())->writeDumpChildren(SS);
-    if (SS.tell()) {
-      OS << "  void Visit" << R.getName() << "Attr(const " << R.getName()
-         << "Attr *A) {\n";
-      if (!Args.empty())
-        OS << "    const auto *SA = cast<" << R.getName()
-           << "Attr>(A); (void)SA;\n";
-      OS << SS.str();
-      OS << "  }\n";
-    }
-  }
+  OS << "  }\n";
 }
 
 void EmitClangAttrParserStringSwitches(RecordKeeper &Records,
@@ -3827,7 +3763,6 @@ void EmitClangAttrParserStringSwitches(RecordKeeper &Records,
   emitClangAttrArgContextList(Records, OS);
   emitClangAttrIdentifierArgList(Records, OS);
   emitClangAttrVariadicIdentifierArgList(Records, OS);
-  emitClangAttrThisIsaIdentifierArgList(Records, OS);
   emitClangAttrTypeArgList(Records, OS);
   emitClangAttrLateParsedList(Records, OS);
 }

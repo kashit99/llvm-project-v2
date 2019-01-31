@@ -1,8 +1,9 @@
 //=== StackAddrEscapeChecker.cpp ----------------------------------*- C++ -*--//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -359,23 +360,11 @@ void StackAddrEscapeChecker::checkEndFunction(const ReturnStmt *RS,
   }
 }
 
-void ento::registerStackAddrEscapeBase(CheckerManager &mgr) {
-  mgr.registerChecker<StackAddrEscapeChecker>();
-}
-
-bool ento::shouldRegisterStackAddrEscapeBase(const LangOptions &LO) {
-  return true;
-}
-
-#define REGISTER_CHECKER(name)                                                 \
-  void ento::register##name(CheckerManager &Mgr) {                             \
-    StackAddrEscapeChecker *Chk =                                              \
-        Mgr.getChecker<StackAddrEscapeChecker>();                              \
-    Chk->ChecksEnabled[StackAddrEscapeChecker::CK_##name] = true;              \
-  }                                                                            \
-                                                                               \
-  bool ento::shouldRegister##name(const LangOptions &LO) {                     \
-    return true;                                                               \
+#define REGISTER_CHECKER(name) \
+  void ento::register##name(CheckerManager &Mgr) { \
+    StackAddrEscapeChecker *Chk = \
+        Mgr.registerChecker<StackAddrEscapeChecker>(); \
+    Chk->ChecksEnabled[StackAddrEscapeChecker::CK_##name] = true; \
   }
 
 REGISTER_CHECKER(StackAddrEscapeChecker)

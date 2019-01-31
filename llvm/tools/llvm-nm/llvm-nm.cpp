@@ -1,8 +1,9 @@
 //===-- llvm-nm.cpp - Symbol table dumping utility for llvm ---------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -90,8 +91,6 @@ cl::opt<bool> BSDFormat("B", cl::desc("Alias for --format=bsd"),
                         cl::Grouping);
 cl::opt<bool> POSIXFormat("P", cl::desc("Alias for --format=posix"),
                           cl::Grouping);
-cl::alias Portability("portability", cl::desc("Alias for --format=posix"),
-                      cl::aliasopt(POSIXFormat), cl::NotHidden);
 cl::opt<bool> DarwinFormat("m", cl::desc("Alias for --format=darwin"),
                            cl::Grouping);
 
@@ -802,7 +801,8 @@ static void sortAndPrintSymbolList(SymbolicFile &Obj, bool printName,
     bool Global = SymFlags & SymbolRef::SF_Global;
     bool Weak = SymFlags & SymbolRef::SF_Weak;
     if ((!Undefined && UndefinedOnly) || (Undefined && DefinedOnly) ||
-        (!Global && ExternalOnly) || (Weak && NoWeakSymbols))
+        (!Global && ExternalOnly) || (SizeSort && !PrintAddress) ||
+        (Weak && NoWeakSymbols))
       continue;
     if (PrintFileName)
       writeFileName(outs());

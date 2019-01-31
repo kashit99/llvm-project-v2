@@ -6,17 +6,15 @@ if(NOT COMPILER_RT_STANDALONE_BUILD)
   list(APPEND SAFESTACK_TEST_DEPS safestack)
 
   # Some tests require LTO, so add a dependency on the relevant LTO plugin.
-  if(LLVM_ENABLE_PIC)
-    if(LLVM_BINUTILS_INCDIR)
-      list(APPEND SAFESTACK_TEST_DEPS
-        LLVMgold
-      )
-    endif()
-    if(APPLE)
-      list(APPEND SAFESTACK_TEST_DEPS
-        LTO
-      )
-    endif()
+  if(LLVM_ENABLE_PIC AND LLVM_BINUTILS_INCDIR)
+    list(APPEND SAFESTACK_TEST_DEPS
+      LLVMgold
+    )
+  endif()
+  if(APPLE)
+    list(APPEND SAFESTACK_TEST_DEPS
+      LTO
+    )
   endif()
 endif()
 

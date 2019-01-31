@@ -42,7 +42,6 @@ Using Clang as a Compiler
    MSVCCompatibility
    OpenMPSupport
    ThinLTO
-   APINotes
    CommandGuide/index
    FAQ
 

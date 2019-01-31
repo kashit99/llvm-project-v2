@@ -1,8 +1,9 @@
 //===--- Iterator.cpp - Query Symbol Retrieval ------------------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -12,6 +13,7 @@
 #include <cassert>
 #include <numeric>
 
+using namespace llvm;
 namespace clang {
 namespace clangd {
 namespace dex {
@@ -75,7 +77,7 @@ public:
   }
 
 private:
-  llvm::raw_ostream &dump(llvm::raw_ostream &OS) const override {
+  raw_ostream &dump(raw_ostream &OS) const override {
     OS << "(& ";
     auto Separator = "";
     for (const auto &Child : Children) {
@@ -196,7 +198,7 @@ public:
   }
 
 private:
-  llvm::raw_ostream &dump(llvm::raw_ostream &OS) const override {
+  raw_ostream &dump(raw_ostream &OS) const override {
     OS << "(| ";
     auto Separator = "";
     for (const auto &Child : Children) {
@@ -244,9 +246,7 @@ public:
   size_t estimateSize() const override { return Size; }
 
 private:
-  llvm::raw_ostream &dump(llvm::raw_ostream &OS) const override {
-    return OS << "true";
-  }
+  raw_ostream &dump(raw_ostream &OS) const override { return OS << "true"; }
 
   DocID Index = 0;
   /// Size of the underlying virtual PostingList.
@@ -271,9 +271,7 @@ public:
   size_t estimateSize() const override { return 0; }
 
 private:
-  llvm::raw_ostream &dump(llvm::raw_ostream &OS) const override {
-    return OS << "false";
-  }
+  raw_ostream &dump(raw_ostream &OS) const override { return OS << "false"; }
 };
 
 /// Boost iterator is a wrapper around its child which multiplies scores of
@@ -296,7 +294,7 @@ public:
   size_t estimateSize() const override { return Child->estimateSize(); }
 
 private:
-  llvm::raw_ostream &dump(llvm::raw_ostream &OS) const override {
+  raw_ostream &dump(raw_ostream &OS) const override {
     return OS << "(* " << Factor << ' ' << *Child << ')';
   }
 
@@ -336,7 +334,7 @@ public:
   }
 
 private:
-  llvm::raw_ostream &dump(llvm::raw_ostream &OS) const override {
+  raw_ostream &dump(raw_ostream &OS) const override {
     return OS << "(LIMIT " << Limit << " " << *Child << ')';
   }
 

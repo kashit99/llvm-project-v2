@@ -1,8 +1,9 @@
 //===- IntrinsicEmitter.cpp - Generate intrinsic information --------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -269,7 +270,7 @@ static void EncodeFixedType(Record *R, std::vector<unsigned char> &ArgCodes,
       Sig.push_back(IIT_TRUNC_ARG);
     else if (R->isSubClassOf("LLVMHalfElementsVectorType"))
       Sig.push_back(IIT_HALF_VEC_ARG);
-    else if (R->isSubClassOf("LLVMScalarOrSameVectorWidth")) {
+    else if (R->isSubClassOf("LLVMVectorSameWidth")) {
       Sig.push_back(IIT_SAME_VEC_WIDTH_ARG);
       Sig.push_back((Number << 3) | ArgCodes[Number]);
       MVT::SimpleValueType VT = getValueType(R->getValueAsDef("ElTy"));

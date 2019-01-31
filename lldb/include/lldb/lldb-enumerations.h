@@ -657,7 +657,10 @@ enum SymbolType {
   eSymbolTypeObjCClass,
   eSymbolTypeObjCMetaClass,
   eSymbolTypeObjCIVar,
-  eSymbolTypeReExported
+  eSymbolTypeIVarOffset, // A symbol that contains an offset for an instance
+                         // variable
+  eSymbolTypeReExported,
+  eSymbolTypeASTFile   // A symbol whose name is the path to a compiler AST file
 };
 
 enum SectionType {
@@ -693,6 +696,7 @@ enum SectionType {
   eSectionTypeDWARFDebugStrOffsets,
   eSectionTypeDWARFAppleNames,
   eSectionTypeDWARFAppleTypes,
+  eSectionTypeDWARFAppleExternalTypes,
   eSectionTypeDWARFAppleNamespaces,
   eSectionTypeDWARFAppleObjC,
   eSectionTypeELFSymbolTable,       // Elf SHT_SYMTAB section
@@ -700,6 +704,7 @@ enum SectionType {
   eSectionTypeELFRelocationEntries, // Elf SHT_REL or SHT_REL section
   eSectionTypeELFDynamicLinkInfo,   // Elf SHT_DYNAMIC section
   eSectionTypeEHFrame,
+  eSectionTypeSwiftModules,
   eSectionTypeARMexidx,
   eSectionTypeARMextab,
   eSectionTypeCompactUnwind, // compact unwind section in Mach-O,
@@ -832,6 +837,13 @@ enum TemplateArgumentKind {
   eTemplateArgumentKindExpression,
   eTemplateArgumentKindPack,
   eTemplateArgumentKindNullPtr,
+};
+
+// Kind of argument for generics, either bound or unbound.
+enum GenericKind {
+  eNullGenericKindType = 0,
+  eBoundGenericKindType,
+  eUnboundGenericKindType
 };
 
 //----------------------------------------------------------------------
@@ -997,6 +1009,8 @@ enum PathType {
                          // mach-o file in LLDB.framework (MacOSX) exists
   ePathTypeSupportExecutableDir, // Find LLDB support executable directory
                                  // (debugserver, etc)
+  ePathTypeSupportFileDir,       // Find LLDB support file directory
+                                 // (non-executable files)
   ePathTypeHeaderDir,            // Find LLDB header file directory
   ePathTypePythonDir,            // Find Python modules (PYTHONPATH) directory
   ePathTypeLLDBSystemPlugins,    // System plug-ins directory
@@ -1005,7 +1019,8 @@ enum PathType {
                                  // will be cleaned up on exit
   ePathTypeGlobalLLDBTempSystemDir, // The LLDB temp directory for this system,
                                     // NOT cleaned up on a process exit.
-  ePathTypeClangDir                 // Find path to Clang builtin headers
+  ePathTypeClangDir,                // Find path to Clang builtin headers
+  ePathTypeSwiftDir                 // Find path to Swift libraries
 };
 
 //----------------------------------------------------------------------
@@ -1043,7 +1058,14 @@ FLAGS_ENUM(TypeFlags){
     eTypeIsVector = (1u << 16),         eTypeIsScalar = (1u << 17),
     eTypeIsInteger = (1u << 18),        eTypeIsFloat = (1u << 19),
     eTypeIsComplex = (1u << 20),        eTypeIsSigned = (1u << 21),
-    eTypeInstanceIsPointer = (1u << 22)};
+    eTypeInstanceIsPointer = (1u << 22),
+    eTypeIsSwift = (1u << 23),
+    eTypeIsGenericTypeParam = (1u << 24),
+    eTypeIsProtocol = (1u << 25),
+    eTypeIsTuple = (1u << 26),
+    eTypeIsMetatype = (1u << 27),
+    eTypeIsGeneric = (1u << 28),
+    eTypeIsBound = (1u << 29)};
 
 FLAGS_ENUM(CommandFlags){
     //----------------------------------------------------------------------

@@ -1,8 +1,9 @@
 // WebAssemblyMCInstLower.cpp - Convert WebAssembly MachineInstr to an MCInst //
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 ///
@@ -36,7 +37,7 @@ using namespace llvm;
 
 // This disables the removal of registers when lowering into MC, as required
 // by some current tests.
-cl::opt<bool>
+static cl::opt<bool>
     WasmKeepRegisters("wasm-keep-registers", cl::Hidden,
                       cl::desc("WebAssembly: output stack registers in"
                                " instruction output for test purposes only."),

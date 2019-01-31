@@ -1,8 +1,9 @@
 //===--- Index.cpp -----------------------------------------------*- C++-*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -13,6 +14,7 @@
 #include "llvm/Support/Error.h"
 #include "llvm/Support/raw_ostream.h"
 
+using namespace llvm;
 namespace clang {
 namespace clangd {
 
@@ -33,14 +35,14 @@ void SymbolLocation::Position::setColumn(uint32_t Col) {
   Column = Col;
 }
 
-llvm::raw_ostream &operator<<(llvm::raw_ostream &OS, const SymbolLocation &L) {
+raw_ostream &operator<<(raw_ostream &OS, const SymbolLocation &L) {
   if (!L)
     return OS << "(none)";
   return OS << L.FileURI << "[" << L.Start.line() << ":" << L.Start.column()
             << "-" << L.End.line() << ":" << L.End.column() << ")";
 }
 
-llvm::raw_ostream &operator<<(llvm::raw_ostream &OS, SymbolOrigin O) {
+raw_ostream &operator<<(raw_ostream &OS, SymbolOrigin O) {
   if (O == SymbolOrigin::Unknown)
     return OS << "unknown";
   constexpr static char Sigils[] = "ADSM4567";
@@ -50,18 +52,18 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &OS, SymbolOrigin O) {
   return OS;
 }
 
-llvm::raw_ostream &operator<<(llvm::raw_ostream &OS, Symbol::SymbolFlag F) {
+raw_ostream &operator<<(raw_ostream &OS, Symbol::SymbolFlag F) {
   if (F == Symbol::None)
     return OS << "None";
-  std::string S;
+  std::string s;
   if (F & Symbol::Deprecated)
-    S += "deprecated|";
+    s += "deprecated|";
   if (F & Symbol::IndexedForCodeCompletion)
-    S += "completion|";
-  return OS << llvm::StringRef(S).rtrim('|');
+    s += "completion|";
+  return OS << StringRef(s).rtrim('|');
 }
 
-llvm::raw_ostream &operator<<(llvm::raw_ostream &OS, const Symbol &S) {
+raw_ostream &operator<<(raw_ostream &OS, const Symbol &S) {
   return OS << S.Scope << S.Name;
 }
 
@@ -83,8 +85,8 @@ SymbolSlab::const_iterator SymbolSlab::find(const SymbolID &ID) const {
 }
 
 // Copy the underlying data of the symbol into the owned arena.
-static void own(Symbol &S, llvm::UniqueStringSaver &Strings) {
-  visitStrings(S, [&](llvm::StringRef &V) { V = Strings.save(V); });
+static void own(Symbol &S, UniqueStringSaver &Strings) {
+  visitStrings(S, [&](StringRef &V) { V = Strings.save(V); });
 }
 
 void SymbolSlab::Builder::insert(const Symbol &S) {
@@ -104,14 +106,14 @@ SymbolSlab SymbolSlab::Builder::build() && {
   llvm::sort(Symbols,
              [](const Symbol &L, const Symbol &R) { return L.ID < R.ID; });
   // We may have unused strings from overwritten symbols. Build a new arena.
-  llvm::BumpPtrAllocator NewArena;
-  llvm::UniqueStringSaver Strings(NewArena);
+  BumpPtrAllocator NewArena;
+  UniqueStringSaver Strings(NewArena);
   for (auto &S : Symbols)
     own(S, Strings);
   return SymbolSlab(std::move(NewArena), std::move(Symbols));
 }
 
-llvm::raw_ostream &operator<<(llvm::raw_ostream &OS, RefKind K) {
+raw_ostream &operator<<(raw_ostream &OS, RefKind K) {
   if (K == RefKind::Unknown)
     return OS << "Unknown";
   static const std::vector<const char *> Messages = {"Decl", "Def", "Ref"};
@@ -127,7 +129,7 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &OS, RefKind K) {
   return OS;
 }
 
-llvm::raw_ostream &operator<<(llvm::raw_ostream &OS, const Ref &R) {
+raw_ostream &operator<<(raw_ostream &OS, const Ref &R) {
   return OS << R.Location << ":" << R.Kind;
 }
 
@@ -141,7 +143,7 @@ void RefSlab::Builder::insert(const SymbolID &ID, const Ref &S) {
 RefSlab RefSlab::Builder::build() && {
   // We can reuse the arena, as it only has unique strings and we need them all.
   // Reallocate refs on the arena to reduce waste and indirections when reading.
-  std::vector<std::pair<SymbolID, llvm::ArrayRef<Ref>>> Result;
+  std::vector<std::pair<SymbolID, ArrayRef<Ref>>> Result;
   Result.reserve(Refs.size());
   size_t NumRefs = 0;
   for (auto &Sym : Refs) {
@@ -153,7 +155,7 @@ RefSlab RefSlab::Builder::build() && {
     NumRefs += SymRefs.size();
     auto *Array = Arena.Allocate<Ref>(SymRefs.size());
     std::uninitialized_copy(SymRefs.begin(), SymRefs.end(), Array);
-    Result.emplace_back(Sym.first, llvm::ArrayRef<Ref>(Array, SymRefs.size()));
+    Result.emplace_back(Sym.first, ArrayRef<Ref>(Array, SymRefs.size()));
   }
   return RefSlab(std::move(Result), std::move(Arena), NumRefs);
 }
@@ -172,8 +174,8 @@ std::shared_ptr<SymbolIndex> SwapIndex::snapshot() const {
   return Index;
 }
 
-bool fromJSON(const llvm::json::Value &Parameters, FuzzyFindRequest &Request) {
-  llvm::json::ObjectMapper O(Parameters);
+bool fromJSON(const json::Value &Parameters, FuzzyFindRequest &Request) {
+  json::ObjectMapper O(Parameters);
   int64_t Limit;
   bool OK =
       O && O.map("Query", Request.Query) && O.map("Scopes", Request.Scopes) &&
@@ -185,27 +187,27 @@ bool fromJSON(const llvm::json::Value &Parameters, FuzzyFindRequest &Request) {
   return OK;
 }
 
-llvm::json::Value toJSON(const FuzzyFindRequest &Request) {
-  return llvm::json::Object{
+json::Value toJSON(const FuzzyFindRequest &Request) {
+  return json::Object{
       {"Query", Request.Query},
-      {"Scopes", llvm::json::Array{Request.Scopes}},
+      {"Scopes", json::Array{Request.Scopes}},
       {"AnyScope", Request.AnyScope},
       {"Limit", Request.Limit},
       {"RestrictForCodeCompletion", Request.RestrictForCodeCompletion},
-      {"ProximityPaths", llvm::json::Array{Request.ProximityPaths}},
+      {"ProximityPaths", json::Array{Request.ProximityPaths}},
   };
 }
 
 bool SwapIndex::fuzzyFind(const FuzzyFindRequest &R,
-                          llvm::function_ref<void(const Symbol &)> CB) const {
+                          function_ref<void(const Symbol &)> CB) const {
   return snapshot()->fuzzyFind(R, CB);
 }
 void SwapIndex::lookup(const LookupRequest &R,
-                       llvm::function_ref<void(const Symbol &)> CB) const {
+                       function_ref<void(const Symbol &)> CB) const {
   return snapshot()->lookup(R, CB);
 }
 void SwapIndex::refs(const RefsRequest &R,
-                     llvm::function_ref<void(const Ref &)> CB) const {
+                     function_ref<void(const Ref &)> CB) const {
   return snapshot()->refs(R, CB);
 }
 size_t SwapIndex::estimateMemoryUsage() const {

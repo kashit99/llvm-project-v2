@@ -1,8 +1,9 @@
 //===--------------------- filesystem/ops.cpp -----------------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is dual licensed under the MIT and the University of Illinois Open
+// Source Licenses. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -438,8 +439,7 @@ file_status posix_lstat(path const& p, error_code* ec) {
   return posix_lstat(p, path_stat, ec);
 }
 
-// http://pubs.opengroup.org/onlinepubs/9699919799/functions/ftruncate.html
-bool posix_ftruncate(const FileDescriptor& fd, off_t to_size, error_code& ec) {
+bool posix_ftruncate(const FileDescriptor& fd, size_t to_size, error_code& ec) {
   if (::ftruncate(fd.fd, to_size) == -1) {
     ec = capture_errno();
     return true;
@@ -542,19 +542,11 @@ path __canonical(path const& orig_p, error_code* ec) {
   ErrorHandler<path> err("canonical", ec, &orig_p, &cwd);
 
   path p = __do_absolute(orig_p, &cwd, ec);
-#if _POSIX_VERSION >= 200112
-  std::unique_ptr<char, decltype(&::free)>
-    hold(::realpath(p.c_str(), nullptr), &::free);
-  if (hold.get() == nullptr)
-    return err.report(capture_errno());
-  return {hold.get()};
-#else
   char buff[PATH_MAX + 1];
   char* ret;
   if ((ret = ::realpath(p.c_str(), buff)) == nullptr)
     return err.report(capture_errno());
   return {ret};
-#endif
 }
 
 void __copy(const path& from, const path& to, copy_options options,
@@ -1096,27 +1088,16 @@ void __permissions(const path& p, perms prms, perm_options opts,
 path __read_symlink(const path& p, error_code* ec) {
   ErrorHandler<path> err("read_symlink", ec, &p);
 
-#ifdef PATH_MAX
-  struct NullDeleter { void operator()(void*) const {} };
-  const size_t size = PATH_MAX + 1;
-  char stack_buff[size];
-  auto buff = std::unique_ptr<char[], NullDeleter>(stack_buff);
-#else
-  StatT sb;
-  if (::lstat(p.c_str(), &sb) == -1) {
+  char buff[PATH_MAX + 1];
+  error_code m_ec;
+  ::ssize_t ret;
+  if ((ret = ::readlink(p.c_str(), buff, PATH_MAX)) == -1) {
     return err.report(capture_errno());
   }
-  const size_t size = sb.st_size + 1;
-  auto buff = unique_ptr<char[]>(new char[size]);
-#endif
-  ::ssize_t ret;
-  if ((ret = ::readlink(p.c_str(), buff.get(), size)) == -1)
-    return err.report(capture_errno());
+  _LIBCPP_ASSERT(ret <= PATH_MAX, "TODO");
   _LIBCPP_ASSERT(ret > 0, "TODO");
-  if (static_cast<size_t>(ret) >= size)
-    return err.report(errc::value_too_large);
   buff[ret] = 0;
-  return {buff.get()};
+  return {buff};
 }
 
 bool __remove(const path& p, error_code* ec) {

@@ -1,8 +1,9 @@
 //===- MemCpyOptimizer.cpp - Optimize use of memcpy and friends -----------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -545,8 +546,8 @@ static bool moveUp(AliasAnalysis &AA, StoreInst *SI, Instruction *P,
   // Memory locations of lifted instructions.
   SmallVector<MemoryLocation, 8> MemLocs{StoreLoc};
 
-  // Lifted calls.
-  SmallVector<const CallBase *, 8> Calls;
+  // Lifted callsites.
+  SmallVector<ImmutableCallSite, 8> CallSites;
 
   const MemoryLocation LoadLoc = MemoryLocation::get(LI);
 
@@ -564,9 +565,10 @@ static bool moveUp(AliasAnalysis &AA, StoreInst *SI, Instruction *P,
       });
 
       if (!NeedLift)
-        NeedLift = llvm::any_of(Calls, [C, &AA](const CallBase *Call) {
-          return isModOrRefSet(AA.getModRefInfo(C, Call));
-        });
+        NeedLift =
+            llvm::any_of(CallSites, [C, &AA](const ImmutableCallSite &CS) {
+              return isModOrRefSet(AA.getModRefInfo(C, CS));
+            });
     }
 
     if (!NeedLift)
@@ -577,12 +579,12 @@ static bool moveUp(AliasAnalysis &AA, StoreInst *SI, Instruction *P,
       // none of them may modify its source.
       if (isModSet(AA.getModRefInfo(C, LoadLoc)))
         return false;
-      else if (const auto *Call = dyn_cast<CallBase>(C)) {
+      else if (auto CS = ImmutableCallSite(C)) {
         // If we can't lift this before P, it's game over.
-        if (isModOrRefSet(AA.getModRefInfo(P, Call)))
+        if (isModOrRefSet(AA.getModRefInfo(P, CS)))
           return false;
 
-        Calls.push_back(Call);
+        CallSites.push_back(CS);
       } else if (isa<LoadInst>(C) || isa<StoreInst>(C) || isa<VAArgInst>(C)) {
         // If we can't lift this before P, it's game over.
         auto ML = MemoryLocation::get(C);
@@ -673,11 +675,13 @@ bool MemCpyOptPass::processStore(StoreInst *SI, BasicBlock::iterator &BBI) {
           if (UseMemMove)
             M = Builder.CreateMemMove(
                 SI->getPointerOperand(), findStoreAlignment(DL, SI),
-                LI->getPointerOperand(), findLoadAlignment(DL, LI), Size);
+                LI->getPointerOperand(), findLoadAlignment(DL, LI), Size,
+                SI->isVolatile());
           else
             M = Builder.CreateMemCpy(
                 SI->getPointerOperand(), findStoreAlignment(DL, SI),
-                LI->getPointerOperand(), findLoadAlignment(DL, LI), Size);
+                LI->getPointerOperand(), findLoadAlignment(DL, LI), Size,
+                SI->isVolatile());
 
           LLVM_DEBUG(dbgs() << "Promoting " << *LI << " to " << *SI << " => "
                             << *M << "\n");
@@ -766,8 +770,8 @@ bool MemCpyOptPass::processStore(StoreInst *SI, BasicBlock::iterator &BBI) {
       if (!Align)
         Align = DL.getABITypeAlignment(T);
       IRBuilder<> Builder(SI);
-      auto *M =
-          Builder.CreateMemSet(SI->getPointerOperand(), ByteVal, Size, Align);
+      auto *M = Builder.CreateMemSet(SI->getPointerOperand(), ByteVal,
+                                     Size, Align, SI->isVolatile());
 
       LLVM_DEBUG(dbgs() << "Promoting " << *SI << " to " << *M << "\n");
 

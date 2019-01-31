@@ -1,5 +1,3 @@
-// REQUIRES: sunrpc
-
 // RUN: %clangxx_msan -g -O0 %s -o %t && \
 // RUN:     %run %t 2>&1
 // RUN: %clangxx_msan -g -O0 -DUNINIT=1 %s -o %t && \

@@ -1,8 +1,9 @@
 //===- SemaChecking.cpp - Extra Semantic Checking -------------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -2610,8 +2611,8 @@ bool Sema::CheckHexagonBuiltinCpu(unsigned BuiltinID, CallExpr *TheCall) {
     return LHS.BuiltinID < RHS.BuiltinID;
   };
   static const bool SortOnce =
-      (llvm::sort(ValidCPU, SortCmp),
-       llvm::sort(ValidHVX, SortCmp), true);
+      (std::sort(std::begin(ValidCPU), std::end(ValidCPU), SortCmp),
+       std::sort(std::begin(ValidHVX), std::end(ValidHVX), SortCmp), true);
   (void)SortOnce;
   auto LowerBoundCmp = [](const BuiltinAndString &BI, unsigned BuiltinID) {
     return BI.BuiltinID < BuiltinID;
@@ -2860,7 +2861,7 @@ bool Sema::CheckHexagonBuiltinArgument(unsigned BuiltinID, CallExpr *TheCall) {
   // Use a dynamically initialized static to sort the table exactly once on
   // first run.
   static const bool SortOnce =
-      (llvm::sort(Infos,
+      (std::sort(std::begin(Infos), std::end(Infos),
                  [](const BuiltinInfo &LHS, const BuiltinInfo &RHS) {
                    return LHS.BuiltinID < RHS.BuiltinID;
                  }),
@@ -7651,8 +7652,7 @@ CheckPrintfHandler::HandlePrintfSpecifier(const analyze_printf::PrintfSpecifier
             startSpecifier, specifierLen);
 
   // Check the length modifier is valid with the given conversion specifier.
-  if (!FS.hasValidLengthModifier(S.getASTContext().getTargetInfo(),
-                                 S.getLangOpts()))
+  if (!FS.hasValidLengthModifier(S.getASTContext().getTargetInfo()))
     HandleInvalidLengthModifier(FS, CS, startSpecifier, specifierLen,
                                 diag::warn_format_nonsensical_length);
   else if (!FS.hasStandardLengthModifier())
@@ -8156,8 +8156,7 @@ bool CheckScanfHandler::HandleScanfSpecifier(
   }
 
   // Check the length modifier is valid with the given conversion specifier.
-  if (!FS.hasValidLengthModifier(S.getASTContext().getTargetInfo(),
-                                 S.getLangOpts()))
+  if (!FS.hasValidLengthModifier(S.getASTContext().getTargetInfo()))
     HandleInvalidLengthModifier(FS, CS, startSpecifier, specifierLen,
                                 diag::warn_format_nonsensical_length);
   else if (!FS.hasStandardLengthModifier())
@@ -11015,28 +11014,6 @@ CheckImplicitConversion(Sema &S, Expr *E, QualType T, SourceLocation CC,
     return;
   }
 
-  if (Source->isFixedPointType()) {
-    // TODO: Only CK_FixedPointCast is supported now. The other valid casts
-    // should be accounted for here.
-    if (Target->isFixedPointType()) {
-      Expr::EvalResult Result;
-      if (E->EvaluateAsFixedPoint(Result, S.Context,
-                                  Expr::SE_AllowSideEffects)) {
-        APFixedPoint Value = Result.Val.getFixedPoint();
-        APFixedPoint MaxVal = S.Context.getFixedPointMax(T);
-        APFixedPoint MinVal = S.Context.getFixedPointMin(T);
-        if (Value > MaxVal || Value < MinVal) {
-          S.DiagRuntimeBehavior(E->getExprLoc(), E,
-                                S.PDiag(diag::warn_impcast_fixed_point_range)
-                                    << Value.toString() << T
-                                    << E->getSourceRange()
-                                    << clang::SourceRange(CC));
-          return;
-        }
-      }
-    }
-  }
-
   DiagnoseNullConversion(S, E, T, CC);
 
   S.DiscardMisalignedMemberAddress(Target, E);
@@ -11665,12 +11642,12 @@ class SequenceChecker : public EvaluatedExprVisitor<SequenceChecker> {
     class Seq {
       friend class SequenceTree;
 
-      unsigned Index;
+      unsigned Index = 0;
 
       explicit Seq(unsigned N) : Index(N) {}
 
     public:
-      Seq() : Index(0) {}
+      Seq() = default;
     };
 
     SequenceTree() { Values.push_back(Value(0)); }
@@ -11734,19 +11711,19 @@ class SequenceChecker : public EvaluatedExprVisitor<SequenceChecker> {
   };
 
   struct Usage {
-    Expr *Use;
+    Expr *Use = nullptr;
     SequenceTree::Seq Seq;
 
-    Usage() : Use(nullptr), Seq() {}
+    Usage() = default;
   };
 
   struct UsageInfo {
     Usage Uses[UK_Count];
 
     /// Have we issued a diagnostic for this variable already?
-    bool Diagnosed;
+    bool Diagnosed = false;
 
-    UsageInfo() : Uses(), Diagnosed(false) {}
+    UsageInfo() = default;
   };
   using UsageInfoMap = llvm::SmallDenseMap<Object, UsageInfo, 16>;
 
@@ -11932,42 +11909,30 @@ public:
       notePostUse(O, E);
   }
 
-  void VisitSequencedExpressions(Expr *SequencedBefore, Expr *SequencedAfter) {
-    SequenceTree::Seq BeforeRegion = Tree.allocate(Region);
-    SequenceTree::Seq AfterRegion = Tree.allocate(Region);
-    SequenceTree::Seq OldRegion = Region;
-
-    {
-      SequencedSubexpression SeqBefore(*this);
-      Region = BeforeRegion;
-      Visit(SequencedBefore);
-    }
-
-    Region = AfterRegion;
-    Visit(SequencedAfter);
-
-    Region = OldRegion;
-
-    Tree.merge(BeforeRegion);
-    Tree.merge(AfterRegion);
-  }
-
-  void VisitArraySubscriptExpr(ArraySubscriptExpr *ASE) {
-    // C++17 [expr.sub]p1:
-    //   The expression E1[E2] is identical (by definition) to *((E1)+(E2)). The
-    //   expression E1 is sequenced before the expression E2.
-    if (SemaRef.getLangOpts().CPlusPlus17)
-      VisitSequencedExpressions(ASE->getLHS(), ASE->getRHS());
-    else
-      Base::VisitStmt(ASE);
-  }
-
   void VisitBinComma(BinaryOperator *BO) {
     // C++11 [expr.comma]p1:
     //   Every value computation and side effect associated with the left
     //   expression is sequenced before every value computation and side
     //   effect associated with the right expression.
-    VisitSequencedExpressions(BO->getLHS(), BO->getRHS());
+    SequenceTree::Seq LHS = Tree.allocate(Region);
+    SequenceTree::Seq RHS = Tree.allocate(Region);
+    SequenceTree::Seq OldRegion = Region;
+
+    {
+      SequencedSubexpression SeqLHS(*this);
+      Region = LHS;
+      Visit(BO->getLHS());
+    }
+
+    Region = RHS;
+    Visit(BO->getRHS());
+
+    Region = OldRegion;
+
+    // Forget that LHS and RHS are sequenced. They are both unsequenced
+    // with respect to other stuff.
+    Tree.merge(LHS);
+    Tree.merge(RHS);
   }
 
   void VisitBinAssign(BinaryOperator *BO) {
@@ -12419,6 +12384,12 @@ void Sema::CheckArrayAccess(const Expr *BaseExpr, const Expr *IndexExpr,
     return;
 
   const Type *BaseType = ArrayTy->getElementType().getTypePtr();
+  // It is possible that the type of the base expression after IgnoreParenCasts
+  // is incomplete, even though the type of the base expression before
+  // IgnoreParenCasts is complete (see PR39746 for an example). In this case we
+  // have no information about whether the array access is out-of-bounds.
+  if (BaseType->isIncompleteType())
+    return;
 
   Expr::EvalResult Result;
   if (!IndexExpr->EvaluateAsInt(Result, Context, Expr::SE_AllowSideEffects))
@@ -12435,15 +12406,6 @@ void Sema::CheckArrayAccess(const Expr *BaseExpr, const Expr *IndexExpr,
     ND = ME->getMemberDecl();
 
   if (index.isUnsigned() || !index.isNegative()) {
-    // It is possible that the type of the base expression after
-    // IgnoreParenCasts is incomplete, even though the type of the base
-    // expression before IgnoreParenCasts is complete (see PR39746 for an
-    // example). In this case we have no information about whether the array
-    // access exceeds the array bounds. However we can still diagnose an array
-    // access which precedes the array bounds.
-    if (BaseType->isIncompleteType())
-      return;
-
     llvm::APInt size = ArrayTy->getSize();
     if (!size.isStrictlyPositive())
       return;

@@ -5,6 +5,8 @@
 #include "clang/Sema/CodeCompleteConsumer.h"
 #include "llvm/ADT/STLExtras.h"
 
+using namespace llvm;
+
 namespace clang {
 namespace clangd {
 namespace {
@@ -31,14 +33,11 @@ static const Type *toEquivClass(ASTContext &Ctx, QualType T) {
   return T.getTypePtr();
 }
 
-static llvm::Optional<QualType>
-typeOfCompletion(const CodeCompletionResult &R) {
+static Optional<QualType> typeOfCompletion(const CodeCompletionResult &R) {
   auto *VD = dyn_cast_or_null<ValueDecl>(R.Declaration);
   if (!VD)
-    return llvm::None; // We handle only variables and functions below.
+    return None; // We handle only variables and functions below.
   auto T = VD->getType();
-  if (T.isNull())
-    return llvm::None;
   if (auto FuncT = T->getAs<FunctionType>()) {
     // Functions are a special case. They are completed as 'foo()' and we want
     // to match their return type rather than the function type itself.
@@ -50,13 +49,13 @@ typeOfCompletion(const CodeCompletionResult &R) {
 }
 } // namespace
 
-llvm::Optional<OpaqueType> OpaqueType::encode(ASTContext &Ctx, QualType T) {
+Optional<OpaqueType> OpaqueType::encode(ASTContext &Ctx, QualType T) {
   if (T.isNull())
     return None;
   const Type *C = toEquivClass(Ctx, T);
   if (!C)
     return None;
-  llvm::SmallString<128> Encoded;
+  SmallString<128> Encoded;
   if (index::generateUSRForType(QualType(C, 0), Ctx, Encoded))
     return None;
   return OpaqueType(Encoded.str());
@@ -64,12 +63,11 @@ llvm::Optional<OpaqueType> OpaqueType::encode(ASTContext &Ctx, QualType T) {
 
 OpaqueType::OpaqueType(std::string Data) : Data(std::move(Data)) {}
 
-llvm::Optional<OpaqueType> OpaqueType::fromType(ASTContext &Ctx,
-                                                QualType Type) {
+Optional<OpaqueType> OpaqueType::fromType(ASTContext &Ctx, QualType Type) {
   return encode(Ctx, Type);
 }
 
-llvm::Optional<OpaqueType>
+Optional<OpaqueType>
 OpaqueType::fromCompletionResult(ASTContext &Ctx,
                                  const CodeCompletionResult &R) {
   auto T = typeOfCompletion(R);

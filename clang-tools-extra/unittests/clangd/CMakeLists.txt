@@ -18,7 +18,6 @@ add_extra_unittest(ClangdTests
   CodeCompletionStringsTests.cpp
   ContextTests.cpp
   DexTests.cpp
-  DiagnosticsTests.cpp
   DraftStoreTests.cpp
   ExpectedTypeTest.cpp
   FileDistanceTests.cpp
@@ -60,14 +59,9 @@ target_link_libraries(ClangdTests
   clangLex
   clangSema
   clangSerialization
-  clangTidy
   clangTooling
   clangToolingCore
   clangToolingInclusions
   LLVMSupport
   LLVMTestingSupport
   )
-
-if (CLANGD_BUILD_XPC)
-  add_subdirectory(xpc)
-endif ()

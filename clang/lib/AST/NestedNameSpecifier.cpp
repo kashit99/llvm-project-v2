@@ -1,8 +1,9 @@
 //===- NestedNameSpecifier.cpp - C++ nested name specifiers ---------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -461,9 +462,9 @@ SourceRange NestedNameSpecifierLoc::getLocalSourceRange() const {
 }
 
 TypeLoc NestedNameSpecifierLoc::getTypeLoc() const {
-  if (Qualifier->getKind() != NestedNameSpecifier::TypeSpec &&
-      Qualifier->getKind() != NestedNameSpecifier::TypeSpecWithTemplate)
-    return TypeLoc();
+  assert((Qualifier->getKind() == NestedNameSpecifier::TypeSpec ||
+          Qualifier->getKind() == NestedNameSpecifier::TypeSpecWithTemplate) &&
+         "Nested-name-specifier location is not a type");
 
   // The "void*" that points at the TypeLoc data.
   unsigned Offset = getDataLength(Qualifier->getPrefix());

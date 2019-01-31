@@ -1,8 +1,9 @@
 //=- AnalysisBasedWarnings.cpp - Sema warnings based on libAnalysis -*- C++ -*-=//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -1152,12 +1153,7 @@ namespace {
     bool TraverseDecl(Decl *D) { return true; }
 
     // We analyze lambda bodies separately. Skip them here.
-    bool TraverseLambdaExpr(LambdaExpr *LE) {
-      // Traverse the captures, but not the body.
-      for (const auto &C : zip(LE->captures(), LE->capture_inits()))
-        TraverseLambdaCapture(LE, &std::get<0>(C), std::get<1>(C));
-      return true;
-    }
+    bool TraverseLambdaBody(LambdaExpr *LE) { return true; }
 
   private:
 
@@ -1638,6 +1634,17 @@ class ThreadSafetyReporter : public clang::threadSafety::ThreadSafetyHandler {
     return ONS;
   }
 
+  // Helper functions
+  void warnLockMismatch(unsigned DiagID, StringRef Kind, Name LockName,
+                        SourceLocation Loc) {
+    // Gracefully handle rare cases when the analysis can't get a more
+    // precise source location.
+    if (!Loc.isValid())
+      Loc = FunLocation;
+    PartialDiagnosticAt Warning(Loc, S.PDiag(DiagID) << Kind << LockName);
+    Warnings.emplace_back(std::move(Warning), getNotes());
+  }
+
  public:
   ThreadSafetyReporter(Sema &S, SourceLocation FL, SourceLocation FEL)
     : S(S), FunLocation(FL), FunEndLocation(FEL),
@@ -1666,11 +1673,7 @@ class ThreadSafetyReporter : public clang::threadSafety::ThreadSafetyHandler {
 
   void handleUnmatchedUnlock(StringRef Kind, Name LockName,
                              SourceLocation Loc) override {
-    if (Loc.isInvalid())
-      Loc = FunLocation;
-    PartialDiagnosticAt Warning(Loc, S.PDiag(diag::warn_unlock_but_no_lock)
-                                         << Kind << LockName);
-    Warnings.emplace_back(std::move(Warning), getNotes());
+    warnLockMismatch(diag::warn_unlock_but_no_lock, Kind, LockName, Loc);
   }
 
   void handleIncorrectUnlockKind(StringRef Kind, Name LockName,
@@ -1684,18 +1687,8 @@ class ThreadSafetyReporter : public clang::threadSafety::ThreadSafetyHandler {
     Warnings.emplace_back(std::move(Warning), getNotes());
   }
 
-  void handleDoubleLock(StringRef Kind, Name LockName, SourceLocation LocLocked,
-                        SourceLocation Loc) override {
-    if (Loc.isInvalid())
-      Loc = FunLocation;
-    PartialDiagnosticAt Warning(Loc, S.PDiag(diag::warn_double_lock)
-                                         << Kind << LockName);
-    OptionalNotes Notes =
-        LocLocked.isValid()
-            ? getNotes(PartialDiagnosticAt(
-                  LocLocked, S.PDiag(diag::note_locked_here) << Kind))
-            : getNotes();
-    Warnings.emplace_back(std::move(Warning), std::move(Notes));
+  void handleDoubleLock(StringRef Kind, Name LockName, SourceLocation Loc) override {
+    warnLockMismatch(diag::warn_double_lock, Kind, LockName, Loc);
   }
 
   void handleMutexHeldEndOfScope(StringRef Kind, Name LockName,

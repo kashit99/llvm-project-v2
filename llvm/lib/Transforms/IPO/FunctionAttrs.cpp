@@ -1,8 +1,9 @@
 //===- FunctionAttrs.cpp - Pass which marks functions attributes ----------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -129,15 +130,16 @@ static MemoryAccessKind checkFunctionMemoryAccess(Function &F, bool ThisBody,
 
     // Some instructions can be ignored even if they read or write memory.
     // Detect these now, skipping to the next instruction if one is found.
-    if (auto *Call = dyn_cast<CallBase>(I)) {
+    CallSite CS(cast<Value>(I));
+    if (CS) {
       // Ignore calls to functions in the same SCC, as long as the call sites
       // don't have operand bundles.  Calls with operand bundles are allowed to
       // have memory effects not described by the memory effects of the call
       // target.
-      if (!Call->hasOperandBundles() && Call->getCalledFunction() &&
-          SCCNodes.count(Call->getCalledFunction()))
+      if (!CS.hasOperandBundles() && CS.getCalledFunction() &&
+          SCCNodes.count(CS.getCalledFunction()))
         continue;
-      FunctionModRefBehavior MRB = AAR.getModRefBehavior(Call);
+      FunctionModRefBehavior MRB = AAR.getModRefBehavior(CS);
       ModRefInfo MRI = createModRefInfo(MRB);
 
       // If the call doesn't access memory, we're done.
@@ -156,7 +158,7 @@ static MemoryAccessKind checkFunctionMemoryAccess(Function &F, bool ThisBody,
 
       // Check whether all pointer arguments point to local memory, and
       // ignore calls that only access local memory.
-      for (CallSite::arg_iterator CI = Call->arg_begin(), CE = Call->arg_end();
+      for (CallSite::arg_iterator CI = CS.arg_begin(), CE = CS.arg_end();
            CI != CE; ++CI) {
         Value *Arg = *CI;
         if (!Arg->getType()->isPtrOrPtrVectorTy())

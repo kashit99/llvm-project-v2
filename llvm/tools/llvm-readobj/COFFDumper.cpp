@@ -1,8 +1,9 @@
 //===-- COFFDumper.cpp - COFF-specific dumper -------------------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 ///
@@ -80,6 +81,8 @@ public:
   void printFileHeaders() override;
   void printSectionHeaders() override;
   void printRelocations() override;
+  void printSymbols() override;
+  void printDynamicSymbols() override;
   void printUnwindInfo() override;
 
   void printNeededLibraries() override;
@@ -98,8 +101,6 @@ public:
   void printStackMap() const override;
   void printAddrsig() override;
 private:
-  void printSymbols() override;
-  void printDynamicSymbols() override;
   void printSymbol(const SymbolRef &Sym);
   void printRelocation(const SectionRef &Section, const RelocationRef &Reloc,
                        uint64_t Bias = 0);
@@ -1247,9 +1248,9 @@ void COFFDumper::mergeCodeViewTypes(MergingTypeTableBuilder &CVIDs,
         error(object_error::parse_failed);
       }
       SmallVector<TypeIndex, 128> SourceToDest;
-      Optional<uint32_t> PCHSignature;
+      Optional<EndPrecompRecord> EndPrecomp;
       if (auto EC = mergeTypeAndIdRecords(CVIDs, CVTypes, SourceToDest, Types,
-                                          PCHSignature))
+                                          EndPrecomp))
         return error(std::move(EC));
     }
   }

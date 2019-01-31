@@ -8,15 +8,15 @@ to overridden parent's virtual methods.
 
 .. code-block:: c++
 
-  struct A {
+  class A {
     int virtual foo() {...}
   };
 
-  struct B: public A {
+  class B: public A {
     int foo() override {...}
   };
 
-  struct C: public B {
+  class C: public B {
     int foo() override { A::foo(); }
   //                     ^^^^^^^^
   // warning: qualified name A::foo refers to a member overridden in subclass; did you mean 'B'?  [bugprone-parent-virtual-call]

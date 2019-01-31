@@ -505,9 +505,7 @@ set(mips64el_SOURCES ${GENERIC_TF_SOURCES}
 set(powerpc64_SOURCES
   ppc/divtc3.c
   ppc/fixtfdi.c
-  ppc/fixunstfti.c
   ppc/fixunstfdi.c
-  ppc/floattitf.c
   ppc/floatditf.c
   ppc/floatunditf.c
   ppc/gcc_qadd.c
@@ -548,9 +546,7 @@ else ()
   if(COMPILER_RT_STANDALONE_BUILD)
     append_list_if(COMPILER_RT_HAS_FPIC_FLAG -fPIC BUILTIN_CFLAGS)
     append_list_if(COMPILER_RT_HAS_FNO_BUILTIN_FLAG -fno-builtin BUILTIN_CFLAGS)
-    if(NOT ANDROID)
-      append_list_if(COMPILER_RT_HAS_VISIBILITY_HIDDEN_FLAG -fvisibility=hidden BUILTIN_CFLAGS)
-    endif()
+    append_list_if(COMPILER_RT_HAS_VISIBILITY_HIDDEN_FLAG -fvisibility=hidden BUILTIN_CFLAGS)
     if(NOT COMPILER_RT_DEBUG)
       append_list_if(COMPILER_RT_HAS_OMIT_FRAME_POINTER_FLAG -fomit-frame-pointer BUILTIN_CFLAGS)
     endif()
@@ -558,9 +554,7 @@ else ()
 
   set(BUILTIN_DEFS "")
 
-  if(NOT ANDROID)
-    append_list_if(COMPILER_RT_HAS_VISIBILITY_HIDDEN_FLAG VISIBILITY_HIDDEN BUILTIN_DEFS)
-  endif()
+  append_list_if(COMPILER_RT_HAS_VISIBILITY_HIDDEN_FLAG VISIBILITY_HIDDEN BUILTIN_DEFS)
 
   foreach (arch ${BUILTIN_SUPPORTED_ARCH})
     if (CAN_TARGET_${arch})

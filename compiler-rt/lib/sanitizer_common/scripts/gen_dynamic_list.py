@@ -1,9 +1,10 @@
 #!/usr/bin/env python
 #===- lib/sanitizer_common/scripts/gen_dynamic_list.py ---------------------===#
 #
-# Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
-# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#                     The LLVM Compiler Infrastructure
+#
+# This file is distributed under the University of Illinois Open Source
+# License. See LICENSE.TXT for details.
 #
 #===------------------------------------------------------------------------===#
 #
@@ -13,7 +14,6 @@
 #   gen_dynamic_list.py libclang_rt.*san*.a [ files ... ]
 #
 #===------------------------------------------------------------------------===#
-from __future__ import print_function
 import argparse
 import os
 import re
@@ -84,7 +84,6 @@ def main(argv):
   parser.add_argument('--version-list', action='store_true')
   parser.add_argument('--extra', default=[], action='append')
   parser.add_argument('libraries', default=[], nargs='+')
-  parser.add_argument('-o', '--output', required=True)
   args = parser.parse_args()
 
   result = []
@@ -118,17 +117,16 @@ def main(argv):
     for line in f:
       result.append(line.rstrip())
   # Print the resulting list in the format recognized by ld.
-  with open(args.output, 'w') as f:
-    print('{', file=f)
-    if args.version_list:
-      print('global:', file=f)
-    result.sort()
-    for sym in result:
-      print(u'  %s;' % sym, file=f)
-    if args.version_list:
-      print('local:', file=f)
-      print('  *;', file=f)
-    print('};', file=f)
+  print('{')
+  if args.version_list:
+    print('global:')
+  result.sort()
+  for f in result:
+    print(u'  %s;' % f)
+  if args.version_list:
+    print('local:')
+    print('  *;')
+  print('};')
 
 if __name__ == '__main__':
   main(sys.argv)

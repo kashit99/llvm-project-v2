@@ -1,8 +1,9 @@
 //==- BlockFrequencyInfoImpl.h - Block Frequency Implementation --*- C++ -*-==//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -159,6 +160,10 @@ inline raw_ostream &operator<<(raw_ostream &OS, BlockMass X) {
 
 } // end namespace bfi_detail
 
+template <> struct isPodLike<bfi_detail::BlockMass> {
+  static const bool value = true;
+};
+
 /// Base class for BlockFrequencyInfoImpl
 ///
 /// BlockFrequencyInfoImplBase has supporting data structures and some
@@ -182,9 +187,9 @@ public:
   struct BlockNode {
     using IndexType = uint32_t;
 
-    IndexType Index;
+    IndexType Index = std::numeric_limits<uint32_t>::max();
 
-    BlockNode() : Index(std::numeric_limits<uint32_t>::max()) {}
+    BlockNode() = default;
     BlockNode(IndexType Index) : Index(Index) {}
 
     bool operator==(const BlockNode &X) const { return Index == X.Index; }

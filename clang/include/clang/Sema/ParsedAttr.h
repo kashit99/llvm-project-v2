@@ -1,8 +1,9 @@
 //======- ParsedAttr.h - Parsed attribute sets ------------------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -576,25 +577,6 @@ public:
   /// parsed attribute does not have a semantic equivalent, or would not have
   /// a Spelling enumeration, the value UINT_MAX is returned.
   unsigned getSemanticSpelling() const;
-
-  /// If this is an OpenCL addr space attribute returns its representation
-  /// in LangAS, otherwise returns default addr space.
-  LangAS asOpenCLLangAS() const {
-    switch (getKind()) {
-    case ParsedAttr::AT_OpenCLConstantAddressSpace:
-      return LangAS::opencl_constant;
-    case ParsedAttr::AT_OpenCLGlobalAddressSpace:
-      return LangAS::opencl_global;
-    case ParsedAttr::AT_OpenCLLocalAddressSpace:
-      return LangAS::opencl_local;
-    case ParsedAttr::AT_OpenCLPrivateAddressSpace:
-      return LangAS::opencl_private;
-    case ParsedAttr::AT_OpenCLGenericAddressSpace:
-      return LangAS::opencl_generic;
-    default:
-      return LangAS::Default;
-    }
-  }
 };
 
 class AttributePool;

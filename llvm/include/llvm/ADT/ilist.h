@@ -1,8 +1,9 @@
 //==-- llvm/ADT/ilist.h - Intrusive Linked List Template ---------*- C++ -*-==//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -65,8 +66,9 @@ template <typename NodeTy> struct ilist_callback_traits {
   void addNodeToList(NodeTy *) {}
   void removeNodeFromList(NodeTy *) {}
 
-  /// Callback before transferring nodes to this list. The nodes may already be
-  /// in this same list.
+  /// Callback before transferring nodes to this list.
+  ///
+  /// \pre \c this!=&OldList
   template <class Iterator>
   void transferNodesFromList(ilist_callback_traits &OldList, Iterator /*first*/,
                              Iterator /*last*/) {
@@ -285,8 +287,8 @@ private:
     if (position == last)
       return;
 
-    // Notify traits we moved the nodes...
-    this->transferNodesFromList(L2, first, last);
+    if (this != &L2) // Notify traits we moved the nodes...
+      this->transferNodesFromList(L2, first, last);
 
     base_list_type::splice(position, L2, first, last);
   }

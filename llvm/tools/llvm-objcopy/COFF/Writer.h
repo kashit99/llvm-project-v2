@@ -1,8 +1,9 @@
 //===- Writer.h -------------------------------------------------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                      The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -21,22 +22,29 @@ namespace coff {
 
 struct Object;
 
-class COFFWriter {
+class Writer {
+protected:
   Object &Obj;
   Buffer &Buf;
 
+public:
+  virtual ~Writer();
+  virtual Error write() = 0;
+
+  Writer(Object &O, Buffer &B) : Obj(O), Buf(B) {}
+};
+
+class COFFWriter : public Writer {
   size_t FileSize;
   size_t FileAlignment;
   size_t SizeOfInitializedData;
   StringTableBuilder StrTabBuilder;
 
-  template <class SymbolTy> std::pair<size_t, size_t> finalizeSymbolTable();
-  Error finalizeRelocTargets();
-  Error finalizeSymbolContents();
   void layoutSections();
   size_t finalizeStringTable();
+  template <class SymbolTy> std::pair<size_t, size_t> finalizeSymbolTable();
 
-  Error finalize(bool IsBigObj);
+  void finalize(bool IsBigObj);
 
   void writeHeaders(bool IsBigObj);
   void writeSections();
@@ -48,10 +56,10 @@ class COFFWriter {
 
 public:
   virtual ~COFFWriter() {}
-  Error write();
+  Error write() override;
 
   COFFWriter(Object &Obj, Buffer &Buf)
-      : Obj(Obj), Buf(Buf), StrTabBuilder(StringTableBuilder::WinCOFF) {}
+      : Writer(Obj, Buf), StrTabBuilder(StringTableBuilder::WinCOFF) {}
 };
 
 } // end namespace coff

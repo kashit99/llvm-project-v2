@@ -19,5 +19,3 @@ A operator-(const A &A1, const A &A2);
 
 void operator delete(void*, void*) throw();
 // CHECK-MESSAGES: [[@LINE-1]]:1: warning: overloading 'operator delete' is disallowed
-
-auto x = []{};

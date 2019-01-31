@@ -78,6 +78,7 @@ class ModuleListProperties : public Properties {
 public:
   ModuleListProperties();
 
+  bool GetUseDWARFImporter() const;
   FileSpec GetClangModulesCachePath() const;
   bool SetClangModulesCachePath(llvm::StringRef path);
   bool GetEnableExternalLookup() const;
@@ -549,6 +550,8 @@ public:
   
   void ForEach(std::function<bool(const lldb::ModuleSP &module_sp)> const
                    &callback) const;
+
+  void ClearModuleDependentCaches();
 
 protected:
   //------------------------------------------------------------------

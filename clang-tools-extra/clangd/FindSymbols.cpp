@@ -1,8 +1,9 @@
 //===--- FindSymbols.cpp ------------------------------------*- C++-*------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 #include "FindSymbols.h"
@@ -24,6 +25,7 @@
 
 #define DEBUG_TYPE "FindSymbols"
 
+using namespace llvm;
 namespace clang {
 namespace clangd {
 namespace {
@@ -98,9 +100,9 @@ struct ScoredSymbolGreater {
 
 } // namespace
 
-llvm::Expected<std::vector<SymbolInformation>>
-getWorkspaceSymbols(llvm::StringRef Query, int Limit,
-                    const SymbolIndex *const Index, llvm::StringRef HintPath) {
+Expected<std::vector<SymbolInformation>>
+getWorkspaceSymbols(StringRef Query, int Limit, const SymbolIndex *const Index,
+                    StringRef HintPath) {
   std::vector<SymbolInformation> Result;
   if (Query.empty() || !Index)
     return Result;
@@ -151,7 +153,7 @@ getWorkspaceSymbols(llvm::StringRef Query, int Limit,
     L.range = {Start, End};
     SymbolKind SK = indexSymbolKindToSymbolKind(Sym.SymInfo.Kind);
     std::string Scope = Sym.Scope;
-    llvm::StringRef ScopeRef = Scope;
+    StringRef ScopeRef = Scope;
     ScopeRef.consume_back("::");
     SymbolInformation Info = {Sym.Name, SK, L, ScopeRef};
 

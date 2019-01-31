@@ -1,8 +1,9 @@
 //===- llvm/CodeGen/MachineFunction.h ---------------------------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -85,7 +86,7 @@ template <> struct ilist_callback_traits<MachineBasicBlock> {
 
   template <class Iterator>
   void transferNodesFromList(ilist_callback_traits &OldList, Iterator, Iterator) {
-    assert(this == &OldList && "never transfer MBBs between functions");
+    llvm_unreachable("Never transfer between lists");
   }
 };
 
@@ -328,7 +329,6 @@ class MachineFunction {
   bool CallsUnwindInit = false;
   bool HasEHScopes = false;
   bool HasEHFunclets = false;
-  bool HasLocalEscape = false;
 
   /// List of C++ TypeInfo used.
   std::vector<const GlobalValue *> TypeInfos;
@@ -372,18 +372,16 @@ public:
 
   public:
     virtual ~Delegate() = default;
-    /// Callback after an insertion. This should not modify the MI directly.
-    virtual void MF_HandleInsertion(MachineInstr &MI) = 0;
-    /// Callback before a removal. This should not modify the MI directly.
-    virtual void MF_HandleRemoval(MachineInstr &MI) = 0;
+    virtual void MF_HandleInsertion(const MachineInstr &MI) = 0;
+    virtual void MF_HandleRemoval(const MachineInstr &MI) = 0;
   };
 
 private:
   Delegate *TheDelegate = nullptr;
 
   // Callbacks for insertion and removal.
-  void handleInsertion(MachineInstr &MI);
-  void handleRemoval(MachineInstr &MI);
+  void handleInsertion(const MachineInstr &MI);
+  void handleRemoval(const MachineInstr &MI);
   friend struct ilist_traits<MachineInstr>;
 
 public:
@@ -810,9 +808,6 @@ public:
 
   bool hasEHFunclets() const { return HasEHFunclets; }
   void setHasEHFunclets(bool V) { HasEHFunclets = V; }
-
-  bool hasLocalEscape() const { return HasLocalEscape; }
-  void setHasLocalEscape(bool V) { HasLocalEscape = V; }
 
   /// Find or create an LandingPadInfo for the specified MachineBasicBlock.
   LandingPadInfo &getOrCreateLandingPadInfo(MachineBasicBlock *LandingPad);

@@ -1,8 +1,9 @@
 //===- TargetSubtargetInfo.cpp - General Target Information ----------------==//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -88,12 +89,6 @@ std::string TargetSubtargetInfo::getSchedInfoStr(const MachineInstr &MI) const {
   TargetSchedModel TSchedModel;
   TSchedModel.init(this);
   unsigned Latency = TSchedModel.computeInstrLatency(&MI);
-
-  // Add extra latency due to forwarding delays.
-  const MCSchedClassDesc &SCDesc = *TSchedModel.resolveSchedClass(&MI);
-  Latency +=
-      MCSchedModel::getForwardingDelayCycles(getReadAdvanceEntries(SCDesc));
-
   double RThroughput = TSchedModel.computeReciprocalThroughput(&MI);
   return createSchedInfoStr(Latency, RThroughput);
 }
@@ -105,17 +100,9 @@ std::string TargetSubtargetInfo::getSchedInfoStr(MCInst const &MCI) const {
   TargetSchedModel TSchedModel;
   TSchedModel.init(this);
   unsigned Latency;
-  if (TSchedModel.hasInstrSchedModel()) {
+  if (TSchedModel.hasInstrSchedModel())
     Latency = TSchedModel.computeInstrLatency(MCI);
-    // Add extra latency due to forwarding delays.
-    const MCSchedModel &SM = *TSchedModel.getMCSchedModel();
-    unsigned SClassID = getInstrInfo()->get(MCI.getOpcode()).getSchedClass();
-    while (SM.getSchedClassDesc(SClassID)->isVariant())
-      SClassID = resolveVariantSchedClass(SClassID, &MCI, SM.ProcID);
-    const MCSchedClassDesc &SCDesc = *SM.getSchedClassDesc(SClassID);  
-    Latency +=
-        MCSchedModel::getForwardingDelayCycles(getReadAdvanceEntries(SCDesc));
-  } else if (TSchedModel.hasInstrItineraries()) {
+  else if (TSchedModel.hasInstrItineraries()) {
     auto *ItinData = TSchedModel.getInstrItineraries();
     Latency = ItinData->getStageLatency(
         getInstrInfo()->get(MCI.getOpcode()).getSchedClass());

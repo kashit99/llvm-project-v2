@@ -1,8 +1,9 @@
 //===- InstCombineMulDivRem.cpp -------------------------------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -439,26 +440,6 @@ Instruction *InstCombiner::visitFMul(BinaryOperator &I) {
       Value *XY = Builder.CreateFMulFMF(X, Y, &I);
       Value *Sqrt = Builder.CreateUnaryIntrinsic(Intrinsic::sqrt, XY, &I);
       return replaceInstUsesWith(I, Sqrt);
-    }
-
-    // exp(X) * exp(Y) -> exp(X + Y)
-    // Match as long as at least one of exp has only one use.
-    if (match(Op0, m_Intrinsic<Intrinsic::exp>(m_Value(X))) &&
-        match(Op1, m_Intrinsic<Intrinsic::exp>(m_Value(Y))) &&
-        (Op0->hasOneUse() || Op1->hasOneUse())) {
-      Value *XY = Builder.CreateFAddFMF(X, Y, &I);
-      Value *Exp = Builder.CreateUnaryIntrinsic(Intrinsic::exp, XY, &I);
-      return replaceInstUsesWith(I, Exp);
-    }
-
-    // exp2(X) * exp2(Y) -> exp2(X + Y)
-    // Match as long as at least one of exp2 has only one use.
-    if (match(Op0, m_Intrinsic<Intrinsic::exp2>(m_Value(X))) &&
-        match(Op1, m_Intrinsic<Intrinsic::exp2>(m_Value(Y))) &&
-        (Op0->hasOneUse() || Op1->hasOneUse())) {
-      Value *XY = Builder.CreateFAddFMF(X, Y, &I);
-      Value *Exp2 = Builder.CreateUnaryIntrinsic(Intrinsic::exp2, XY, &I);
-      return replaceInstUsesWith(I, Exp2);
     }
 
     // (X*Y) * X => (X*X) * Y where Y != X

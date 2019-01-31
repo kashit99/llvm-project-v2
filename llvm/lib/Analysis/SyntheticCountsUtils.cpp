@@ -1,8 +1,9 @@
 //===--- SyntheticCountsUtils.cpp - synthetic counts propagation utils ---===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -25,7 +26,8 @@ using namespace llvm;
 // Given an SCC, propagate entry counts along the edge of the SCC nodes.
 template <typename CallGraphType>
 void SyntheticCountsUtils<CallGraphType>::propagateFromSCC(
-    const SccTy &SCC, GetProfCountTy GetProfCount, AddCountTy AddCount) {
+    const SccTy &SCC, GetRelBBFreqTy GetRelBBFreq, GetCountTy GetCount,
+    AddCountTy AddCount) {
 
   DenseSet<NodeRef> SCCNodes;
   SmallVector<std::pair<NodeRef, EdgeRef>, 8> SCCEdges, NonSCCEdges;
@@ -52,13 +54,17 @@ void SyntheticCountsUtils<CallGraphType>::propagateFromSCC(
   // This ensures that the order of
   // traversal of nodes within the SCC doesn't affect the final result.
 
-  DenseMap<NodeRef, Scaled64> AdditionalCounts;
+  DenseMap<NodeRef, uint64_t> AdditionalCounts;
   for (auto &E : SCCEdges) {
-    auto OptProfCount = GetProfCount(E.first, E.second);
-    if (!OptProfCount)
+    auto OptRelFreq = GetRelBBFreq(E.second);
+    if (!OptRelFreq)
       continue;
+    Scaled64 RelFreq = OptRelFreq.getValue();
+    auto Caller = E.first;
     auto Callee = CGT::edge_dest(E.second);
-    AdditionalCounts[Callee] += OptProfCount.getValue();
+    RelFreq *= Scaled64(GetCount(Caller), 0);
+    uint64_t AdditionalCount = RelFreq.toInt<uint64_t>();
+    AdditionalCounts[Callee] += AdditionalCount;
   }
 
   // Update the counts for the nodes in the SCC.
@@ -67,11 +73,14 @@ void SyntheticCountsUtils<CallGraphType>::propagateFromSCC(
 
   // Now update the counts for nodes outside the SCC.
   for (auto &E : NonSCCEdges) {
-    auto OptProfCount = GetProfCount(E.first, E.second);
-    if (!OptProfCount)
+    auto OptRelFreq = GetRelBBFreq(E.second);
+    if (!OptRelFreq)
       continue;
+    Scaled64 RelFreq = OptRelFreq.getValue();
+    auto Caller = E.first;
     auto Callee = CGT::edge_dest(E.second);
-    AddCount(Callee, OptProfCount.getValue());
+    RelFreq *= Scaled64(GetCount(Caller), 0);
+    AddCount(Callee, RelFreq.toInt<uint64_t>());
   }
 }
 
@@ -85,7 +94,8 @@ void SyntheticCountsUtils<CallGraphType>::propagateFromSCC(
 
 template <typename CallGraphType>
 void SyntheticCountsUtils<CallGraphType>::propagate(const CallGraphType &CG,
-                                                    GetProfCountTy GetProfCount,
+                                                    GetRelBBFreqTy GetRelBBFreq,
+                                                    GetCountTy GetCount,
                                                     AddCountTy AddCount) {
   std::vector<SccTy> SCCs;
 
@@ -97,7 +107,7 @@ void SyntheticCountsUtils<CallGraphType>::propagate(const CallGraphType &CG,
   // The scc iterator returns the scc in bottom-up order, so reverse the SCCs
   // and call propagateFromSCC.
   for (auto &SCC : reverse(SCCs))
-    propagateFromSCC(SCC, GetProfCount, AddCount);
+    propagateFromSCC(SCC, GetRelBBFreq, GetCount, AddCount);
 }
 
 template class llvm::SyntheticCountsUtils<const CallGraph *>;

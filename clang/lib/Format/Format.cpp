@@ -1,8 +1,9 @@
 //===--- Format.cpp - Format C++ code -------------------------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 ///
@@ -1867,7 +1868,7 @@ static void sortJavaImports(const FormatStyle &Style,
     JavaImportGroups.push_back(
         findJavaImportGroup(Style, Imports[i].Identifier));
   }
-  llvm::sort(Indices, [&](unsigned LHSI, unsigned RHSI) {
+  llvm::sort(Indices.begin(), Indices.end(), [&](unsigned LHSI, unsigned RHSI) {
         // Negating IsStatic to push static imports above non-static imports.
         return std::make_tuple(!Imports[LHSI].IsStatic, JavaImportGroups[LHSI],
                                Imports[LHSI].Identifier) <

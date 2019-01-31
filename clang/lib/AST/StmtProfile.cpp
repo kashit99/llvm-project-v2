@@ -1,8 +1,9 @@
 //===---- StmtProfile.cpp - Profile implementation for Stmt ASTs ----------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -412,7 +413,6 @@ public:
   OMPClauseProfiler(StmtProfiler *P) : Profiler(P) { }
 #define OPENMP_CLAUSE(Name, Class)                                             \
   void Visit##Class(const Class *C);
-  OPENMP_CLAUSE(flush, OMPFlushClause)
 #include "clang/Basic/OpenMPKinds.def"
   void VistOMPClauseWithPreInit(const OMPClauseWithPreInit *C);
   void VistOMPClauseWithPostUpdate(const OMPClauseWithPostUpdate *C);
@@ -1260,14 +1260,13 @@ void StmtProfiler::VisitBlockExpr(const BlockExpr *S) {
 
 void StmtProfiler::VisitGenericSelectionExpr(const GenericSelectionExpr *S) {
   VisitExpr(S);
-  for (const GenericSelectionExpr::ConstAssociation &Assoc :
-       S->associations()) {
-    QualType T = Assoc.getType();
+  for (unsigned i = 0; i != S->getNumAssocs(); ++i) {
+    QualType T = S->getAssocType(i);
     if (T.isNull())
       ID.AddPointer(nullptr);
     else
       VisitType(T);
-    VisitExpr(Assoc.getAssociationExpr());
+    VisitExpr(S->getAssocExpr(i));
   }
 }
 

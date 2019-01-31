@@ -1,8 +1,9 @@
 //===-- AArch64TargetMachine.cpp - Define TargetMachine for AArch64 -------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -140,7 +141,7 @@ static cl::opt<bool>
 static cl::opt<int> EnableGlobalISelAtO(
     "aarch64-enable-global-isel-at-O", cl::Hidden,
     cl::desc("Enable GlobalISel at or below an opt level (-1 to disable)"),
-    cl::init(0));
+    cl::init(-1));
 
 static cl::opt<bool> EnableFalkorHWPFFix("aarch64-enable-falkor-hwpf-fix",
                                          cl::init(true), cl::Hidden);
@@ -208,8 +209,8 @@ static std::string computeDataLayout(const Triple &TT,
 
 static Reloc::Model getEffectiveRelocModel(const Triple &TT,
                                            Optional<Reloc::Model> RM) {
-  // AArch64 Darwin and Windows are always PIC.
-  if (TT.isOSDarwin() || TT.isOSWindows())
+  // AArch64 Darwin is always PIC.
+  if (TT.isOSDarwin())
     return Reloc::PIC_;
   // On ELF platforms the default static relocation model has a smart enough
   // linker to cope with referencing external symbols defined in a shared

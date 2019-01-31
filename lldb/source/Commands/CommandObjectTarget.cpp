@@ -1450,14 +1450,15 @@ static size_t DumpModuleObjfileHeaders(Stream &strm, ModuleList &module_list) {
 }
 
 static void DumpModuleSymtab(CommandInterpreter &interpreter, Stream &strm,
-                             Module *module, SortOrder sort_order) {
+                             Module *module, SortOrder sort_order,
+                             Mangled::NamePreference name_preference) {
   if (module) {
     SymbolVendor *sym_vendor = module->GetSymbolVendor();
     if (sym_vendor) {
       Symtab *symtab = sym_vendor->GetSymtab();
       if (symtab)
         symtab->Dump(&strm, interpreter.GetExecutionContext().GetTargetPtr(),
-                     sort_order);
+                     sort_order, name_preference);
     }
   }
 }
@@ -1985,6 +1986,7 @@ static constexpr OptionEnumValueElement g_sort_option_enumeration[] = {
 static constexpr OptionDefinition g_target_modules_dump_symtab_options[] = {
     // clang-format off
   { LLDB_OPT_SET_1, false, "sort", 's', OptionParser::eRequiredArgument, nullptr, OptionEnumValues(g_sort_option_enumeration), 0, eArgTypeSortOrder, "Supply a sort order when dumping the symbol table." }
+, { LLDB_OPT_SET_1, false, "show-mangled-names", 'm', OptionParser::eNoArgument,       nullptr, {}, 0, eArgTypeNone, "Do not demangle symbol names before showing them." },
     // clang-format on
 };
 
@@ -2003,7 +2005,9 @@ public:
 
   class CommandOptions : public Options {
   public:
-    CommandOptions() : Options(), m_sort_order(eSortOrderNone) {}
+    CommandOptions()
+        : Options(), m_sort_order(eSortOrderNone),
+          m_prefer_mangled(false, false) {}
 
     ~CommandOptions() override = default;
 
@@ -2013,6 +2017,11 @@ public:
       const int short_option = m_getopt_table[option_idx].val;
 
       switch (short_option) {
+      case 'm':
+        m_prefer_mangled.SetCurrentValue(true);
+        m_prefer_mangled.SetOptionWasSet();
+        break;
+
       case 's':
         m_sort_order = (SortOrder)OptionArgParser::ToOptionEnum(
             option_arg, GetDefinitions()[option_idx].enum_values,
@@ -2029,6 +2038,7 @@ public:
 
     void OptionParsingStarting(ExecutionContext *execution_context) override {
       m_sort_order = eSortOrderNone;
+      m_prefer_mangled.Clear();
     }
 
     llvm::ArrayRef<OptionDefinition> GetDefinitions() override {
@@ -2036,6 +2046,7 @@ public:
     }
 
     SortOrder m_sort_order;
+    OptionValueBoolean m_prefer_mangled;
   };
 
 protected:
@@ -2048,6 +2059,10 @@ protected:
       return false;
     } else {
       uint32_t num_dumped = 0;
+
+      Mangled::NamePreference preference =
+          (m_options.m_prefer_mangled ? Mangled::ePreferMangled
+                                      : Mangled::ePreferDemangled);
 
       uint32_t addr_byte_size = target->GetArchitecture().GetAddressByteSize();
       result.GetOutputStream().SetAddressByteSize(addr_byte_size);
@@ -2073,7 +2088,7 @@ protected:
             DumpModuleSymtab(
                 m_interpreter, result.GetOutputStream(),
                 target->GetImages().GetModulePointerAtIndexUnlocked(image_idx),
-                m_options.m_sort_order);
+                m_options.m_sort_order, preference);
           }
         } else {
           result.AppendError("the target has no associated executable images");
@@ -2101,7 +2116,7 @@ protected:
                   break;
                 num_dumped++;
                 DumpModuleSymtab(m_interpreter, result.GetOutputStream(),
-                                 module, m_options.m_sort_order);
+                                 module, m_options.m_sort_order, preference);
               }
             }
           } else
@@ -3876,7 +3891,7 @@ public:
       break;
     }
 
-    return true;
+    return false;
   }
 
   bool LookupInModule(CommandInterpreter &interpreter, Module *module,

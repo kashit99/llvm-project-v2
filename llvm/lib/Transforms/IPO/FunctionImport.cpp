@@ -1,8 +1,9 @@
 //===- FunctionImport.cpp - ThinLTO Summary-based Function Import ---------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -777,7 +778,9 @@ void llvm::computeDeadSymbols(
     if (!VI)
       return;
 
-    if (llvm::any_of(VI.getSummaryList(),
+    // We need to make sure all variants of the symbol are scanned, alias can
+    // make one (but not all) alive.
+    if (llvm::all_of(VI.getSummaryList(),
                      [](const std::unique_ptr<llvm::GlobalValueSummary> &S) {
                        return S->isLive();
                      }))
@@ -817,23 +820,12 @@ void llvm::computeDeadSymbols(
   while (!Worklist.empty()) {
     auto VI = Worklist.pop_back_val();
     for (auto &Summary : VI.getSummaryList()) {
-      if (auto *AS = dyn_cast<AliasSummary>(Summary.get())) {
-        // If this is an alias, visit the aliasee VI to ensure that all copies
-        // are marked live and it is added to the worklist for further
-        // processing of its references.
-        // FIXME: The aliasee GUID is only populated in the summary when we
-        // read them from bitcode, which is currently the only way we can
-        // get here (we don't yet support reading the summary index directly
-        // from LLVM assembly code in tools that can perform a thin link).
-        // If that ever changes, the below call to getAliaseGUID will assert.
-        visit(Index.getValueInfo(AS->getAliaseeGUID()));
-        continue;
-      }
-
-      Summary->setLive(true);
-      for (auto Ref : Summary->refs())
+      GlobalValueSummary *Base = Summary->getBaseObject();
+      // Set base value live in case it is an alias.
+      Base->setLive(true);
+      for (auto Ref : Base->refs())
         visit(Ref);
-      if (auto *FS = dyn_cast<FunctionSummary>(Summary.get()))
+      if (auto *FS = dyn_cast<FunctionSummary>(Base))
         for (auto Call : FS->calls())
           visit(Call.first);
     }

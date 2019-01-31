@@ -1,8 +1,9 @@
 //===- StmtPrinter.cpp - Printing implementation for Stmt ASTs ------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -1261,15 +1262,15 @@ void StmtPrinter::VisitUnaryExprOrTypeTraitExpr(UnaryExprOrTypeTraitExpr *Node){
 void StmtPrinter::VisitGenericSelectionExpr(GenericSelectionExpr *Node) {
   OS << "_Generic(";
   PrintExpr(Node->getControllingExpr());
-  for (const GenericSelectionExpr::Association &Assoc : Node->associations()) {
+  for (unsigned i = 0; i != Node->getNumAssocs(); ++i) {
     OS << ", ";
-    QualType T = Assoc.getType();
+    QualType T = Node->getAssocType(i);
     if (T.isNull())
       OS << "default";
     else
       T.print(OS, Policy);
     OS << ": ";
-    PrintExpr(Assoc.getAssociationExpr());
+    PrintExpr(Node->getAssocExpr(i));
   }
   OS << ")";
 }

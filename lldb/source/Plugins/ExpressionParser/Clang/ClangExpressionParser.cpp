@@ -18,6 +18,7 @@
 #include "clang/Basic/Version.h"
 #include "clang/CodeGen/CodeGenAction.h"
 #include "clang/CodeGen/ModuleBuilder.h"
+#include "clang/CodeGen/ObjectFilePCHContainerOperations.h"
 #include "clang/Edit/Commit.h"
 #include "clang/Edit/EditedSource.h"
 #include "clang/Edit/EditsReceiver.h"
@@ -28,6 +29,7 @@
 #include "clang/Frontend/FrontendPluginRegistry.h"
 #include "clang/Frontend/TextDiagnosticBuffer.h"
 #include "clang/Frontend/TextDiagnosticPrinter.h"
+#include "clang/Lex/HeaderSearch.h"
 #include "clang/Lex/Preprocessor.h"
 #include "clang/Parse/ParseAST.h"
 #include "clang/Rewrite/Core/Rewriter.h"
@@ -69,6 +71,7 @@
 #include "lldb/Core/Disassembler.h"
 #include "lldb/Core/Module.h"
 #include "lldb/Core/StreamFile.h"
+#include "lldb/Expression/ExpressionSourceCode.h"
 #include "lldb/Expression/IRDynamicChecks.h"
 #include "lldb/Expression/IRExecutionUnit.h"
 #include "lldb/Expression/IRInterpreter.h"
@@ -213,6 +216,50 @@ private:
   std::shared_ptr<clang::TextDiagnosticBuffer> m_passthrough;
 };
 
+class LoggingDiagnosticConsumer : public clang::DiagnosticConsumer {
+public:
+  LoggingDiagnosticConsumer() {
+    m_log = lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_EXPRESSIONS);
+    m_passthrough.reset(new clang::TextDiagnosticBuffer);
+  }
+
+  LoggingDiagnosticConsumer(
+      const std::shared_ptr<clang::TextDiagnosticBuffer> &passthrough) {
+    m_log = lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_EXPRESSIONS);
+    m_passthrough = passthrough;
+  }
+
+  void HandleDiagnostic(DiagnosticsEngine::Level DiagLevel,
+                        const clang::Diagnostic &Info) {
+    if (m_log) {
+      llvm::SmallVector<char, 32> diag_str;
+      Info.FormatDiagnostic(diag_str);
+      diag_str.push_back('\0');
+      const char *data = diag_str.data();
+      m_log->Printf("[clang] COMPILER DIAGNOSTIC: %s", data);
+
+      lldbassert(Info.getID() != clang::diag::err_unsupported_ast_node &&
+                 "'log enable lldb expr' to investigate.");
+    }
+
+    m_passthrough->HandleDiagnostic(DiagLevel, Info);
+  }
+
+  void FlushDiagnostics(DiagnosticsEngine &Diags) {
+    m_passthrough->FlushDiagnostics(Diags);
+  }
+
+  DiagnosticConsumer *clone(DiagnosticsEngine &Diags) const {
+    return new LoggingDiagnosticConsumer(m_passthrough);
+  }
+
+  clang::TextDiagnosticBuffer *GetPassthrough() { return m_passthrough.get(); }
+
+private:
+  Log *m_log;
+  std::shared_ptr<clang::TextDiagnosticBuffer> m_passthrough;
+};
+
 //===----------------------------------------------------------------------===//
 // Implementation of ClangExpressionParser
 //===----------------------------------------------------------------------===//
@@ -248,6 +295,17 @@ ClangExpressionParser::ClangExpressionParser(ExecutionContextScope *exe_scope,
 
   // 1. Create a new compiler instance.
   m_compiler.reset(new CompilerInstance());
+
+  // Register the support for object-file-wrapped Clang modules.
+  std::shared_ptr<clang::PCHContainerOperations> pch_operations =
+      m_compiler->getPCHContainerOperations();
+  pch_operations->registerWriter(
+      llvm::make_unique<ObjectFilePCHContainerWriter>());
+  pch_operations->registerReader(
+      llvm::make_unique<ObjectFilePCHContainerReader>());
+
+  // 2. Install the target.
+
   lldb::LanguageType frame_lang =
       expr.Language(); // defaults to lldb::eLanguageTypeUnknown
   bool overridden_target_opts = false;
@@ -297,6 +355,9 @@ ClangExpressionParser::ClangExpressionParser(ExecutionContextScope *exe_scope,
       log->Printf("Using default target triple of %s",
                   m_compiler->getTargetOpts().Triple.c_str());
   }
+
+  m_compiler->getTargetOpts().CPU = "";
+
   // Now add some special fixes for known architectures: Any arm32 iOS
   // environment, but not on arm64
   if (m_compiler->getTargetOpts().Triple.find("arm64") == std::string::npos &&
@@ -794,7 +855,13 @@ bool ClangExpressionParser::Complete(CompletionRequest &request, unsigned line,
   return true;
 }
 
-unsigned ClangExpressionParser::Parse(DiagnosticManager &diagnostic_manager) {
+// Swift only
+// Extra arguments are only used in Swift. We should get rid of them
+// to avoid clashes when merging from upstream.
+// End Swift only
+unsigned ClangExpressionParser::Parse(DiagnosticManager &diagnostic_manager,
+                                      uint32_t first_line, uint32_t last_line,
+                                      uint32_t line_offset) {
   return ParseInternal(diagnostic_manager);
 }
 
@@ -815,6 +882,23 @@ ClangExpressionParser::ParseInternal(DiagnosticManager &diagnostic_manager,
 
   clang::SourceManager &source_mgr = m_compiler->getSourceManager();
   bool created_main_file = false;
+  /* Swift only */
+  if (m_expr.GetOptions() &&
+      m_expr.GetOptions()->GetPoundLineFilePath() == NULL &&
+      m_compiler->getCodeGenOpts().getDebugInfo() ==
+          codegenoptions::FullDebugInfo) {
+    std::string temp_source_path;
+    if (ExpressionSourceCode::SaveExpressionTextToTempFile(
+            expr_text, *m_expr.GetOptions(), temp_source_path)) {
+      auto file = m_file_manager->getFile(temp_source_path);
+      if (file) {
+        source_mgr.setMainFileID(
+            source_mgr.createFileID(file, SourceLocation(), SrcMgr::C_User));
+        created_main_file = true;
+      }
+    }
+  }
+  /* end swift only */
 
   // Clang wants to do completion on a real file known by Clang's file manager,
   // so we have to create one to make this work.
@@ -1053,6 +1137,17 @@ lldb_private::Status ClangExpressionParser::PrepareForExecution(
     err.SetErrorToGenericError();
     err.SetErrorString("IR doesn't contain a module");
     return err;
+  }
+
+  for (llvm::Function &function : *llvm_module_ap.get()) {
+    llvm::AttributeList attributes = function.getAttributes();
+    llvm::AttrBuilder attributes_to_remove;
+
+    attributes_to_remove.addAttribute("target-cpu");
+
+    function.setAttributes(attributes.removeAttributes(
+        function.getContext(), llvm::AttributeList::FunctionIndex,
+        attributes_to_remove));
   }
 
   ConstString function_name;

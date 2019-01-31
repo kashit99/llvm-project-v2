@@ -1,8 +1,9 @@
 //===--- SemaOverload.cpp - C++ Overloading -------------------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -1040,36 +1041,6 @@ Sema::CheckOverload(Scope *S, FunctionDecl *New, const LookupResult &Old,
     }
   }
 
-  // C++ [temp.friend]p1:
-  //   For a friend function declaration that is not a template declaration:
-  //    -- if the name of the friend is a qualified or unqualified template-id,
-  //       [...], otherwise
-  //    -- if the name of the friend is a qualified-id and a matching
-  //       non-template function is found in the specified class or namespace,
-  //       the friend declaration refers to that function, otherwise,
-  //    -- if the name of the friend is a qualified-id and a matching function
-  //       template is found in the specified class or namespace, the friend
-  //       declaration refers to the deduced specialization of that function
-  //       template, otherwise
-  //    -- the name shall be an unqualified-id [...]
-  // If we get here for a qualified friend declaration, we've just reached the
-  // third bullet. If the type of the friend is dependent, skip this lookup
-  // until instantiation.
-  if (New->getFriendObjectKind() && New->getQualifier() &&
-      !New->getDependentSpecializationInfo() &&
-      !New->getType()->isDependentType()) {
-    LookupResult TemplateSpecResult(LookupResult::Temporary, Old);
-    TemplateSpecResult.addAllDecls(Old);
-    if (CheckFunctionTemplateSpecialization(New, nullptr, TemplateSpecResult,
-                                            /*QualifiedFriend*/true)) {
-      New->setInvalidDecl();
-      return Ovl_Overload;
-    }
-
-    Match = TemplateSpecResult.getAsSingle<FunctionDecl>();
-    return Ovl_Match;
-  }
-
   return Ovl_Overload;
 }
 
@@ -1171,14 +1142,16 @@ bool Sema::IsOverload(FunctionDecl *New, FunctionDecl *Old,
     // function yet (because we haven't yet resolved whether this is a static
     // or non-static member function). Add it now, on the assumption that this
     // is a redeclaration of OldMethod.
-    auto OldQuals = OldMethod->getMethodQualifiers();
-    auto NewQuals = NewMethod->getMethodQualifiers();
+    // FIXME: OpenCL: Need to consider address spaces
+    unsigned OldQuals = OldMethod->getTypeQualifiers().getCVRUQualifiers();
+    unsigned NewQuals = NewMethod->getTypeQualifiers().getCVRUQualifiers();
     if (!getLangOpts().CPlusPlus14 && NewMethod->isConstexpr() &&
         !isa<CXXConstructorDecl>(NewMethod))
-      NewQuals.addConst();
+      NewQuals |= Qualifiers::Const;
+
     // We do not allow overloading based off of '__restrict'.
-    OldQuals.removeRestrict();
-    NewQuals.removeRestrict();
+    OldQuals &= ~Qualifiers::Restrict;
+    NewQuals &= ~Qualifiers::Restrict;
     if (OldQuals != NewQuals)
       return true;
   }
@@ -2544,7 +2517,7 @@ bool Sema::isObjCPointerConversion(QualType FromType, QualType ToType,
     // function types are obviously different.
     if (FromFunctionType->getNumParams() != ToFunctionType->getNumParams() ||
         FromFunctionType->isVariadic() != ToFunctionType->isVariadic() ||
-        FromFunctionType->getMethodQuals() != ToFunctionType->getMethodQuals())
+        FromFunctionType->getTypeQuals() != ToFunctionType->getTypeQuals())
       return false;
 
     bool HasObjCConversion = false;
@@ -2851,9 +2824,11 @@ void Sema::HandleFunctionTypeMismatch(PartialDiagnostic &PDiag,
     return;
   }
 
-  if (FromFunction->getMethodQuals() != ToFunction->getMethodQuals()) {
-    PDiag << ft_qualifer_mismatch << ToFunction->getMethodQuals()
-          << FromFunction->getMethodQuals();
+  // FIXME: OpenCL: Need to consider address spaces
+  unsigned FromQuals = FromFunction->getTypeQuals().getCVRUQualifiers();
+  unsigned ToQuals = ToFunction->getTypeQuals().getCVRUQualifiers();
+  if (FromQuals != ToQuals) {
+    PDiag << ft_qualifer_mismatch << ToQuals << FromQuals;
     return;
   }
 
@@ -3275,7 +3250,7 @@ IsInitializerListConstructorConversion(Sema &S, Expr *From, QualType ToType,
   case OR_Success: {
     // Record the standard conversion we used and the conversion function.
     CXXConstructorDecl *Constructor = cast<CXXConstructorDecl>(Best->Function);
-    QualType ThisType = Constructor->getThisType();
+    QualType ThisType = Constructor->getThisType(S.Context);
     // Initializer lists don't have conversions as such.
     User.Before.setAsIdentityConversion();
     User.HadMultipleCandidates = HadMultipleCandidates;
@@ -3456,7 +3431,7 @@ IsUserDefinedConversion(Sema &S, Expr *From, QualType ToType,
       //   sequence converts the source type to the type required by
       //   the argument of the constructor.
       //
-      QualType ThisType = Constructor->getThisType();
+      QualType ThisType = Constructor->getThisType(S.Context);
       if (isa<InitListExpr>(From)) {
         // Initializer lists don't have conversions as such.
         User.Before.setAsIdentityConversion();
@@ -4016,12 +3991,9 @@ CompareQualificationConversions(Sema &S,
     // to unwrap. This essentially mimics what
     // IsQualificationConversion does, but here we're checking for a
     // strict subset of qualifiers.
-    if (T1.getQualifiers().withoutObjCLifetime() ==
-        T2.getQualifiers().withoutObjCLifetime())
+    if (T1.getCVRQualifiers() == T2.getCVRQualifiers())
       // The qualifiers are the same, so this doesn't tell us anything
       // about how the sequences rank.
-      // ObjC ownership quals are omitted above as they interfere with
-      // the ARC overload rule.
       ;
     else if (T2.isMoreQualifiedThan(T1)) {
       // T1 has fewer qualifiers, so it could be the better sequence.
@@ -5100,7 +5072,7 @@ TryObjectArgumentInitialization(Sema &S, SourceLocation Loc, QualType FromType,
     Quals.addConst();
     Quals.addVolatile();
   } else {
-    Quals = Method->getMethodQualifiers();
+    Quals = Method->getTypeQualifiers();
   }
 
   QualType ImplicitParamType = S.Context.getQualifiedType(ClassType, Quals);
@@ -5146,16 +5118,6 @@ TryObjectArgumentInitialization(Sema &S, SourceLocation Loc, QualType FromType,
     ICS.setBad(BadConversionSequence::bad_qualifiers,
                FromType, ImplicitParamType);
     return ICS;
-  }
-
-  if (FromTypeCanon.getQualifiers().hasAddressSpace()) {
-    Qualifiers QualsImplicitParamType = ImplicitParamType.getQualifiers();
-    Qualifiers QualsFromType = FromTypeCanon.getQualifiers();
-    if (!QualsImplicitParamType.isAddressSpaceSupersetOf(QualsFromType)) {
-      ICS.setBad(BadConversionSequence::bad_qualifiers,
-                 FromType, ImplicitParamType);
-      return ICS;
-    }
   }
 
   // Check that we have either the same type or a derived type. It
@@ -5223,12 +5185,12 @@ Sema::PerformObjectArgumentInitialization(Expr *From,
                                           CXXMethodDecl *Method) {
   QualType FromRecordType, DestType;
   QualType ImplicitParamRecordType  =
-    Method->getThisType()->getAs<PointerType>()->getPointeeType();
+    Method->getThisType(Context)->getAs<PointerType>()->getPointeeType();
 
   Expr::Classification FromClassification;
   if (const PointerType *PT = From->getType()->getAs<PointerType>()) {
     FromRecordType = PT->getPointeeType();
-    DestType = Method->getThisType();
+    DestType = Method->getThisType(Context);
     FromClassification = Expr::Classification::makeSimpleLValue();
   } else {
     FromRecordType = From->getType();
@@ -7957,7 +7919,7 @@ public:
         continue;
 
       if (const FunctionProtoType *Proto =PointeeTy->getAs<FunctionProtoType>())
-        if (Proto->getMethodQuals() || Proto->getRefQualifier())
+        if (Proto->getTypeQuals() || Proto->getRefQualifier())
           continue;
 
       S.AddBuiltinCandidate(&ParamTy, Args, CandidateSet);
@@ -9062,11 +9024,6 @@ static bool isBetterMultiversionCandidate(const OverloadCandidate &Cand1,
   if (!Cand1.Function || !Cand1.Function->isMultiVersion() || !Cand2.Function ||
       !Cand2.Function->isMultiVersion())
     return false;
-
-  // If Cand1 is invalid, it cannot be a better match, if Cand2 is invalid, this
-  // is obviously better.
-  if (Cand1.Function->isInvalidDecl()) return false;
-  if (Cand2.Function->isInvalidDecl()) return true;
 
   // If this is a cpu_dispatch/cpu_specific multiversion situation, prefer
   // cpu_dispatch, else arbitrarily based on the identifiers.
@@ -12880,7 +12837,7 @@ Sema::BuildCallToMemberFunction(Scope *S, Expr *MemExprE,
 
     // Check that the object type isn't more qualified than the
     // member function we're calling.
-    Qualifiers funcQuals = proto->getMethodQuals();
+    Qualifiers funcQuals = proto->getTypeQuals();
 
     QualType objectType = op->getLHS()->getType();
     if (op->getOpcode() == BO_PtrMemI)
@@ -13711,7 +13668,7 @@ Expr *Sema::FixOverloadedFunctionReference(Expr *E, DeclAccessPair Found,
       unsigned ResultIdx = GSE->getResultIndex();
       AssocExprs[ResultIdx] = SubExpr;
 
-      return GenericSelectionExpr::Create(
+      return new (Context) GenericSelectionExpr(
           Context, GSE->getGenericLoc(), GSE->getControllingExpr(),
           GSE->getAssocTypeSourceInfos(), AssocExprs, GSE->getDefaultLoc(),
           GSE->getRParenLoc(), GSE->containsUnexpandedParameterPack(),

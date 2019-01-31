@@ -1,8 +1,9 @@
 //===--- JSONTransport.cpp - sending and receiving LSP messages over JSON -===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 #include "Logger.h"
@@ -10,68 +11,66 @@
 #include "Transport.h"
 #include "llvm/Support/Errno.h"
 
+using namespace llvm;
 namespace clang {
 namespace clangd {
 namespace {
 
-llvm::json::Object encodeError(llvm::Error E) {
+json::Object encodeError(Error E) {
   std::string Message;
   ErrorCode Code = ErrorCode::UnknownErrorCode;
-  if (llvm::Error Unhandled = llvm::handleErrors(
-          std::move(E), [&](const LSPError &L) -> llvm::Error {
+  if (Error Unhandled =
+          handleErrors(std::move(E), [&](const LSPError &L) -> Error {
             Message = L.Message;
             Code = L.Code;
-            return llvm::Error::success();
+            return Error::success();
           }))
-    Message = llvm::toString(std::move(Unhandled));
+    Message = toString(std::move(Unhandled));
 
-  return llvm::json::Object{
+  return json::Object{
       {"message", std::move(Message)},
       {"code", int64_t(Code)},
   };
 }
 
-llvm::Error decodeError(const llvm::json::Object &O) {
+Error decodeError(const json::Object &O) {
   std::string Msg = O.getString("message").getValueOr("Unspecified error");
   if (auto Code = O.getInteger("code"))
-    return llvm::make_error<LSPError>(std::move(Msg), ErrorCode(*Code));
-  return llvm::make_error<llvm::StringError>(std::move(Msg),
-                                             llvm::inconvertibleErrorCode());
+    return make_error<LSPError>(std::move(Msg), ErrorCode(*Code));
+  return make_error<StringError>(std::move(Msg), inconvertibleErrorCode());
 }
 
 class JSONTransport : public Transport {
 public:
-  JSONTransport(std::FILE *In, llvm::raw_ostream &Out,
-                llvm::raw_ostream *InMirror, bool Pretty, JSONStreamStyle Style)
-      : In(In), Out(Out), InMirror(InMirror ? *InMirror : llvm::nulls()),
+  JSONTransport(std::FILE *In, raw_ostream &Out, raw_ostream *InMirror,
+                bool Pretty, JSONStreamStyle Style)
+      : In(In), Out(Out), InMirror(InMirror ? *InMirror : nulls()),
         Pretty(Pretty), Style(Style) {}
 
-  void notify(llvm::StringRef Method, llvm::json::Value Params) override {
-    sendMessage(llvm::json::Object{
+  void notify(StringRef Method, json::Value Params) override {
+    sendMessage(json::Object{
         {"jsonrpc", "2.0"},
         {"method", Method},
         {"params", std::move(Params)},
     });
   }
-  void call(llvm::StringRef Method, llvm::json::Value Params,
-            llvm::json::Value ID) override {
-    sendMessage(llvm::json::Object{
+  void call(StringRef Method, json::Value Params, json::Value ID) override {
+    sendMessage(json::Object{
         {"jsonrpc", "2.0"},
         {"id", std::move(ID)},
         {"method", Method},
         {"params", std::move(Params)},
     });
   }
-  void reply(llvm::json::Value ID,
-             llvm::Expected<llvm::json::Value> Result) override {
+  void reply(json::Value ID, Expected<json::Value> Result) override {
     if (Result) {
-      sendMessage(llvm::json::Object{
+      sendMessage(json::Object{
           {"jsonrpc", "2.0"},
           {"id", std::move(ID)},
           {"result", std::move(*Result)},
       });
     } else {
-      sendMessage(llvm::json::Object{
+      sendMessage(json::Object{
           {"jsonrpc", "2.0"},
           {"id", std::move(ID)},
           {"error", encodeError(Result.takeError())},
@@ -79,34 +78,33 @@ public:
     }
   }
 
-  llvm::Error loop(MessageHandler &Handler) override {
+  Error loop(MessageHandler &Handler) override {
     while (!feof(In)) {
       if (ferror(In))
-        return llvm::errorCodeToError(
-            std::error_code(errno, std::system_category()));
+        return errorCodeToError(std::error_code(errno, std::system_category()));
       if (auto JSON = readRawMessage()) {
-        if (auto Doc = llvm::json::parse(*JSON)) {
+        if (auto Doc = json::parse(*JSON)) {
           vlog(Pretty ? "<<< {0:2}\n" : "<<< {0}\n", *Doc);
           if (!handleMessage(std::move(*Doc), Handler))
-            return llvm::Error::success(); // we saw the "exit" notification.
+            return Error::success(); // we saw the "exit" notification.
         } else {
           // Parse error. Log the raw message.
           vlog("<<< {0}\n", *JSON);
-          elog("JSON parse error: {0}", llvm::toString(Doc.takeError()));
+          elog("JSON parse error: {0}", toString(Doc.takeError()));
         }
       }
     }
-    return llvm::errorCodeToError(std::make_error_code(std::errc::io_error));
+    return errorCodeToError(std::make_error_code(std::errc::io_error));
   }
 
 private:
   // Dispatches incoming message to Handler onNotify/onCall/onReply.
-  bool handleMessage(llvm::json::Value Message, MessageHandler &Handler);
+  bool handleMessage(json::Value Message, MessageHandler &Handler);
   // Writes outgoing message to Out stream.
-  void sendMessage(llvm::json::Value Message) {
+  void sendMessage(json::Value Message) {
     std::string S;
-    llvm::raw_string_ostream OS(S);
-    OS << llvm::formatv(Pretty ? "{0:2}" : "{0}", Message);
+    raw_string_ostream OS(S);
+    OS << formatv(Pretty ? "{0:2}" : "{0}", Message);
     OS.flush();
     Out << "Content-Length: " << S.size() << "\r\n\r\n" << S;
     Out.flush();
@@ -114,31 +112,30 @@ private:
   }
 
   // Read raw string messages from input stream.
-  llvm::Optional<std::string> readRawMessage() {
+  Optional<std::string> readRawMessage() {
     return Style == JSONStreamStyle::Delimited ? readDelimitedMessage()
                                                : readStandardMessage();
   }
-  llvm::Optional<std::string> readDelimitedMessage();
-  llvm::Optional<std::string> readStandardMessage();
+  Optional<std::string> readDelimitedMessage();
+  Optional<std::string> readStandardMessage();
 
   std::FILE *In;
-  llvm::raw_ostream &Out;
-  llvm::raw_ostream &InMirror;
+  raw_ostream &Out;
+  raw_ostream &InMirror;
   bool Pretty;
   JSONStreamStyle Style;
 };
 
-bool JSONTransport::handleMessage(llvm::json::Value Message,
+bool JSONTransport::handleMessage(json::Value Message,
                                   MessageHandler &Handler) {
   // Message must be an object with "jsonrpc":"2.0".
   auto *Object = Message.getAsObject();
-  if (!Object ||
-      Object->getString("jsonrpc") != llvm::Optional<llvm::StringRef>("2.0")) {
+  if (!Object || Object->getString("jsonrpc") != Optional<StringRef>("2.0")) {
     elog("Not a JSON-RPC 2.0 message: {0:2}", Message);
     return false;
   }
   // ID may be any JSON value. If absent, this is a notification.
-  llvm::Optional<llvm::json::Value> ID;
+  Optional<json::Value> ID;
   if (auto *I = Object->get("id"))
     ID = std::move(*I);
   auto Method = Object->getString("method");
@@ -150,13 +147,13 @@ bool JSONTransport::handleMessage(llvm::json::Value Message,
     if (auto *Err = Object->getObject("error"))
       return Handler.onReply(std::move(*ID), decodeError(*Err));
     // Result should be given, use null if not.
-    llvm::json::Value Result = nullptr;
+    json::Value Result = nullptr;
     if (auto *R = Object->get("result"))
       Result = std::move(*R);
     return Handler.onReply(std::move(*ID), std::move(Result));
   }
   // Params should be given, use null if not.
-  llvm::json::Value Params = nullptr;
+  json::Value Params = nullptr;
   if (auto *P = Object->get("params"))
     Params = std::move(*P);
 
@@ -175,7 +172,7 @@ bool readLine(std::FILE *In, std::string &Out) {
   for (;;) {
     Out.resize(Size + BufSize);
     // Handle EINTR which is sent when a debugger attaches on some platforms.
-    if (!llvm::sys::RetryAfterSignal(nullptr, ::fgets, &Out[Size], BufSize, In))
+    if (!sys::RetryAfterSignal(nullptr, ::fgets, &Out[Size], BufSize, In))
       return false;
     clearerr(In);
     // If the line contained null bytes, anything after it (including \n) will
@@ -192,17 +189,17 @@ bool readLine(std::FILE *In, std::string &Out) {
 // Returns None when:
 //  - ferror() or feof() are set.
 //  - Content-Length is missing or empty (protocol error)
-llvm::Optional<std::string> JSONTransport::readStandardMessage() {
+Optional<std::string> JSONTransport::readStandardMessage() {
   // A Language Server Protocol message starts with a set of HTTP headers,
   // delimited  by \r\n, and terminated by an empty line (\r\n).
   unsigned long long ContentLength = 0;
   std::string Line;
   while (true) {
     if (feof(In) || ferror(In) || !readLine(In, Line))
-      return llvm::None;
+      return None;
     InMirror << Line;
 
-    llvm::StringRef LineRef(Line);
+    StringRef LineRef(Line);
 
     // We allow comments in headers. Technically this isn't part
 
@@ -217,7 +214,7 @@ llvm::Optional<std::string> JSONTransport::readStandardMessage() {
              "The previous value for this message ({0}) was ignored.",
              ContentLength);
       }
-      llvm::getAsUnsignedInteger(LineRef.trim(), 0, ContentLength);
+      getAsUnsignedInteger(LineRef.trim(), 0, ContentLength);
       continue;
     } else if (!LineRef.trim().empty()) {
       // It's another header, ignore it.
@@ -234,24 +231,24 @@ llvm::Optional<std::string> JSONTransport::readStandardMessage() {
     elog("Refusing to read message with long Content-Length: {0}. "
          "Expect protocol errors",
          ContentLength);
-    return llvm::None;
+    return None;
   }
   if (ContentLength == 0) {
     log("Warning: Missing Content-Length header, or zero-length message.");
-    return llvm::None;
+    return None;
   }
 
   std::string JSON(ContentLength, '\0');
   for (size_t Pos = 0, Read; Pos < ContentLength; Pos += Read) {
     // Handle EINTR which is sent when a debugger attaches on some platforms.
-    Read = llvm::sys::RetryAfterSignal(0u, ::fread, &JSON[Pos], 1,
-                                       ContentLength - Pos, In);
+    Read = sys::RetryAfterSignal(0u, ::fread, &JSON[Pos], 1,
+                                 ContentLength - Pos, In);
     if (Read == 0) {
       elog("Input was aborted. Read only {0} bytes of expected {1}.", Pos,
            ContentLength);
-      return llvm::None;
+      return None;
     }
-    InMirror << llvm::StringRef(&JSON[Pos], Read);
+    InMirror << StringRef(&JSON[Pos], Read);
     clearerr(In); // If we're done, the error was transient. If we're not done,
                   // either it was transient or we'll see it again on retry.
     Pos += Read;
@@ -264,12 +261,12 @@ llvm::Optional<std::string> JSONTransport::readStandardMessage() {
 // - lines starting with # are ignored.
 // This is a testing path, so favor simplicity over performance here.
 // When returning None, feof() or ferror() will be set.
-llvm::Optional<std::string> JSONTransport::readDelimitedMessage() {
+Optional<std::string> JSONTransport::readDelimitedMessage() {
   std::string JSON;
   std::string Line;
   while (readLine(In, Line)) {
     InMirror << Line;
-    auto LineRef = llvm::StringRef(Line).trim();
+    auto LineRef = StringRef(Line).trim();
     if (LineRef.startswith("#")) // comment
       continue;
 
@@ -282,17 +279,15 @@ llvm::Optional<std::string> JSONTransport::readDelimitedMessage() {
 
   if (ferror(In)) {
     elog("Input error while reading message!");
-    return llvm::None;
+    return None;
   }
   return std::move(JSON); // Including at EOF
 }
 
 } // namespace
 
-std::unique_ptr<Transport> newJSONTransport(std::FILE *In,
-                                            llvm::raw_ostream &Out,
-                                            llvm::raw_ostream *InMirror,
-                                            bool Pretty,
+std::unique_ptr<Transport> newJSONTransport(std::FILE *In, raw_ostream &Out,
+                                            raw_ostream *InMirror, bool Pretty,
                                             JSONStreamStyle Style) {
   return llvm::make_unique<JSONTransport>(In, Out, InMirror, Pretty, Style);
 }

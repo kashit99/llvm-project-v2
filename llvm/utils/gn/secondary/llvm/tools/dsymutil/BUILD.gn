@@ -19,7 +19,6 @@ executable("dsymutil") {
     "MachODebugMapParser.cpp",
     "MachOUtils.cpp",
     "NonRelocatableStringpool.cpp",
-    "SymbolMap.cpp",
     "dsymutil.cpp",
   ]
   if (host_os == "mac") {

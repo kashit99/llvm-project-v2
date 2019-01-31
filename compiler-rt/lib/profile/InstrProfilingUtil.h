@@ -1,8 +1,9 @@
 /*===- InstrProfilingUtil.h - Support library for PGO instrumentation -----===*\
 |*
-|* Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-|* See https://llvm.org/LICENSE.txt for license information.
-|* SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+|*                     The LLVM Compiler Infrastructure
+|*
+|* This file is distributed under the University of Illinois Open Source
+|* License. See LICENSE.TXT for details.
 |*
 \*===----------------------------------------------------------------------===*/
 
@@ -58,6 +59,8 @@ int lprofGetHostName(char *Name, int Len);
 
 unsigned lprofBoolCmpXchg(void **Ptr, void *OldV, void *NewV);
 void *lprofPtrFetchAdd(void **Mem, long ByteIncr);
+
+void lprofInstallSignalHandler(int sig, void(*handler)(int));
 
 /* Temporarily suspend SIGKILL. Return value of 1 means a restore is needed.
  * Other return values mean no restore is needed.

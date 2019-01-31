@@ -1,8 +1,9 @@
 //===-- PPCInstrInfo.cpp - PowerPC Instruction Information ----------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -2357,6 +2358,13 @@ MachineInstr *PPCInstrInfo::getForwardingDefMI(
         MachineBasicBlock::reverse_iterator E = MI.getParent()->rend(), It = MI;
         It++;
         unsigned Reg = MI.getOperand(i).getReg();
+        // MachineInstr::readsRegister only returns true if the machine
+        // instruction reads the exact register or its super-register. It
+        // does not consider uses of sub-registers which seems like strange
+        // behaviour. Nonetheless, if we end up with a 64-bit register here,
+        // get the corresponding 32-bit register to check.
+        if (PPC::G8RCRegClass.contains(Reg))
+          Reg = Reg - PPC::X0 + PPC::R0;
 
         // Is this register defined by some form of add-immediate (including
         // load-immediate) within this basic block?
@@ -3176,7 +3184,14 @@ bool PPCInstrInfo::isRegElgibleForForwarding(const MachineOperand &RegMO,
   if (MRI.isSSA())
     return false;
 
+  // MachineInstr::readsRegister only returns true if the machine
+  // instruction reads the exact register or its super-register. It
+  // does not consider uses of sub-registers which seems like strange
+  // behaviour. Nonetheless, if we end up with a 64-bit register here,
+  // get the corresponding 32-bit register to check.
   unsigned Reg = RegMO.getReg();
+  if (PPC::G8RCRegClass.contains(Reg))
+    Reg = Reg - PPC::X0 + PPC::R0;
 
   // Walking the inst in reverse(MI-->DefMI) to get the last DEF of the Reg.
   MachineBasicBlock::const_reverse_iterator It = MI;
@@ -3191,9 +3206,9 @@ bool PPCInstrInfo::isRegElgibleForForwarding(const MachineOperand &RegMO,
   }
   assert((&*It) == &DefMI && "DefMI is missing");
 
-  // If DefMI also defines the register to be forwarded, we can only forward it
+  // If DefMI also uses the register to be forwarded, we can only forward it
   // if DefMI is being erased.
-  if (DefMI.modifiesRegister(Reg, &getRegisterInfo()))
+  if (DefMI.readsRegister(Reg, &getRegisterInfo()))
     return KillDefMI;
 
   return true;

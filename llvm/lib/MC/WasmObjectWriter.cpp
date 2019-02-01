@@ -1,9 +1,8 @@
 //===- lib/MC/WasmObjectWriter.cpp - Wasm File Writer ---------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -195,6 +194,33 @@ raw_ostream &operator<<(raw_ostream &OS, const WasmRelocationEntry &Rel) {
 }
 #endif
 
+// Write X as an (unsigned) LEB value at offset Offset in Stream, padded
+// to allow patching.
+static void WritePatchableLEB(raw_pwrite_stream &Stream, uint32_t X,
+                              uint64_t Offset) {
+  uint8_t Buffer[5];
+  unsigned SizeLen = encodeULEB128(X, Buffer, 5);
+  assert(SizeLen == 5);
+  Stream.pwrite((char *)Buffer, SizeLen, Offset);
+}
+
+// Write X as an signed LEB value at offset Offset in Stream, padded
+// to allow patching.
+static void WritePatchableSLEB(raw_pwrite_stream &Stream, int32_t X,
+                               uint64_t Offset) {
+  uint8_t Buffer[5];
+  unsigned SizeLen = encodeSLEB128(X, Buffer, 5);
+  assert(SizeLen == 5);
+  Stream.pwrite((char *)Buffer, SizeLen, Offset);
+}
+
+// Write X as a plain integer value at offset Offset in Stream.
+static void WriteI32(raw_pwrite_stream &Stream, uint32_t X, uint64_t Offset) {
+  uint8_t Buffer[4];
+  support::endian::write32le(Buffer, X);
+  Stream.pwrite((char *)Buffer, sizeof(Buffer), Offset);
+}
+
 class WasmObjectWriter : public MCObjectWriter {
   support::endian::Writer W;
 
@@ -224,6 +250,7 @@ class WasmObjectWriter : public MCObjectWriter {
   // Stores output data (index, relocations, content offset) for custom
   // section.
   std::vector<WasmCustomSection> CustomSections;
+  std::unique_ptr<WasmCustomSection> ProducersSection;
   // Relocations for fixing up references in the custom sections.
   DenseMap<const MCSectionWasm *, std::vector<WasmRelocationEntry>>
       CustomSectionsRelocations;
@@ -265,6 +292,8 @@ private:
     WasmIndices.clear();
     TableIndices.clear();
     DataLocations.clear();
+    CustomSections.clear();
+    ProducersSection.reset();
     CustomSectionsRelocations.clear();
     SignatureIndices.clear();
     Signatures.clear();
@@ -311,7 +340,8 @@ private:
       ArrayRef<wasm::WasmSymbolInfo> SymbolInfos,
       ArrayRef<std::pair<uint16_t, uint32_t>> InitFuncs,
       const std::map<StringRef, std::vector<WasmComdatEntry>> &Comdats);
-  void writeCustomSections(const MCAssembler &Asm, const MCAsmLayout &Layout);
+  void writeCustomSection(WasmCustomSection &CustomSection,
+                          const MCAssembler &Asm, const MCAsmLayout &Layout);
   void writeCustomRelocSections();
   void
   updateCustomSectionRelocations(const SmallVector<WasmFunction, 4> &Functions,
@@ -342,7 +372,7 @@ void WasmObjectWriter::startSection(SectionBookkeeping &Section,
 
   // The section size. We don't know the size yet, so reserve enough space
   // for any 32-bit value; we'll patch it later.
-  encodeULEB128(UINT32_MAX, W.OS);
+  encodeULEB128(0, W.OS, 5);
 
   // The position where the section starts, for measuring its size.
   Section.ContentsOffset = W.OS.tell();
@@ -376,11 +406,8 @@ void WasmObjectWriter::endSection(SectionBookkeeping &Section) {
 
   // Write the final section size to the payload_len field, which follows
   // the section id byte.
-  uint8_t Buffer[16];
-  unsigned SizeLen = encodeULEB128(Size, Buffer, 5);
-  assert(SizeLen == 5);
-  static_cast<raw_pwrite_stream &>(W.OS).pwrite((char *)Buffer, SizeLen,
-                                                Section.SizeOffset);
+  WritePatchableLEB(static_cast<raw_pwrite_stream &>(W.OS), Size,
+                    Section.SizeOffset);
 }
 
 // Emit the Wasm header.
@@ -527,33 +554,6 @@ void WasmObjectWriter::recordRelocation(MCAssembler &Asm,
   } else {
     llvm_unreachable("unexpected section type");
   }
-}
-
-// Write X as an (unsigned) LEB value at offset Offset in Stream, padded
-// to allow patching.
-static void WritePatchableLEB(raw_pwrite_stream &Stream, uint32_t X,
-                              uint64_t Offset) {
-  uint8_t Buffer[5];
-  unsigned SizeLen = encodeULEB128(X, Buffer, 5);
-  assert(SizeLen == 5);
-  Stream.pwrite((char *)Buffer, SizeLen, Offset);
-}
-
-// Write X as an signed LEB value at offset Offset in Stream, padded
-// to allow patching.
-static void WritePatchableSLEB(raw_pwrite_stream &Stream, int32_t X,
-                               uint64_t Offset) {
-  uint8_t Buffer[5];
-  unsigned SizeLen = encodeSLEB128(X, Buffer, 5);
-  assert(SizeLen == 5);
-  Stream.pwrite((char *)Buffer, SizeLen, Offset);
-}
-
-// Write X as a plain integer value at offset Offset in Stream.
-static void WriteI32(raw_pwrite_stream &Stream, uint32_t X, uint64_t Offset) {
-  uint8_t Buffer[4];
-  support::endian::write32le(Buffer, X);
-  Stream.pwrite((char *)Buffer, sizeof(Buffer), Offset);
 }
 
 static const MCSymbolWasm *ResolveSymbol(const MCSymbolWasm &Symbol) {
@@ -1045,25 +1045,24 @@ void WasmObjectWriter::writeLinkingMetaDataSection(
   endSection(Section);
 }
 
-void WasmObjectWriter::writeCustomSections(const MCAssembler &Asm,
-                                           const MCAsmLayout &Layout) {
-  for (auto &CustomSection : CustomSections) {
-    SectionBookkeeping Section;
-    auto *Sec = CustomSection.Section;
-    startCustomSection(Section, CustomSection.Name);
+void WasmObjectWriter::writeCustomSection(WasmCustomSection &CustomSection,
+                                          const MCAssembler &Asm,
+                                          const MCAsmLayout &Layout) {
+  SectionBookkeeping Section;
+  auto *Sec = CustomSection.Section;
+  startCustomSection(Section, CustomSection.Name);
 
-    Sec->setSectionOffset(W.OS.tell() - Section.ContentsOffset);
-    Asm.writeSectionData(W.OS, Sec, Layout);
+  Sec->setSectionOffset(W.OS.tell() - Section.ContentsOffset);
+  Asm.writeSectionData(W.OS, Sec, Layout);
 
-    CustomSection.OutputContentsOffset = Section.ContentsOffset;
-    CustomSection.OutputIndex = Section.Index;
+  CustomSection.OutputContentsOffset = Section.ContentsOffset;
+  CustomSection.OutputIndex = Section.Index;
 
-    endSection(Section);
+  endSection(Section);
 
-    // Apply fixups.
-    auto &Relocations = CustomSectionsRelocations[CustomSection.Section];
-    applyRelocations(Relocations, CustomSection.OutputContentsOffset);
-  }
+  // Apply fixups.
+  auto &Relocations = CustomSectionsRelocations[CustomSection.Section];
+  applyRelocations(Relocations, CustomSection.OutputContentsOffset);
 }
 
 uint32_t WasmObjectWriter::getFunctionType(const MCSymbolWasm &Symbol) {
@@ -1176,7 +1175,7 @@ uint64_t WasmObjectWriter::writeObject(MCAssembler &Asm,
   TableImport.Module = TableSym->getModuleName();
   TableImport.Field = TableSym->getName();
   TableImport.Kind = wasm::WASM_EXTERNAL_TABLE;
-  TableImport.Table.ElemType = wasm::WASM_TYPE_ANYFUNC;
+  TableImport.Table.ElemType = wasm::WASM_TYPE_FUNCREF;
   Imports.push_back(TableImport);
 
   // Populate SignatureIndices, and Imports and WasmIndices for undefined
@@ -1256,7 +1255,7 @@ uint64_t WasmObjectWriter::writeObject(MCAssembler &Asm,
       Segment.Offset = DataSize;
       Segment.Section = &Section;
       addData(Segment.Data, Section);
-      Segment.Alignment = Section.getAlignment();
+      Segment.Alignment = Log2_32(Section.getAlignment());
       Segment.Flags = 0;
       DataSize += Segment.Data.size();
       Section.setSegmentIndex(SegmentIndex);
@@ -1282,6 +1281,13 @@ uint64_t WasmObjectWriter::writeObject(MCAssembler &Asm,
           report_fatal_error("section name and begin symbol should match: " +
                              Twine(SectionName));
       }
+
+      // Separate out the producers section
+      if (Name == "producers") {
+        ProducersSection = llvm::make_unique<WasmCustomSection>(Name, &Section);
+        continue;
+      }
+
       CustomSections.emplace_back(Name, &Section);
     }
   }
@@ -1570,11 +1576,14 @@ uint64_t WasmObjectWriter::writeObject(MCAssembler &Asm,
   writeElemSection(TableElems);
   writeCodeSection(Asm, Layout, Functions);
   writeDataSection();
-  writeCustomSections(Asm, Layout);
+  for (auto &CustomSection : CustomSections)
+    writeCustomSection(CustomSection, Asm, Layout);
   writeLinkingMetaDataSection(SymbolInfos, InitFuncs, Comdats);
   writeRelocSection(CodeSectionIndex, "CODE", CodeRelocations);
   writeRelocSection(DataSectionIndex, "DATA", DataRelocations);
   writeCustomRelocSections();
+  if (ProducersSection)
+    writeCustomSection(*ProducersSection, Asm, Layout);
 
   // TODO: Translate the .comment section to the output.
   return W.OS.tell() - StartOffset;

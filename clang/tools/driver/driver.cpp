@@ -1,9 +1,8 @@
 //===-- driver.cpp - Clang GCC-Compatible Driver --------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -203,8 +202,6 @@ extern int cc1_main(ArrayRef<const char *> Argv, const char *Argv0,
                     void *MainAddr);
 extern int cc1as_main(ArrayRef<const char *> Argv, const char *Argv0,
                       void *MainAddr);
-extern int cc1apinotes_main(ArrayRef<const char *> Argv, const char *Argv0,
-                            void *MainAddr);
 extern int cc1gen_reproducer_main(ArrayRef<const char *> Argv,
                                   const char *Argv0, void *MainAddr);
 
@@ -312,8 +309,6 @@ static int ExecuteCC1Tool(ArrayRef<const char *> argv, StringRef Tool) {
     return cc1_main(argv.slice(2), argv[0], GetExecutablePathVP);
   if (Tool == "as")
     return cc1as_main(argv.slice(2), argv[0], GetExecutablePathVP);
-  if (Tool == "apinotes")
-    return cc1apinotes_main(argv.slice(2), argv[0], GetExecutablePathVP);
   if (Tool == "gen-reproducer")
     return cc1gen_reproducer_main(argv.slice(2), argv[0], GetExecutablePathVP);
 

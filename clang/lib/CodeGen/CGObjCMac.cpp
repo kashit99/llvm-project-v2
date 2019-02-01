@@ -1,9 +1,8 @@
 //===------- CGObjCMac.cpp - Interface to Apple Objective-C Runtime -------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -31,7 +30,6 @@
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallString.h"
-#include "llvm/IR/CallSite.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/InlineAsm.h"
 #include "llvm/IR/IntrinsicInst.h"
@@ -2178,7 +2176,7 @@ CGObjCCommonMac::EmitMessageSend(CodeGen::CodeGenFunction &CGF,
     nullReturn.init(CGF, Arg0);
   }
 
-  llvm::Instruction *CallSite;
+  llvm::CallBase *CallSite;
   Fn = llvm::ConstantExpr::getBitCast(Fn, MSI.MessengerType);
   CGCallee Callee = CGCallee::forDirect(Fn);
   RValue rvalue = CGF.EmitCall(MSI.CallInfo, Callee, Return, ActualArgs,
@@ -2187,7 +2185,7 @@ CGObjCCommonMac::EmitMessageSend(CodeGen::CodeGenFunction &CGF,
   // Mark the call as noreturn if the method is marked noreturn and the
   // receiver cannot be null.
   if (Method && Method->hasAttr<NoReturnAttr>() && !ReceiverCanBeNull) {
-    llvm::CallSite(CallSite).setDoesNotReturn();
+    CallSite->setDoesNotReturn();
   }
 
   return nullReturn.complete(CGF, Return, rvalue, ResultType, CallArgs,
@@ -4225,14 +4223,15 @@ void FragileHazards::emitHazardsInNewBlocks() {
 
       // Ignore instructions that aren't non-intrinsic calls.
       // These are the only calls that can possibly call longjmp.
-      if (!isa<llvm::CallInst>(I) && !isa<llvm::InvokeInst>(I)) continue;
+      if (!isa<llvm::CallInst>(I) && !isa<llvm::InvokeInst>(I))
+        continue;
       if (isa<llvm::IntrinsicInst>(I))
         continue;
 
       // Ignore call sites marked nounwind.  This may be questionable,
       // since 'nounwind' doesn't necessarily mean 'does not call longjmp'.
-      llvm::CallSite CS(&I);
-      if (CS.doesNotThrow()) continue;
+      if (cast<llvm::CallBase>(I).doesNotThrow())
+        continue;
 
       // Insert a read hazard before the call.  This will ensure that
       // any writes to the locals are performed before making the
@@ -7581,11 +7580,13 @@ void CGObjCNonFragileABIMac::EmitThrowStmt(CodeGen::CodeGenFunction &CGF,
   if (const Expr *ThrowExpr = S.getThrowExpr()) {
     llvm::Value *Exception = CGF.EmitObjCThrowOperand(ThrowExpr);
     Exception = CGF.Builder.CreateBitCast(Exception, ObjCTypes.ObjectPtrTy);
-    CGF.EmitRuntimeCallOrInvoke(ObjCTypes.getExceptionThrowFn(), Exception)
-      .setDoesNotReturn();
+    llvm::CallBase *Call =
+        CGF.EmitRuntimeCallOrInvoke(ObjCTypes.getExceptionThrowFn(), Exception);
+    Call->setDoesNotReturn();
   } else {
-    CGF.EmitRuntimeCallOrInvoke(ObjCTypes.getExceptionRethrowFn())
-      .setDoesNotReturn();
+    llvm::CallBase *Call =
+        CGF.EmitRuntimeCallOrInvoke(ObjCTypes.getExceptionRethrowFn());
+    Call->setDoesNotReturn();
   }
 
   CGF.Builder.CreateUnreachable();

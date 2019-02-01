@@ -1,9 +1,8 @@
 //===- ASTWriter.cpp - AST File Writer ------------------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -310,7 +309,7 @@ void ASTTypeWriter::VisitFunctionProtoType(const FunctionProtoType *T) {
 
   Record.push_back(T->isVariadic());
   Record.push_back(T->hasTrailingReturn());
-  Record.push_back(T->getTypeQuals().getAsOpaqueValue());
+  Record.push_back(T->getMethodQuals().getAsOpaqueValue());
   Record.push_back(static_cast<unsigned>(T->getRefQualifier()));
   addExceptionSpec(T, Record);
 
@@ -323,7 +322,7 @@ void ASTTypeWriter::VisitFunctionProtoType(const FunctionProtoType *T) {
       Record.push_back(T->getExtParameterInfo(I).getOpaqueValue());
   }
 
-  if (T->isVariadic() || T->hasTrailingReturn() || T->getTypeQuals() ||
+  if (T->isVariadic() || T->hasTrailingReturn() || T->getMethodQuals() ||
       T->getRefQualifier() || T->getExceptionSpecType() != EST_None ||
       T->hasExtParameterInfos())
     AbbrevToUse = 0;
@@ -1314,7 +1313,6 @@ void ASTWriter::WriteBlockInfoBlock() {
   BLOCK(UNHASHED_CONTROL_BLOCK);
   RECORD(SIGNATURE);
   RECORD(DIAGNOSTIC_OPTIONS);
-  RECORD(HEADER_SEARCH_PATHS);
   RECORD(DIAG_PRAGMA_MAPPINGS);
 
 #undef RECORD
@@ -1433,29 +1431,6 @@ ASTFileSignature ASTWriter::writeUnhashedControlBlock(Preprocessor &PP,
   // Note: we don't serialize the log or serialization file names, because they
   // are generally transient files and will almost always be overridden.
   Stream.EmitRecord(DIAGNOSTIC_OPTIONS, Record);
-
-  // Header search paths.
-  Record.clear();
-  const HeaderSearchOptions &HSOpts
-    = PP.getHeaderSearchInfo().getHeaderSearchOpts();
-
-  // Include entries.
-  Record.push_back(HSOpts.UserEntries.size());
-  for (unsigned I = 0, N = HSOpts.UserEntries.size(); I != N; ++I) {
-    const HeaderSearchOptions::Entry &Entry = HSOpts.UserEntries[I];
-    AddString(Entry.Path, Record);
-    Record.push_back(static_cast<unsigned>(Entry.Group));
-    Record.push_back(Entry.IsFramework);
-    Record.push_back(Entry.IgnoreSysRoot);
-  }
-
-  // System header prefixes.
-  Record.push_back(HSOpts.SystemHeaderPrefixes.size());
-  for (unsigned I = 0, N = HSOpts.SystemHeaderPrefixes.size(); I != N; ++I) {
-    AddString(HSOpts.SystemHeaderPrefixes[I].Prefix, Record);
-    Record.push_back(HSOpts.SystemHeaderPrefixes[I].IsSystemHeader);
-  }
-  Stream.EmitRecord(HEADER_SEARCH_PATHS, Record);
 
   // Write out the diagnostic/pragma mappings.
   WritePragmaDiagnosticMappings(Diags, /* IsModule = */ WritingModule);
@@ -1660,8 +1635,25 @@ void ASTWriter::WriteControlBlock(Preprocessor &PP, ASTContext &Context,
   Record.clear();
   const HeaderSearchOptions &HSOpts
     = PP.getHeaderSearchInfo().getHeaderSearchOpts();
-
   AddString(HSOpts.Sysroot, Record);
+
+  // Include entries.
+  Record.push_back(HSOpts.UserEntries.size());
+  for (unsigned I = 0, N = HSOpts.UserEntries.size(); I != N; ++I) {
+    const HeaderSearchOptions::Entry &Entry = HSOpts.UserEntries[I];
+    AddString(Entry.Path, Record);
+    Record.push_back(static_cast<unsigned>(Entry.Group));
+    Record.push_back(Entry.IsFramework);
+    Record.push_back(Entry.IgnoreSysRoot);
+  }
+
+  // System header prefixes.
+  Record.push_back(HSOpts.SystemHeaderPrefixes.size());
+  for (unsigned I = 0, N = HSOpts.SystemHeaderPrefixes.size(); I != N; ++I) {
+    AddString(HSOpts.SystemHeaderPrefixes[I].Prefix, Record);
+    Record.push_back(HSOpts.SystemHeaderPrefixes[I].IsSystemHeader);
+  }
+
   AddString(HSOpts.ResourceDir, Record);
   AddString(HSOpts.ModuleCachePath, Record);
   AddString(HSOpts.ModuleUserBuildPath, Record);

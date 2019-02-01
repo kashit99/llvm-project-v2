@@ -1,9 +1,8 @@
 //===---- BDCE.cpp - Bit-tracking dead code elimination -------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -114,8 +113,7 @@ static bool bitTrackingDCE(Function &F, DemandedBits &DB) {
       if (!U->getType()->isIntOrIntVectorTy())
         continue;
 
-      // TODO: We could also find dead non-instruction uses, e.g. arguments.
-      if (!isa<Instruction>(U))
+      if (!isa<Instruction>(U) && !isa<Argument>(U))
         continue;
 
       if (!DB.isUseDead(&U))

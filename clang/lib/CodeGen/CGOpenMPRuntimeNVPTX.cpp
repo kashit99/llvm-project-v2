@@ -1,9 +1,8 @@
 //===---- CGOpenMPRuntimeNVPTX.cpp - Interface to OpenMP NVPTX Runtimes ---===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -56,12 +55,12 @@ enum OpenMPRTLFunctionNVPTX {
   /// Call to int64_t __kmpc_shuffle_int64(int64_t element,
   /// int16_t lane_offset, int16_t warp_size);
   OMPRTL_NVPTX__kmpc_shuffle_int64,
-  /// Call to __kmpc_nvptx_parallel_reduce_nowait(kmp_int32
+  /// Call to __kmpc_nvptx_parallel_reduce_nowait_v2(ident_t *loc, kmp_int32
   /// global_tid, kmp_int32 num_vars, size_t reduce_size, void* reduce_data,
   /// void (*kmp_ShuffleReductFctPtr)(void *rhsData, int16_t lane_id, int16_t
   /// lane_offset, int16_t shortCircuit),
   /// void (*kmp_InterWarpCopyFctPtr)(void* src, int32_t warp_num));
-  OMPRTL_NVPTX__kmpc_parallel_reduce_nowait,
+  OMPRTL_NVPTX__kmpc_parallel_reduce_nowait_v2,
   /// Call to __kmpc_nvptx_teams_reduce_nowait_simple(ident_t *loc, kmp_int32
   /// global_tid, kmp_critical_name *lck)
   OMPRTL_NVPTX__kmpc_nvptx_teams_reduce_nowait_simple,
@@ -91,10 +90,11 @@ enum OpenMPRTLFunctionNVPTX {
   OMPRTL_NVPTX__kmpc_parallel_level,
   /// Call to int8_t __kmpc_is_spmd_exec_mode();
   OMPRTL_NVPTX__kmpc_is_spmd_exec_mode,
-  /// Call to void __kmpc_get_team_static_memory(const void *buf, size_t size,
-  /// int16_t is_shared, const void **res);
+  /// Call to void __kmpc_get_team_static_memory(int16_t isSPMDExecutionMode,
+  /// const void *buf, size_t size, int16_t is_shared, const void **res);
   OMPRTL_NVPTX__kmpc_get_team_static_memory,
-  /// Call to void __kmpc_restore_team_static_memory(int16_t is_shared);
+  /// Call to void __kmpc_restore_team_static_memory(int16_t
+  /// isSPMDExecutionMode, int16_t is_shared);
   OMPRTL_NVPTX__kmpc_restore_team_static_memory,
   /// Call to void __kmpc_barrier(ident_t *loc, kmp_int32 global_tid);
   OMPRTL__kmpc_barrier,
@@ -704,8 +704,8 @@ getDataSharingMode(CodeGenModule &CGM) {
                                           : CGOpenMPRuntimeNVPTX::Generic;
 }
 
-// Checks if the expression is constant or does not have non-trivial function
-// calls.
+/// Checks if the expression is constant or does not have non-trivial function
+/// calls.
 static bool isTrivial(ASTContext &Ctx, const Expr * E) {
   // We can skip constant expressions.
   // We can skip expressions with trivial calls or simple expressions.
@@ -1646,12 +1646,12 @@ CGOpenMPRuntimeNVPTX::createNVPTXRuntimeFunction(unsigned Function) {
     RTLFn = CGM.CreateRuntimeFunction(FnTy, "__kmpc_shuffle_int64");
     break;
   }
-  case OMPRTL_NVPTX__kmpc_parallel_reduce_nowait: {
-    // Build int32_t kmpc_nvptx_parallel_reduce_nowait(kmp_int32 global_tid,
-    // kmp_int32 num_vars, size_t reduce_size, void* reduce_data,
-    // void (*kmp_ShuffleReductFctPtr)(void *rhsData, int16_t lane_id, int16_t
-    // lane_offset, int16_t Algorithm Version),
-    // void (*kmp_InterWarpCopyFctPtr)(void* src, int warp_num));
+  case OMPRTL_NVPTX__kmpc_parallel_reduce_nowait_v2: {
+    // Build int32_t kmpc_nvptx_parallel_reduce_nowait_v2(ident_t *loc,
+    // kmp_int32 global_tid, kmp_int32 num_vars, size_t reduce_size, void*
+    // reduce_data, void (*kmp_ShuffleReductFctPtr)(void *rhsData, int16_t
+    // lane_id, int16_t lane_offset, int16_t Algorithm Version), void
+    // (*kmp_InterWarpCopyFctPtr)(void* src, int warp_num));
     llvm::Type *ShuffleReduceTypeParams[] = {CGM.VoidPtrTy, CGM.Int16Ty,
                                              CGM.Int16Ty, CGM.Int16Ty};
     auto *ShuffleReduceFnTy =
@@ -1661,7 +1661,8 @@ CGOpenMPRuntimeNVPTX::createNVPTXRuntimeFunction(unsigned Function) {
     auto *InterWarpCopyFnTy =
         llvm::FunctionType::get(CGM.VoidTy, InterWarpCopyTypeParams,
                                 /*isVarArg=*/false);
-    llvm::Type *TypeParams[] = {CGM.Int32Ty,
+    llvm::Type *TypeParams[] = {getIdentTyPointerTy(),
+                                CGM.Int32Ty,
                                 CGM.Int32Ty,
                                 CGM.SizeTy,
                                 CGM.VoidPtrTy,
@@ -1670,7 +1671,7 @@ CGOpenMPRuntimeNVPTX::createNVPTXRuntimeFunction(unsigned Function) {
     auto *FnTy =
         llvm::FunctionType::get(CGM.Int32Ty, TypeParams, /*isVarArg=*/false);
     RTLFn = CGM.CreateRuntimeFunction(
-        FnTy, /*Name=*/"__kmpc_nvptx_parallel_reduce_nowait");
+        FnTy, /*Name=*/"__kmpc_nvptx_parallel_reduce_nowait_v2");
     break;
   }
   case OMPRTL_NVPTX__kmpc_end_reduce_nowait: {
@@ -1779,19 +1780,21 @@ CGOpenMPRuntimeNVPTX::createNVPTXRuntimeFunction(unsigned Function) {
     break;
   }
   case OMPRTL_NVPTX__kmpc_get_team_static_memory: {
-    // Build void __kmpc_get_team_static_memory(const void *buf, size_t size,
-    // int16_t is_shared, const void **res);
-    llvm::Type *TypeParams[] = {CGM.VoidPtrTy, CGM.SizeTy, CGM.Int16Ty,
-                                CGM.VoidPtrPtrTy};
+    // Build void __kmpc_get_team_static_memory(int16_t isSPMDExecutionMode,
+    // const void *buf, size_t size, int16_t is_shared, const void **res);
+    llvm::Type *TypeParams[] = {CGM.Int16Ty, CGM.VoidPtrTy, CGM.SizeTy,
+                                CGM.Int16Ty, CGM.VoidPtrPtrTy};
     auto *FnTy =
         llvm::FunctionType::get(CGM.VoidTy, TypeParams, /*isVarArg*/ false);
     RTLFn = CGM.CreateRuntimeFunction(FnTy, "__kmpc_get_team_static_memory");
     break;
   }
   case OMPRTL_NVPTX__kmpc_restore_team_static_memory: {
-    // Build void __kmpc_restore_team_static_memory(int16_t is_shared);
+    // Build void __kmpc_restore_team_static_memory(int16_t isSPMDExecutionMode,
+    // int16_t is_shared);
+    llvm::Type *TypeParams[] = {CGM.Int16Ty, CGM.Int16Ty};
     auto *FnTy =
-        llvm::FunctionType::get(CGM.VoidTy, CGM.Int16Ty, /*isVarArg=*/false);
+        llvm::FunctionType::get(CGM.VoidTy, TypeParams, /*isVarArg=*/false);
     RTLFn =
         CGM.CreateRuntimeFunction(FnTy, "__kmpc_restore_team_static_memory");
     break;
@@ -2211,8 +2214,11 @@ void CGOpenMPRuntimeNVPTX::emitGenericVarsProlog(CodeGenFunction &CGF,
             CGM.getContext().getSizeType(), Loc);
         llvm::Value *ResAddr = Bld.CreatePointerBitCastOrAddrSpaceCast(
             KernelStaticGlobalized, CGM.VoidPtrPtrTy);
-        llvm::Value *GlobalRecordSizeArg[] = {StaticGlobalized, Ld,
-                                              IsInSharedMemory, ResAddr};
+        llvm::Value *GlobalRecordSizeArg[] = {
+            llvm::ConstantInt::get(
+                CGM.Int16Ty,
+                getExecutionMode() == CGOpenMPRuntimeNVPTX::EM_SPMD ? 1 : 0),
+            StaticGlobalized, Ld, IsInSharedMemory, ResAddr};
         CGF.EmitRuntimeCall(createNVPTXRuntimeFunction(
                                 OMPRTL_NVPTX__kmpc_get_team_static_memory),
                             GlobalRecordSizeArg);
@@ -2400,10 +2406,15 @@ void CGOpenMPRuntimeNVPTX::emitGenericVarsEpilog(CodeGenFunction &CGF,
               Address(GlobalizedRecords.back().UseSharedMemory,
                       CGM.getContext().getTypeAlignInChars(Int16Ty)),
               /*Volatile=*/false, Int16Ty, GlobalizedRecords.back().Loc);
+          llvm::Value *Args[] = {
+              llvm::ConstantInt::get(
+                  CGM.Int16Ty,
+                  getExecutionMode() == CGOpenMPRuntimeNVPTX::EM_SPMD ? 1 : 0),
+              IsInSharedMemory};
           CGF.EmitRuntimeCall(
               createNVPTXRuntimeFunction(
                   OMPRTL_NVPTX__kmpc_restore_team_static_memory),
-              IsInSharedMemory);
+              Args);
         }
       } else {
         CGF.EmitRuntimeCall(createNVPTXRuntimeFunction(
@@ -3112,7 +3123,6 @@ static void emitReductionListCopy(
 ///     sync
 ///     if (I am the first warp)
 ///       Copy smem[thread_id] to my local D
-///     sync
 static llvm::Value *emitInterWarpCopyFunction(CodeGenModule &CGM,
                                               ArrayRef<const Expr *> Privates,
                                               QualType ReductionArrayTy,
@@ -3325,12 +3335,6 @@ static llvm::Value *emitInterWarpCopyFunction(CodeGenModule &CGM,
 
       CGF.EmitBlock(W0MergeBB);
 
-      // While warp 0 copies values from transfer medium, all other warps must
-      // wait.
-      // kmpc_barrier.
-      CGM.getOpenMPRuntime().emitBarrierCall(CGF, Loc, OMPD_unknown,
-                                             /*EmitChecks=*/false,
-                                             /*ForceSimpleCall=*/true);
       if (NumIters > 1) {
         Cnt = Bld.CreateNSWAdd(Cnt, llvm::ConstantInt::get(CGM.IntTy, /*V=*/1));
         CGF.EmitStoreOfScalar(Cnt, CntAddr, /*Volatile=*/false, C.IntTy);
@@ -3608,7 +3612,7 @@ static llvm::Value *emitShuffleAndReduceFunction(
 /// 3. Call the OpenMP runtime on the GPU to reduce within a team
 ///    and store the result on the team master:
 ///
-///     __kmpc_nvptx_parallel_reduce_nowait(...,
+///     __kmpc_nvptx_parallel_reduce_nowait_v2(...,
 ///        reduceData, shuffleReduceFn, interWarpCpyFn)
 ///
 ///     where:
@@ -3779,7 +3783,7 @@ static llvm::Value *emitShuffleAndReduceFunction(
 /// Intra-Team Reduction
 ///
 /// This function, as implemented in the runtime call
-/// '__kmpc_nvptx_parallel_reduce_nowait', aggregates data across OpenMP
+/// '__kmpc_nvptx_parallel_reduce_nowait_v2', aggregates data across OpenMP
 /// threads in a team.  It first reduces within a warp using the
 /// aforementioned algorithms.  We then proceed to gather all such
 /// reduced values at the first warp.
@@ -3802,7 +3806,7 @@ static llvm::Value *emitShuffleAndReduceFunction(
 /// 'loadAndReduceDataFn' to load and reduce values from the array, i.e.,
 /// the k'th worker reduces every k'th element.
 ///
-/// Finally, a call is made to '__kmpc_nvptx_parallel_reduce_nowait' to
+/// Finally, a call is made to '__kmpc_nvptx_parallel_reduce_nowait_v2' to
 /// reduce across workers and compute a globally reduced value.
 ///
 void CGOpenMPRuntimeNVPTX::emitReduction(
@@ -3832,6 +3836,7 @@ void CGOpenMPRuntimeNVPTX::emitReduction(
   // RedList, shuffle_reduce_func, interwarp_copy_func);
   // or
   // Build res = __kmpc_reduce_teams_nowait_simple(<loc>, <gtid>, <lck>);
+  llvm::Value *RTLoc = emitUpdateLocation(CGF, Loc);
   llvm::Value *ThreadId = getThreadID(CGF, Loc);
 
   llvm::Value *Res;
@@ -3886,19 +3891,19 @@ void CGOpenMPRuntimeNVPTX::emitReduction(
     llvm::Value *InterWarpCopyFn =
         emitInterWarpCopyFunction(CGM, Privates, ReductionArrayTy, Loc);
 
-    llvm::Value *Args[] = {ThreadId,
+    llvm::Value *Args[] = {RTLoc,
+                           ThreadId,
                            CGF.Builder.getInt32(RHSExprs.size()),
                            ReductionArrayTySize,
                            RL,
                            ShuffleAndReduceFn,
                            InterWarpCopyFn};
 
-    Res = CGF.EmitRuntimeCall(
-        createNVPTXRuntimeFunction(OMPRTL_NVPTX__kmpc_parallel_reduce_nowait),
-        Args);
+    Res = CGF.EmitRuntimeCall(createNVPTXRuntimeFunction(
+                                  OMPRTL_NVPTX__kmpc_parallel_reduce_nowait_v2),
+                              Args);
   } else {
     assert(TeamsReduction && "expected teams reduction.");
-    llvm::Value *RTLoc = emitUpdateLocation(CGF, Loc);
     std::string Name = getName({"reduction"});
     llvm::Value *Lock = getCriticalRegionLock(Name);
     llvm::Value *Args[] = {RTLoc, ThreadId, Lock};
@@ -4489,6 +4494,20 @@ static std::pair<unsigned, unsigned> getSMsBlocksPerSM(CodeGenModule &CGM) {
 }
 
 void CGOpenMPRuntimeNVPTX::clear() {
+  if (CGDebugInfo *DI = CGM.getModuleDebugInfo())
+    if (CGM.getCodeGenOpts().getDebugInfo() >=
+        codegenoptions::LimitedDebugInfo) {
+      ASTContext &C = CGM.getContext();
+      auto *VD = VarDecl::Create(
+          C, C.getTranslationUnitDecl(), SourceLocation(), SourceLocation(),
+          &C.Idents.get("_$_"), C.IntTy, /*TInfo=*/nullptr, SC_Static);
+      auto *Var = cast<llvm::GlobalVariable>(
+          CGM.CreateRuntimeVariable(CGM.IntTy, "_$_"));
+      Var->setInitializer(llvm::ConstantInt::getNullValue(CGM.IntTy));
+      Var->setLinkage(llvm::GlobalVariable::CommonLinkage);
+      CGM.addCompilerUsedGlobal(Var);
+      DI->EmitGlobalVariable(Var, VD);
+    }
   if (!GlobalizedRecords.empty()) {
     ASTContext &C = CGM.getContext();
     llvm::SmallVector<const GlobalPtrSizeRecsTy *, 4> GlobalRecs;

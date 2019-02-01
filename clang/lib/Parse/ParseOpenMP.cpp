@@ -1,9 +1,8 @@
 //===--- ParseOpenMP.cpp - OpenMP directives parsing ----------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 /// \file
@@ -314,7 +313,7 @@ Parser::ParseOpenMPDeclareReductionDirective(AccessSpecifier AS) {
     Actions.ActOnOpenMPDeclareReductionCombinerStart(getCurScope(), D);
     ExprResult CombinerResult =
         Actions.ActOnFinishFullExpr(ParseAssignmentExpression().get(),
-                                    D->getLocation(), /*DiscardedValue=*/true);
+                                    D->getLocation(), /*DiscardedValue*/ false);
     Actions.ActOnOpenMPDeclareReductionCombinerEnd(D, CombinerResult.get());
 
     if (CombinerResult.isInvalid() && Tok.isNot(tok::r_paren) &&
@@ -356,7 +355,7 @@ Parser::ParseOpenMPDeclareReductionDirective(AccessSpecifier AS) {
           if (Actions.getLangOpts().CPlusPlus) {
             InitializerResult = Actions.ActOnFinishFullExpr(
                 ParseAssignmentExpression().get(), D->getLocation(),
-                /*DiscardedValue=*/true);
+                /*DiscardedValue*/ false);
           } else {
             ConsumeToken();
             ParseOpenMPReductionInitializerForDecl(OmpPrivParm);
@@ -364,7 +363,7 @@ Parser::ParseOpenMPDeclareReductionDirective(AccessSpecifier AS) {
         } else {
           InitializerResult = Actions.ActOnFinishFullExpr(
               ParseAssignmentExpression().get(), D->getLocation(),
-              /*DiscardedValue=*/true);
+              /*DiscardedValue*/ false);
         }
         Actions.ActOnOpenMPDeclareReductionInitializerEnd(
             D, InitializerResult.get(), OmpPrivParm);
@@ -1455,7 +1454,7 @@ ExprResult Parser::ParseOpenMPParensExpr(StringRef ClauseName,
   ExprResult LHS(ParseCastExpression(
       /*isUnaryExpression=*/false, /*isAddressOfOperand=*/false, NotTypeCast));
   ExprResult Val(ParseRHSOfBinaryExpression(LHS, prec::Conditional));
-  Val = Actions.ActOnFinishFullExpr(Val.get(), ELoc);
+  Val = Actions.ActOnFinishFullExpr(Val.get(), ELoc, /*DiscardedValue*/ false);
 
   // Parse ')'.
   RLoc = Tok.getLocation();
@@ -1711,7 +1710,8 @@ OMPClause *Parser::ParseOpenMPSingleExprWithArgClause(OpenMPClauseKind Kind,
     SourceLocation ELoc = Tok.getLocation();
     ExprResult LHS(ParseCastExpression(false, false, NotTypeCast));
     Val = ParseRHSOfBinaryExpression(LHS, prec::Conditional);
-    Val = Actions.ActOnFinishFullExpr(Val.get(), ELoc);
+    Val =
+        Actions.ActOnFinishFullExpr(Val.get(), ELoc, /*DiscardedValue*/ false);
   }
 
   // Parse ')'.
@@ -1996,7 +1996,8 @@ bool Parser::ParseOpenMPVarList(OpenMPDirectiveKind DKind,
     Data.ColonLoc = Tok.getLocation();
     SourceLocation ELoc = ConsumeToken();
     ExprResult Tail = ParseAssignmentExpression();
-    Tail = Actions.ActOnFinishFullExpr(Tail.get(), ELoc);
+    Tail =
+        Actions.ActOnFinishFullExpr(Tail.get(), ELoc, /*DiscardedValue*/ false);
     if (Tail.isUsable())
       Data.TailExpr = Tail.get();
     else

@@ -1,9 +1,8 @@
 //===--- Sema.h - Semantic Analysis & AST Building --------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -308,6 +307,10 @@ class Sema {
     return false;
   }
   bool shouldLinkPossiblyHiddenDecl(LookupResult &Old, const NamedDecl *New);
+
+  void setupImplicitSpecialMemberType(CXXMethodDecl *SpecialMem,
+                                      QualType ResultTy,
+                                      ArrayRef<QualType> Args);
 
 public:
   typedef OpaquePtr<DeclGroupRef> DeclGroupPtrTy;
@@ -1372,6 +1375,7 @@ public:
   void PopCompoundScope();
 
   sema::CompoundScopeInfo &getCurCompoundScope() const;
+  bool isCurCompoundStmtAStmtExpr() const;
 
   bool hasAnyUnrecoverableErrorsInThisFunction() const;
 
@@ -1414,6 +1418,10 @@ public:
   QualType BuildVectorType(QualType T, Expr *VecSize, SourceLocation AttrLoc);
   QualType BuildExtVectorType(QualType T, Expr *ArraySize,
                               SourceLocation AttrLoc);
+  QualType BuildAddressSpaceAttr(QualType &T, LangAS ASIdx, Expr *AddrSpace,
+                                 SourceLocation AttrLoc);
+
+  /// Same as above, but constructs the AddressSpace index if not provided.
   QualType BuildAddressSpaceAttr(QualType &T, Expr *AddrSpace,
                                  SourceLocation AttrLoc);
 
@@ -1984,7 +1992,7 @@ public:
   bool CheckVariableDeclaration(VarDecl *NewVD, LookupResult &Previous);
   void CheckVariableDeclarationType(VarDecl *NewVD);
   bool DeduceVariableDeclarationType(VarDecl *VDecl, bool DirectInit,
-                                     Expr *Init);
+                                     Expr *&Init);
   void CheckCompleteVariableDeclaration(VarDecl *VD);
   void CheckCompleteDecompositionDeclaration(DecompositionDecl *DD);
   void MaybeSuggestAddingStaticToDecl(const FunctionDecl *D);
@@ -2539,6 +2547,12 @@ public:
                                           unsigned AttrSpellingListIndex);
   MinSizeAttr *mergeMinSizeAttr(Decl *D, SourceRange Range,
                                 unsigned AttrSpellingListIndex);
+  NoSpeculativeLoadHardeningAttr *
+  mergeNoSpeculativeLoadHardeningAttr(Decl *D,
+                                      const NoSpeculativeLoadHardeningAttr &AL);
+  SpeculativeLoadHardeningAttr *
+  mergeSpeculativeLoadHardeningAttr(Decl *D,
+                                    const SpeculativeLoadHardeningAttr &AL);
   OptimizeNoneAttr *mergeOptimizeNoneAttr(Decl *D, SourceRange Range,
                                           unsigned AttrSpellingListIndex);
   SwiftNameAttr *mergeSwiftNameAttr(Decl *D, SourceRange Range,
@@ -3765,16 +3779,17 @@ public:
     return MakeFullExpr(Arg, Arg ? Arg->getExprLoc() : SourceLocation());
   }
   FullExprArg MakeFullExpr(Expr *Arg, SourceLocation CC) {
-    return FullExprArg(ActOnFinishFullExpr(Arg, CC).get());
+    return FullExprArg(
+        ActOnFinishFullExpr(Arg, CC, /*DiscardedValue*/ false).get());
   }
   FullExprArg MakeFullDiscardedValueExpr(Expr *Arg) {
     ExprResult FE =
-      ActOnFinishFullExpr(Arg, Arg ? Arg->getExprLoc() : SourceLocation(),
-                          /*DiscardedValue*/ true);
+        ActOnFinishFullExpr(Arg, Arg ? Arg->getExprLoc() : SourceLocation(),
+                            /*DiscardedValue*/ true);
     return FullExprArg(FE.get());
   }
 
-  StmtResult ActOnExprStmt(ExprResult Arg);
+  StmtResult ActOnExprStmt(ExprResult Arg, bool DiscardedValue = true);
   StmtResult ActOnExprStmtError();
 
   StmtResult ActOnNullStmt(SourceLocation SemiLoc,
@@ -4897,7 +4912,7 @@ public:
   ImplicitExceptionSpecification
   ComputeDefaultedCopyCtorExceptionSpec(CXXMethodDecl *MD);
 
-  /// Determine what sort of exception specification a defautled
+  /// Determine what sort of exception specification a defaulted
   /// copy assignment operator of a class will have, and whether the
   /// parameter will be const.
   ImplicitExceptionSpecification
@@ -5420,13 +5435,12 @@ public:
   CreateMaterializeTemporaryExpr(QualType T, Expr *Temporary,
                                  bool BoundToLvalueReference);
 
-  ExprResult ActOnFinishFullExpr(Expr *Expr) {
-    return ActOnFinishFullExpr(Expr, Expr ? Expr->getExprLoc()
-                                          : SourceLocation());
+  ExprResult ActOnFinishFullExpr(Expr *Expr, bool DiscardedValue) {
+    return ActOnFinishFullExpr(
+        Expr, Expr ? Expr->getExprLoc() : SourceLocation(), DiscardedValue);
   }
   ExprResult ActOnFinishFullExpr(Expr *Expr, SourceLocation CC,
-                                 bool DiscardedValue = false,
-                                 bool IsConstexpr = false);
+                                 bool DiscardedValue, bool IsConstexpr = false);
   StmtResult ActOnFinishFullStmt(Stmt *Stmt);
 
   // Marks SS invalid if it represents an incomplete type.
@@ -6435,9 +6449,9 @@ public:
                     const TemplateArgumentListInfo &ExplicitTemplateArgs,
                                                     LookupResult &Previous);
 
-  bool CheckFunctionTemplateSpecialization(FunctionDecl *FD,
-                         TemplateArgumentListInfo *ExplicitTemplateArgs,
-                                           LookupResult &Previous);
+  bool CheckFunctionTemplateSpecialization(
+      FunctionDecl *FD, TemplateArgumentListInfo *ExplicitTemplateArgs,
+      LookupResult &Previous, bool QualifiedFriend = false);
   bool CheckMemberSpecialization(NamedDecl *Member, LookupResult &Previous);
   void CompleteMemberSpecialization(NamedDecl *Member, LookupResult &Previous);
 
@@ -7174,7 +7188,7 @@ public:
   QualType deduceVarTypeFromInitializer(VarDecl *VDecl, DeclarationName Name,
                                         QualType Type, TypeSourceInfo *TSI,
                                         SourceRange Range, bool DirectInit,
-                                        Expr *Init);
+                                        Expr *&Init);
 
   TypeLoc getReturnTypeLoc(FunctionDecl *FD) const;
 

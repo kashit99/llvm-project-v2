@@ -1,9 +1,8 @@
 //===- ModuleManager.cpp - Module Manager ---------------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -175,13 +174,9 @@ ModuleManager::addModule(StringRef FileName, ModuleKind Type,
     if (FileName == "-") {
       Buf = llvm::MemoryBuffer::getSTDIN();
     } else {
-      // Get a buffer of the file and close the file descriptor when done. Use
-      // IsVolatile=true since PCMs with same signature can have different sizes
-      // due to different content in the unhashed control block (e.g. diagnostic
-      // options). Tha said, concurrent creation & access of the same PCM
-      // filename can lead to reading past the buffer size otherwise.
+      // Get a buffer of the file and close the file descriptor when done.
       Buf = FileMgr.getBufferForFile(NewModule->File,
-                                     /*IsVolatile=*/true,
+                                     /*IsVolatile=*/false,
                                      /*ShouldClose=*/true);
     }
 

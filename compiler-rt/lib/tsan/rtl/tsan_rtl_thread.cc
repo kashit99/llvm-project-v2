@@ -1,9 +1,8 @@
 //===-- tsan_rtl_thread.cc ------------------------------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -276,14 +275,10 @@ void ThreadStart(ThreadState *thr, int tid, tid_t os_id, bool workerthread) {
 void ThreadFinish(ThreadState *thr) {
   ThreadCheckIgnore(thr);
   StatInc(thr, StatThreadFinish);
-  if (thr->stk_addr && thr->stk_size) {
-    MemoryResetRange(thr, /*pc=*/ 1, thr->stk_addr, thr->stk_size);
+  if (thr->stk_addr && thr->stk_size)
     DontNeedShadowFor(thr->stk_addr, thr->stk_size);
-  }
-  if (thr->tls_addr && thr->tls_size) {
-    MemoryResetRange(thr, /*pc=*/ 1, thr->tls_addr, thr->tls_size);
+  if (thr->tls_addr && thr->tls_size)
     DontNeedShadowFor(thr->tls_addr, thr->tls_size);
-  }
   thr->is_dead = true;
   ctx->thread_registry->FinishThread(thr->tid);
 }

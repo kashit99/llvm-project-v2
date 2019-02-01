@@ -1,9 +1,8 @@
 //===- InlineCost.cpp - Cost analysis for inliner -------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -1731,6 +1730,13 @@ InlineResult CallAnalyzer::analyzeCall(CallSite CS) {
   // Update the threshold based on callsite properties
   updateThreshold(CS, F);
 
+  // While Threshold depends on commandline options that can take negative
+  // values, we want to enforce the invariant that the computed threshold and
+  // bonuses are non-negative.
+  assert(Threshold >= 0);
+  assert(SingleBBBonus >= 0);
+  assert(VectorBonus >= 0);
+
   // Speculatively apply all possible bonuses to Threshold. If cost exceeds
   // this Threshold any time, and cost cannot decrease, we can stop processing
   // the rest of the function body.
@@ -2071,7 +2077,8 @@ bool llvm::isInlineViable(Function &F) {
   for (Function::iterator BI = F.begin(), BE = F.end(); BI != BE; ++BI) {
     // Disallow inlining of functions which contain indirect branches or
     // blockaddresses.
-    if (isa<IndirectBrInst>(BI->getTerminator()) || BI->hasAddressTaken())
+    if (isa<IndirectBrInst>(BI->getTerminator()) ||
+        BI->hasAddressTaken())
       return false;
 
     for (auto &II : *BI) {

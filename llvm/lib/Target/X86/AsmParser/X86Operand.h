@@ -1,9 +1,8 @@
 //===- X86Operand.h - Parsed X86 machine instruction ------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -30,7 +29,7 @@ namespace llvm {
 /// X86Operand - Instances of this class represent a parsed X86 machine
 /// instruction.
 struct X86Operand final : public MCParsedAsmOperand {
-  enum KindTy { Token, Register, Immediate, Memory, Prefix } Kind;
+  enum KindTy { Token, Register, Immediate, Memory, Prefix, DXRegister } Kind;
 
   SMLoc StartLoc, EndLoc;
   SMLoc OffsetOfLoc;
@@ -117,6 +116,9 @@ struct X86Operand final : public MCParsedAsmOperand {
       break;
     case Register:
       OS << "Reg:" << X86IntelInstPrinter::getRegisterName(Reg.RegNo);
+      break;
+    case DXRegister:
+      OS << "DXReg";
       break;
     case Immediate:
       PrintImmValue(Imm.Val, "Imm:");
@@ -441,10 +443,7 @@ struct X86Operand final : public MCParsedAsmOperand {
 
   bool isPrefix() const { return Kind == Prefix; }
   bool isReg() const override { return Kind == Register; }
-  bool isDXReg() const {
-    return Kind == Memory && getMemBaseReg() == X86::DX && !getMemIndexReg() &&
-           getMemScale() == 1;
-  }
+  bool isDXReg() const { return Kind == DXRegister; }
 
   bool isGR32orGR64() const {
     return Kind == Register &&
@@ -541,6 +540,11 @@ struct X86Operand final : public MCParsedAsmOperand {
     Res->SymName = SymName;
     Res->OpDecl = OpDecl;
     return Res;
+  }
+
+  static std::unique_ptr<X86Operand>
+  CreateDXReg(SMLoc StartLoc, SMLoc EndLoc) {
+    return llvm::make_unique<X86Operand>(DXRegister, StartLoc, EndLoc);
   }
 
   static std::unique_ptr<X86Operand>

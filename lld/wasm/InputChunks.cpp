@@ -1,9 +1,8 @@
 //===- InputChunks.cpp ----------------------------------------------------===//
 //
-//                             The LLVM Linker
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -25,7 +24,9 @@ using namespace lld::wasm;
 
 static StringRef ReloctTypeToString(uint8_t RelocType) {
   switch (RelocType) {
-#define WASM_RELOC(NAME, REL) case REL: return #NAME;
+#define WASM_RELOC(NAME, REL)                                                  \
+  case REL:                                                                    \
+    return #NAME;
 #include "llvm/BinaryFormat/WasmRelocs.def"
 #undef WASM_RELOC
   }
@@ -43,16 +44,6 @@ StringRef InputChunk::getComdatName() const {
   return File->getWasmObj()->linkingData().Comdats[Index];
 }
 
-void InputChunk::copyRelocations(const WasmSection &Section) {
-  if (Section.Relocations.empty())
-    return;
-  size_t Start = getInputSectionOffset();
-  size_t Size = getInputSize();
-  for (const WasmRelocation &R : Section.Relocations)
-    if (R.Offset >= Start && R.Offset < Start + Size)
-      Relocations.push_back(R);
-}
-
 void InputChunk::verifyRelocTargets() const {
   for (const WasmRelocation &Rel : Relocations) {
     uint32_t ExistingValue;
@@ -63,6 +54,7 @@ void InputChunk::verifyRelocTargets() const {
     case R_WEBASSEMBLY_TYPE_INDEX_LEB:
     case R_WEBASSEMBLY_FUNCTION_INDEX_LEB:
     case R_WEBASSEMBLY_GLOBAL_INDEX_LEB:
+    case R_WEBASSEMBLY_EVENT_INDEX_LEB:
     case R_WEBASSEMBLY_MEMORY_ADDR_LEB:
       ExistingValue = decodeULEB128(Loc, &BytesRead);
       break;
@@ -119,6 +111,7 @@ void InputChunk::writeTo(uint8_t *Buf) const {
     case R_WEBASSEMBLY_TYPE_INDEX_LEB:
     case R_WEBASSEMBLY_FUNCTION_INDEX_LEB:
     case R_WEBASSEMBLY_GLOBAL_INDEX_LEB:
+    case R_WEBASSEMBLY_EVENT_INDEX_LEB:
     case R_WEBASSEMBLY_MEMORY_ADDR_LEB:
       encodeULEB128(Value, Loc, 5);
       break;
@@ -188,6 +181,7 @@ static unsigned writeCompressedReloc(uint8_t *Buf, const WasmRelocation &Rel,
   case R_WEBASSEMBLY_TYPE_INDEX_LEB:
   case R_WEBASSEMBLY_FUNCTION_INDEX_LEB:
   case R_WEBASSEMBLY_GLOBAL_INDEX_LEB:
+  case R_WEBASSEMBLY_EVENT_INDEX_LEB:
   case R_WEBASSEMBLY_MEMORY_ADDR_LEB:
     return encodeULEB128(Value, Buf);
   case R_WEBASSEMBLY_TABLE_INDEX_SLEB:
@@ -203,6 +197,7 @@ static unsigned getRelocWidthPadded(const WasmRelocation &Rel) {
   case R_WEBASSEMBLY_TYPE_INDEX_LEB:
   case R_WEBASSEMBLY_FUNCTION_INDEX_LEB:
   case R_WEBASSEMBLY_GLOBAL_INDEX_LEB:
+  case R_WEBASSEMBLY_EVENT_INDEX_LEB:
   case R_WEBASSEMBLY_MEMORY_ADDR_LEB:
   case R_WEBASSEMBLY_TABLE_INDEX_SLEB:
   case R_WEBASSEMBLY_MEMORY_ADDR_SLEB:
@@ -228,7 +223,7 @@ static unsigned getRelocWidth(const WasmRelocation &Rel, uint32_t Value) {
 // This function only computes the final output size.  It must be called
 // before getSize() is used to calculate of layout of the code section.
 void InputFunction::calculateSize() {
-  if (!File || !Config->CompressRelocTargets)
+  if (!File || !Config->CompressRelocations)
     return;
 
   LLVM_DEBUG(dbgs() << "calculateSize: " << getName() << "\n");
@@ -242,7 +237,7 @@ void InputFunction::calculateSize() {
   uint32_t End = Start + Function->Size;
 
   uint32_t LastRelocEnd = Start + FunctionSizeLength;
-  for (WasmRelocation &Rel : Relocations) {
+  for (const WasmRelocation &Rel : Relocations) {
     LLVM_DEBUG(dbgs() << "  region: " << (Rel.Offset - LastRelocEnd) << "\n");
     CompressedFuncSize += Rel.Offset - LastRelocEnd;
     CompressedFuncSize += getRelocWidth(Rel, File->calcNewValue(Rel));
@@ -263,11 +258,12 @@ void InputFunction::calculateSize() {
 // Override the default writeTo method so that we can (optionally) write the
 // compressed version of the function.
 void InputFunction::writeTo(uint8_t *Buf) const {
-  if (!File || !Config->CompressRelocTargets)
+  if (!File || !Config->CompressRelocations)
     return InputChunk::writeTo(Buf);
 
   Buf += OutputOffset;
-  uint8_t *Orig = Buf; (void)Orig;
+  uint8_t *Orig = Buf;
+  (void)Orig;
 
   const uint8_t *SecStart = File->CodeSection->Content.data();
   const uint8_t *FuncStart = SecStart + getInputSectionOffset();

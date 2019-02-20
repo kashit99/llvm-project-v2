@@ -1,9 +1,8 @@
 //===- ErrorHandler.h -------------------------------------------*- C++ -*-===//
 //
-//                             The LLVM Linker
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -153,7 +152,7 @@ T check2(Expected<T> E, llvm::function_ref<std::string()> Prefix) {
 inline std::string toString(const Twine &S) { return S.str(); }
 
 // To evaluate the second argument lazily, we use C macro.
-#define CHECK(E, S) check2(E, [&] { return toString(S); })
+#define CHECK(E, S) check2((E), [&] { return toString(S); })
 
 } // namespace lld
 

@@ -1,9 +1,8 @@
 //===- ScopHelper.cpp - Some Helper Functions for Scop.  ------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -440,7 +439,7 @@ bool polly::isErrorBlock(BasicBlock &BB, const Region &R, LoopInfo &LI,
   return false;
 }
 
-Value *polly::getConditionFromTerminator(TerminatorInst *TI) {
+Value *polly::getConditionFromTerminator(Instruction *TI) {
   if (BranchInst *BR = dyn_cast<BranchInst>(TI)) {
     if (BR->isUnconditional())
       return ConstantInt::getTrue(Type::getInt1Ty(TI->getContext()));

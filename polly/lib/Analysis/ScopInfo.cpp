@@ -1,9 +1,8 @@
 //===- ScopInfo.cpp -------------------------------------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -1502,7 +1501,7 @@ buildUnsignedConditionSets(Scop &S, BasicBlock *BB, Value *Condition,
 /// context under which @p Condition is true/false will be returned as the
 /// new elements of @p ConditionSets.
 bool buildConditionSets(Scop &S, BasicBlock *BB, Value *Condition,
-                        TerminatorInst *TI, Loop *L, __isl_keep isl_set *Domain,
+                        Instruction *TI, Loop *L, __isl_keep isl_set *Domain,
                         DenseMap<BasicBlock *, isl::set> &InvalidDomainMap,
                         SmallVectorImpl<__isl_give isl_set *> &ConditionSets) {
   ScalarEvolution &SE = *S.getSE();
@@ -1642,7 +1641,7 @@ bool buildConditionSets(Scop &S, BasicBlock *BB, Value *Condition,
 /// This will fill @p ConditionSets with the conditions under which control
 /// will be moved from @p TI to its successors. Hence, @p ConditionSets will
 /// have as many elements as @p TI has successors.
-bool buildConditionSets(Scop &S, BasicBlock *BB, TerminatorInst *TI, Loop *L,
+bool buildConditionSets(Scop &S, BasicBlock *BB, Instruction *TI, Loop *L,
                         __isl_keep isl_set *Domain,
                         DenseMap<BasicBlock *, isl::set> &InvalidDomainMap,
                         SmallVectorImpl<__isl_give isl_set *> &ConditionSets) {
@@ -2393,7 +2392,7 @@ static inline BasicBlock *getRegionNodeBasicBlock(RegionNode *RN) {
 
 /// Return the @p idx'th block that is executed after @p RN.
 static inline BasicBlock *
-getRegionNodeSuccessor(RegionNode *RN, TerminatorInst *TI, unsigned idx) {
+getRegionNodeSuccessor(RegionNode *RN, Instruction *TI, unsigned idx) {
   if (RN->isSubRegion()) {
     assert(idx == 0);
     return RN->getNodeAs<Region>()->getExit();
@@ -2615,7 +2614,7 @@ bool Scop::propagateInvalidStmtDomains(
       isl::set DomPar = Domain.params();
       recordAssumption(ERRORBLOCK, DomPar, BB->getTerminator()->getDebugLoc(),
                        AS_RESTRICTION);
-      Domain = nullptr;
+      Domain = isl::set::empty(Domain.get_space());
     }
 
     if (InvalidDomain.is_empty()) {
@@ -2743,7 +2742,7 @@ bool Scop::buildDomainsWithBranchConstraints(
       HasErrorBlock = true;
 
     BasicBlock *BB = getRegionNodeBasicBlock(RN);
-    TerminatorInst *TI = BB->getTerminator();
+    Instruction *TI = BB->getTerminator();
 
     if (isa<UnreachableInst>(TI))
       continue;
@@ -2982,7 +2981,7 @@ bool Scop::addLoopBoundsToHeaderDomain(
 
     isl::set BackedgeCondition = nullptr;
 
-    TerminatorInst *TI = LatchBB->getTerminator();
+    Instruction *TI = LatchBB->getTerminator();
     BranchInst *BI = dyn_cast<BranchInst>(TI);
     assert(BI && "Only branch instructions allowed in loop latches");
 
@@ -3523,7 +3522,10 @@ void Scop::removeStmts(std::function<bool(ScopStmt &)> ShouldDelete,
 
 void Scop::removeStmtNotInDomainMap() {
   auto ShouldDelete = [this](ScopStmt &Stmt) -> bool {
-    return !this->DomainMap.lookup(Stmt.getEntryBlock());
+    isl::set Domain = DomainMap.lookup(Stmt.getEntryBlock());
+    if (!Domain)
+      return true;
+    return Domain.is_empty();
   };
   removeStmts(ShouldDelete, false);
 }

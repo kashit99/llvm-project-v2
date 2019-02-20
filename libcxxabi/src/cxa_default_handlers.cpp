@@ -1,9 +1,8 @@
 //===------------------------- cxa_default_handlers.cpp -------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is dual licensed under the MIT and the University of Illinois Open
-// Source Licenses. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //
 // This file implements the default terminate_handler and unexpected_handler.
@@ -37,13 +36,10 @@ static void demangling_terminate_handler()
         {
             _Unwind_Exception* unwind_exception =
                 reinterpret_cast<_Unwind_Exception*>(exception_header + 1) - 1;
-            bool native_exception =
-                (unwind_exception->exception_class   & get_vendor_and_language) == 
-                                 (kOurExceptionClass & get_vendor_and_language);
-            if (native_exception)
+            if (__isOurExceptionClass(unwind_exception))
             {
                 void* thrown_object =
-                    unwind_exception->exception_class == kOurDependentExceptionClass ?
+                    __getExceptionClass(unwind_exception) == kOurDependentExceptionClass ?
                         ((__cxa_dependent_exception*)exception_header)->primaryException :
                         exception_header + 1;
                 const __shim_type_info* thrown_type =

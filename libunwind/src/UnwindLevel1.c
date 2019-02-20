@@ -1,9 +1,8 @@
 //===------------------------- UnwindLevel1.c -----------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is dual licensed under the MIT and the University of Illinois Open
-// Source Licenses. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //
 // Implements C++ ABI Exception Handling Level 1 as documented at:
@@ -31,6 +30,8 @@
 #include "config.h"
 
 #if !defined(_LIBUNWIND_ARM_EHABI) && !defined(__USING_SJLJ_EXCEPTIONS__)
+
+#ifndef _LIBUNWIND_SUPPORT_SEH_UNWIND
 
 static _Unwind_Reason_Code
 unwind_phase1(unw_context_t *uc, unw_cursor_t *cursor, _Unwind_Exception *exception_object) {
@@ -449,6 +450,7 @@ _Unwind_GetRegionStart(struct _Unwind_Context *context) {
   return result;
 }
 
+#endif // !_LIBUNWIND_SUPPORT_SEH_UNWIND
 
 /// Called by personality handler during phase 2 if a foreign exception
 // is caught.

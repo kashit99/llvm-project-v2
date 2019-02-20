@@ -1,9 +1,8 @@
 //===- DriverUtils.cpp ----------------------------------------------------===//
 //
-//                             The LLVM Linker
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -713,26 +712,6 @@ MemoryBufferRef convertResToCOFF(ArrayRef<MemoryBufferRef> MBs) {
   return MBRef;
 }
 
-// Run MSVC link.exe for given in-memory object files.
-// Command line options are copied from those given to LLD.
-// This is for the /msvclto option.
-void runMSVCLinker(std::string Rsp, ArrayRef<StringRef> Objects) {
-  // Write the in-memory object files to disk.
-  std::vector<TemporaryFile> Temps;
-  for (StringRef S : Objects) {
-    Temps.emplace_back("lto", "obj", S);
-    Rsp += quote(Temps.back().Path) + "\n";
-  }
-
-  log("link.exe " + Rsp);
-
-  // Run MSVC link.exe.
-  Temps.emplace_back("lto", "rsp", Rsp);
-  Executor E("link.exe");
-  E.add(Twine("@" + Temps.back().Path));
-  E.run();
-}
-
 // Create OptTable
 
 // Create prefix string literals used in Options.td
@@ -883,7 +862,9 @@ std::vector<const char *> ArgParser::tokenize(StringRef S) {
 }
 
 void printHelp(const char *Argv0) {
-  COFFOptTable().PrintHelp(outs(), Argv0, "LLVM Linker", false);
+  COFFOptTable().PrintHelp(outs(),
+                           (std::string(Argv0) + " [options] file...").c_str(),
+                           "LLVM Linker", false);
 }
 
 } // namespace coff

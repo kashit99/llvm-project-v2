@@ -1,9 +1,8 @@
 //===- MapFile.cpp --------------------------------------------------------===//
 //
-//                             The LLVM Linker
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -110,7 +109,7 @@ void coff::writeMapFile(ArrayRef<OutputSection *> OutputSections) {
     writeHeader(OS, Sec->getRVA(), Sec->getVirtualSize(), /*Align=*/PageSize);
     OS << Sec->Name << '\n';
 
-    for (Chunk *C : Sec->getChunks()) {
+    for (Chunk *C : Sec->Chunks) {
       auto *SC = dyn_cast<SectionChunk>(C);
       if (!SC)
         continue;

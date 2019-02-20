@@ -1,9 +1,8 @@
 //===- LTO.cpp ------------------------------------------------------------===//
 //
-//                             The LLVM Linker
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -11,6 +10,7 @@
 #include "Config.h"
 #include "InputFiles.h"
 #include "Symbols.h"
+#include "lld/Common/Args.h"
 #include "lld/Common/ErrorHandler.h"
 #include "lld/Common/Strings.h"
 #include "lld/Common/TargetOptionsCommandFlags.h"
@@ -36,8 +36,6 @@
 #include <vector>
 
 using namespace llvm;
-using namespace llvm::object;
-
 using namespace lld;
 using namespace lld::wasm;
 
@@ -55,6 +53,15 @@ static std::unique_ptr<lto::LTO> createLTO() {
   C.DisableVerify = Config->DisableVerify;
   C.DiagHandler = diagnosticHandler;
   C.OptLevel = Config->LTOO;
+  C.MAttrs = GetMAttrs();
+  C.CGOptLevel = args::getCGOptLevel(Config->LTOO);
+
+  if (Config->Relocatable)
+    C.RelocModel = None;
+  else if (Config->Pic)
+    C.RelocModel = Reloc::PIC_;
+  else
+    C.RelocModel = Reloc::Static;
 
   if (Config->SaveTemps)
     checkError(C.addSaveTemps(Config->OutputFile.str() + ".",
@@ -72,10 +79,11 @@ BitcodeCompiler::BitcodeCompiler() : LTOObj(createLTO()) {}
 BitcodeCompiler::~BitcodeCompiler() = default;
 
 static void undefine(Symbol *S) {
-  if (isa<DefinedFunction>(S))
-    replaceSymbol<UndefinedFunction>(S, S->getName(), 0);
+  if (auto F = dyn_cast<DefinedFunction>(S))
+    replaceSymbol<UndefinedFunction>(F, F->getName(), 0, F->getFile(),
+                                     F->Signature);
   else if (isa<DefinedData>(S))
-    replaceSymbol<UndefinedData>(S, S->getName(), 0);
+    replaceSymbol<UndefinedData>(S, S->getName(), 0, S->getFile());
   else
     llvm_unreachable("unexpected symbol kind");
 }

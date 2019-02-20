@@ -1,9 +1,8 @@
 //===- EhFrame.cpp -------------------------------------------------------===//
 //
-//                             The LLVM Linker
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -44,7 +43,7 @@ public:
 private:
   template <class P> void failOn(const P *Loc, const Twine &Msg) {
     fatal("corrupted .eh_frame: " + Msg + "\n>>> defined in " +
-          IS->getObjMsg((const uint8_t *)Loc - IS->Data.data()));
+          IS->getObjMsg((const uint8_t *)Loc - IS->data().data()));
   }
 
   uint8_t readByte();
@@ -59,7 +58,7 @@ private:
 }
 
 size_t elf::readEhRecordSize(InputSectionBase *S, size_t Off) {
-  return EhReader(S, S->Data.slice(Off)).readEhRecordSize();
+  return EhReader(S, S->data().slice(Off)).readEhRecordSize();
 }
 
 // .eh_frame section is a sequence of records. Each record starts with

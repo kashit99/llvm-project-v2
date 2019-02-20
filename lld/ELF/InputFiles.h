@@ -1,9 +1,8 @@
 //===- InputFiles.h ---------------------------------------------*- C++ -*-===//
 //
-//                             The LLVM Linker
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -50,7 +49,7 @@ class Symbol;
 
 // If -reproduce option is given, all input files are written
 // to this tar archive.
-extern llvm::TarWriter *Tar;
+extern std::unique_ptr<llvm::TarWriter> Tar;
 
 // Opens a given file.
 llvm::Optional<MemoryBufferRef> readFile(StringRef Path);
@@ -86,7 +85,9 @@ public:
 
   // Returns object file symbols. It is a runtime error to call this
   // function on files of other types.
-  ArrayRef<Symbol *> getSymbols() {
+  ArrayRef<Symbol *> getSymbols() { return getMutableSymbols(); }
+
+  std::vector<Symbol *> &getMutableSymbols() {
     assert(FileKind == BinaryKind || FileKind == ObjKind ||
            FileKind == BitcodeKind);
     return Symbols;
@@ -111,6 +112,16 @@ public:
 
   // True if this is an argument for --just-symbols. Usually false.
   bool JustSymbols = false;
+
+  // On PPC64 we need to keep track of which files contain small code model
+  // relocations. To minimize the chance of a relocation overflow files that do
+  // contain small code model relocations should have their .toc sections sorted
+  // closer to the .got section than files that do not contain any small code
+  // model relocations. Thats because the toc-pointer is defined to point at
+  // .got + 0x8000 and the instructions used with small code model relocations
+  // support immediates in the range [-0x8000, 0x7FFC], making the addressable
+  // range relative to the toc pointer [.got, .got + 0xFFFC].
+  bool PPC64SmallCodeModelRelocs = false;
 
   // GroupId is used for --warn-backrefs which is an optional error
   // checking feature. All files within the same --{start,end}-group or
@@ -169,10 +180,10 @@ template <class ELFT> class ObjFile : public ELFFileBase<ELFT> {
   typedef typename ELFT::Sym Elf_Sym;
   typedef typename ELFT::Shdr Elf_Shdr;
   typedef typename ELFT::Word Elf_Word;
+  typedef typename ELFT::CGProfile Elf_CGProfile;
 
   StringRef getShtGroupSignature(ArrayRef<Elf_Shdr> Sections,
                                  const Elf_Shdr &Sec);
-  ArrayRef<Elf_Word> getShtGroupEntries(const Elf_Shdr &Sec);
 
 public:
   static bool classof(const InputFile *F) { return F->kind() == Base::ObjKind; }
@@ -217,6 +228,9 @@ public:
 
   // Pointer to this input file's .llvm_addrsig section, if it has one.
   const Elf_Shdr *AddrsigSec = nullptr;
+
+  // SHT_LLVM_CALL_GRAPH_PROFILE table
+  ArrayRef<Elf_CGProfile> CGProfile;
 
 private:
   void
@@ -272,8 +286,6 @@ public:
   bool AddedToLink = false;
 
 private:
-  template <class ELFT> void addElfSymbols();
-
   uint64_t OffsetInArchive;
 };
 

@@ -1,9 +1,8 @@
 //===------ Support/ScopHelper.h -- Some Helper Functions for Scop. -------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -382,7 +381,7 @@ bool isErrorBlock(llvm::BasicBlock &BB, const llvm::Region &R,
 /// @param TI The terminator to get the condition from.
 ///
 /// @return The condition of @p TI and nullptr if none could be extracted.
-llvm::Value *getConditionFromTerminator(llvm::TerminatorInst *TI);
+llvm::Value *getConditionFromTerminator(llvm::Instruction *TI);
 
 /// Check if @p LInst can be hoisted in @p R.
 ///

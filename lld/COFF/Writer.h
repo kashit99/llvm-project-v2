@@ -1,9 +1,8 @@
 //===- Writer.h -------------------------------------------------*- C++ -*-===//
 //
-//                             The LLVM Linker
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -34,8 +33,8 @@ public:
     Header.Characteristics = Chars;
   }
   void addChunk(Chunk *C);
+  void insertChunkAtStart(Chunk *C);
   void merge(OutputSection *Other);
-  ArrayRef<Chunk *> getChunks() { return Chunks; }
   void addPermissions(uint32_t C);
   void setPermissions(uint32_t C);
   uint64_t getRVA() { return Header.VirtualAddress; }
@@ -62,9 +61,11 @@ public:
   llvm::StringRef Name;
   llvm::object::coff_section Header = {};
 
+  std::vector<Chunk *> Chunks;
+  std::vector<Chunk *> OrigChunks;
+
 private:
   uint32_t StringTableOff = 0;
-  std::vector<Chunk *> Chunks;
 };
 
 }

@@ -1,9 +1,8 @@
 //===- Target.cpp ---------------------------------------------------------===//
 //
-//                             The LLVM Linker
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -73,12 +72,16 @@ TargetInfo *elf::getTarget() {
     case ELF64BEKind:
       return getMipsTargetInfo<ELF64BE>();
     default:
-      fatal("unsupported MIPS target");
+      llvm_unreachable("unsupported MIPS target");
     }
+  case EM_MSP430:
+    return getMSP430TargetInfo();
   case EM_PPC:
     return getPPCTargetInfo();
   case EM_PPC64:
     return getPPC64TargetInfo();
+  case EM_RISCV:
+    return getRISCVTargetInfo();
   case EM_SPARCV9:
     return getSPARCV9TargetInfo();
   case EM_X86_64:
@@ -86,7 +89,7 @@ TargetInfo *elf::getTarget() {
       return getX32TargetInfo();
     return getX86_64TargetInfo();
   }
-  fatal("unknown target machine");
+  llvm_unreachable("unknown target machine");
 }
 
 template <class ELFT> static ErrorPlace getErrPlace(const uint8_t *Loc) {
@@ -130,11 +133,10 @@ bool TargetInfo::needsThunk(RelExpr Expr, RelType Type, const InputFile *File,
   return false;
 }
 
-bool TargetInfo::adjustPrologueForCrossSplitStack(uint8_t *Loc,
-                                                  uint8_t *End) const {
+bool TargetInfo::adjustPrologueForCrossSplitStack(uint8_t *Loc, uint8_t *End,
+                                                  uint8_t StOther) const {
   llvm_unreachable("Target doesn't support split stacks.");
 }
-
 
 bool TargetInfo::inBranchRange(RelType Type, uint64_t Src, uint64_t Dst) const {
   return true;

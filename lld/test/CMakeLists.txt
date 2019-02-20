@@ -14,7 +14,9 @@ if(LLD_BUILT_STANDALONE)
 endif()
 
 llvm_canonicalize_cmake_booleans(
-  HAVE_LIBZ)
+  HAVE_LIBZ
+  LLVM_LIBXML2_ENABLED
+  )
 
 configure_lit_site_cfg(
   ${CMAKE_CURRENT_SOURCE_DIR}/lit.site.cfg.py.in
@@ -52,6 +54,9 @@ add_lit_testsuite(check-lld "Running lld test suite"
        lld_unit_site_config=${CMAKE_CURRENT_BINARY_DIR}/Unit/lit.site.cfg
   DEPENDS ${LLD_TEST_DEPS}
   )
+
+add_custom_target(lld-test-depends DEPENDS ${LLD_TEST_DEPS})
+set_target_properties(lld-test-depends PROPERTIES FOLDER "lld tests")
 
 add_lit_testsuites(LLD ${CMAKE_CURRENT_SOURCE_DIR}
   PARAMS lld_site_config=${CMAKE_CURRENT_BINARY_DIR}/lit.site.cfg

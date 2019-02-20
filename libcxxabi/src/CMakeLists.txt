@@ -31,7 +31,7 @@ else()
   list(APPEND LIBCXXABI_SOURCES cxa_noexception.cpp)
 endif()
 
-if (LIBCXXABI_ENABLE_THREADS AND UNIX AND NOT (APPLE OR CYGWIN))
+if (LIBCXXABI_ENABLE_THREADS AND (UNIX OR FUCHSIA) AND NOT (APPLE OR CYGWIN))
   list(APPEND LIBCXXABI_SOURCES cxa_thread_atexit.cpp)
 endif()
 
@@ -102,6 +102,31 @@ if ( APPLE )
       "-compatibility_version 1"
       "-install_name /usr/lib/libc++abi.1.dylib")
   endif()
+
+  if (LLVM_USE_SANITIZER)
+    if (("${LLVM_USE_SANITIZER}" STREQUAL "Address") OR
+        ("${LLVM_USE_SANITIZER}" STREQUAL "Address;Undefined") OR
+        ("${LLVM_USE_SANITIZER}" STREQUAL "Undefined;Address"))
+      set(LIBFILE "libclang_rt.asan_osx_dynamic.dylib")
+    elseif("${LLVM_USE_SANITIZER}" STREQUAL "Undefined")
+      set(LIBFILE "libclang_rt.ubsan_osx_dynamic.dylib")
+    elseif("${LLVM_USE_SANITIZER}" STREQUAL "Thread")
+      set(LIBFILE "libclang_rt.tsan_osx_dynamic.dylib")
+    else()
+      message(WARNING "LLVM_USE_SANITIZER=${LLVM_USE_SANITIZER} is not supported on OS X")
+    endif()
+    if (LIBFILE)
+      find_compiler_rt_dir(LIBDIR)
+      if (NOT IS_DIRECTORY "${LIBDIR}")
+        message(FATAL_ERROR "Cannot find compiler-rt directory on OS X required for LLVM_USE_SANITIZER")
+      endif()
+      set(LIBCXXABI_SANITIZER_LIBRARY "${LIBDIR}/${LIBFILE}")
+      set(LIBCXXABI_SANITIZER_LIBRARY "${LIBCXXABI_SANITIZER_LIBRARY}" PARENT_SCOPE)
+      message(STATUS "Manually linking compiler-rt library: ${LIBCXXABI_SANITIZER_LIBRARY}")
+      add_library_flags("${LIBCXXABI_SANITIZER_LIBRARY}")
+      add_link_flags("-Wl,-rpath,${LIBDIR}")
+    endif()
+  endif()
 endif()
 
 split_list(LIBCXXABI_COMPILE_FLAGS)
@@ -114,28 +139,57 @@ if (LLVM_ENABLE_MODULES)
   string(REPLACE "-Wl,-z,defs" "" CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS}")
 endif()
 
-# Add a object library that contains the compiled source files.
-add_library(cxxabi_objects OBJECT ${LIBCXXABI_SOURCES} ${LIBCXXABI_HEADERS})
-set_target_properties(cxxabi_objects
-                      PROPERTIES
-                        CXX_EXTENSIONS
-                          OFF
-                        CXX_STANDARD
-                          11
-                        CXX_STANDARD_REQUIRED
-                          ON
-                        COMPILE_FLAGS
-                          "${LIBCXXABI_COMPILE_FLAGS}"
-                        POSITION_INDEPENDENT_CODE
-                          ON)
+macro(cxxabi_object_library name)
+  cmake_parse_arguments(ARGS "" "" "DEFINES;FLAGS" ${ARGN})
+
+  # Add a object library that contains the compiled source files.
+  add_library(${name} OBJECT ${LIBCXXABI_SOURCES} ${LIBCXXABI_HEADERS})
+  set_target_properties(${name}
+                        PROPERTIES
+                          CXX_EXTENSIONS
+                            OFF
+                          CXX_STANDARD
+                            11
+                          CXX_STANDARD_REQUIRED
+                            ON
+                          COMPILE_FLAGS
+                            "${LIBCXXABI_COMPILE_FLAGS}"
+                          POSITION_INDEPENDENT_CODE
+                            ON)
+
+  if(ARGS_DEFINES)
+    target_compile_definitions(${name} PRIVATE ${ARGS_DEFINES})
+  endif()
+
+  if(ARGS_FLAGS)
+    target_compile_options(${name} PRIVATE ${ARGS_FLAGS})
+  endif()
+endmacro()
+
+if(LIBCXXABI_HERMETIC_STATIC_LIBRARY)
+  append_flags_if_supported(CXXABI_STATIC_OBJECTS_FLAGS -fvisibility=hidden)
+  append_flags_if_supported(CXXABI_STATIC_OBJECTS_FLAGS -fvisibility-global-new-delete-hidden)
+  cxxabi_object_library(cxxabi_static_objects
+    DEFINES
+      _LIBCXXABI_DISABLE_VISIBILITY_ANNOTATIONS
+      _LIBCPP_DISABLE_VISIBILITY_ANNOTATIONS
+    FLAGS ${CXXABI_STATIC_OBJECTS_FLAGS})
+  cxxabi_object_library(cxxabi_shared_objects)
+  set(cxxabi_static_sources $<TARGET_OBJECTS:cxxabi_static_objects>)
+  set(cxxabi_shared_sources $<TARGET_OBJECTS:cxxabi_shared_objects>)
+else()
+  cxxabi_object_library(cxxabi_objects)
+  set(cxxabi_static_sources $<TARGET_OBJECTS:cxxabi_objects>)
+  set(cxxabi_shared_sources $<TARGET_OBJECTS:cxxabi_objects>)
+endif()
 
 # Build the shared library.
 if (LIBCXXABI_ENABLE_SHARED)
-  add_library(cxxabi_shared SHARED $<TARGET_OBJECTS:cxxabi_objects>)
+  add_library(cxxabi_shared SHARED ${cxxabi_shared_sources})
   if(COMMAND llvm_setup_rpath)
     llvm_setup_rpath(cxxabi_shared)
   endif()
-  target_link_libraries(cxxabi_shared ${LIBCXXABI_LIBRARIES} ${LIBCXXABI_SHARED_LIBRARIES})
+  target_link_libraries(cxxabi_shared PRIVATE ${LIBCXXABI_LIBRARIES} ${LIBCXXABI_SHARED_LIBRARIES})
   set_target_properties(cxxabi_shared
                         PROPERTIES
                           CXX_EXTENSIONS
@@ -162,14 +216,17 @@ endif()
 
 # Build the static library.
 if (LIBCXXABI_ENABLE_STATIC)
-  set(cxxabi_static_sources $<TARGET_OBJECTS:cxxabi_objects>)
   if (LIBCXXABI_USE_LLVM_UNWINDER AND LIBCXXABI_STATICALLY_LINK_UNWINDER_IN_STATIC_LIBRARY)
     if (TARGET unwind_static OR HAVE_LIBUNWIND)
-      list(APPEND cxxabi_static_sources $<TARGET_OBJECTS:unwind_objects>)
+      if(LIBUNWIND_HERMETIC_STATIC_LIBRARY)
+        list(APPEND cxxabi_static_sources $<TARGET_OBJECTS:unwind_static_objects>)
+      else()
+        list(APPEND cxxabi_static_sources $<TARGET_OBJECTS:unwind_objects>)
+      endif()
     endif()
   endif()
   add_library(cxxabi_static STATIC ${cxxabi_static_sources})
-  target_link_libraries(cxxabi_static ${LIBCXXABI_LIBRARIES} ${LIBCXXABI_STATIC_LIBRARIES})
+  target_link_libraries(cxxabi_static PRIVATE ${LIBCXXABI_LIBRARIES} ${LIBCXXABI_STATIC_LIBRARIES})
   set_target_properties(cxxabi_static
                         PROPERTIES
                           CXX_EXTENSIONS

@@ -1,9 +1,8 @@
 //===--------------------- UnwindLevel1-gcc-ext.c -------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is dual licensed under the MIT and the University of Illinois Open
-// Source Licenses. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //
 //  Implements gcc extensions to the C++ ABI Exception Handling Level 1.
@@ -24,6 +23,10 @@
 #include "unwind.h"
 
 #if defined(_LIBUNWIND_BUILD_ZERO_COST_APIS)
+
+#if defined(_LIBUNWIND_SUPPORT_SEH_UNWIND)
+#define private_1 private_[0]
+#endif
 
 ///  Called by __cxa_rethrow().
 _LIBUNWIND_EXPORT _Unwind_Reason_Code

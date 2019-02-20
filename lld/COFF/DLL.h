@@ -1,9 +1,8 @@
 //===- DLL.h ----------------------------------------------------*- C++ -*-===//
 //
-//                             The LLVM Linker
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -19,19 +18,12 @@ namespace coff {
 // Windows-specific.
 // IdataContents creates all chunks for the DLL import table.
 // You are supposed to call add() to add symbols and then
-// call getChunks() to get a list of chunks.
+// call create() to populate the chunk vectors.
 class IdataContents {
 public:
   void add(DefinedImportData *Sym) { Imports.push_back(Sym); }
   bool empty() { return Imports.empty(); }
-  std::vector<Chunk *> getChunks();
 
-  uint64_t getDirRVA() { return Dirs[0]->getRVA(); }
-  uint64_t getDirSize();
-  uint64_t getIATRVA() { return Addresses[0]->getRVA(); }
-  uint64_t getIATSize();
-
-private:
   void create();
 
   std::vector<DefinedImportData *> Imports;

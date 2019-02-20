@@ -1,9 +1,8 @@
 //===- Driver.h -------------------------------------------------*- C++ -*-===//
 //
-//                             The LLVM Linker
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -89,6 +88,7 @@ private:
   Optional<StringRef> findLib(StringRef Filename);
   StringRef doFindFile(StringRef Filename);
   StringRef doFindLib(StringRef Filename);
+  StringRef doFindLibMinGW(StringRef Filename);
 
   // Parses LIB environment which contains a list of search paths.
   void addLibSearchPaths();
@@ -113,8 +113,6 @@ private:
   // entry point name.
   StringRef findDefaultEntry();
   WindowsSubsystem inferSubsystem();
-
-  void invokeMSVC(llvm::opt::InputArgList &Args);
 
   void addBuffer(std::unique_ptr<MemoryBuffer> MB, bool WholeArchive);
   void addArchiveBuffer(MemoryBufferRef MBRef, StringRef SymName,

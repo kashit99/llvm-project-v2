@@ -1,9 +1,8 @@
 //===- MarkLive.cpp -------------------------------------------------------===//
 //
-//                             The LLVM Linker
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -32,13 +31,13 @@ void markLive(ArrayRef<Chunk *> Chunks) {
   // COMDAT section chunks are dead by default. Add non-COMDAT chunks.
   for (Chunk *C : Chunks)
     if (auto *SC = dyn_cast<SectionChunk>(C))
-      if (SC->isLive())
+      if (SC->Live)
         Worklist.push_back(SC);
 
   auto Enqueue = [&](SectionChunk *C) {
-    if (C->isLive())
+    if (C->Live)
       return;
-    C->markLive();
+    C->Live = true;
     Worklist.push_back(C);
   };
 
@@ -57,7 +56,7 @@ void markLive(ArrayRef<Chunk *> Chunks) {
 
   while (!Worklist.empty()) {
     SectionChunk *SC = Worklist.pop_back_val();
-    assert(SC->isLive() && "We mark as live when pushing onto the worklist!");
+    assert(SC->Live && "We mark as live when pushing onto the worklist!");
 
     // Mark all symbols listed in the relocation table for this section.
     for (Symbol *B : SC->symbols())

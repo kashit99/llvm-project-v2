@@ -1,9 +1,8 @@
 //===- InputChunks.h --------------------------------------------*- C++ -*-===//
 //
-//                             The LLVM Linker
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -24,17 +23,8 @@
 #include "Config.h"
 #include "InputFiles.h"
 #include "lld/Common/ErrorHandler.h"
+#include "lld/Common/LLVM.h"
 #include "llvm/Object/Wasm.h"
-
-using llvm::object::WasmSection;
-using llvm::object::WasmSegment;
-using llvm::wasm::WasmFunction;
-using llvm::wasm::WasmRelocation;
-using llvm::wasm::WasmSignature;
-
-namespace llvm {
-class raw_ostream;
-}
 
 namespace lld {
 namespace wasm {
@@ -49,17 +39,18 @@ public:
   Kind kind() const { return SectionKind; }
 
   virtual uint32_t getSize() const { return data().size(); }
-
-  void copyRelocations(const WasmSection &Section);
+  virtual uint32_t getInputSize() const { return getSize(); };
 
   virtual void writeTo(uint8_t *SectionStart) const;
 
   ArrayRef<WasmRelocation> getRelocations() const { return Relocations; }
+  void setRelocations(ArrayRef<WasmRelocation> Rs) { Relocations = Rs; }
 
   virtual StringRef getName() const = 0;
   virtual StringRef getDebugName() const = 0;
   virtual uint32_t getComdat() const = 0;
   StringRef getComdatName() const;
+  virtual uint32_t getInputSectionOffset() const = 0;
 
   size_t NumRelocations() const { return Relocations.size(); }
   void writeRelocations(llvm::raw_ostream &OS) const;
@@ -77,14 +68,12 @@ protected:
       : File(F), Live(!Config->GcSections), SectionKind(K) {}
   virtual ~InputChunk() = default;
   virtual ArrayRef<uint8_t> data() const = 0;
-  virtual uint32_t getInputSectionOffset() const = 0;
-  virtual uint32_t getInputSize() const { return getSize(); };
 
   // Verifies the existing data at relocation targets matches our expectations.
   // This is performed only debug builds as an extra sanity check.
   void verifyRelocTargets() const;
 
-  std::vector<WasmRelocation> Relocations;
+  ArrayRef<WasmRelocation> Relocations;
   Kind SectionKind;
 };
 
@@ -107,15 +96,15 @@ public:
   StringRef getName() const override { return Segment.Data.Name; }
   StringRef getDebugName() const override { return StringRef(); }
   uint32_t getComdat() const override { return Segment.Data.Comdat; }
+  uint32_t getInputSectionOffset() const override {
+    return Segment.SectionOffset;
+  }
 
   const OutputSegment *OutputSeg = nullptr;
   int32_t OutputSegmentOffset = 0;
 
 protected:
   ArrayRef<uint8_t> data() const override { return Segment.Data.Content; }
-  uint32_t getInputSectionOffset() const override {
-    return Segment.SectionOffset;
-  }
 
   const WasmSegment &Segment;
 };
@@ -139,15 +128,19 @@ public:
   uint32_t getFunctionInputOffset() const { return getInputSectionOffset(); }
   uint32_t getFunctionCodeOffset() const { return Function->CodeOffset; }
   uint32_t getSize() const override {
-    if (Config->CompressRelocTargets && File) {
+    if (Config->CompressRelocations && File) {
       assert(CompressedSize);
       return CompressedSize;
     }
     return data().size();
   }
+  uint32_t getInputSize() const override { return Function->Size; }
   uint32_t getFunctionIndex() const { return FunctionIndex.getValue(); }
   bool hasFunctionIndex() const { return FunctionIndex.hasValue(); }
   void setFunctionIndex(uint32_t Index);
+  uint32_t getInputSectionOffset() const override {
+    return Function->CodeSectionOffset;
+  }
   uint32_t getTableIndex() const { return TableIndex.getValue(); }
   bool hasTableIndex() const { return TableIndex.hasValue(); }
   void setTableIndex(uint32_t Index);
@@ -162,15 +155,9 @@ public:
 
 protected:
   ArrayRef<uint8_t> data() const override {
-    assert(!Config->CompressRelocTargets);
+    assert(!Config->CompressRelocations);
     return File->CodeSection->Content.slice(getInputSectionOffset(),
                                             Function->Size);
-  }
-
-  uint32_t getInputSize() const override { return Function->Size; }
-
-  uint32_t getInputSectionOffset() const override {
-    return Function->CodeSectionOffset;
   }
 
   const WasmFunction *Function;

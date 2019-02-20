@@ -1,9 +1,8 @@
 //===- Symbols.cpp --------------------------------------------------------===//
 //
-//                             The LLVM Linker
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -54,13 +53,20 @@ InputFile *Symbol::getFile() {
 
 bool Symbol::isLive() const {
   if (auto *R = dyn_cast<DefinedRegular>(this))
-    return R->getChunk()->isLive();
+    return R->getChunk()->Live;
   if (auto *Imp = dyn_cast<DefinedImportData>(this))
     return Imp->File->Live;
   if (auto *Imp = dyn_cast<DefinedImportThunk>(this))
     return Imp->WrappedSym->File->ThunkLive;
   // Assume any other kind of symbol is live.
   return true;
+}
+
+// MinGW specific.
+void Symbol::replaceKeepingName(Symbol *Other, size_t Size) {
+  StringRef OrigName = Name;
+  memcpy(this, Other, Size);
+  Name = OrigName;
 }
 
 COFFSymbolRef DefinedCOFF::getCOFFSymbol() {

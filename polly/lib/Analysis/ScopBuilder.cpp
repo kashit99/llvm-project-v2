@@ -1,9 +1,8 @@
 //===- ScopBuilder.cpp ----------------------------------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -579,7 +578,7 @@ bool ScopBuilder::buildAccessCallInst(MemAccInst Inst, ScopStmt *Stmt) {
     return true;
   case FMRB_OnlyReadsArgumentPointees:
     ReadOnly = true;
-  // Fall through
+    LLVM_FALLTHROUGH;
   case FMRB_OnlyAccessesArgumentPointees: {
     auto AccType = ReadOnly ? MemoryAccess::READ : MemoryAccess::MAY_WRITE;
     Loop *L = LI.getLoopFor(Inst->getParent());
@@ -685,7 +684,7 @@ void ScopBuilder::buildAccessFunctions() {
 }
 
 bool ScopBuilder::shouldModelInst(Instruction *Inst, Loop *L) {
-  return !isa<TerminatorInst>(Inst) && !isIgnoredIntrinsic(Inst) &&
+  return !Inst->isTerminator() && !isIgnoredIntrinsic(Inst) &&
          !canSynthesize(Inst, *scop, &SE, L);
 }
 
@@ -979,7 +978,7 @@ void ScopBuilder::buildAccessFunctions(ScopStmt *Stmt, BasicBlock &BB,
       buildMemoryAccess(MemInst, Stmt);
     }
 
-    // PHI nodes have already been modeled above and TerminatorInsts that are
+    // PHI nodes have already been modeled above and terminators that are
     // not part of a non-affine subregion are fully modeled and regenerated
     // from the polyhedral domains. Hence, they do not need to be modeled as
     // explicit data dependences.
@@ -1216,7 +1215,7 @@ static MemoryAccess::ReductionType getReductionType(const BinaryOperator *BinOp,
   case Instruction::FAdd:
     if (!BinOp->isFast())
       return MemoryAccess::RT_NONE;
-    // Fall through
+    LLVM_FALLTHROUGH;
   case Instruction::Add:
     return MemoryAccess::RT_ADD;
   case Instruction::Or:
@@ -1228,7 +1227,7 @@ static MemoryAccess::ReductionType getReductionType(const BinaryOperator *BinOp,
   case Instruction::FMul:
     if (!BinOp->isFast())
       return MemoryAccess::RT_NONE;
-    // Fall through
+    LLVM_FALLTHROUGH;
   case Instruction::Mul:
     if (DisableMultiplicativeReductions)
       return MemoryAccess::RT_NONE;
@@ -1399,7 +1398,7 @@ static void verifyUses(Scop *S, LoopInfo &LI, DominatorTree &DT) {
         continue;
 
       // Branch conditions are encoded in the statement domains.
-      if (isa<TerminatorInst>(&Inst) && Stmt->isBlockStmt())
+      if (Inst.isTerminator() && Stmt->isBlockStmt())
         continue;
 
       // Verify all uses.

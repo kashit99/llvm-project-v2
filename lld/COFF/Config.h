@@ -1,9 +1,8 @@
 //===- Config.h -------------------------------------------------*- C++ -*-===//
 //
-//                             The LLVM Linker
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -84,6 +83,7 @@ struct Configuration {
   bool is64() { return Machine == AMD64 || Machine == ARM64; }
 
   llvm::COFF::MachineTypes Machine = IMAGE_FILE_MACHINE_UNKNOWN;
+  size_t Wordsize;
   bool Verbose = false;
   WindowsSubsystem Subsystem = llvm::COFF::IMAGE_SUBSYSTEM_UNKNOWN;
   Symbol *Entry = nullptr;
@@ -94,7 +94,8 @@ struct Configuration {
   bool DoICF = true;
   bool TailMerge;
   bool Relocatable = true;
-  bool Force = false;
+  bool ForceMultiple = false;
+  bool ForceUnresolved = false;
   bool Debug = false;
   bool DebugDwarf = false;
   bool DebugGHashes = false;
@@ -195,6 +196,7 @@ struct Configuration {
   bool MinGW = false;
   bool WarnMissingOrderSymbol = true;
   bool WarnLocallyDefinedImported = true;
+  bool WarnDebugInfoUnusable = true;
   bool Incremental = true;
   bool IntegrityCheck = false;
   bool KillAt = false;

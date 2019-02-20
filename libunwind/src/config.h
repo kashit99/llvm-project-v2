@@ -1,9 +1,8 @@
 //===----------------------------- config.h -------------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is dual licensed under the MIT and the University of Illinois Open
-// Source Licenses. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //
 //  Defines macros used within libunwind project.
@@ -38,7 +37,11 @@
     #define _LIBUNWIND_SUPPORT_DWARF_UNWIND   1
   #endif
 #elif defined(_WIN32)
-  #define _LIBUNWIND_SUPPORT_DWARF_UNWIND 1
+  #ifdef __SEH__
+    #define _LIBUNWIND_SUPPORT_SEH_UNWIND 1
+  #else
+    #define _LIBUNWIND_SUPPORT_DWARF_UNWIND 1
+  #endif
 #else
   #if defined(__ARM_DWARF_EH__) || !defined(__arm__)
     #define _LIBUNWIND_SUPPORT_DWARF_UNWIND 1

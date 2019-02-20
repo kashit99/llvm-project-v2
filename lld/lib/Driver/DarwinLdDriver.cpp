@@ -1,9 +1,8 @@
 //===- lib/Driver/DarwinLdDriver.cpp --------------------------------------===//
 //
-//                             The LLVM Linker
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 ///
@@ -382,10 +381,13 @@ bool parse(llvm::ArrayRef<const char *> args, MachOLinkingContext &ctx) {
     if (arch == MachOLinkingContext::arch_unknown &&
         !parsedArgs.getLastArg(OPT_test_file_usage)) {
       // If no -arch and no options at all, print usage message.
-      if (parsedArgs.size() == 0)
-        table.PrintHelp(llvm::outs(), args[0], "LLVM Linker", false);
-      else
+      if (parsedArgs.size() == 0) {
+        table.PrintHelp(llvm::outs(),
+                        (std::string(args[0]) + " [options] file...").c_str(),
+                        "LLVM Linker", false);
+      } else {
         error("-arch not specified and could not be inferred");
+      }
       return false;
     }
   }
@@ -1143,7 +1145,7 @@ static void createFiles(MachOLinkingContext &ctx, bool Implicit) {
 /// This is where the link is actually performed.
 bool link(llvm::ArrayRef<const char *> args, bool CanExitEarly,
           raw_ostream &Error) {
-  errorHandler().LogName = llvm::sys::path::filename(args[0]);
+  errorHandler().LogName = args::getFilenameWithoutExe(args[0]);
   errorHandler().ErrorLimitExceededMsg =
       "too many errors emitted, stopping now (use "
       "'-error-limit 0' to see all errors)";

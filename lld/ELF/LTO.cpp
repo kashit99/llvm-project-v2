@@ -1,9 +1,8 @@
 //===- LTO.cpp ------------------------------------------------------------===//
 //
-//                             The LLVM Linker
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -13,6 +12,7 @@
 #include "LinkerScript.h"
 #include "SymbolTable.h"
 #include "Symbols.h"
+#include "lld/Common/Args.h"
 #include "lld/Common/ErrorHandler.h"
 #include "lld/Common/TargetOptionsCommandFlags.h"
 #include "llvm/ADT/STLExtras.h"
@@ -67,9 +67,10 @@ static std::string getThinLTOOutputFile(StringRef ModulePath) {
 static lto::Config createConfig() {
   lto::Config C;
 
-  // LLD supports the new relocations.
+  // LLD supports the new relocations and address-significance tables.
   C.Options = InitTargetOptionsFromCodeGenFlags();
   C.Options.RelaxELFRelocations = true;
+  C.Options.EmitAddrsig = true;
 
   // Always emit a section per function/datum with LTO.
   C.Options.FunctionSections = true;
@@ -87,6 +88,8 @@ static lto::Config createConfig() {
   C.DiagHandler = diagnosticHandler;
   C.OptLevel = Config->LTOO;
   C.CPU = GetCPUStr();
+  C.MAttrs = GetMAttrs();
+  C.CGOptLevel = args::getCGOptLevel(Config->LTOO);
 
   // Set up a custom pipeline if we've been asked to.
   C.OptPipeline = Config->LTONewPmPasses;
@@ -101,6 +104,14 @@ static lto::Config createConfig() {
   C.DebugPassManager = Config->LTODebugPassManager;
   C.DwoDir = Config->DwoDir;
 
+  if (Config->EmitLLVM) {
+    C.PostInternalizeModuleHook = [](size_t Task, const Module &M) {
+      if (std::unique_ptr<raw_fd_ostream> OS = openFile(Config->OutputFile))
+        WriteBitcodeToFile(M, *OS, false);
+      return false;
+    };
+  }
+
   if (Config->SaveTemps)
     checkError(C.addSaveTemps(Config->OutputFile.str() + ".",
                               /*UseInputModulePath*/ true));
@@ -108,18 +119,14 @@ static lto::Config createConfig() {
 }
 
 BitcodeCompiler::BitcodeCompiler() {
+  // Initialize IndexFile.
+  if (!Config->ThinLTOIndexOnlyArg.empty())
+    IndexFile = openFile(Config->ThinLTOIndexOnlyArg);
+
   // Initialize LTOObj.
   lto::ThinBackend Backend;
-
   if (Config->ThinLTOIndexOnly) {
-    StringRef Path = Config->ThinLTOIndexOnlyArg;
-    if (!Path.empty())
-      IndexFile = openFile(Path);
-
-    auto OnIndexWrite = [&](const std::string &Identifier) {
-      ObjectToIndexFileState[Identifier] = true;
-    };
-
+    auto OnIndexWrite = [&](StringRef S) { ThinIndices.erase(S); };
     Backend = lto::createWriteIndexesThinBackend(
         Config->ThinLTOPrefixReplace.first, Config->ThinLTOPrefixReplace.second,
         Config->ThinLTOEmitImportsFiles, IndexFile.get(), OnIndexWrite);
@@ -132,10 +139,10 @@ BitcodeCompiler::BitcodeCompiler() {
 
   // Initialize UsedStartStop.
   for (Symbol *Sym : Symtab->getSymbols()) {
-    StringRef Name = Sym->getName();
+    StringRef S = Sym->getName();
     for (StringRef Prefix : {"__start_", "__stop_"})
-      if (Name.startswith(Prefix))
-        UsedStartStop.insert(Name.substr(Prefix.size()));
+      if (S.startswith(Prefix))
+        UsedStartStop.insert(S.substr(Prefix.size()));
   }
 }
 
@@ -151,7 +158,7 @@ void BitcodeCompiler::add(BitcodeFile &F) {
   bool IsExec = !Config->Shared && !Config->Relocatable;
 
   if (Config->ThinLTOIndexOnly)
-    ObjectToIndexFileState.insert({Obj.getName(), false});
+    ThinIndices.insert(Obj.getName());
 
   ArrayRef<Symbol *> Syms = F.getSymbols();
   ArrayRef<lto::InputFile::Symbol> ObjSyms = Obj.symbols();
@@ -240,15 +247,11 @@ std::vector<InputFile *> BitcodeCompiler::compile() {
       Cache));
 
   // Emit empty index files for non-indexed files
-  if (Config->ThinLTOIndexOnly) {
-    for (auto &Identifier : ObjectToIndexFileState)
-      if (!Identifier.getValue()) {
-        std::string Path = getThinLTOOutputFile(Identifier.getKey());
-        openFile(Path + ".thinlto.bc");
-
-        if (Config->ThinLTOEmitImportsFiles)
-          openFile(Path + ".imports");
-      }
+  for (StringRef S : ThinIndices) {
+    std::string Path = getThinLTOOutputFile(S);
+    openFile(Path + ".thinlto.bc");
+    if (Config->ThinLTOEmitImportsFiles)
+      openFile(Path + ".imports");
   }
 
   // If LazyObjFile has not been added to link, emit empty index files.

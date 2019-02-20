@@ -27,18 +27,13 @@ if (NOT IOS)
   add_custom_command(TARGET lldb-framework POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E create_symlink Versions/Current/Headers ${LLDB_FRAMEWORK_DIR}/LLDB.framework/Headers
     COMMAND ${CMAKE_COMMAND} -E create_symlink ${LLDB_FRAMEWORK_VERSION} ${LLDB_FRAMEWORK_DIR}/LLDB.framework/Versions/Current
-    COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_BINARY_DIR}/lib${LLVM_LIBDIR_SUFFIX}/clang/${LLDB_VERSION} $<TARGET_FILE_DIR:liblldb>/Resources/Clang
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_BINARY_DIR}/lib${LLVM_LIBDIR_SUFFIX}/clang/${LLVM_VERSION_MAJOR}.${LLVM_VERSION_MINOR}.${LLVM_VERSION_PATCH} $<TARGET_FILE_DIR:liblldb>/Resources/Clang
   )
 endif()
-
-set_target_properties(liblldb PROPERTIES
-  OUTPUT_NAME LLDB
-  FRAMEWORK On
-  FRAMEWORK_VERSION ${LLDB_FRAMEWORK_VERSION}
-  MACOSX_FRAMEWORK_INFO_PLIST ${LLDB_SOURCE_DIR}/resources/LLDB-Info.plist
-  LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/${LLDB_FRAMEWORK_INSTALL_DIR}
-  PUBLIC_HEADER "${framework_headers}")
 
 add_dependencies(lldb-framework
   lldb-framework-headers
   lldb-suite)
+
+add_custom_target(install-lldb-framework)
+add_custom_target(install-lldb-framework-stripped)

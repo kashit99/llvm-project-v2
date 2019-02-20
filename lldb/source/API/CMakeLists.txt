@@ -29,6 +29,7 @@ add_lldb_library(liblldb SHARED
   SBFrame.cpp
   SBFunction.cpp
   SBHostOS.cpp
+  SBInitializerOptions.cpp
   SBInstruction.cpp
   SBInstructionList.cpp
   SBLanguageRuntime.cpp
@@ -140,6 +141,18 @@ else()
   set_target_properties(liblldb
     PROPERTIES
     OUTPUT_NAME lldb
+  )
+endif()
+
+if (LLDB_BUILD_FRAMEWORK)
+  set_target_properties(liblldb
+    PROPERTIES
+    SOVERSION "1.0.0"
+    OUTPUT_NAME LLDB
+    FRAMEWORK On
+    FRAMEWORK_VERSION ${LLDB_FRAMEWORK_VERSION}
+    MACOSX_FRAMEWORK_INFO_PLIST ${LLDB_SOURCE_DIR}/resources/LLDB-Info.plist
+    LIBRARY_OUTPUT_DIRECTORY ${LLDB_FRAMEWORK_DIR}
   )
 endif()
 

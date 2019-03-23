@@ -1,9 +1,8 @@
 //===-- ABI.cpp -------------------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -40,7 +39,7 @@ ABI::FindPlugin(lldb::ProcessSP process_sp, const ArchSpec &arch) {
 
 ABI::~ABI() = default;
 
-bool ABI::GetRegisterInfoByName(const ConstString &name, RegisterInfo &info) {
+bool ABI::GetRegisterInfoByName(ConstString name, RegisterInfo &info) {
   uint32_t count = 0;
   const RegisterInfo *register_info_array = GetRegisterInfoArray(count);
   if (register_info_array) {
@@ -98,11 +97,16 @@ ValueObjectSP ABI::GetReturnValueObject(Thread &thread, CompilerType &ast_type,
   // work.
 
   if (persistent) {
+    lldb::LanguageType lang = ast_type.GetMinimumLanguage();
+    PersistentExpressionState *persistent_expression_state;
     Target &target = *thread.CalculateTarget();
-    PersistentExpressionState *persistent_expression_state =
-        target.GetPersistentExpressionStateForLanguage(
-            ast_type.GetMinimumLanguage());
-
+    if (lang == lldb::eLanguageTypeSwift)
+      persistent_expression_state = 
+        target.GetSwiftPersistentExpressionState(thread);
+    else
+      persistent_expression_state =
+        target.GetPersistentExpressionStateForLanguage(lang);
+    
     if (!persistent_expression_state)
       return ValueObjectSP();
 

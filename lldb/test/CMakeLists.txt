@@ -25,6 +25,16 @@ set(LLDB_TEST_ARCH
   ${LLDB_DEFAULT_TEST_ARCH}
   CACHE STRING "Specify the architecture to run LLDB tests as (x86|x64).  Determines whether tests are compiled with -m32 or -m64")
 
+# BEGIN - Swift Mods
+option(LLDB_TEST_SWIFT "Use in-tree swift when testing lldb" On)
+
+if(LLDB_TEST_SWIFT)
+  set(SWIFT_TEST_ARGS
+    --swift-compiler ${LLDB_SWIFTC}
+    --swift-library ${LLDB_SWIFT_LIBS})
+endif()
+# END - Swift Mods
+
 # Users can override LLDB_TEST_USER_ARGS to specify arbitrary arguments to pass to the script
 set(LLDB_TEST_USER_ARGS
   ""
@@ -51,6 +61,7 @@ list(APPEND LLDB_TEST_COMMON_ARGS
   --dsymutil ${LLDB_TEST_DSYMUTIL}
   --filecheck ${LLDB_TEST_FILECHECK}
   -C ${LLDB_TEST_C_COMPILER}
+  ${SWIFT_TEST_ARGS}
   )
 
 if ( CMAKE_SYSTEM_NAME MATCHES "Windows" )
@@ -74,12 +85,13 @@ if ( CMAKE_SYSTEM_NAME MATCHES "Windows" )
   endif()
 endif()
 
-if(LLDB_CODESIGN_IDENTITY)
-  list(APPEND LLDB_TEST_COMMON_ARGS --codesign-identity "${LLDB_CODESIGN_IDENTITY}")
+if(LLDB_CODESIGN_IDENTITY_USED)
+  list(APPEND LLDB_TEST_COMMON_ARGS --codesign-identity "${LLDB_CODESIGN_IDENTITY_USED}")
 endif()
 
 if(LLDB_BUILD_FRAMEWORK)
-  list(APPEND LLDB_TEST_COMMON_ARGS --framework ${LLDB_FRAMEWORK_DIR}/LLDB.framework)
+  get_target_property(framework_target_dir liblldb LIBRARY_OUTPUT_DIRECTORY)
+  list(APPEND LLDB_TEST_COMMON_ARGS --framework ${framework_target_dir}/LLDB.framework)
 endif()
 
 if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Windows|Darwin")
@@ -93,11 +105,11 @@ if (NOT "${LLDB_LIT_TOOLS_DIR}" STREQUAL "")
   endif()
 endif()
 
-if(CMAKE_HOST_APPLE)
+if(CMAKE_HOST_APPLE AND DEBUGSERVER_PATH)
   list(APPEND LLDB_TEST_COMMON_ARGS --server ${DEBUGSERVER_PATH})
 endif()
 
-if(SKIP_DEBUGSERVER)
+if(SKIP_TEST_DEBUGSERVER)
   list(APPEND LLDB_TEST_COMMON_ARGS --out-of-tree-debugserver)
 endif()
 
@@ -114,10 +126,18 @@ add_python_test_target(check-lldb-single
 # output is desired (i.e. in continuous integration contexts) check-lldb-single is a better target.
 add_custom_target(check-lldb)
 
+# Make check-lldb depend on all test dependencies.
+add_dependencies(check-lldb lldb-test-deps)
+
 # If we're building with an in-tree clang, then list clang as a dependency
 # to run tests.
 if (TARGET clang)
   add_dependencies(check-lldb clang)
+endif()
+
+# If we build the framework, tests will use the tools in there.
+if (TARGET lldb-framework)
+  add_dependencies(check-lldb lldb-framework)
 endif()
 
 # LLD is required to link test executables on Windows.
@@ -132,7 +152,6 @@ endif ()
 # Run the lit-style tests and the unittests as part of the check-lldb target.
 add_dependencies(check-lldb check-lldb-lit)
 
-add_custom_target(lldb-test-depends DEPENDS ${LLDB_TEST_DEPENDS})
 # This will add LLDB's test dependencies to the dependencies for check-all and
 # include them in the test-depends target.
 set_property(GLOBAL APPEND PROPERTY LLVM_LIT_DEPENDS ${ARG_DEPENDS})

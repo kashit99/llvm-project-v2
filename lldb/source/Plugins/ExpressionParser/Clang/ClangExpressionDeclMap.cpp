@@ -1,9 +1,8 @@
 //===-- ClangExpressionDeclMap.cpp -----------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -132,7 +131,7 @@ void ClangExpressionDeclMap::DidParse() {
   if (log)
     ClangASTMetrics::DumpCounters(log);
 
-  if (m_parser_vars.get()) {
+  if (m_parser_vars) {
     for (size_t entity_index = 0, num_entities = m_found_entities.GetSize();
          entity_index < num_entities; ++entity_index) {
       ExpressionVariableSP var_sp(
@@ -309,7 +308,7 @@ TypeFromUser ClangExpressionDeclMap::DeportType(ClangASTContext &target,
 }
 
 bool ClangExpressionDeclMap::AddPersistentVariable(const NamedDecl *decl,
-                                                   const ConstString &name,
+                                                   ConstString name,
                                                    TypeFromParser parser_type,
                                                    bool is_result,
                                                    bool is_lvalue) {
@@ -424,7 +423,7 @@ bool ClangExpressionDeclMap::AddPersistentVariable(const NamedDecl *decl,
 }
 
 bool ClangExpressionDeclMap::AddValueToStruct(const NamedDecl *decl,
-                                              const ConstString &name,
+                                              ConstString name,
                                               llvm::Value *value, size_t size,
                                               lldb::offset_t alignment) {
   assert(m_struct_vars.get());
@@ -604,7 +603,7 @@ bool ClangExpressionDeclMap::GetFunctionInfo(const NamedDecl *decl,
 
 addr_t ClangExpressionDeclMap::GetSymbolAddress(Target &target,
                                                 Process *process,
-                                                const ConstString &name,
+                                                ConstString name,
                                                 lldb::SymbolType symbol_type,
                                                 lldb_private::Module *module) {
   SymbolContextList sc_list;
@@ -686,7 +685,11 @@ addr_t ClangExpressionDeclMap::GetSymbolAddress(Target &target,
     case eSymbolTypeObjCClass:
     case eSymbolTypeObjCMetaClass:
     case eSymbolTypeObjCIVar:
+    case eSymbolTypeASTFile:
       symbol_load_addr = sym_address.GetLoadAddress(&target);
+      break;
+
+    case eSymbolTypeIVarOffset:
       break;
     }
   }
@@ -702,7 +705,7 @@ addr_t ClangExpressionDeclMap::GetSymbolAddress(Target &target,
   return symbol_load_addr;
 }
 
-addr_t ClangExpressionDeclMap::GetSymbolAddress(const ConstString &name,
+addr_t ClangExpressionDeclMap::GetSymbolAddress(ConstString name,
                                                 lldb::SymbolType symbol_type) {
   assert(m_parser_vars.get());
 
@@ -715,7 +718,7 @@ addr_t ClangExpressionDeclMap::GetSymbolAddress(const ConstString &name,
 }
 
 lldb::VariableSP ClangExpressionDeclMap::FindGlobalVariable(
-    Target &target, ModuleSP &module, const ConstString &name,
+    Target &target, ModuleSP &module, ConstString name,
     CompilerDeclContext *namespace_decl, TypeFromUser *type) {
   VariableList vars;
 
@@ -1577,6 +1580,22 @@ bool ClangExpressionDeclMap::GetVariableValue(VariableSP &var,
     if (log)
       log->PutCString("Skipped a definition because it has no Clang type");
     return false;
+  }
+
+  if (llvm::isa<SwiftASTContext>(var_clang_type.GetTypeSystem())) {
+#ifdef CAN_IMPORT_SWIFT_CLANG_TYPES // <rdar://problem/16102770> ASTImporter
+                                    // can't import Swift-generated types
+    // Try to get a Clang type for the Swift type.
+
+    if (!var_clang_type.IsImportedType(&var_clang_type)) {
+      if (log)
+        log->PutCString("Skipped a definition because it has a Swift type and "
+                        "we can't get a Clang type for it");
+      return false;
+    }
+#else
+    return false;
+#endif
   }
 
   ClangASTContext *clang_ast = llvm::dyn_cast_or_null<ClangASTContext>(

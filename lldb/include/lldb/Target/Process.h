@@ -1,9 +1,8 @@
 //===-- Process.h -----------------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -551,7 +550,7 @@ public:
   //------------------------------------------------------------------
   /// Process warning types.
   //------------------------------------------------------------------
-  enum Warnings { eWarningsOptimization = 1 };
+  enum Warnings { eWarningsOptimization = 1, eWarningsCantLoadSwift };
 
   typedef Range<lldb::addr_t, lldb::addr_t> LoadRange;
   // We use a read/write lock to allow on or more clients to access the process
@@ -594,9 +593,9 @@ public:
 
     ~ProcessEventData() override;
 
-    static const ConstString &GetFlavorString();
+    static ConstString GetFlavorString();
 
-    const ConstString &GetFlavor() const override;
+    ConstString GetFlavor() const override;
 
     lldb::ProcessSP GetProcessSP() const { return m_process_wp.lock(); }
 
@@ -1604,6 +1603,21 @@ public:
   //------------------------------------------------------------------
   void PrintWarningOptimization(const SymbolContext &sc);
 
+  //------------------------------------------------------------------
+  /// Print a user-visible warning about a module having Swift settings
+  /// incompatible with the current system
+  ///
+  /// Prints a async warning message to the user one time per Process for a
+  /// Module
+  /// whose Swift AST sections couldn't be loaded because they aren't buildable
+  /// on
+  /// the current machine.
+  ///
+  /// @param [in] module
+  ///     The affected Module.
+  //------------------------------------------------------------------
+  void PrintWarningCantLoadSwift(const Module &module);
+
   virtual bool GetProcessInfo(ProcessInstanceInfo &info);
 
 public:
@@ -2473,13 +2487,19 @@ public:
   ///     the process
   ///     needs to have its process IOHandler popped.
   ///
+  /// @param[out] pop_command_interpreter
+  ///     This variable will be set to \b true or \b false ot indicate if the
+  ///     process needs
+  ///     to have its command interpreter popped.
+  ///
   /// @return
   ///     \b true if the event describes a process state changed event, \b false
   ///     otherwise.
   //--------------------------------------------------------------------------------------
   static bool HandleProcessStateChangedEvent(const lldb::EventSP &event_sp,
                                              Stream *stream,
-                                             bool &pop_process_io_handler);
+                                             bool &pop_process_io_handler,
+                                             bool &pop_command_interpreter);
 
   Event *PeekAtStateChangedEvents();
 
@@ -2523,7 +2543,7 @@ public:
 
   const lldb::ABISP &GetABI();
 
-  OperatingSystem *GetOperatingSystem() { return m_os_ap.get(); }
+  OperatingSystem *GetOperatingSystem() { return m_os_up.get(); }
 
   virtual LanguageRuntime *GetLanguageRuntime(lldb::LanguageType language,
                                               bool retry_if_null = true);
@@ -2533,12 +2553,15 @@ public:
   virtual ObjCLanguageRuntime *
   GetObjCLanguageRuntime(bool retry_if_null = true);
 
+  virtual SwiftLanguageRuntime *
+  GetSwiftLanguageRuntime(bool retry_if_null = true);
+
   bool IsPossibleDynamicValue(ValueObject &in_value);
 
   bool IsRunning() const;
 
   DynamicCheckerFunctions *GetDynamicCheckers() {
-    return m_dynamic_checkers_ap.get();
+    return m_dynamic_checkers_up.get();
   }
 
   void SetDynamicCheckers(DynamicCheckerFunctions *dynamic_checkers);
@@ -2737,7 +2760,7 @@ public:
   ///     Returns the result of attempting to configure the feature.
   //------------------------------------------------------------------
   virtual Status
-  ConfigureStructuredData(const ConstString &type_name,
+  ConfigureStructuredData(ConstString type_name,
                           const StructuredData::ObjectSP &config_sp);
 
   //------------------------------------------------------------------
@@ -2771,7 +2794,7 @@ public:
   ///     otherwise, returns an empty shared pointer.
   //------------------------------------------------------------------
   lldb::StructuredDataPluginSP
-  GetStructuredDataPlugin(const ConstString &type_name) const;
+  GetStructuredDataPlugin(ConstString type_name) const;
 
   //------------------------------------------------------------------
   /// Starts tracing with the configuration provided in options. To enable
@@ -2919,10 +2942,10 @@ protected:
   };
 
   void SetNextEventAction(Process::NextEventAction *next_event_action) {
-    if (m_next_event_action_ap.get())
-      m_next_event_action_ap->HandleBeingUnshipped();
+    if (m_next_event_action_up.get())
+      m_next_event_action_up->HandleBeingUnshipped();
 
-    m_next_event_action_ap.reset(next_event_action);
+    m_next_event_action_up.reset(next_event_action);
   }
 
   // This is the completer for Attaching:
@@ -2986,7 +3009,7 @@ protected:
   ///
   ///     virtual void
   ///     HandleArrivalOfStructuredData(Process &process,
-  ///                                   const ConstString &type_name,
+  ///                                   ConstString type_name,
   ///                                   const StructuredData::ObjectSP
   ///                                   &object_sp)
   ///
@@ -3071,15 +3094,15 @@ protected:
   BreakpointSiteList m_breakpoint_site_list; ///< This is the list of breakpoint
                                              ///locations we intend to insert in
                                              ///the target.
-  lldb::DynamicLoaderUP m_dyld_ap;
-  lldb::JITLoaderListUP m_jit_loaders_ap;
-  lldb::DynamicCheckerFunctionsUP m_dynamic_checkers_ap; ///< The functions used
-                                                         ///by the expression
-                                                         ///parser to validate
-                                                         ///data that
-                                                         ///expressions use.
-  lldb::OperatingSystemUP m_os_ap;
-  lldb::SystemRuntimeUP m_system_runtime_ap;
+  lldb::DynamicLoaderUP m_dyld_up;
+  lldb::JITLoaderListUP m_jit_loaders_up;
+  lldb::DynamicCheckerFunctionsUP m_dynamic_checkers_up; ///< The functions used
+                                                         /// by the expression
+                                                         /// parser to validate
+                                                         /// data that
+                                                         /// expressions use.
+  lldb::OperatingSystemUP m_os_up;
+  lldb::SystemRuntimeUP m_system_runtime_up;
   lldb::UnixSignalsSP
       m_unix_signals_sp; /// This is the current signal set for this process.
   lldb::ABISP m_abi_sp;
@@ -3099,7 +3122,7 @@ protected:
                         /// with an explicit call to Kill or Detach?
   LanguageRuntimeCollection m_language_runtimes;
   InstrumentationRuntimeCollection m_instrumentation_runtimes;
-  std::unique_ptr<NextEventAction> m_next_event_action_ap;
+  std::unique_ptr<NextEventAction> m_next_event_action_up;
   std::vector<PreResumeCallbackAndBaton> m_pre_resume_actions;
   ProcessRunLock m_public_run_lock;
   ProcessRunLock m_private_run_lock;
@@ -3114,11 +3137,12 @@ protected:
   bool m_finalize_called; // This is set at the end of Process::Finalize()
   bool m_clear_thread_plans_on_stop;
   bool m_force_next_event_delivery;
+  bool m_destroy_in_process;
+  bool m_destroy_complete;
   lldb::StateType m_last_broadcast_state; /// This helps with the Public event
                                           /// coalescing in
                                           /// ShouldBroadcastEvent.
   std::map<lldb::addr_t, lldb::addr_t> m_resolved_indirect_addresses;
-  bool m_destroy_in_process;
   bool m_can_interpret_function_calls;  // Some targets, e.g the OSX kernel,
                                         // don't support the ability to modify
                                         // the stack.
@@ -3200,7 +3224,7 @@ protected:
 
   bool PushProcessIOHandler();
 
-  bool PopProcessIOHandler();
+  bool PopProcessIOHandler(bool pop_command_interpreter);
 
   bool ProcessIOHandlerIsActive();
 

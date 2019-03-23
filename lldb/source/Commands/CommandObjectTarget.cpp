@@ -1,9 +1,8 @@
 //===-- CommandObjectTarget.cpp ---------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -1348,7 +1347,7 @@ static void DumpModuleUUID(Stream &strm, Module *module) {
 static uint32_t DumpCompileUnitLineTable(CommandInterpreter &interpreter,
                                          Stream &strm, Module *module,
                                          const FileSpec &file_spec,
-                                         bool load_addresses) {
+                                         lldb::DescriptionLevel desc_level) {
   uint32_t num_matches = 0;
   if (module) {
     SymbolContextList sc_list;
@@ -1367,7 +1366,7 @@ static uint32_t DumpCompileUnitLineTable(CommandInterpreter &interpreter,
         if (line_table)
           line_table->GetDescription(
               &strm, interpreter.GetExecutionContext().GetTargetPtr(),
-              lldb::eDescriptionLevelBrief);
+              desc_level);
         else
           strm << "No line table";
       }
@@ -1451,14 +1450,15 @@ static size_t DumpModuleObjfileHeaders(Stream &strm, ModuleList &module_list) {
 }
 
 static void DumpModuleSymtab(CommandInterpreter &interpreter, Stream &strm,
-                             Module *module, SortOrder sort_order) {
+                             Module *module, SortOrder sort_order,
+                             Mangled::NamePreference name_preference) {
   if (module) {
     SymbolVendor *sym_vendor = module->GetSymbolVendor();
     if (sym_vendor) {
       Symtab *symtab = sym_vendor->GetSymtab();
       if (symtab)
         symtab->Dump(&strm, interpreter.GetExecutionContext().GetTargetPtr(),
-                     sort_order);
+                     sort_order, name_preference);
     }
   }
 }
@@ -1672,12 +1672,11 @@ static size_t LookupTypeInModule(CommandInterpreter &interpreter, Stream &strm,
     const uint32_t max_num_matches = UINT32_MAX;
     size_t num_matches = 0;
     bool name_is_fully_qualified = false;
-    SymbolContext sc;
 
     ConstString name(name_cstr);
     llvm::DenseSet<lldb_private::SymbolFile *> searched_symbol_files;
     num_matches =
-        module->FindTypes(sc, name, name_is_fully_qualified, max_num_matches,
+        module->FindTypes(name, name_is_fully_qualified, max_num_matches,
                           searched_symbol_files, type_list);
 
     if (num_matches) {
@@ -1715,11 +1714,8 @@ static size_t LookupTypeInModule(CommandInterpreter &interpreter, Stream &strm,
 }
 
 static size_t LookupTypeHere(CommandInterpreter &interpreter, Stream &strm,
-                             const SymbolContext &sym_ctx,
-                             const char *name_cstr, bool name_is_regex) {
-  if (!sym_ctx.module_sp)
-    return 0;
-
+                             Module &module, const char *name_cstr,
+                             bool name_is_regex) {
   TypeList type_list;
   const uint32_t max_num_matches = UINT32_MAX;
   size_t num_matches = 1;
@@ -1727,14 +1723,13 @@ static size_t LookupTypeHere(CommandInterpreter &interpreter, Stream &strm,
 
   ConstString name(name_cstr);
   llvm::DenseSet<SymbolFile *> searched_symbol_files;
-  num_matches = sym_ctx.module_sp->FindTypes(
-      sym_ctx, name, name_is_fully_qualified, max_num_matches,
-      searched_symbol_files, type_list);
+  num_matches = module.FindTypes(name, name_is_fully_qualified, max_num_matches,
+                                 searched_symbol_files, type_list);
 
   if (num_matches) {
     strm.Indent();
     strm.PutCString("Best match found in ");
-    DumpFullpath(strm, &sym_ctx.module_sp->GetFileSpec(), 0);
+    DumpFullpath(strm, &module.GetFileSpec(), 0);
     strm.PutCString(":\n");
 
     TypeSP type_sp(type_list.GetTypeAtIndex(0));
@@ -1991,6 +1986,7 @@ static constexpr OptionEnumValueElement g_sort_option_enumeration[] = {
 static constexpr OptionDefinition g_target_modules_dump_symtab_options[] = {
     // clang-format off
   { LLDB_OPT_SET_1, false, "sort", 's', OptionParser::eRequiredArgument, nullptr, OptionEnumValues(g_sort_option_enumeration), 0, eArgTypeSortOrder, "Supply a sort order when dumping the symbol table." }
+, { LLDB_OPT_SET_1, false, "show-mangled-names", 'm', OptionParser::eNoArgument,       nullptr, {}, 0, eArgTypeNone, "Do not demangle symbol names before showing them." },
     // clang-format on
 };
 
@@ -2009,7 +2005,9 @@ public:
 
   class CommandOptions : public Options {
   public:
-    CommandOptions() : Options(), m_sort_order(eSortOrderNone) {}
+    CommandOptions()
+        : Options(), m_sort_order(eSortOrderNone),
+          m_prefer_mangled(false, false) {}
 
     ~CommandOptions() override = default;
 
@@ -2019,6 +2017,11 @@ public:
       const int short_option = m_getopt_table[option_idx].val;
 
       switch (short_option) {
+      case 'm':
+        m_prefer_mangled.SetCurrentValue(true);
+        m_prefer_mangled.SetOptionWasSet();
+        break;
+
       case 's':
         m_sort_order = (SortOrder)OptionArgParser::ToOptionEnum(
             option_arg, GetDefinitions()[option_idx].enum_values,
@@ -2035,6 +2038,7 @@ public:
 
     void OptionParsingStarting(ExecutionContext *execution_context) override {
       m_sort_order = eSortOrderNone;
+      m_prefer_mangled.Clear();
     }
 
     llvm::ArrayRef<OptionDefinition> GetDefinitions() override {
@@ -2042,6 +2046,7 @@ public:
     }
 
     SortOrder m_sort_order;
+    OptionValueBoolean m_prefer_mangled;
   };
 
 protected:
@@ -2054,6 +2059,10 @@ protected:
       return false;
     } else {
       uint32_t num_dumped = 0;
+
+      Mangled::NamePreference preference =
+          (m_options.m_prefer_mangled ? Mangled::ePreferMangled
+                                      : Mangled::ePreferDemangled);
 
       uint32_t addr_byte_size = target->GetArchitecture().GetAddressByteSize();
       result.GetOutputStream().SetAddressByteSize(addr_byte_size);
@@ -2079,7 +2088,7 @@ protected:
             DumpModuleSymtab(
                 m_interpreter, result.GetOutputStream(),
                 target->GetImages().GetModulePointerAtIndexUnlocked(image_idx),
-                m_options.m_sort_order);
+                m_options.m_sort_order, preference);
           }
         } else {
           result.AppendError("the target has no associated executable images");
@@ -2107,7 +2116,7 @@ protected:
                   break;
                 num_dumped++;
                 DumpModuleSymtab(m_interpreter, result.GetOutputStream(),
-                                 module, m_options.m_sort_order);
+                                 module, m_options.m_sort_order, preference);
               }
             }
           } else
@@ -2411,6 +2420,8 @@ public:
 
   ~CommandObjectTargetModulesDumpLineTable() override = default;
 
+  Options *GetOptions() override { return &m_options; }
+
 protected:
   bool DoExecute(Args &command, CommandReturnObject &result) override {
     Target *target = m_exe_ctx.GetTargetPtr();
@@ -2443,8 +2454,9 @@ protected:
             if (DumpCompileUnitLineTable(
                     m_interpreter, result.GetOutputStream(),
                     target_modules.GetModulePointerAtIndexUnlocked(i),
-                    file_spec, m_exe_ctx.GetProcessPtr() &&
-                                   m_exe_ctx.GetProcessRef().IsAlive()))
+                    file_spec,
+                    m_options.m_verbose ? eDescriptionLevelFull
+                                        : eDescriptionLevelBrief))
               num_dumped++;
           }
           if (num_dumped == 0)
@@ -2464,6 +2476,43 @@ protected:
     }
     return result.Succeeded();
   }
+
+  class CommandOptions : public Options {
+  public:
+    CommandOptions() : Options() { OptionParsingStarting(nullptr); }
+
+    Status SetOptionValue(uint32_t option_idx, llvm::StringRef option_arg,
+                          ExecutionContext *execution_context) override {
+      assert(option_idx == 0 && "We only have one option.");
+      m_verbose = true;
+
+      return Status();
+    }
+
+    void OptionParsingStarting(ExecutionContext *execution_context) override {
+      m_verbose = false;
+    }
+
+    llvm::ArrayRef<OptionDefinition> GetDefinitions() override {
+      static constexpr OptionDefinition g_options[] = {
+          {LLDB_OPT_SET_ALL,
+           false,
+           "verbose",
+           'v',
+           OptionParser::eNoArgument,
+           nullptr,
+           {},
+           0,
+           eArgTypeNone,
+           "Enable verbose dump."},
+      };
+      return llvm::makeArrayRef(g_options);
+    }
+
+    bool m_verbose;
+  };
+
+  CommandOptions m_options;
 };
 
 #pragma mark CommandObjectTargetModulesDump
@@ -3832,8 +3881,9 @@ public:
       return false;
     case eLookupTypeType:
       if (!m_options.m_str.empty()) {
-        if (LookupTypeHere(m_interpreter, result.GetOutputStream(), sym_ctx,
-                           m_options.m_str.c_str(), m_options.m_use_regex)) {
+        if (LookupTypeHere(m_interpreter, result.GetOutputStream(),
+                           *sym_ctx.module_sp, m_options.m_str.c_str(),
+                           m_options.m_use_regex)) {
           result.SetStatus(eReturnStatusSuccessFinishResult);
           return true;
         }
@@ -3841,7 +3891,7 @@ public:
       break;
     }
 
-    return true;
+    return false;
   }
 
   bool LookupInModule(CommandInterpreter &interpreter, Module *module,
@@ -4735,49 +4785,49 @@ protected:
       Target::StopHookSP new_hook_sp = target->CreateStopHook();
 
       //  First step, make the specifier.
-      std::unique_ptr<SymbolContextSpecifier> specifier_ap;
+      std::unique_ptr<SymbolContextSpecifier> specifier_up;
       if (m_options.m_sym_ctx_specified) {
-        specifier_ap.reset(new SymbolContextSpecifier(
+        specifier_up.reset(new SymbolContextSpecifier(
             m_interpreter.GetDebugger().GetSelectedTarget()));
 
         if (!m_options.m_module_name.empty()) {
-          specifier_ap->AddSpecification(
+          specifier_up->AddSpecification(
               m_options.m_module_name.c_str(),
               SymbolContextSpecifier::eModuleSpecified);
         }
 
         if (!m_options.m_class_name.empty()) {
-          specifier_ap->AddSpecification(
+          specifier_up->AddSpecification(
               m_options.m_class_name.c_str(),
               SymbolContextSpecifier::eClassOrNamespaceSpecified);
         }
 
         if (!m_options.m_file_name.empty()) {
-          specifier_ap->AddSpecification(
+          specifier_up->AddSpecification(
               m_options.m_file_name.c_str(),
               SymbolContextSpecifier::eFileSpecified);
         }
 
         if (m_options.m_line_start != 0) {
-          specifier_ap->AddLineSpecification(
+          specifier_up->AddLineSpecification(
               m_options.m_line_start,
               SymbolContextSpecifier::eLineStartSpecified);
         }
 
         if (m_options.m_line_end != UINT_MAX) {
-          specifier_ap->AddLineSpecification(
+          specifier_up->AddLineSpecification(
               m_options.m_line_end, SymbolContextSpecifier::eLineEndSpecified);
         }
 
         if (!m_options.m_function_name.empty()) {
-          specifier_ap->AddSpecification(
+          specifier_up->AddSpecification(
               m_options.m_function_name.c_str(),
               SymbolContextSpecifier::eFunctionSpecified);
         }
       }
 
-      if (specifier_ap)
-        new_hook_sp->SetSpecifier(specifier_ap.release());
+      if (specifier_up)
+        new_hook_sp->SetSpecifier(specifier_up.release());
 
       // Next see if any of the thread options have been entered:
 

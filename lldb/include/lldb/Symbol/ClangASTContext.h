@@ -1,9 +1,8 @@
 //===-- ClangASTContext.h ---------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -59,6 +58,8 @@ public:
   //------------------------------------------------------------------
   ClangASTContext(const char *triple = nullptr);
 
+  ClangASTContext(clang::ASTContext *ast_ctx);
+
   ~ClangASTContext() override;
 
   void Finalize() override;
@@ -73,7 +74,8 @@ public:
   static ConstString GetPluginNameStatic();
 
   static lldb::TypeSystemSP CreateInstance(lldb::LanguageType language,
-                                           Module *module, Target *target);
+                                           Module *module, Target *target,
+                                           const char *compiler_options);
 
   static void EnumerateSupportedLanguages(
       std::set<lldb::LanguageType> &languages_for_types,
@@ -122,7 +124,7 @@ public:
   bool HasExternalSource();
 
   void SetExternalSource(
-      llvm::IntrusiveRefCntPtr<clang::ExternalASTSource> &ast_source_ap);
+      llvm::IntrusiveRefCntPtr<clang::ExternalASTSource> &ast_source_up);
 
   void RemoveExternalSource();
 
@@ -169,9 +171,9 @@ public:
                                    lldb::BasicType type);
 
   static CompilerType GetBasicType(clang::ASTContext *ast,
-                                   const ConstString &name);
+                                   ConstString name);
 
-  static lldb::BasicType GetBasicTypeEnumeration(const ConstString &name);
+  static lldb::BasicType GetBasicTypeEnumeration(ConstString name);
 
   CompilerType GetBuiltinTypeForDWARFEncodingAndBitSize(const char *type_name,
                                                         uint32_t dw_ate,
@@ -197,6 +199,11 @@ public:
     return GetTranslationUnitDecl(getASTContext());
   }
 
+  //----------------------------------------------------------------------
+  // Copy "src" into this ClangASTContext.
+  //----------------------------------------------------------------------
+  CompilerType CopyType(const CompilerType &src);
+
   static clang::Decl *CopyDecl(clang::ASTContext *dest_context,
                                clang::ASTContext *source_context,
                                clang::Decl *source_decl);
@@ -212,7 +219,7 @@ public:
 
   template <typename RecordDeclType>
   CompilerType
-  GetTypeForIdentifier(const ConstString &type_name,
+  GetTypeForIdentifier(ConstString type_name,
                        clang::DeclContext *decl_context = nullptr) {
     CompilerType compiler_type;
 
@@ -244,13 +251,13 @@ public:
   }
 
   CompilerType CreateStructForIdentifier(
-      const ConstString &type_name,
+      ConstString type_name,
       const std::initializer_list<std::pair<const char *, CompilerType>>
           &type_fields,
       bool packed = false);
 
   CompilerType GetOrCreateStructForIdentifier(
-      const ConstString &type_name,
+      ConstString type_name,
       const std::initializer_list<std::pair<const char *, CompilerType>>
           &type_fields,
       bool packed = false);
@@ -270,6 +277,11 @@ public:
 
   static uint32_t GetNumBaseClasses(const clang::CXXRecordDecl *cxx_record_decl,
                                     bool omit_empty_base_classes);
+
+  static uint32_t
+  GetIndexForRecordBase(const clang::RecordDecl *record_decl,
+                        const clang::CXXBaseSpecifier *base_spec,
+                        bool omit_empty_base_classes);
 
   CompilerType CreateRecordType(clang::DeclContext *decl_ctx,
                                 lldb::AccessType access_type, const char *name,
@@ -606,7 +618,8 @@ public:
 
   bool IsPossibleDynamicType(lldb::opaque_compiler_type_t type,
                              CompilerType *target_type, // Can pass nullptr
-                             bool check_cplusplus, bool check_objc) override;
+                             bool check_cplusplus, bool check_objc,
+                             bool check_swift) override;
 
   bool IsRuntimeGeneratedType(lldb::opaque_compiler_type_t type) override;
 
@@ -673,6 +686,8 @@ public:
 
   CompilerType GetCanonicalType(lldb::opaque_compiler_type_t type) override;
 
+  CompilerType GetInstanceType(lldb::opaque_compiler_type_t type) override;
+
   CompilerType
   GetFullyUnqualifiedType(lldb::opaque_compiler_type_t type) override;
 
@@ -692,14 +707,18 @@ public:
   GetMemberFunctionAtIndex(lldb::opaque_compiler_type_t type,
                            size_t idx) override;
 
+  static CompilerType GetLValueReferenceType(const CompilerType &compiler_type);
+
+  CompilerType
+  GetLValueReferenceType(lldb::opaque_compiler_type_t type) override;
+
   CompilerType GetNonReferenceType(lldb::opaque_compiler_type_t type) override;
 
   CompilerType GetPointeeType(lldb::opaque_compiler_type_t type) override;
 
   CompilerType GetPointerType(lldb::opaque_compiler_type_t type) override;
 
-  CompilerType
-  GetLValueReferenceType(lldb::opaque_compiler_type_t type) override;
+  CompilerType GetRValueReferenceType(const CompilerType &type);
 
   CompilerType
   GetRValueReferenceType(lldb::opaque_compiler_type_t type) override;
@@ -717,6 +736,10 @@ public:
   // If the current object represents a typedef type, get the underlying type
   CompilerType GetTypedefedType(lldb::opaque_compiler_type_t type) override;
 
+  CompilerType GetUnboundType(lldb::opaque_compiler_type_t type) override;
+
+  static CompilerType RemoveFastQualifiers(const CompilerType &type);
+
   //----------------------------------------------------------------------
   // Create related types using the current type's AST
   //----------------------------------------------------------------------
@@ -726,13 +749,18 @@ public:
   // Exploring the type
   //----------------------------------------------------------------------
 
-  uint64_t GetByteSize(lldb::opaque_compiler_type_t type,
+  llvm::Optional<uint64_t> GetByteSize(lldb::opaque_compiler_type_t type,
                        ExecutionContextScope *exe_scope) {
-    return (GetBitSize(type, exe_scope) + 7) / 8;
+    if (llvm::Optional<uint64_t> bit_size = GetBitSize(type, exe_scope))
+      return (*bit_size + 7) / 8;
+    return llvm::None;
   }
 
-  uint64_t GetBitSize(lldb::opaque_compiler_type_t type,
-                      ExecutionContextScope *exe_scope) override;
+  llvm::Optional<uint64_t>
+  GetBitSize(lldb::opaque_compiler_type_t type,
+             ExecutionContextScope *exe_scope) override;
+
+  uint64_t GetByteStride(lldb::opaque_compiler_type_t type) override;
 
   lldb::Encoding GetEncoding(lldb::opaque_compiler_type_t type,
                              uint64_t &count) override;
@@ -745,19 +773,19 @@ public:
                           bool omit_empty_base_classes,
                           const ExecutionContext *exe_ctx) override;
 
-  CompilerType GetBuiltinTypeByName(const ConstString &name) override;
+  CompilerType GetBuiltinTypeByName(ConstString name) override;
 
   lldb::BasicType
   GetBasicTypeEnumeration(lldb::opaque_compiler_type_t type) override;
 
   static lldb::BasicType
   GetBasicTypeEnumeration(lldb::opaque_compiler_type_t type,
-                          const ConstString &name);
+                          ConstString name);
 
   void ForEachEnumerator(
       lldb::opaque_compiler_type_t type,
       std::function<bool(const CompilerType &integer_type,
-                         const ConstString &name,
+                         ConstString name,
                          const llvm::APSInt &value)> const &callback) override;
 
   uint32_t GetNumFields(lldb::opaque_compiler_type_t type) override;
@@ -927,6 +955,13 @@ public:
   //----------------------------------------------------------------------
   // Dumping types
   //----------------------------------------------------------------------
+#ifndef NDEBUG
+  /// Convenience LLVM-style dump method for use in the debugger only.
+  /// In contrast to the other \p Dump() methods this directly invokes
+  /// \p clang::QualType::dump().
+  LLVM_DUMP_METHOD void dump(lldb::opaque_compiler_type_t type) const override;
+#endif
+
   void Dump(Stream &s);
 
   void DumpValue(lldb::opaque_compiler_type_t type, ExecutionContext *exe_ctx,
@@ -940,7 +975,8 @@ public:
                      lldb::Format format, const DataExtractor &data,
                      lldb::offset_t data_offset, size_t data_byte_size,
                      uint32_t bitfield_bit_size, uint32_t bitfield_bit_offset,
-                     ExecutionContextScope *exe_scope) override;
+                     ExecutionContextScope *exe_scope,
+                     bool is_base_class) override;
 
   void DumpSummary(lldb::opaque_compiler_type_t type, ExecutionContext *exe_ctx,
                    Stream *s, const DataExtractor &data,
@@ -1016,22 +1052,22 @@ protected:
   //------------------------------------------------------------------
   // clang-format off
     std::string                                     m_target_triple;
-    std::unique_ptr<clang::ASTContext>              m_ast_ap;
-    std::unique_ptr<clang::LangOptions>             m_language_options_ap;
-    std::unique_ptr<clang::FileManager>             m_file_manager_ap;
-    std::unique_ptr<clang::FileSystemOptions>       m_file_system_options_ap;
-    std::unique_ptr<clang::SourceManager>           m_source_manager_ap;
-    std::unique_ptr<clang::DiagnosticsEngine>       m_diagnostics_engine_ap;
-    std::unique_ptr<clang::DiagnosticConsumer>      m_diagnostic_consumer_ap;
+    std::unique_ptr<clang::ASTContext>              m_ast_up;
+    std::unique_ptr<clang::LangOptions>             m_language_options_up;
+    std::unique_ptr<clang::FileManager>             m_file_manager_up;
+    std::unique_ptr<clang::FileSystemOptions>       m_file_system_options_up;
+    std::unique_ptr<clang::SourceManager>           m_source_manager_up;
+    std::unique_ptr<clang::DiagnosticsEngine>       m_diagnostics_engine_up;
+    std::unique_ptr<clang::DiagnosticConsumer>      m_diagnostic_consumer_up;
     std::shared_ptr<clang::TargetOptions>           m_target_options_rp;
-    std::unique_ptr<clang::TargetInfo>              m_target_info_ap;
-    std::unique_ptr<clang::IdentifierTable>         m_identifier_table_ap;
-    std::unique_ptr<clang::SelectorTable>           m_selector_table_ap;
-    std::unique_ptr<clang::Builtin::Context>        m_builtins_ap;
-    std::unique_ptr<DWARFASTParserClang>            m_dwarf_ast_parser_ap;
-    std::unique_ptr<PDBASTParser>                   m_pdb_ast_parser_ap;
-    std::unique_ptr<ClangASTSource>                 m_scratch_ast_source_ap;
-    std::unique_ptr<clang::MangleContext>           m_mangle_ctx_ap;
+    std::unique_ptr<clang::TargetInfo>              m_target_info_up;
+    std::unique_ptr<clang::IdentifierTable>         m_identifier_table_up;
+    std::unique_ptr<clang::SelectorTable>           m_selector_table_up;
+    std::unique_ptr<clang::Builtin::Context>        m_builtins_up;
+    std::unique_ptr<DWARFASTParserClang>            m_dwarf_ast_parser_up;
+    std::unique_ptr<PDBASTParser>                   m_pdb_ast_parser_up;
+    std::unique_ptr<ClangASTSource>                 m_scratch_ast_source_up;
+    std::unique_ptr<clang::MangleContext>           m_mangle_ctx_up;
     CompleteTagDeclCallback                         m_callback_tag_decl;
     CompleteObjCInterfaceDeclCallback               m_callback_objc_decl;
     void *                                          m_callback_baton;

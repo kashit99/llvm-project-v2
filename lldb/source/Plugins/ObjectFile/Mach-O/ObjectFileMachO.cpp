@@ -1,9 +1,8 @@
 //===-- ObjectFileMachO.cpp -------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -29,6 +28,7 @@
 #include "lldb/Target/Platform.h"
 #include "lldb/Target/Process.h"
 #include "lldb/Target/SectionLoadList.h"
+#include "lldb/Target/SwiftLanguageRuntime.h"
 #include "lldb/Target/Target.h"
 #include "lldb/Target/Thread.h"
 #include "lldb/Target/ThreadList.h"
@@ -59,6 +59,8 @@
 #else
 #include <uuid/uuid.h>
 #endif
+
+#include <memory>
 
 #define THUMB_ADDRESS_BIT_MASK 0xfffffffffffffffeull
 using namespace lldb;
@@ -871,22 +873,22 @@ ObjectFile *ObjectFileMachO::CreateInstance(const lldb::ModuleSP &module_sp,
       return nullptr;
     data_offset = 0;
   }
-  auto objfile_ap = llvm::make_unique<ObjectFileMachO>(
+  auto objfile_up = llvm::make_unique<ObjectFileMachO>(
       module_sp, data_sp, data_offset, file, file_offset, length);
-  if (!objfile_ap || !objfile_ap->ParseHeader())
+  if (!objfile_up || !objfile_up->ParseHeader())
     return nullptr;
 
-  return objfile_ap.release();
+  return objfile_up.release();
 }
 
 ObjectFile *ObjectFileMachO::CreateMemoryInstance(
     const lldb::ModuleSP &module_sp, DataBufferSP &data_sp,
     const ProcessSP &process_sp, lldb::addr_t header_addr) {
   if (ObjectFileMachO::MagicBytesMatch(data_sp, 0, data_sp->GetByteSize())) {
-    std::unique_ptr<ObjectFile> objfile_ap(
+    std::unique_ptr<ObjectFile> objfile_up(
         new ObjectFileMachO(module_sp, data_sp, process_sp, header_addr));
-    if (objfile_ap.get() && objfile_ap->ParseHeader())
-      return objfile_ap.release();
+    if (objfile_up.get() && objfile_up->ParseHeader())
+      return objfile_up.release();
   }
   return NULL;
 }
@@ -926,42 +928,42 @@ size_t ObjectFileMachO::GetModuleSpecifications(
   return specs.GetSize() - initial_count;
 }
 
-const ConstString &ObjectFileMachO::GetSegmentNameTEXT() {
+ConstString ObjectFileMachO::GetSegmentNameTEXT() {
   static ConstString g_segment_name_TEXT("__TEXT");
   return g_segment_name_TEXT;
 }
 
-const ConstString &ObjectFileMachO::GetSegmentNameDATA() {
+ConstString ObjectFileMachO::GetSegmentNameDATA() {
   static ConstString g_segment_name_DATA("__DATA");
   return g_segment_name_DATA;
 }
 
-const ConstString &ObjectFileMachO::GetSegmentNameDATA_DIRTY() {
+ConstString ObjectFileMachO::GetSegmentNameDATA_DIRTY() {
   static ConstString g_segment_name("__DATA_DIRTY");
   return g_segment_name;
 }
 
-const ConstString &ObjectFileMachO::GetSegmentNameDATA_CONST() {
+ConstString ObjectFileMachO::GetSegmentNameDATA_CONST() {
   static ConstString g_segment_name("__DATA_CONST");
   return g_segment_name;
 }
 
-const ConstString &ObjectFileMachO::GetSegmentNameOBJC() {
+ConstString ObjectFileMachO::GetSegmentNameOBJC() {
   static ConstString g_segment_name_OBJC("__OBJC");
   return g_segment_name_OBJC;
 }
 
-const ConstString &ObjectFileMachO::GetSegmentNameLINKEDIT() {
+ConstString ObjectFileMachO::GetSegmentNameLINKEDIT() {
   static ConstString g_section_name_LINKEDIT("__LINKEDIT");
   return g_section_name_LINKEDIT;
 }
 
-const ConstString &ObjectFileMachO::GetSegmentNameDWARF() {
+ConstString ObjectFileMachO::GetSegmentNameDWARF() {
   static ConstString g_section_name("__DWARF");
   return g_section_name;
 }
 
-const ConstString &ObjectFileMachO::GetSectionNameEHFrame() {
+ConstString ObjectFileMachO::GetSectionNameEHFrame() {
   static ConstString g_section_name_eh_frame("__eh_frame");
   return g_section_name_eh_frame;
 }
@@ -1213,8 +1215,10 @@ AddressClass ObjectFileMachO::GetAddressClass(lldb::addr_t file_addr) {
           case eSectionTypeDWARFDebugTypes:
           case eSectionTypeDWARFAppleNames:
           case eSectionTypeDWARFAppleTypes:
+          case eSectionTypeDWARFAppleExternalTypes:
           case eSectionTypeDWARFAppleNamespaces:
           case eSectionTypeDWARFAppleObjC:
+          case eSectionTypeSwiftModules:
           case eSectionTypeDWARFGNUDebugAltLink:
             return AddressClass::eDebug;
 
@@ -1301,6 +1305,11 @@ AddressClass ObjectFileMachO::GetAddressClass(lldb::addr_t file_addr) {
         return AddressClass::eRuntime;
       case eSymbolTypeReExported:
         return AddressClass::eRuntime;
+      case eSymbolTypeASTFile:
+        return AddressClass::eDebug;
+
+      case eSymbolTypeIVarOffset:
+        break;
       }
     }
   }
@@ -1311,15 +1320,15 @@ Symtab *ObjectFileMachO::GetSymtab() {
   ModuleSP module_sp(GetModule());
   if (module_sp) {
     std::lock_guard<std::recursive_mutex> guard(module_sp->GetMutex());
-    if (m_symtab_ap.get() == NULL) {
-      m_symtab_ap.reset(new Symtab(this));
+    if (m_symtab_up == NULL) {
+      m_symtab_up.reset(new Symtab(this));
       std::lock_guard<std::recursive_mutex> symtab_guard(
-          m_symtab_ap->GetMutex());
+          m_symtab_up->GetMutex());
       ParseSymtab();
-      m_symtab_ap->Finalize();
+      m_symtab_up->Finalize();
     }
   }
-  return m_symtab_ap.get();
+  return m_symtab_up.get();
 }
 
 bool ObjectFileMachO::IsStripped() {
@@ -1475,6 +1484,7 @@ static lldb::SectionType GetSectionType(uint32_t flags,
   static ConstString g_sect_name_compact_unwind("__unwind_info");
   static ConstString g_sect_name_text("__text");
   static ConstString g_sect_name_data("__data");
+  static ConstString g_sect_name_swift_ast("__swift_ast");
   static ConstString g_sect_name_go_symtab("__gosymtab");
 
   if (section_name == g_sect_name_dwarf_debug_abbrev)
@@ -1523,6 +1533,8 @@ static lldb::SectionType GetSectionType(uint32_t flags,
     return eSectionTypeCompactUnwind;
   if (section_name == g_sect_name_cfstring)
     return eSectionTypeDataObjCCFStrings;
+  if (section_name == g_sect_name_swift_ast)
+    return eSectionTypeSwiftModules;
   if (section_name == g_sect_name_go_symtab)
     return eSectionTypeGoSymtab;
   if (section_name == g_sect_name_objc_data ||
@@ -1647,7 +1659,7 @@ void ObjectFileMachO::ProcessSegmentCommand(const load_command &load_cmd_,
   // conflict with any of the sections.
   SectionSP segment_sp;
   if (add_section && (const_segname || is_core)) {
-    segment_sp.reset(new Section(
+    segment_sp = std::make_shared<Section>(
         module_sp, // Module to which this section belongs
         this,      // Object file to which this sections belongs
         ++context.NextSegmentIdx
@@ -1665,10 +1677,10 @@ void ObjectFileMachO::ProcessSegmentCommand(const load_command &load_cmd_,
         load_cmd.filesize, // Size in bytes of this section as found
         // in the file
         0,                // Segments have no alignment information
-        load_cmd.flags)); // Flags for this section
+        load_cmd.flags); // Flags for this section
 
     segment_sp->SetIsEncrypted(segment_is_encrypted);
-    m_sections_ap->AddSection(segment_sp);
+    m_sections_up->AddSection(segment_sp);
     segment_sp->SetPermissions(segment_permissions);
     if (add_to_unified)
       context.UnifiedList.AddSection(segment_sp);
@@ -1697,7 +1709,7 @@ void ObjectFileMachO::ProcessSegmentCommand(const load_command &load_cmd_,
         context.FileAddressesChanged = true;
       }
     }
-    m_sections_ap->AddSection(unified_section_sp);
+    m_sections_up->AddSection(unified_section_sp);
   }
 
   struct section_64 sect64;
@@ -1787,7 +1799,7 @@ void ObjectFileMachO::ProcessSegmentCommand(const load_command &load_cmd_,
           }
         } else {
           // Create a fake section for the section's named segment
-          segment_sp.reset(new Section(
+          segment_sp = std::make_shared<Section>(
               segment_sp, // Parent section
               module_sp,  // Module to which this section belongs
               this,       // Object file to which this section belongs
@@ -1808,10 +1820,10 @@ void ObjectFileMachO::ProcessSegmentCommand(const load_command &load_cmd_,
               // this section as
               // found in the file
               sect64.align,
-              load_cmd.flags)); // Flags for this section
+              load_cmd.flags); // Flags for this section
           segment_sp->SetIsFake(true);
           segment_sp->SetPermissions(segment_permissions);
-          m_sections_ap->AddSection(segment_sp);
+          m_sections_up->AddSection(segment_sp);
           if (add_to_unified)
             context.UnifiedList.AddSection(segment_sp);
           segment_sp->SetIsEncrypted(segment_is_encrypted);
@@ -1878,10 +1890,10 @@ void ObjectFileMachO::ProcessDysymtabCommand(const load_command &load_cmd,
 }
 
 void ObjectFileMachO::CreateSections(SectionList &unified_section_list) {
-  if (m_sections_ap)
+  if (m_sections_up)
     return;
 
-  m_sections_ap.reset(new SectionList());
+  m_sections_up.reset(new SectionList());
 
   lldb::offset_t offset = MachHeaderSizeFromMagic(m_header.magic);
   // bool dump_sections = false;
@@ -2009,8 +2021,44 @@ struct TrieEntryWithOffset {
   }
 };
 
+static LazyBool CalculateNameIsSwift(std::vector<llvm::StringRef> &nameSlices) {
+  // Currently a symbol is defined to possibly be in the Trie only if
+  // it is a swift symbol. Swift mangled names start with "__T" so we
+  // need to see if the nameSlices start with "__T", but of course
+  // this could be broken up into at most 3 entries.
+
+  llvm::StringRef swift_prefix("__T");
+
+  for (const auto &name : nameSlices) {
+    const size_t name_len = name.size();
+    const size_t swift_prefix_len =
+        swift_prefix.size(); // This length changes as we trim it down so we
+                             // must always fetch it
+    if (swift_prefix_len > name_len) {
+      // The remaining swift prefix is longer than the current
+      // name slice, so if the prefix starts with the name, then
+      // trim characters off the swift prefix and keep looking,
+      // else we are done if the swift prefix doesn't start with
+      // the name
+      if (swift_prefix.startswith(name))
+        swift_prefix = swift_prefix.substr(name_len);
+      else
+        return eLazyBoolNo;
+    } else {
+      // The current name slice is greater than or equal to
+      // the remaining prefix, so just test if it starts with
+      // the prefix and we are done
+      if (name.startswith(swift_prefix))
+        return eLazyBoolYes;
+      else
+        return eLazyBoolNo;
+    }
+  }
+  return eLazyBoolCalculate;
+}
+
 static bool ParseTrieEntries(DataExtractor &data, lldb::offset_t offset,
-                             const bool is_arm,
+                             const bool is_arm, const LazyBool symbol_is_swift,
                              std::vector<llvm::StringRef> &nameSlices,
                              std::set<lldb::addr_t> &resolver_addresses,
                              std::vector<TrieEntryWithOffset> &output) {
@@ -2039,8 +2087,9 @@ static bool ParseTrieEntries(DataExtractor &data, lldb::offset_t offset,
         e.entry.other = 0;
     }
     // Only add symbols that are reexport symbols with a valid import name
-    if (EXPORT_SYMBOL_FLAGS_REEXPORT & e.entry.flags && import_name &&
-        import_name[0]) {
+    if ((EXPORT_SYMBOL_FLAGS_REEXPORT & e.entry.flags && import_name &&
+         import_name[0]) ||
+        symbol_is_swift == eLazyBoolYes) {
       std::string name;
       if (!nameSlices.empty()) {
         for (auto name_slice : nameSlices)
@@ -2065,9 +2114,16 @@ static bool ParseTrieEntries(DataExtractor &data, lldb::offset_t offset,
       nameSlices.push_back(llvm::StringRef(cstr));
     else
       return false; // Corrupt data
+
+    const LazyBool child_symbol_is_swift =
+        (symbol_is_swift == eLazyBoolCalculate)
+            ? CalculateNameIsSwift(nameSlices)
+            : symbol_is_swift;
+
     lldb::offset_t childNodeOffset = data.GetULEB128(&children_offset);
     if (childNodeOffset) {
-      if (!ParseTrieEntries(data, childNodeOffset, is_arm, nameSlices,
+      if (!ParseTrieEntries(data, childNodeOffset, is_arm,
+                            child_symbol_is_swift, nameSlices,
                             resolver_addresses, output)) {
         return false;
       }
@@ -2103,6 +2159,80 @@ UUID ObjectFileMachO::GetSharedCacheUUID(FileSpec dyld_shared_cache,
                 dsc_uuid.GetAsString().c_str());
   }
   return dsc_uuid;
+}
+
+static SymbolType GetSymbolType(
+    const char *&symbol_name, const char *&symbol_name_non_abi_mangled,
+    bool &demangled_is_synthesized, const SectionSP &text_section_sp,
+    const SectionSP &data_section_sp, const SectionSP &data_dirty_section_sp,
+    const SectionSP &data_const_section_sp, const SectionSP &objc_section_sp,
+    const SectionSP &symbol_section) {
+  SymbolType type = eSymbolTypeInvalid;
+
+  const char *symbol_sect_name = symbol_section->GetName().AsCString();
+  if (symbol_section->IsDescendant(text_section_sp.get())) {
+    if (symbol_section->IsClear(S_ATTR_PURE_INSTRUCTIONS |
+                                S_ATTR_SELF_MODIFYING_CODE |
+                                S_ATTR_SOME_INSTRUCTIONS))
+      type = eSymbolTypeData;
+    else
+      type = eSymbolTypeCode;
+  } else if (symbol_section->IsDescendant(data_section_sp.get()) ||
+             symbol_section->IsDescendant(data_dirty_section_sp.get()) ||
+             symbol_section->IsDescendant(data_const_section_sp.get())) {
+    if (symbol_sect_name &&
+        ::strstr(symbol_sect_name, "__objc") == symbol_sect_name) {
+      type = eSymbolTypeRuntime;
+
+      if (symbol_name) {
+        llvm::StringRef symbol_name_ref(symbol_name);
+        if (symbol_name_ref.startswith("_OBJC_")) {
+          static const llvm::StringRef g_objc_v2_prefix_class("_OBJC_CLASS_$_");
+          static const llvm::StringRef g_objc_v2_prefix_metaclass(
+              "_OBJC_METACLASS_$_");
+          static const llvm::StringRef g_objc_v2_prefix_ivar("_OBJC_IVAR_$_");
+          if (symbol_name_ref.startswith(g_objc_v2_prefix_class)) {
+            symbol_name_non_abi_mangled = symbol_name + 1;
+            symbol_name = symbol_name + g_objc_v2_prefix_class.size();
+            type = eSymbolTypeObjCClass;
+            demangled_is_synthesized = true;
+          } else if (symbol_name_ref.startswith(g_objc_v2_prefix_metaclass)) {
+            symbol_name_non_abi_mangled = symbol_name + 1;
+            symbol_name = symbol_name + g_objc_v2_prefix_metaclass.size();
+            type = eSymbolTypeObjCMetaClass;
+            demangled_is_synthesized = true;
+          } else if (symbol_name_ref.startswith(g_objc_v2_prefix_ivar)) {
+            symbol_name_non_abi_mangled = symbol_name + 1;
+            symbol_name = symbol_name + g_objc_v2_prefix_ivar.size();
+            type = eSymbolTypeObjCIVar;
+            demangled_is_synthesized = true;
+          }
+        }
+      }
+    } else if (symbol_sect_name &&
+               ::strstr(symbol_sect_name, "__gcc_except_tab") ==
+                   symbol_sect_name) {
+      type = eSymbolTypeException;
+    } else {
+      type = eSymbolTypeData;
+    }
+  } else if (symbol_sect_name &&
+             ::strstr(symbol_sect_name, "__IMPORT") == symbol_sect_name) {
+    type = eSymbolTypeTrampoline;
+  } else if (symbol_section->IsDescendant(objc_section_sp.get())) {
+    type = eSymbolTypeRuntime;
+    if (symbol_name && symbol_name[0] == '.') {
+      llvm::StringRef symbol_name_ref(symbol_name);
+      static const llvm::StringRef g_objc_v1_prefix_class(".objc_class_name_");
+      if (symbol_name_ref.startswith(g_objc_v1_prefix_class)) {
+        symbol_name_non_abi_mangled = symbol_name;
+        symbol_name = symbol_name + g_objc_v1_prefix_class.size();
+        type = eSymbolTypeObjCClass;
+        demangled_is_synthesized = true;
+      }
+    }
+  }
+  return type;
 }
 
 size_t ObjectFileMachO::ParseSymtab() {
@@ -2214,7 +2344,7 @@ size_t ObjectFileMachO::ParseSymtab() {
   }
 
   if (symtab_load_command.cmd) {
-    Symtab *symtab = m_symtab_ap.get();
+    Symtab *symtab = m_symtab_up.get();
     SectionList *section_list = GetSectionList();
     if (section_list == NULL)
       return 0;
@@ -2427,12 +2557,12 @@ size_t ObjectFileMachO::ParseSymtab() {
       }
     }
 
-    const ConstString &g_segment_name_TEXT = GetSegmentNameTEXT();
-    const ConstString &g_segment_name_DATA = GetSegmentNameDATA();
-    const ConstString &g_segment_name_DATA_DIRTY = GetSegmentNameDATA_DIRTY();
-    const ConstString &g_segment_name_DATA_CONST = GetSegmentNameDATA_CONST();
-    const ConstString &g_segment_name_OBJC = GetSegmentNameOBJC();
-    const ConstString &g_section_name_eh_frame = GetSectionNameEHFrame();
+    ConstString g_segment_name_TEXT = GetSegmentNameTEXT();
+    ConstString g_segment_name_DATA = GetSegmentNameDATA();
+    ConstString g_segment_name_DATA_DIRTY = GetSegmentNameDATA_DIRTY();
+    ConstString g_segment_name_DATA_CONST = GetSegmentNameDATA_CONST();
+    ConstString g_segment_name_OBJC = GetSegmentNameOBJC();
+    ConstString g_section_name_eh_frame = GetSectionNameEHFrame();
     SectionSP text_section_sp(
         section_list->FindSectionByName(g_segment_name_TEXT));
     SectionSP data_section_sp(
@@ -2561,11 +2691,13 @@ size_t ObjectFileMachO::ParseSymtab() {
 
     std::vector<TrieEntryWithOffset> trie_entries;
     std::set<lldb::addr_t> resolver_addresses;
+    std::set<lldb::addr_t> symbol_file_addresses;
 
     if (dyld_trie_data.GetByteSize() > 0) {
       std::vector<llvm::StringRef> nameSlices;
-      ParseTrieEntries(dyld_trie_data, 0, is_arm, nameSlices,
-                       resolver_addresses, trie_entries);
+      ParseTrieEntries(dyld_trie_data, 0, is_arm,
+                       eLazyBoolNo, // eLazyBoolCalculate,
+                       nameSlices, resolver_addresses, trie_entries);
 
       ConstString text_segment_name("__TEXT");
       SectionSP text_segment_sp =
@@ -3513,6 +3645,13 @@ size_t ObjectFileMachO::ParseSymtab() {
                           }
                         }
                         if (symbol_section) {
+                          // Keep track of the symbols we added by address in
+                          // case we have other sources
+                          // for symbols where we only want to add a symbol if
+                          // it isn't already in the
+                          // symbol table.
+                          symbol_file_addresses.insert(nlist.n_value);
+
                           const addr_t section_file_addr =
                               symbol_section->GetFileAddress();
                           if (symbol_byte_size == 0 &&
@@ -4184,6 +4323,11 @@ size_t ObjectFileMachO::ParseSymtab() {
             type = eSymbolTypeAdditional;
             break;
 
+          case N_AST:
+            // A path to a compiler AST file
+            type = eSymbolTypeASTFile;
+            break;
+
           default:
             break;
           }
@@ -4404,6 +4548,7 @@ size_t ObjectFileMachO::ParseSymtab() {
 
             if (symbol_name && symbol_name[0] == '_') {
               symbol_name_is_mangled = symbol_name[1] == '_';
+              symbol_name_is_mangled |= symbol_name[1] == '$';
               symbol_name++; // Skip the leading underscore
             }
 
@@ -4425,6 +4570,13 @@ size_t ObjectFileMachO::ParseSymtab() {
           }
 
           if (symbol_section) {
+            // Keep track of the symbols we added by address in case we have
+            // other sources
+            // for symbols where we only want to add a symbol if it isn't
+            // already in the
+            // symbol table.
+            symbol_file_addresses.insert(nlist.n_value);
+
             const addr_t section_file_addr = symbol_section->GetFileAddress();
             if (symbol_byte_size == 0 && function_starts_count > 0) {
               addr_t symbol_lookup_file_addr = nlist.n_value;
@@ -4613,6 +4765,58 @@ size_t ObjectFileMachO::ParseSymtab() {
     }
 
     uint32_t synthetic_sym_id = symtab_load_command.nsyms;
+
+    // Check the trie for any symbols that are in the trie only and make symbols
+    // for those
+    if (!trie_entries.empty()) {
+      for (const auto &e : trie_entries) {
+        // Don't handle the re-exported symbols here, just the symbols that were
+        // in the trie only
+        if (e.entry.name && !e.entry.import_name &&
+            symbol_file_addresses.find(e.entry.address) ==
+                symbol_file_addresses.end()) {
+          SectionSP symbol_section =
+              section_list->FindSectionContainingFileAddress(e.entry.address);
+          if (symbol_section) {
+            const addr_t section_file_addr = symbol_section->GetFileAddress();
+
+            // Keep track of the symbols we added by address in case we have
+            // other sources
+            // for symbols where we only want to add a symbol if it isn't
+            // already in the
+            // symbol table.
+            symbol_file_addresses.insert(e.entry.address);
+
+            if (e.entry.address >= section_file_addr) {
+              const uint64_t symbol_value = e.entry.address - section_file_addr;
+
+              const char *symbol_name = e.entry.name.GetCString();
+              const char *symbol_name_non_abi_mangled = nullptr;
+              bool demangled_is_synthesized = false;
+              SymbolType type = GetSymbolType(
+                  symbol_name, symbol_name_non_abi_mangled,
+                  demangled_is_synthesized, text_section_sp, data_section_sp,
+                  data_dirty_section_sp, data_const_section_sp, objc_section_sp,
+                  symbol_section);
+
+              // Make a synthetic symbol to describe re-exported symbol.
+              if (sym_idx >= num_syms)
+                sym = symtab->Resize(++num_syms);
+              sym[sym_idx].SetID(synthetic_sym_id++);
+              sym[sym_idx].GetMangled() = Mangled(e.entry.name, true);
+              sym[sym_idx].SetType(type);
+              sym[sym_idx].SetIsSynthetic(true);
+              sym[sym_idx].GetAddressRef().SetSection(symbol_section);
+              sym[sym_idx].GetAddressRef().SetOffset(symbol_value);
+              if (demangled_is_synthesized)
+                sym[sym_idx].SetDemangledNameIsSynthesized(true);
+
+              ++sym_idx;
+            }
+          }
+        }
+      }
+    }
 
     if (function_starts_count > 0) {
       uint32_t num_synthetic_function_symbols = 0;
@@ -4843,8 +5047,8 @@ void ObjectFileMachO::Dump(Stream *s) {
     if (sections)
       sections->Dump(s, NULL, true, UINT32_MAX);
 
-    if (m_symtab_ap.get())
-      m_symtab_ap->Dump(s, NULL, eSortOrderNone);
+    if (m_symtab_up)
+      m_symtab_up->Dump(s, NULL, eSortOrderNone);
   }
 }
 
@@ -5530,19 +5734,23 @@ ObjectFileMachO::GetThreadContextAtIndex(uint32_t idx,
 
       switch (m_header.cputype) {
       case llvm::MachO::CPU_TYPE_ARM64:
-        reg_ctx_sp.reset(new RegisterContextDarwin_arm64_Mach(thread, data));
+        reg_ctx_sp =
+            std::make_shared<RegisterContextDarwin_arm64_Mach>(thread, data);
         break;
 
       case llvm::MachO::CPU_TYPE_ARM:
-        reg_ctx_sp.reset(new RegisterContextDarwin_arm_Mach(thread, data));
+        reg_ctx_sp =
+            std::make_shared<RegisterContextDarwin_arm_Mach>(thread, data);
         break;
 
       case llvm::MachO::CPU_TYPE_I386:
-        reg_ctx_sp.reset(new RegisterContextDarwin_i386_Mach(thread, data));
+        reg_ctx_sp =
+            std::make_shared<RegisterContextDarwin_i386_Mach>(thread, data);
         break;
 
       case llvm::MachO::CPU_TYPE_X86_64:
-        reg_ctx_sp.reset(new RegisterContextDarwin_x86_64_Mach(thread, data));
+        reg_ctx_sp =
+            std::make_shared<RegisterContextDarwin_x86_64_Mach>(thread, data);
         break;
       }
     }

@@ -1,9 +1,8 @@
 //===-- HostInfoBase.h ------------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -93,12 +92,17 @@ public:
   /// FileSpec is filled in.
   static FileSpec GetGlobalTempDir();
 
+  static FileSpec GetSwiftDir();
+
   //---------------------------------------------------------------------------
   /// If the triple does not specify the vendor, os, and environment parts, we
   /// "augment" these using information from the host and return the resulting
   /// ArchSpec object.
   //---------------------------------------------------------------------------
   static ArchSpec GetAugmentedArchSpec(llvm::StringRef triple);
+
+  static bool ComputePathRelativeToLibrary(FileSpec &file_spec,
+                                           llvm::StringRef dir);
 
 protected:
   static bool ComputeSharedLibraryDirectory(FileSpec &file_spec);
@@ -108,6 +112,7 @@ protected:
   static bool ComputeTempFileBaseDirectory(FileSpec &file_spec);
   static bool ComputeHeaderDirectory(FileSpec &file_spec);
   static bool ComputeSystemPluginsDirectory(FileSpec &file_spec);
+  static bool ComputeSwiftDirectory(FileSpec &file_spec);
   static bool ComputeUserPluginsDirectory(FileSpec &file_spec);
 
   static void ComputeHostArchitectureSupport(ArchSpec &arch_32,

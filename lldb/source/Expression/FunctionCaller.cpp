@@ -1,9 +1,8 @@
 //===-- FunctionCaller.cpp ---------------------------------------*- C++-*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -94,18 +93,9 @@ bool FunctionCaller::WriteFunctionWrapper(
     return false;
   }
 
-  if (m_parser->GetGenerateDebugInfo()) {
-    lldb::ModuleSP jit_module_sp(m_execution_unit_sp->GetJITModule());
+  if (m_parser->GetGenerateDebugInfo())
+    m_execution_unit_sp->CreateJITModule(FunctionName());
 
-    if (jit_module_sp) {
-      ConstString const_func_name(FunctionName());
-      FileSpec jit_file;
-      jit_file.GetFilename() = const_func_name;
-      jit_module_sp->SetFileSpecAndObjectName(jit_file, ConstString());
-      m_jit_module_wp = jit_module_sp;
-      process->GetTarget().GetImages().Append(jit_module_sp);
-    }
-  }
   if (process && m_jit_start_addr)
     m_jit_process_wp = process->shared_from_this();
 

@@ -1,9 +1,8 @@
 //===-- main.m ------------------------------------------------*- ObjC -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -206,7 +205,7 @@ int main (int argc, const char * argv[])
 
 	    const unichar myNextCharacters[] = {0x03C3, 0x0000};
 
-	    NSString *str10 = [NSString stringWithFormat:@"This is a Unicode string %S number %ld right here", myNextCharacters, (long)4];
+	    NSString *str10 = [NSString stringWithFormat:@"This is a Unicode string %S \nnumber %ld right here", myNextCharacters, (long)4];
 
 	    NSString *str11 = NSStringFromClass([str10 class]);
 
@@ -236,7 +235,7 @@ int main (int argc, const char * argv[])
 	    NSString *strA9 = [NSString stringWithCharacters: myOtherCharacters
 	                                             length: sizeof myOtherCharacters / sizeof *myOtherCharacters];
 
-	    NSString *strA10 = [NSString stringWithFormat:@"This is a Unicode string %S number %ld right here", myNextCharacters, (long)4];
+	    NSString *strA10 = [NSString stringWithFormat:@"This is a Unicode string %S \nnumber %ld right here", myNextCharacters, (long)4];
 
 	    NSString *strA11 = NSStringFromClass([str10 class]);
 
@@ -262,7 +261,7 @@ int main (int argc, const char * argv[])
 	    NSString *strB9 = [NSString stringWithCharacters: myOtherCharacters
 	                                              length: sizeof myOtherCharacters / sizeof *myOtherCharacters];
 
-	    NSString *strB10 = [NSString stringWithFormat:@"This is a Unicode string %S number %ld right here", myNextCharacters, (long)4];
+	    NSString *strB10 = [NSString stringWithFormat:@"This is a Unicode string %S \nnumber %ld right here", myNextCharacters, (long)4];
 
 	    NSString *strB11 = NSStringFromClass([str10 class]);
 
@@ -292,7 +291,7 @@ int main (int argc, const char * argv[])
 	    NSString *strC9 = [NSString stringWithCharacters: myOtherCharacters
 	                                              length: sizeof myOtherCharacters / sizeof *myOtherCharacters];
 
-	    NSString *strC10 = [NSString stringWithFormat:@"This is a Unicode string %S number %ld right here", myNextCharacters, (long)4];
+	    NSString *strC10 = [NSString stringWithFormat:@"This is a Unicode string %S \nnumber %ld right here", myNextCharacters, (long)4];
 
 	    NSString *strD11 = NSStringFromClass([str10 class]);
 
@@ -301,13 +300,15 @@ int main (int argc, const char * argv[])
 	    NSString *eAcute = [NSString stringWithFormat: @"%C", 0x00E9];
 	    NSString *randomHaziChar = [NSString stringWithFormat: @"%C", 0x9DC5];
 	    NSString *japanese = @"色は匂へど散りぬるを";
-	    NSString *italian = @"L'Italia è una Repubblica democratica, fondata sul lavoro. La sovranità appartiene al popolo, che la esercita nelle forme e nei limiti della Costituzione.";
+	    NSString *italian = @"L'Italia è una Repubblica democratica, fondata sul lavoro. \n\tLa sovranità appartiene al popolo, che la esercita nelle forme e nei limiti della Costituzione.";
 	    NSString* french = @"Que veut cette horde d'esclaves, De traîtres, de rois conjurés?";
 	    NSString* german = @"Über-Ich und aus den Ansprüchen der sozialen Umwelt";
 
 	    void* data_set[3] = {str1,str2,str3};
 	
 		NSString *hebrew = [NSString stringWithString:@"לילה טוב"];
+
+    NSString* shorty = [[NSString alloc] initWithCString:"ab\tcd" encoding:NSASCIIStringEncoding];
 
 	    NSArray* newArray = [[NSMutableArray alloc] init];
 	    [newArray addObject:str1];

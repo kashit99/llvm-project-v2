@@ -1,9 +1,8 @@
 //===-- SBEvent.h -----------------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -71,6 +70,14 @@ public:
 
   void SetCancelCallback(lldb::ExpressionCancelCallback callback, void *baton);
 
+  bool GetPlaygroundTransformEnabled() const;
+
+  void SetPlaygroundTransformEnabled(bool enable_playground_transform = true);
+
+  bool GetREPLMode() const;
+
+  void SetREPLMode(bool enable_repl_mode = true);
+
   bool GetGenerateDebugInfo();
 
   void SetGenerateDebugInfo(bool b = true);
@@ -111,7 +118,7 @@ protected:
 
 private:
   // This auto_pointer is made in the constructor and is always valid.
-  mutable std::unique_ptr<lldb_private::EvaluateExpressionOptions> m_opaque_ap;
+  mutable std::unique_ptr<lldb_private::EvaluateExpressionOptions> m_opaque_up;
 };
 
 } // namespace lldb

@@ -1,8 +1,7 @@
 """
-The LLVM Compiler Infrastructure
-
-This file is distributed under the University of Illinois Open Source
-License. See LICENSE.TXT for details.
+Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+See https://llvm.org/LICENSE.txt for license information.
+SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 Provides classes used by the test results reporting infrastructure
 within the LLDB test suite.
@@ -423,7 +422,7 @@ class UnixProcessHelper(ProcessHelper):
         signo = -popen_status
         signal_names_by_number = self._signal_names_by_number()
         signal_name = signal_names_by_number.get(signo, "")
-        return (signo, signal_name)
+        return signo, signal_name
 
 
 class WindowsProcessHelper(ProcessHelper):

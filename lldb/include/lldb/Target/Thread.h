@@ -1,9 +1,8 @@
 //===-- Thread.h ------------------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -92,9 +91,9 @@ public:
 
     ~ThreadEventData() override;
 
-    static const ConstString &GetFlavorString();
+    static ConstString GetFlavorString();
 
-    const ConstString &GetFlavor() const override {
+    ConstString GetFlavor() const override {
       return ThreadEventData::GetFlavorString();
     }
 
@@ -775,6 +774,13 @@ public:
       LazyBool step_in_avoids_code_without_debug_info = eLazyBoolCalculate,
       LazyBool step_out_avoids_code_without_debug_info = eLazyBoolCalculate);
 
+  virtual lldb::ThreadPlanSP QueueThreadPlanForStepInRangeNoShouldStop(
+      bool abort_other_plans, const AddressRange &range,
+      const SymbolContext &addr_context, const char *step_in_target,
+      lldb::RunMode stop_other_threads, Status &status,
+      LazyBool step_in_avoids_code_without_debug_info = eLazyBoolCalculate,
+      LazyBool step_out_avoids_code_without_debug_info = eLazyBoolCalculate);
+
   // Helper function that takes a LineEntry to step, insted of an AddressRange.
   // This may combine multiple LineEntries of the same source line number to
   // step over a longer address range in a single operation.
@@ -992,11 +998,15 @@ public:
   //------------------------------------------------------------------
   /// Gets the outer-most return value from the completed plans
   ///
+  /// @param[out] is_swift_error_value
+  ///     If non-NULL, will be set to true if this is a Swift error value
+  ///     not a true return.
+  ///
   /// @return
   ///     A ValueObjectSP, either empty if there is no return value,
   ///     or containing the return value.
   //------------------------------------------------------------------
-  lldb::ValueObjectSP GetReturnValueObject();
+  lldb::ValueObjectSP GetReturnValueObject(bool *is_swift_error_value);
 
   //------------------------------------------------------------------
   /// Gets the outer-most expression variable from the completed plans
@@ -1348,7 +1358,7 @@ protected:
                                             ///thread plan logic for the current
                                             ///resume.
   /// It gets set in Thread::ShouldResume.
-  std::unique_ptr<lldb_private::Unwind> m_unwinder_ap;
+  std::unique_ptr<lldb_private::Unwind> m_unwinder_up;
   bool m_destroy_called; // This is used internally to make sure derived Thread
                          // classes call DestroyThread.
   LazyBool m_override_should_notify;

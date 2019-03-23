@@ -2,15 +2,15 @@
 //-*-===//
 
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
 #include "gtest/gtest.h"
 
+#include <memory>
 #include <vector>
 
 #include "Plugins/UnwindAssembly/x86/x86AssemblyInspectionEngine.h"
@@ -2172,7 +2172,7 @@ TEST_F(Testx86AssemblyInspectionEngine, TestSimplex86_64Augmented) {
   unwind_plan.SetPlanValidAddressRange(sample_range);
   unwind_plan.SetRegisterKind(eRegisterKindLLDB);
 
-  row_sp.reset(new UnwindPlan::Row);
+  row_sp = std::make_shared<UnwindPlan::Row>();
 
   // Describe offset 0
   row_sp->SetOffset(0);
@@ -2250,7 +2250,7 @@ TEST_F(Testx86AssemblyInspectionEngine, TestSimplei386ugmented) {
   unwind_plan.SetPlanValidAddressRange(sample_range);
   unwind_plan.SetRegisterKind(eRegisterKindLLDB);
 
-  row_sp.reset(new UnwindPlan::Row);
+  row_sp = std::make_shared<UnwindPlan::Row>();
 
   // Describe offset 0
   row_sp->SetOffset(0);

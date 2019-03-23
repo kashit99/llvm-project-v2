@@ -1,9 +1,8 @@
 //===-- Expression.h --------------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -16,8 +15,11 @@
 
 
 #include "lldb/Expression/ExpressionTypeSystemHelper.h"
+#include "lldb/Symbol/CompilerType.h"
 #include "lldb/lldb-forward.h"
 #include "lldb/lldb-private.h"
+
+#include "llvm/ADT/SmallVector.h"
 
 namespace lldb_private {
 
@@ -63,6 +65,14 @@ public:
   /// default, return eLanguageTypeUnknown.
   //------------------------------------------------------------------
   virtual lldb::LanguageType Language() { return lldb::eLanguageTypeUnknown; }
+
+  //------------------------------------------------------------------
+  /// Return the object that the parser should use when registering external
+  /// values (assuming it doesn't use a ClangExpressionDeclMap).  May be
+  /// NULL if there is a ClangExpressionDeclMap or everything should be
+  /// self-contained.
+  //------------------------------------------------------------------
+  virtual Materializer *GetMaterializer() { return NULL; }
 
   //------------------------------------------------------------------
   /// Return the desired result type of the function, or eResultTypeAny if

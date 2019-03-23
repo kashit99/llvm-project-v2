@@ -1,9 +1,8 @@
 //===-- HostInfoWindows.cpp -------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -86,7 +85,7 @@ bool HostInfoWindows::GetHostname(std::string &s) {
 }
 
 FileSpec HostInfoWindows::GetProgramFileSpec() {
-  static llvm::once_flag g_once_flag;
+  static std::once_flag g_once_flag;
   llvm::call_once(g_once_flag, []() {
     std::vector<wchar_t> buffer(PATH_MAX);
     ::GetModuleFileNameW(NULL, buffer.data(), buffer.size());

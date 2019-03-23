@@ -1,9 +1,8 @@
 //===-- Function.h ----------------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -56,7 +55,7 @@ public:
   ///     Optional declaration information that describes where the
   ///     function was declared. This can be NULL.
   //------------------------------------------------------------------
-  FunctionInfo(const ConstString &name, const Declaration *decl_ptr);
+  FunctionInfo(ConstString name, const Declaration *decl_ptr);
 
   //------------------------------------------------------------------
   /// Destructor.
@@ -191,7 +190,7 @@ public:
   ///     Optional calling location declaration information that
   ///     describes from where this inlined function was called.
   //------------------------------------------------------------------
-  InlineFunctionInfo(const ConstString &name, const Mangled &mangled,
+  InlineFunctionInfo(ConstString name, const Mangled &mangled,
                      const Declaration *decl_ptr,
                      const Declaration *call_decl_ptr);
 
@@ -402,10 +401,14 @@ public:
   ///
   /// @param[in] range
   ///     The section offset based address for this function.
+  ///
+  /// @param[in] can_throw
+  ///     Pass in true if this is a function know to throw
   //------------------------------------------------------------------
   Function(CompileUnit *comp_unit, lldb::user_id_t func_uid,
            lldb::user_id_t func_type_uid, const Mangled &mangled,
-           Type *func_type, const AddressRange &range);
+           Type *func_type, const AddressRange &range,
+           bool can_throw = false);
 
   //------------------------------------------------------------------
   /// Destructor.
@@ -513,11 +516,11 @@ public:
   //------------------------------------------------------------------
   const DWARFExpression &GetFrameBaseExpression() const { return m_frame_base; }
 
-  ConstString GetName() const;
+  ConstString GetName(const SymbolContext *sc = nullptr) const;
 
-  ConstString GetNameNoArguments() const;
+  ConstString GetNameNoArguments(const SymbolContext *sc = nullptr) const;
 
-  ConstString GetDisplayName() const;
+  ConstString GetDisplayName(const SymbolContext *sc = nullptr) const;
 
   const Mangled &GetMangled() const { return m_mangled; }
 
@@ -626,6 +629,8 @@ public:
   ///     'false' otherwise.
   //------------------------------------------------------------------
   bool IsTopLevelFunction();
+  
+  bool CanThrow() const { return m_flags.Test(flagsFunctionCanThrow); }
 
   lldb::DisassemblerSP GetInstructions(const ExecutionContext &exe_ctx,
                                        const char *flavor,
@@ -637,7 +642,9 @@ public:
 protected:
   enum {
     flagsCalculatedPrologueSize =
-        (1 << 0) ///< Have we already tried to calculate the prologue size?
+        (1 << 0), ///< Have we already tried to calculate the prologue size?
+    flagsFunctionCanThrow =
+        (1 << 1) ///< Do we know whether this function throws?
   };
 
   //------------------------------------------------------------------

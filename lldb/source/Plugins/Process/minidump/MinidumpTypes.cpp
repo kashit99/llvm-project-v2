@@ -1,9 +1,8 @@
 //===-- MinidumpTypes.cpp ---------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -58,8 +57,8 @@ lldb_private::minidump::parseMinidumpString(llvm::ArrayRef<uint8_t> &data) {
   result.resize(UNI_MAX_UTF8_BYTES_PER_CODE_POINT * source_length / 2);
   auto result_start = reinterpret_cast<llvm::UTF8 *>(&result[0]);
   const auto result_end = result_start + result.size();
-  llvm::ConvertUTF16toUTF8(&source_start, source_end, &result_start, result_end,
-                           llvm::strictConversion);
+  ConvertUTF16toUTF8(&source_start, source_end, &result_start, result_end,
+                     llvm::strictConversion);
   const auto result_size =
       std::distance(reinterpret_cast<llvm::UTF8 *>(&result[0]), result_start);
   result.resize(result_size); // shrink to actual length

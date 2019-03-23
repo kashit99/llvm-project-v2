@@ -1,9 +1,8 @@
 //===-- lldb-forward.h ------------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -204,6 +203,9 @@ class SectionList;
 class SectionLoadHistory;
 class SectionLoadList;
 class Settings;
+class SwiftASTContext;
+class SwiftLanguageRuntime;
+class SwiftREPL;
 class SourceManager;
 class SourceManagerImpl;
 class StackFrame;
@@ -427,6 +429,7 @@ typedef std::weak_ptr<lldb_private::Section> SectionWP;
 typedef std::shared_ptr<lldb_private::SectionLoadList> SectionLoadListSP;
 typedef std::shared_ptr<lldb_private::SearchFilter> SearchFilterSP;
 typedef std::shared_ptr<lldb_private::Settings> SettingsSP;
+typedef std::shared_ptr<lldb_private::SwiftASTContext> SwiftASTContextSP;
 typedef std::unique_ptr<lldb_private::SourceManager> SourceManagerUP;
 typedef std::shared_ptr<lldb_private::StackFrame> StackFrameSP;
 typedef std::unique_ptr<lldb_private::StackFrame> StackFrameUP;

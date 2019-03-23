@@ -1,9 +1,8 @@
 //===-- ObjectFileELF.cpp ------------------------------------- -*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -17,11 +16,13 @@
 #include "lldb/Core/Module.h"
 #include "lldb/Core/ModuleSpec.h"
 #include "lldb/Core/PluginManager.h"
+#include "lldb/Core/RangeMap.h"
 #include "lldb/Core/Section.h"
 #include "lldb/Host/FileSystem.h"
 #include "lldb/Symbol/DWARFCallFrameInfo.h"
 #include "lldb/Symbol/SymbolContext.h"
 #include "lldb/Target/SectionLoadList.h"
+#include "lldb/Target/SwiftLanguageRuntime.h"
 #include "lldb/Target/Target.h"
 #include "lldb/Utility/ArchSpec.h"
 #include "lldb/Utility/DataBufferHeap.h"
@@ -30,6 +31,7 @@
 #include "lldb/Utility/Stream.h"
 #include "lldb/Utility/Timer.h"
 
+#include "llvm/ADT/IntervalMap.h"
 #include "llvm/ADT/PointerUnion.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Object/Decompressor.h"
@@ -236,6 +238,8 @@ unsigned ELFRelocation::RelocAddend64(const ELFRelocation &rel) {
 
 } // end anonymous namespace
 
+static user_id_t SegmentID(size_t PHdrIndex) { return ~PHdrIndex; }
+
 bool ELFNote::Parse(const DataExtractor &data, lldb::offset_t *offset) {
   // Read all fields.
   if (data.GetU32(offset, &n_namesz, 3) == NULL)
@@ -432,11 +436,11 @@ ObjectFile *ObjectFileELF::CreateInstance(const lldb::ModuleSP &module_sp,
 
   unsigned address_size = ELFHeader::AddressSizeInBytes(magic);
   if (address_size == 4 || address_size == 8) {
-    std::unique_ptr<ObjectFileELF> objfile_ap(new ObjectFileELF(
+    std::unique_ptr<ObjectFileELF> objfile_up(new ObjectFileELF(
         module_sp, data_sp, data_offset, file, file_offset, length));
-    ArchSpec spec = objfile_ap->GetArchitecture();
-    if (spec && objfile_ap->SetModulesArchitecture(spec))
-      return objfile_ap.release();
+    ArchSpec spec = objfile_up->GetArchitecture();
+    if (spec && objfile_up->SetModulesArchitecture(spec))
+      return objfile_up.release();
   }
 
   return NULL;
@@ -450,11 +454,11 @@ ObjectFile *ObjectFileELF::CreateMemoryInstance(
     if (ELFHeader::MagicBytesMatch(magic)) {
       unsigned address_size = ELFHeader::AddressSizeInBytes(magic);
       if (address_size == 4 || address_size == 8) {
-        std::unique_ptr<ObjectFileELF> objfile_ap(
+        std::unique_ptr<ObjectFileELF> objfile_up(
             new ObjectFileELF(module_sp, data_sp, process_sp, header_addr));
-        ArchSpec spec = objfile_ap->GetArchitecture();
-        if (spec && objfile_ap->SetModulesArchitecture(spec))
-          return objfile_ap.release();
+        ArchSpec spec = objfile_up->GetArchitecture();
+        if (spec && objfile_up->SetModulesArchitecture(spec))
+          return objfile_up.release();
       }
     }
   }
@@ -771,7 +775,7 @@ ObjectFileELF::ObjectFileELF(const lldb::ModuleSP &module_sp,
     : ObjectFile(module_sp, file, file_offset, length, data_sp, data_offset),
       m_header(), m_uuid(), m_gnu_debuglink_file(), m_gnu_debuglink_crc(0),
       m_program_headers(), m_section_headers(), m_dynamic_symbols(),
-      m_filespec_ap(), m_entry_point_address(), m_arch_spec() {
+      m_filespec_up(), m_entry_point_address(), m_arch_spec() {
   if (file)
     m_file = *file;
   ::memset(&m_header, 0, sizeof(m_header));
@@ -784,7 +788,7 @@ ObjectFileELF::ObjectFileELF(const lldb::ModuleSP &module_sp,
     : ObjectFile(module_sp, process_sp, header_addr, header_data_sp),
       m_header(), m_uuid(), m_gnu_debuglink_file(), m_gnu_debuglink_crc(0),
       m_program_headers(), m_section_headers(), m_dynamic_symbols(),
-      m_filespec_ap(), m_entry_point_address(), m_arch_spec() {
+      m_filespec_up(), m_entry_point_address(), m_arch_spec() {
   ::memset(&m_header, 0, sizeof(m_header));
 }
 
@@ -802,17 +806,10 @@ bool ObjectFileELF::SetLoadAddress(Target &target, lldb::addr_t value,
     SectionList *section_list = GetSectionList();
     if (section_list) {
       if (!value_is_offset) {
-        bool found_offset = false;
-        for (const ELFProgramHeader &H : ProgramHeaders()) {
-          if (H.p_type != PT_LOAD || H.p_offset != 0)
-            continue;
-
-          value = value - H.p_vaddr;
-          found_offset = true;
-          break;
-        }
-        if (!found_offset)
+        addr_t base = GetBaseAddress().GetFileAddress();
+        if (base == LLDB_INVALID_ADDRESS)
           return false;
+        value -= base;
       }
 
       const size_t num_sections = section_list->GetSize();
@@ -822,7 +819,8 @@ bool ObjectFileELF::SetLoadAddress(Target &target, lldb::addr_t value,
         // Iterate through the object file sections to find all of the sections
         // that have SHF_ALLOC in their flag bits.
         SectionSP section_sp(section_list->GetSectionAtIndex(sect_idx));
-        if (section_sp && section_sp->Test(SHF_ALLOC)) {
+        if (section_sp->Test(SHF_ALLOC) ||
+            section_sp->GetType() == eSectionTypeContainer) {
           lldb::addr_t load_addr = section_sp->GetFileAddress();
           // We don't want to update the load address of a section with type
           // eSectionTypeAbsoluteAddress as they already have the absolute load
@@ -959,7 +957,7 @@ uint32_t ObjectFileELF::GetDependentModules(FileSpecList &files) {
   uint32_t num_specs = 0;
 
   for (unsigned i = 0; i < num_modules; ++i) {
-    if (files.AppendIfUnique(m_filespec_ap->GetFileSpecAtIndex(i)))
+    if (files.AppendIfUnique(m_filespec_up->GetFileSpecAtIndex(i)))
       num_specs++;
   }
 
@@ -1050,14 +1048,26 @@ lldb_private::Address ObjectFileELF::GetEntryPointAddress() {
   return m_entry_point_address;
 }
 
+Address ObjectFileELF::GetBaseAddress() {
+  for (const auto &EnumPHdr : llvm::enumerate(ProgramHeaders())) {
+    const ELFProgramHeader &H = EnumPHdr.value();
+    if (H.p_type != PT_LOAD)
+      continue;
+
+    return Address(
+        GetSectionList()->FindSectionByID(SegmentID(EnumPHdr.index())), 0);
+  }
+  return LLDB_INVALID_ADDRESS;
+}
+
 //----------------------------------------------------------------------
 // ParseDependentModules
 //----------------------------------------------------------------------
 size_t ObjectFileELF::ParseDependentModules() {
-  if (m_filespec_ap.get())
-    return m_filespec_ap->GetSize();
+  if (m_filespec_up)
+    return m_filespec_up->GetSize();
 
-  m_filespec_ap.reset(new FileSpecList());
+  m_filespec_up.reset(new FileSpecList());
 
   if (!ParseSectionHeaders())
     return 0;
@@ -1104,11 +1114,11 @@ size_t ObjectFileELF::ParseDependentModules() {
       const char *lib_name = dynstr_data.PeekCStr(str_index);
       FileSpec file_spec(lib_name);
       FileSystem::Instance().Resolve(file_spec);
-      m_filespec_ap->Append(file_spec);
+      m_filespec_up->Append(file_spec);
     }
   }
 
-  return m_filespec_ap->GetSize();
+  return m_filespec_up->GetSize();
 }
 
 //----------------------------------------------------------------------
@@ -1769,6 +1779,9 @@ static SectionType GetSectionTypeFromName(llvm::StringRef Name) {
       .Case(".gnu_debugaltlink", eSectionTypeDWARFGNUDebugAltLink)
       .Case(".gosymtab", eSectionTypeGoSymtab)
       .Case(".text", eSectionTypeCode)
+      // Swift support:
+      .Case(".swift_ast", eSectionTypeSwiftModules)
+      //
       .Default(eSectionTypeOther);
 }
 
@@ -1821,80 +1834,191 @@ static Permissions GetPermissions(const ELFSectionHeader &H) {
   return Perm;
 }
 
+static Permissions GetPermissions(const ELFProgramHeader &H) {
+  Permissions Perm = Permissions(0);
+  if (H.p_flags & PF_R)
+    Perm |= ePermissionsReadable;
+  if (H.p_flags & PF_W)
+    Perm |= ePermissionsWritable;
+  if (H.p_flags & PF_X)
+    Perm |= ePermissionsExecutable;
+  return Perm;
+}
+
 namespace {
+
+using VMRange = lldb_private::Range<addr_t, addr_t>;
+
+struct SectionAddressInfo {
+  SectionSP Segment;
+  VMRange Range;
+};
+
 // (Unlinked) ELF object files usually have 0 for every section address, meaning
 // we need to compute synthetic addresses in order for "file addresses" from
 // different sections to not overlap. This class handles that logic.
 class VMAddressProvider {
-  bool m_synthesizing;
-  addr_t m_next;
+  using VMMap = llvm::IntervalMap<addr_t, SectionSP, 4,
+                                       llvm::IntervalMapHalfOpenInfo<addr_t>>;
+
+  ObjectFile::Type ObjectType;
+  addr_t NextVMAddress = 0;
+  VMMap::Allocator Alloc;
+  VMMap Segments = VMMap(Alloc);
+  VMMap Sections = VMMap(Alloc);
+  lldb_private::Log *Log = GetLogIfAllCategoriesSet(LIBLLDB_LOG_MODULES);
+
+  VMRange GetVMRange(const ELFSectionHeader &H) {
+    addr_t Address = H.sh_addr;
+    addr_t Size = H.sh_flags & SHF_ALLOC ? H.sh_size : 0;
+    if (ObjectType == ObjectFile::Type::eTypeObjectFile && Segments.empty() && (H.sh_flags & SHF_ALLOC)) {
+      NextVMAddress =
+          llvm::alignTo(NextVMAddress, std::max<addr_t>(H.sh_addralign, 1));
+      Address = NextVMAddress;
+      NextVMAddress += Size;
+    }
+    return VMRange(Address, Size);
+  }
 
 public:
-  VMAddressProvider(ObjectFile::Type Type)
-      : m_synthesizing(Type == ObjectFile::Type::eTypeObjectFile), m_next(0) {}
+  VMAddressProvider(ObjectFile::Type Type) : ObjectType(Type) {}
 
-  std::pair<addr_t, addr_t> GetAddressAndSize(const ELFSectionHeader &H) {
-    addr_t address = H.sh_addr;
-    addr_t size = H.sh_flags & SHF_ALLOC ? H.sh_size : 0;
-    if (m_synthesizing && (H.sh_flags & SHF_ALLOC)) {
-      m_next = llvm::alignTo(m_next, std::max<addr_t>(H.sh_addralign, 1));
-      address = m_next;
-      m_next += size;
+  llvm::Optional<VMRange> GetAddressInfo(const ELFProgramHeader &H) {
+    if (H.p_memsz == 0) {
+      LLDB_LOG(Log,
+               "Ignoring zero-sized PT_LOAD segment. Corrupt object file?");
+      return llvm::None;
     }
-    return {address, size};
+
+    if (Segments.overlaps(H.p_vaddr, H.p_vaddr + H.p_memsz)) {
+      LLDB_LOG(Log,
+               "Ignoring overlapping PT_LOAD segment. Corrupt object file?");
+      return llvm::None;
+    }
+    return VMRange(H.p_vaddr, H.p_memsz);
+  }
+
+  llvm::Optional<SectionAddressInfo> GetAddressInfo(const ELFSectionHeader &H) {
+    VMRange Range = GetVMRange(H);
+    SectionSP Segment;
+    auto It = Segments.find(Range.GetRangeBase());
+    if ((H.sh_flags & SHF_ALLOC) && It.valid()) {
+      addr_t MaxSize;
+      if (It.start() <= Range.GetRangeBase()) {
+        MaxSize = It.stop() - Range.GetRangeBase();
+        Segment = *It;
+      } else
+        MaxSize = It.start() - Range.GetRangeBase();
+      if (Range.GetByteSize() > MaxSize) {
+        LLDB_LOG(Log, "Shortening section crossing segment boundaries. "
+                      "Corrupt object file?");
+        Range.SetByteSize(MaxSize);
+      }
+    }
+    if (Range.GetByteSize() > 0 &&
+        Sections.overlaps(Range.GetRangeBase(), Range.GetRangeEnd())) {
+      LLDB_LOG(Log, "Ignoring overlapping section. Corrupt object file?");
+      return llvm::None;
+    }
+    if (Segment)
+      Range.Slide(-Segment->GetFileAddress());
+    return SectionAddressInfo{Segment, Range};
+  }
+
+  void AddSegment(const VMRange &Range, SectionSP Seg) {
+    Segments.insert(Range.GetRangeBase(), Range.GetRangeEnd(), std::move(Seg));
+  }
+
+  void AddSection(SectionAddressInfo Info, SectionSP Sect) {
+    if (Info.Range.GetByteSize() == 0)
+      return;
+    if (Info.Segment)
+      Info.Range.Slide(Info.Segment->GetFileAddress());
+    Sections.insert(Info.Range.GetRangeBase(), Info.Range.GetRangeEnd(),
+                    std::move(Sect));
   }
 };
 }
 
 void ObjectFileELF::CreateSections(SectionList &unified_section_list) {
-  if (!m_sections_ap.get() && ParseSectionHeaders()) {
-    m_sections_ap.reset(new SectionList());
+  if (m_sections_up)
+    return;
 
-    VMAddressProvider address_provider(CalculateType());
-    for (SectionHeaderCollIter I = std::next(m_section_headers.begin());
-         I != m_section_headers.end(); ++I) {
-      const ELFSectionHeaderInfo &header = *I;
+  m_sections_up = llvm::make_unique<SectionList>();
+  VMAddressProvider address_provider(CalculateType());
 
-      ConstString &name = I->section_name;
-      const uint64_t file_size =
-          header.sh_type == SHT_NOBITS ? 0 : header.sh_size;
+  size_t LoadID = 0;
+  for (const auto &EnumPHdr : llvm::enumerate(ProgramHeaders())) {
+    const ELFProgramHeader &PHdr = EnumPHdr.value();
+    if (PHdr.p_type != PT_LOAD)
+      continue;
 
-      addr_t vm_addr, vm_size;
-      std::tie(vm_addr, vm_size) = address_provider.GetAddressAndSize(header);
+    auto InfoOr = address_provider.GetAddressInfo(PHdr);
+    if (!InfoOr)
+      continue;
 
-      SectionType sect_type = GetSectionType(header);
+    ConstString Name(("PT_LOAD[" + llvm::Twine(LoadID++) + "]").str());
+    uint32_t Log2Align = llvm::Log2_64(std::max<elf_xword>(PHdr.p_align, 1));
+    SectionSP Segment = std::make_shared<Section>(
+        GetModule(), this, SegmentID(EnumPHdr.index()), Name,
+        eSectionTypeContainer, InfoOr->GetRangeBase(), InfoOr->GetByteSize(),
+        PHdr.p_offset, PHdr.p_filesz, Log2Align, /*flags*/ 0);
+    Segment->SetPermissions(GetPermissions(PHdr));
+    m_sections_up->AddSection(Segment);
 
-      const uint32_t target_bytes_size =
-          GetTargetByteSize(sect_type, m_arch_spec);
+    address_provider.AddSegment(*InfoOr, std::move(Segment));
+  }
 
-      elf::elf_xword log2align =
-          (header.sh_addralign == 0) ? 0 : llvm::Log2_64(header.sh_addralign);
+  ParseSectionHeaders();
+  if (m_section_headers.empty())
+    return;
 
-      SectionSP section_sp(new Section(
-          GetModule(), // Module to which this section belongs.
-          this, // ObjectFile to which this section belongs and should read
-                // section data from.
-          SectionIndex(I),     // Section ID.
-          name,                // Section name.
-          sect_type,           // Section type.
-          vm_addr,             // VM address.
-          vm_size,             // VM size in bytes of this section.
-          header.sh_offset,    // Offset of this section in the file.
-          file_size,           // Size of the section as found in the file.
-          log2align,           // Alignment of the section
-          header.sh_flags,     // Flags for this section.
-          target_bytes_size)); // Number of host bytes per target byte
+  for (SectionHeaderCollIter I = std::next(m_section_headers.begin());
+       I != m_section_headers.end(); ++I) {
+    const ELFSectionHeaderInfo &header = *I;
 
-      section_sp->SetPermissions(GetPermissions(header));
-      section_sp->SetIsThreadSpecific(header.sh_flags & SHF_TLS);
-      m_sections_ap->AddSection(section_sp);
-    }
+    ConstString &name = I->section_name;
+    const uint64_t file_size =
+        header.sh_type == SHT_NOBITS ? 0 : header.sh_size;
+
+    auto InfoOr = address_provider.GetAddressInfo(header);
+    if (!InfoOr)
+      continue;
+
+    SectionType sect_type = GetSectionType(header);
+
+    const uint32_t target_bytes_size =
+        GetTargetByteSize(sect_type, m_arch_spec);
+
+    elf::elf_xword log2align =
+        (header.sh_addralign == 0) ? 0 : llvm::Log2_64(header.sh_addralign);
+
+    SectionSP section_sp(new Section(
+        InfoOr->Segment, GetModule(), // Module to which this section belongs.
+        this,            // ObjectFile to which this section belongs and should
+                         // read section data from.
+        SectionIndex(I), // Section ID.
+        name,            // Section name.
+        sect_type,       // Section type.
+        InfoOr->Range.GetRangeBase(), // VM address.
+        InfoOr->Range.GetByteSize(),  // VM size in bytes of this section.
+        header.sh_offset,             // Offset of this section in the file.
+        file_size,           // Size of the section as found in the file.
+        log2align,           // Alignment of the section
+        header.sh_flags,     // Flags for this section.
+        target_bytes_size)); // Number of host bytes per target byte
+
+    section_sp->SetPermissions(GetPermissions(header));
+    section_sp->SetIsThreadSpecific(header.sh_flags & SHF_TLS);
+    (InfoOr->Segment ? InfoOr->Segment->GetChildren() : *m_sections_up)
+        .AddSection(section_sp);
+    address_provider.AddSection(std::move(*InfoOr), std::move(section_sp));
   }
 
   // For eTypeDebugInfo files, the Symbol Vendor will take care of updating the
   // unified section list.
   if (GetType() != eTypeDebugInfo)
-    unified_section_list = *m_sections_ap;
+    unified_section_list = *m_sections_up;
 }
 
 // Find the arm/aarch64 mapping symbol character in the given symbol name.
@@ -2045,7 +2169,7 @@ unsigned ObjectFileELF::ParseSymbols(Symtab *symtab, user_id_t start_id,
 
     if (symbol_type == eSymbolTypeInvalid && symbol.getType() != STT_SECTION) {
       if (symbol_section_sp) {
-        const ConstString &sect_name = symbol_section_sp->GetName();
+        ConstString sect_name = symbol_section_sp->GetName();
         if (sect_name == text_section_name || sect_name == init_section_name ||
             sect_name == fini_section_name || sect_name == ctors_section_name ||
             sect_name == dtors_section_name) {
@@ -2189,7 +2313,7 @@ unsigned ObjectFileELF::ParseSymbols(Symtab *symtab, user_id_t start_id,
 
     if (symbol_section_sp && module_section_list &&
         module_section_list != section_list) {
-      const ConstString &sect_name = symbol_section_sp->GetName();
+      ConstString sect_name = symbol_section_sp->GetName();
       auto section_it = section_name_to_section.find(sect_name.GetCString());
       if (section_it == section_name_to_section.end())
         section_it =
@@ -2203,7 +2327,8 @@ unsigned ObjectFileELF::ParseSymbols(Symtab *symtab, user_id_t start_id,
 
     bool is_global = symbol.getBinding() == STB_GLOBAL;
     uint32_t flags = symbol.st_other << 8 | symbol.st_info | additional_flags;
-    bool is_mangled = (symbol_name[0] == '_' && symbol_name[1] == 'Z');
+    bool is_mangled =
+        (symbol_name && symbol_name[0] == '_' && symbol_name[1] == 'Z');
 
     llvm::StringRef symbol_ref(symbol_name);
 
@@ -2212,6 +2337,12 @@ unsigned ObjectFileELF::ParseSymbols(Symtab *symtab, user_id_t start_id,
     size_t version_pos = symbol_ref.find('@');
     bool has_suffix = version_pos != llvm::StringRef::npos;
     llvm::StringRef symbol_bare = symbol_ref.substr(0, version_pos);
+
+    Mangled guess_the_language(ConstString(symbol_bare), true);
+    if (guess_the_language.GuessLanguage() != lldb::eLanguageTypeUnknown) {
+      is_mangled = true;
+    }
+
     Mangled mangled(ConstString(symbol_bare), is_mangled);
 
     // Now append the suffix back to mangled and unmangled names. Only do it if
@@ -2270,7 +2401,7 @@ unsigned ObjectFileELF::ParseSymbolTable(Symtab *symbol_table,
   }
 
   // Get section list for this object file.
-  SectionList *section_list = m_sections_ap.get();
+  SectionList *section_list = m_sections_up.get();
   if (!section_list)
     return 0;
 
@@ -2498,7 +2629,7 @@ ObjectFileELF::ParseTrampolineSymbols(Symtab *symbol_table, user_id_t start_id,
   if (!sym_hdr)
     return 0;
 
-  SectionList *section_list = m_sections_ap.get();
+  SectionList *section_list = m_sections_up.get();
   if (!section_list)
     return 0;
 
@@ -2691,7 +2822,7 @@ Symtab *ObjectFileELF::GetSymtab() {
   if (module_obj_file && module_obj_file != this)
     return module_obj_file->GetSymtab();
 
-  if (m_symtab_ap.get() == NULL) {
+  if (m_symtab_up == NULL) {
     SectionList *section_list = module_sp->GetSectionList();
     if (!section_list)
       return NULL;
@@ -2715,8 +2846,8 @@ Symtab *ObjectFileELF::GetSymtab() {
               .get();
     }
     if (symtab) {
-      m_symtab_ap.reset(new Symtab(symtab->GetObjectFile()));
-      symbol_id += ParseSymbolTable(m_symtab_ap.get(), symbol_id, symtab);
+      m_symtab_up.reset(new Symtab(symtab->GetObjectFile()));
+      symbol_id += ParseSymbolTable(m_symtab_up.get(), symbol_id, symtab);
     }
 
     // DT_JMPREL
@@ -2740,30 +2871,30 @@ Symtab *ObjectFileELF::GetSymtab() {
             GetSectionHeaderByIndex(reloc_id);
         assert(reloc_header);
 
-        if (m_symtab_ap == nullptr)
-          m_symtab_ap.reset(new Symtab(reloc_section->GetObjectFile()));
+        if (m_symtab_up == nullptr)
+          m_symtab_up.reset(new Symtab(reloc_section->GetObjectFile()));
 
-        ParseTrampolineSymbols(m_symtab_ap.get(), symbol_id, reloc_header,
+        ParseTrampolineSymbols(m_symtab_up.get(), symbol_id, reloc_header,
                                reloc_id);
       }
     }
 
     DWARFCallFrameInfo *eh_frame = GetUnwindTable().GetEHFrameInfo();
     if (eh_frame) {
-      if (m_symtab_ap == nullptr)
-        m_symtab_ap.reset(new Symtab(this));
-      ParseUnwindSymbols(m_symtab_ap.get(), eh_frame);
+      if (m_symtab_up == nullptr)
+        m_symtab_up.reset(new Symtab(this));
+      ParseUnwindSymbols(m_symtab_up.get(), eh_frame);
     }
 
     // If we still don't have any symtab then create an empty instance to avoid
     // do the section lookup next time.
-    if (m_symtab_ap == nullptr)
-      m_symtab_ap.reset(new Symtab(this));
+    if (m_symtab_up == nullptr)
+      m_symtab_up.reset(new Symtab(this));
 
-    m_symtab_ap->CalculateSymbolSizes();
+    m_symtab_up->CalculateSymbolSizes();
   }
 
-  return m_symtab_ap.get();
+  return m_symtab_up.get();
 }
 
 void ObjectFileELF::RelocateSection(lldb_private::Section *section)
@@ -3162,7 +3293,7 @@ void ObjectFileELF::DumpDependentModules(lldb_private::Stream *s) {
   if (num_modules > 0) {
     s->PutCString("Dependent Modules:\n");
     for (unsigned i = 0; i < num_modules; ++i) {
-      const FileSpec &spec = m_filespec_ap->GetFileSpecAtIndex(i);
+      const FileSpec &spec = m_filespec_up->GetFileSpecAtIndex(i);
       s->Printf("   %s\n", spec.GetFilename().GetCString());
     }
   }
@@ -3178,7 +3309,7 @@ ArchSpec ObjectFileELF::GetArchitecture() {
   }
 
   if (CalculateType() == eTypeCoreFile &&
-      m_arch_spec.TripleOSIsUnspecifiedUnknown()) {
+      !m_arch_spec.TripleOSWasSpecified()) {
     // Core files don't have section headers yet they have PT_NOTE program
     // headers that might shed more light on the architecture
     for (const elf::ELFProgramHeader &H : ProgramHeaders()) {

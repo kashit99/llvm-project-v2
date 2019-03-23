@@ -1,9 +1,8 @@
 //===-- REPL.cpp ------------------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -19,6 +18,8 @@
 #include "lldb/Target/Target.h"
 #include "lldb/Target/Thread.h"
 #include "lldb/Utility/AnsiTerminal.h"
+
+#include <memory>
 
 using namespace lldb_private;
 
@@ -72,15 +73,15 @@ std::string REPL::GetSourcePath() {
 lldb::IOHandlerSP REPL::GetIOHandler() {
   if (!m_io_handler_sp) {
     Debugger &debugger = m_target.GetDebugger();
-    m_io_handler_sp.reset(
-        new IOHandlerEditline(debugger, IOHandler::Type::REPL,
-                              "lldb-repl", // Name of input reader for history
-                              llvm::StringRef("> "), // prompt
-                              llvm::StringRef(". "), // Continuation prompt
-                              true,                  // Multi-line
-                              true, // The REPL prompt is always colored
-                              1,    // Line number
-                              *this));
+    m_io_handler_sp = std::make_shared<IOHandlerEditline>(
+        debugger, IOHandler::Type::REPL,
+        "lldb-repl",           // Name of input reader for history
+        llvm::StringRef("> "), // prompt
+        llvm::StringRef(". "), // Continuation prompt
+        true,                  // Multi-line
+        true,                  // The REPL prompt is always colored
+        1,                     // Line number
+        *this, nullptr);
 
     // Don't exit if CTRL+C is pressed
     static_cast<IOHandlerEditline *>(m_io_handler_sp.get())
@@ -284,9 +285,20 @@ void REPL::IOHandlerInputComplete(IOHandler &io_handler, std::string &code) {
       expr_options.SetTryAllThreads(m_command_options.try_all_threads);
       expr_options.SetGenerateDebugInfo(true);
       expr_options.SetREPLEnabled(true);
+      expr_options.SetTrapExceptions(false);
       expr_options.SetColorizeErrors(colorize_err);
       expr_options.SetPoundLine(m_repl_source_path.c_str(),
                                 m_code.GetSize() + 1);
+
+      // There is no point in trying to run REPL expressions on just the
+      // current thread of the program, since the REPL tracks the states of
+      // individual threads as you would in a regular debugging session.
+      // Interrupting the process to switch from one thread to many has
+      // observable effects (for instance it causes anything waiting in the
+      // kernel to be interrupted). Since we aren't getting any benefit from
+      // doing this in the REPL, let's not.
+      expr_options.SetStopOthers(false);
+
       if (m_command_options.timeout > 0)
         expr_options.SetTimeout(std::chrono::microseconds(m_command_options.timeout));
       else
@@ -297,6 +309,13 @@ void REPL::IOHandlerInputComplete(IOHandler &io_handler, std::string &code) {
       PersistentExpressionState *persistent_state =
           m_target.GetPersistentExpressionStateForLanguage(GetLanguage());
 
+      if (!persistent_state)
+      {
+        error_sp->PutCString("error getting the expression "
+                             "context for the REPL.\n");
+        io_handler.SetIsDone(true);
+        return;
+      }
       const size_t var_count_before = persistent_state->GetSize();
 
       const char *expr_prefix = nullptr;

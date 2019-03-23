@@ -1,9 +1,8 @@
 //===-- Type.h --------------------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -28,7 +27,7 @@ namespace lldb_private {
 // detailed lookups in SymbolVendor and SymbolFile functions.
 //----------------------------------------------------------------------
 struct CompilerContext {
-  CompilerContext(CompilerContextKind t, const ConstString &n)
+  CompilerContext(CompilerContextKind t, ConstString n)
       : type(t), name(n) {}
 
   bool operator==(const CompilerContext &rhs) const {
@@ -95,8 +94,8 @@ public:
     eResolveStateFull = 3
   } ResolveState;
 
-  Type(lldb::user_id_t uid, SymbolFile *symbol_file, const ConstString &name,
-       uint64_t byte_size, SymbolContextScope *context,
+  Type(lldb::user_id_t uid, SymbolFile *symbol_file, ConstString name,
+       llvm::Optional<uint64_t> byte_size, SymbolContextScope *context,
        lldb::user_id_t encoding_uid, EncodingDataType encoding_uid_type,
        const Declaration &decl, const CompilerType &compiler_qual_type,
        ResolveState compiler_type_resolve_state);
@@ -126,9 +125,9 @@ public:
 
   TypeList *GetTypeList();
 
-  const ConstString &GetName();
+  ConstString GetName();
 
-  uint64_t GetByteSize();
+  llvm::Optional<uint64_t> GetByteSize();
 
   uint32_t GetNumChildren(bool omit_empty_base_classes);
 
@@ -140,7 +139,7 @@ public:
 
   lldb::TypeSP GetTypedefType();
 
-  const ConstString &GetName() const { return m_name; }
+  ConstString GetName() const { return m_name; }
 
   ConstString GetQualifiedName();
 
@@ -218,7 +217,8 @@ protected:
   Type *m_encoding_type;
   lldb::user_id_t m_encoding_uid;
   EncodingDataType m_encoding_uid_type;
-  uint64_t m_byte_size;
+  uint64_t m_byte_size : 63;
+  uint64_t m_byte_size_has_value : 1;
   Declaration m_decl;
   CompilerType m_compiler_type;
 
@@ -365,6 +365,9 @@ protected:
 // the two classes here are used by the public API as a backend to the SBType
 // and SBTypeList classes
 
+// the two classes here are used by the public API as a backend to
+// the SBType and SBTypeList classes
+
 class TypeImpl {
 public:
   TypeImpl();
@@ -478,7 +481,7 @@ public:
   {}
 
   TypeMemberImpl(const lldb::TypeImplSP &type_impl_sp, uint64_t bit_offset,
-                 const ConstString &name, uint32_t bitfield_bit_size = 0,
+                 ConstString name, uint32_t bitfield_bit_size = 0,
                  bool is_bitfield = false)
       : m_type_impl_sp(type_impl_sp), m_bit_offset(bit_offset), m_name(name),
         m_bitfield_bit_size(bitfield_bit_size), m_is_bitfield(is_bitfield) {}
@@ -492,7 +495,7 @@ public:
 
   const lldb::TypeImplSP &GetTypeImpl() { return m_type_impl_sp; }
 
-  const ConstString &GetName() const { return m_name; }
+  ConstString GetName() const { return m_name; }
 
   uint64_t GetBitOffset() const { return m_bit_offset; }
 
@@ -545,7 +548,7 @@ public:
 
   CompilerType GetCompilerType() const { return m_type_pair.GetCompilerType(); }
 
-  void SetName(const ConstString &type_name);
+  void SetName(ConstString type_name);
 
   void SetName(const char *type_name_cstr);
 
@@ -617,7 +620,7 @@ public:
       : m_integer_type_sp(), m_name("<invalid>"), m_value(), m_valid(false) {}
 
   TypeEnumMemberImpl(const lldb::TypeImplSP &integer_type_sp,
-                     const ConstString &name, const llvm::APSInt &value);
+                     ConstString name, const llvm::APSInt &value);
 
   TypeEnumMemberImpl(const TypeEnumMemberImpl &rhs)
       : m_integer_type_sp(rhs.m_integer_type_sp), m_name(rhs.m_name),
@@ -627,7 +630,7 @@ public:
 
   bool IsValid() { return m_valid; }
 
-  const ConstString &GetName() const { return m_name; }
+  ConstString GetName() const { return m_name; }
 
   const lldb::TypeImplSP &GetIntegerType() const { return m_integer_type_sp; }
 

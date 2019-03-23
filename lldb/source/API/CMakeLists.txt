@@ -1,8 +1,18 @@
+set(LLVM_NO_RTTI 1)
+
+include(AddLLVM)
+include(SwiftAddCustomCommandTarget)
+
 if ( CMAKE_SYSTEM_NAME MATCHES "Windows" )
   add_definitions( -DEXPORT_LIBLLDB )
 endif()
 
 get_property(LLDB_ALL_PLUGINS GLOBAL PROPERTY LLDB_PLUGINS)
+
+if(NOT LLDB_DISABLE_PYTHON)
+  get_target_property(lldb_scripts_dir swig_wrapper BINARY_DIR)
+  set(lldb_python_wrapper ${lldb_scripts_dir}/LLDBWrapPython.cpp)
+endif()
 
 add_lldb_library(liblldb SHARED
   SBAddress.cpp
@@ -29,7 +39,6 @@ add_lldb_library(liblldb SHARED
   SBFrame.cpp
   SBFunction.cpp
   SBHostOS.cpp
-  SBInitializerOptions.cpp
   SBInstruction.cpp
   SBInstructionList.cpp
   SBLanguageRuntime.cpp
@@ -45,6 +54,7 @@ add_lldb_library(liblldb SHARED
   SBProcessInfo.cpp
   SBQueue.cpp
   SBQueueItem.cpp
+  SBReproducer.cpp
   SBSection.cpp
   SBSourceManager.cpp
   SBStream.cpp
@@ -73,7 +83,7 @@ add_lldb_library(liblldb SHARED
   SBWatchpoint.cpp
   SBUnixSignals.cpp
   SystemInitializerFull.cpp
-  ${LLDB_WRAP_PYTHON}
+  ${lldb_python_wrapper}
 
   LINK_LIBS
     lldbBase
@@ -88,28 +98,31 @@ add_lldb_library(liblldb SHARED
     lldbTarget
     lldbUtility
     ${LLDB_ALL_PLUGINS}
+    ${SWIFT_ALL_LIBS}
   LINK_COMPONENTS
     Support
   )
 
-add_dependencies(lldb-suite liblldb)
+if(lldb_python_wrapper)
+  add_dependencies(liblldb swig_wrapper)
 
-if (MSVC)
-  set_property(SOURCE ${LLDB_WRAP_PYTHON} APPEND_STRING PROPERTY COMPILE_FLAGS " /W0")
-else()
-  set_property(SOURCE ${LLDB_WRAP_PYTHON} APPEND_STRING PROPERTY COMPILE_FLAGS " -w")
-endif()
+  if (MSVC)
+    set_property(SOURCE ${lldb_python_wrapper} APPEND_STRING PROPERTY COMPILE_FLAGS " /W0")
+  else()
+    set_property(SOURCE ${lldb_python_wrapper} APPEND_STRING PROPERTY COMPILE_FLAGS " -w")
+  endif()
 
-set_source_files_properties(${LLDB_WRAP_PYTHON} PROPERTIES GENERATED 1)
-if (CLANG_CL)
-  set_property(SOURCE ${LLDB_WRAP_PYTHON} APPEND_STRING
-    PROPERTY COMPILE_FLAGS " -Wno-unused-function")
+  set_source_files_properties(${lldb_python_wrapper} PROPERTIES GENERATED ON)
+  if (CLANG_CL)
+    set_property(SOURCE ${lldb_python_wrapper} APPEND_STRING
+      PROPERTY COMPILE_FLAGS " -Wno-unused-function")
+  endif()
+  if (LLVM_COMPILER_IS_GCC_COMPATIBLE AND
+      NOT "${CMAKE_SYSTEM_NAME}" MATCHES "Darwin")
+    set_property(SOURCE ${lldb_python_wrapper} APPEND_STRING
+      PROPERTY COMPILE_FLAGS " -Wno-sequence-point -Wno-cast-qual")
+  endif ()
 endif()
-if (LLVM_COMPILER_IS_GCC_COMPATIBLE AND
-    NOT "${CMAKE_SYSTEM_NAME}" MATCHES "Darwin")
-  set_property(SOURCE ${LLDB_WRAP_PYTHON} APPEND_STRING
-    PROPERTY COMPILE_FLAGS " -Wno-sequence-point -Wno-cast-qual")
-endif ()
 
 set_target_properties(liblldb
   PROPERTIES
@@ -144,18 +157,29 @@ else()
   )
 endif()
 
-if (LLDB_BUILD_FRAMEWORK)
-  set_target_properties(liblldb
-    PROPERTIES
-    SOVERSION "1.0.0"
-    OUTPUT_NAME LLDB
-    FRAMEWORK On
-    FRAMEWORK_VERSION ${LLDB_FRAMEWORK_VERSION}
-    MACOSX_FRAMEWORK_INFO_PLIST ${LLDB_SOURCE_DIR}/resources/LLDB-Info.plist
-    LIBRARY_OUTPUT_DIRECTORY ${LLDB_FRAMEWORK_DIR}
-  )
+if(LLDB_BUILD_FRAMEWORK)
+  include(LLDBFramework)
 endif()
 
-if (LLDB_WRAP_PYTHON)
-  add_dependencies(liblldb swig_wrapper)
+set(lib_dir "${CMAKE_BINARY_DIR}/${CMAKE_CFG_INTDIR}/lib${LLVM_LIBDIR_SUFFIX}")
+set(CLANG_RESOURCE_PATH "${LLDB_PATH_TO_SWIFT_BUILD}/lib${LLVM_LIBDIR_SUFFIX}/swift/clang")
+set(clang_headers_target ${CLANG_RESOURCE_PATH}/include)
+if(NOT LLDB_BUILT_STANDALONE)
+  set(clang_headers_target clang-headers symlink_clang_headers)
 endif()
+
+# Copy the clang resource directory.
+add_custom_command_target(
+    unused_var
+    COMMAND "${CMAKE_COMMAND}" "-E" "copy_directory" "${CLANG_RESOURCE_PATH}" "${lib_dir}/lldb/clang/"
+    OUTPUT "${lib_dir}/lldb/clang/"
+    VERBATIM
+    ALL
+    DEPENDS ${clang_headers_target})
+
+install(
+  CODE "file(MAKE_DIRECTORY ${lib_dir}/lldb)")
+
+install(
+  DIRECTORY "${lib_dir}/lldb/clang"
+  DESTINATION lib${LLVM_LIBDIR_SUFFIX}/lldb/)

@@ -1,9 +1,8 @@
 //===-- ObjectFileJIT.cpp ---------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -116,18 +115,18 @@ Symtab *ObjectFileJIT::GetSymtab() {
   ModuleSP module_sp(GetModule());
   if (module_sp) {
     std::lock_guard<std::recursive_mutex> guard(module_sp->GetMutex());
-    if (m_symtab_ap.get() == NULL) {
-      m_symtab_ap.reset(new Symtab(this));
+    if (m_symtab_up == NULL) {
+      m_symtab_up.reset(new Symtab(this));
       std::lock_guard<std::recursive_mutex> symtab_guard(
-          m_symtab_ap->GetMutex());
+          m_symtab_up->GetMutex());
       ObjectFileJITDelegateSP delegate_sp(m_delegate_wp.lock());
       if (delegate_sp)
-        delegate_sp->PopulateSymtab(this, *m_symtab_ap);
+        delegate_sp->PopulateSymtab(this, *m_symtab_up);
       // TODO: get symbols from delegate
-      m_symtab_ap->Finalize();
+      m_symtab_up->Finalize();
     }
   }
-  return m_symtab_ap.get();
+  return m_symtab_up.get();
 }
 
 bool ObjectFileJIT::IsStripped() {
@@ -135,12 +134,12 @@ bool ObjectFileJIT::IsStripped() {
 }
 
 void ObjectFileJIT::CreateSections(SectionList &unified_section_list) {
-  if (!m_sections_ap.get()) {
-    m_sections_ap.reset(new SectionList());
+  if (!m_sections_up) {
+    m_sections_up.reset(new SectionList());
     ObjectFileJITDelegateSP delegate_sp(m_delegate_wp.lock());
     if (delegate_sp) {
-      delegate_sp->PopulateSectionList(this, *m_sections_ap);
-      unified_section_list = *m_sections_ap;
+      delegate_sp->PopulateSectionList(this, *m_sections_up);
+      unified_section_list = *m_sections_up;
     }
   }
 }
@@ -162,8 +161,8 @@ void ObjectFileJIT::Dump(Stream *s) {
     if (sections)
       sections->Dump(s, NULL, true, UINT32_MAX);
 
-    if (m_symtab_ap.get())
-      m_symtab_ap->Dump(s, NULL, eSortOrderNone);
+    if (m_symtab_up)
+      m_symtab_up->Dump(s, NULL, eSortOrderNone);
   }
 }
 

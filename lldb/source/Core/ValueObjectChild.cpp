@@ -1,9 +1,8 @@
 //===-- ValueObjectChild.cpp ------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -12,6 +11,7 @@
 #include "lldb/Core/Value.h"
 #include "lldb/Symbol/CompilerType.h"
 #include "lldb/Target/ExecutionContext.h"
+#include "lldb/Target/LanguageRuntime.h"
 #include "lldb/Target/Process.h"
 #include "lldb/Utility/Flags.h"
 #include "lldb/Utility/Scalar.h"
@@ -29,7 +29,7 @@ using namespace lldb_private;
 
 ValueObjectChild::ValueObjectChild(
     ValueObject &parent, const CompilerType &compiler_type,
-    const ConstString &name, uint64_t byte_size, int32_t byte_offset,
+    ConstString name, uint64_t byte_size, int32_t byte_offset,
     uint32_t bitfield_bit_size, uint32_t bitfield_bit_offset,
     bool is_base_class, bool is_deref_of_parent,
     AddressType child_ptr_or_ref_addr_type, uint64_t language_flags)
@@ -84,7 +84,10 @@ ConstString ValueObjectChild::GetQualifiedTypeName() {
 }
 
 ConstString ValueObjectChild::GetDisplayTypeName() {
-  ConstString display_name = GetCompilerType().GetDisplayTypeName();
+  const SymbolContext *sc = nullptr;
+  if (GetFrameSP())
+    sc = &GetFrameSP()->GetSymbolContext(lldb::eSymbolContextFunction);
+  ConstString display_name = GetCompilerType().GetDisplayTypeName(sc);
   AdjustForBitfieldness(display_name, m_bitfield_bit_size);
   return display_name;
 }
@@ -129,6 +132,24 @@ bool ValueObjectChild::UpdateValue() {
 
       if (parent->GetCompilerType().ShouldTreatScalarValueAsAddress()) {
         lldb::addr_t addr = parent->GetPointerValue();
+
+        // BEGIN Swift
+        if (parent_type_flags.AnySet(lldb::eTypeInstanceIsPointer))
+          if (auto process_sp = GetProcessSP())
+            if (auto runtime = process_sp->GetLanguageRuntime(
+                    parent_type.GetMinimumLanguage())) {
+              bool deref;
+              std::tie(addr, deref) =
+                  runtime->FixupPointerValue(addr, parent_type);
+              if (deref) {
+                // Read the pointer to the Objective-C object.
+                Target &target = process_sp->GetTarget();
+                size_t ptr_size = process_sp->GetAddressByteSize();
+                target.ReadMemory(addr, false, &addr, ptr_size, m_error);
+              }
+            }
+        // END Swift
+
         m_value.GetScalar() = addr;
 
         if (addr == LLDB_INVALID_ADDRESS) {

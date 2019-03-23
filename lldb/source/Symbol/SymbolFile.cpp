@@ -1,9 +1,8 @@
 //===-- SymbolFile.cpp ------------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -12,6 +11,8 @@
 #include "lldb/Core/Module.h"
 #include "lldb/Core/PluginManager.h"
 #include "lldb/Symbol/ObjectFile.h"
+#include "lldb/Symbol/SymbolContext.h"
+#include "lldb/Symbol/TypeList.h"
 #include "lldb/Symbol/TypeMap.h"
 #include "lldb/Symbol/TypeSystem.h"
 #include "lldb/Symbol/VariableList.h"
@@ -32,7 +33,7 @@ std::recursive_mutex &SymbolFile::GetModuleMutex() const {
 }
 
 SymbolFile *SymbolFile::FindPlugin(ObjectFile *obj_file) {
-  std::unique_ptr<SymbolFile> best_symfile_ap;
+  std::unique_ptr<SymbolFile> best_symfile_up;
   if (obj_file != nullptr) {
 
     // We need to test the abilities of this section list. So create what it
@@ -58,13 +59,13 @@ SymbolFile *SymbolFile::FindPlugin(ObjectFile *obj_file) {
          (create_callback = PluginManager::GetSymbolFileCreateCallbackAtIndex(
               idx)) != nullptr;
          ++idx) {
-      std::unique_ptr<SymbolFile> curr_symfile_ap(create_callback(obj_file));
+      std::unique_ptr<SymbolFile> curr_symfile_up(create_callback(obj_file));
 
-      if (curr_symfile_ap.get()) {
-        const uint32_t sym_file_abilities = curr_symfile_ap->GetAbilities();
+      if (curr_symfile_up) {
+        const uint32_t sym_file_abilities = curr_symfile_up->GetAbilities();
         if (sym_file_abilities > best_symfile_abilities) {
           best_symfile_abilities = sym_file_abilities;
-          best_symfile_ap.reset(curr_symfile_ap.release());
+          best_symfile_up.reset(curr_symfile_up.release());
           // If any symbol file parser has all of the abilities, then we should
           // just stop looking.
           if ((kAllAbilities & sym_file_abilities) == kAllAbilities)
@@ -72,13 +73,13 @@ SymbolFile *SymbolFile::FindPlugin(ObjectFile *obj_file) {
         }
       }
     }
-    if (best_symfile_ap.get()) {
+    if (best_symfile_up) {
       // Let the winning symbol file parser initialize itself more completely
       // now that it has been chosen
-      best_symfile_ap->InitializeObject();
+      best_symfile_up->InitializeObject();
     }
   }
-  return best_symfile_ap.release();
+  return best_symfile_up.release();
 }
 
 TypeList *SymbolFile::GetTypeList() {
@@ -95,6 +96,53 @@ TypeSystem *SymbolFile::GetTypeSystemForLanguage(lldb::LanguageType language) {
   return type_system;
 }
 
+bool SymbolFile::ForceInlineSourceFileCheck() {
+  // Force checking for inline breakpoint locations for any JIT object files.
+  // If we have a symbol file for something that has been JIT'ed, chances
+  // are we used "#line" directives to point to the expression code and this
+  // means we will have DWARF line tables that have source implementation
+  // entries that do not match the compile unit source (usually a memory buffer)
+  // file. Returning true for JIT files means all breakpoints set by file and
+  // line
+  // will be found correctly.
+  return m_obj_file->GetType() == ObjectFile::eTypeJIT;
+}
+
+bool SymbolFile::SetLimitSourceFileRange(const FileSpec &file,
+                                         uint32_t first_line,
+                                         uint32_t last_line) {
+  if (file && first_line <= last_line) {
+    m_limit_source_ranges.push_back(SourceRange(file, first_line, last_line));
+    return true;
+  }
+  return false;
+}
+
+bool SymbolFile::SymbolContextShouldBeExcluded(const SymbolContext &sc,
+                                               uint32_t actual_line) {
+  if (!m_limit_source_ranges.empty()) {
+    bool file_match = false;
+    bool line_match = false;
+    for (const auto &range : m_limit_source_ranges) {
+      const auto &line_entry = sc.line_entry;
+      if (range.file == line_entry.file) {
+        file_match = true;
+        if (range.first_line <= actual_line && actual_line <= range.last_line)
+          line_match = true;
+      }
+    }
+    if (file_match && !line_match)
+      return true;
+  }
+  return false;
+}
+
+std::vector<lldb::DataBufferSP>
+SymbolFile::GetASTData(lldb::LanguageType language) {
+  // SymbolFile subclasses must add this functionality
+  return std::vector<lldb::DataBufferSP>();
+}
+
 uint32_t SymbolFile::ResolveSymbolContext(const FileSpec &file_spec,
                                           uint32_t line, bool check_inlines,
                                           lldb::SymbolContextItem resolve_scope,
@@ -103,7 +151,7 @@ uint32_t SymbolFile::ResolveSymbolContext(const FileSpec &file_spec,
 }
 
 uint32_t
-SymbolFile::FindGlobalVariables(const ConstString &name,
+SymbolFile::FindGlobalVariables(ConstString name,
                                 const CompilerDeclContext *parent_decl_ctx,
                                 uint32_t max_matches, VariableList &variables) {
   return 0;
@@ -115,7 +163,7 @@ uint32_t SymbolFile::FindGlobalVariables(const RegularExpression &regex,
   return 0;
 }
 
-uint32_t SymbolFile::FindFunctions(const ConstString &name,
+uint32_t SymbolFile::FindFunctions(ConstString name,
                                    const CompilerDeclContext *parent_decl_ctx,
                                    lldb::FunctionNameType name_type_mask,
                                    bool include_inlines, bool append,
@@ -140,9 +188,8 @@ void SymbolFile::GetMangledNamesForFunction(
 }
 
 uint32_t SymbolFile::FindTypes(
-    const SymbolContext &sc, const ConstString &name,
-    const CompilerDeclContext *parent_decl_ctx, bool append,
-    uint32_t max_matches,
+    ConstString name, const CompilerDeclContext *parent_decl_ctx,
+    bool append, uint32_t max_matches,
     llvm::DenseSet<lldb_private::SymbolFile *> &searched_symbol_files,
     TypeMap &types) {
   if (!append)

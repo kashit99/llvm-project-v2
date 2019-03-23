@@ -364,6 +364,12 @@ def parseOptionsAndInitTestdirs():
         configuration.skipCategories += test_categories.validate(
             args.skipCategories, False)
 
+    if args.swiftcompiler:
+        configuration.swiftCompiler = args.swiftcompiler
+
+    if args.swiftlibrary:
+        configuration.swiftLibrary = args.swiftlibrary
+
     if args.E:
         cflags_extras = args.E
         os.environ['CFLAGS_EXTRAS'] = cflags_extras
@@ -542,10 +548,13 @@ def getXcodeOutputPaths(lldbRootDirectory):
     xcode4_build_dir = ['build', 'lldb', 'Build', 'Products']
 
     configurations = [
+        ['DebugPresubmission'],
         ['Debug'],
         ['DebugClang'],
         ['Release'],
-        ['BuildAndIntegration']]
+        ['BuildAndIntegration'],
+        ['CustomSwift-Debug'],
+        ['CustomSwift-Release']]
     xcode_build_dirs = [xcode3_build_dir, xcode4_build_dir]
     for configuration in configurations:
         for xcode_build_dir in xcode_build_dirs:
@@ -631,6 +640,32 @@ def getOutputPaths(lldbRootDirectory):
     lldbParentDir = os.path.abspath(os.path.join(lldbRootDirectory, os.pardir))
     result.append(os.path.join(lldbParentDir, 'build', 'bin'))
     result.append(os.path.join(lldbParentDir, 'build', 'host', 'bin'))
+
+    # linux swiftie build
+    # TODO: add more configurations
+    configurations = ['Ninja-DebugAssert', 'Ninja-RelWithDebInfoAssert']
+    for configuration in configurations:
+        result.append(
+            os.path.join(
+                lldbParentDir,
+                'build',
+                configuration,
+                'lldb-linux-x86_64',
+                'bin'))
+
+    # osx swiftie build
+    configurations = [['Ninja-DebugAssert',
+                       'CustomSwift-Debug'],
+                      ['Ninja-RelWithDebInfoAssert',
+                       'CustomSwift-Release']]  # TODO: add more configurations
+    for configuration in configurations:
+        result.append(
+            os.path.join(
+                lldbParentDir,
+                'build',
+                configuration[0],
+                'lldb-macosx-x86_64',
+                configuration[1]))
 
     return result
 
@@ -1061,14 +1096,15 @@ def getMyCommandLine():
 
 def checkDsymForUUIDIsNotOn():
     cmd = ["defaults", "read", "com.apple.DebugSymbols"]
-    pipe = subprocess.Popen(
+    process = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT)
-    cmd_output = pipe.stdout.read()
-    if cmd_output and "DBGFileMappedPaths = " in cmd_output:
+    cmd_output = process.stdout.read()
+    output_str = cmd_output.decode("utf-8")
+    if "DBGFileMappedPaths = " in output_str:
         print("%s =>" % ' '.join(cmd))
-        print(cmd_output)
+        print(output_str)
         print(
             "Disable automatic lookup and caching of dSYMs before running the test suite!")
         print("Exiting...")
@@ -1373,6 +1409,10 @@ def run_suite():
     # Iterating over all possible architecture and compiler combinations.
     os.environ["ARCH"] = configuration.arch
     os.environ["CC"] = configuration.compiler
+    if configuration.swiftCompiler:
+        os.environ["SWIFTC"] = configuration.swiftCompiler
+    if configuration.swiftLibrary:
+        os.environ["USERSWIFTLIBRARY"] = configuration.swiftLibrary
     configString = "arch=%s compiler=%s" % (configuration.arch,
                                             configuration.compiler)
 

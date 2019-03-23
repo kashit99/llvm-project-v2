@@ -1,9 +1,8 @@
 //===-- DYLDRendezvous.cpp --------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -517,6 +516,30 @@ bool DYLDRendezvous::ReadSOEntryFromMemory(lldb::addr_t addr, SOEntry &entry) {
 
   UpdateBaseAddrIfNecessary(entry, file_path);
 
+  // The base_addr is not filled in for some case.
+  // Try to figure it out based on the load address of the object file.
+  // The issue observed for '/system/bin/linker' on Android L (5.0, 5.1)
+  if (entry.base_addr == 0) {
+    lldb::addr_t load_addr = LLDB_INVALID_ADDRESS;
+    bool is_loaded = false;
+    Status error =
+        m_process->GetFileLoadAddress(entry.file_spec, is_loaded, load_addr);
+    if (error.Success() && is_loaded)
+      entry.base_addr = load_addr;
+  }
+
+  // The base_addr is not filled in for some case.
+  // Try to figure it out based on the load address of the object file.
+  // The issue observed for '/system/bin/linker' on Android L (5.0, 5.1)
+  if (entry.base_addr == 0) {
+    lldb::addr_t load_addr = LLDB_INVALID_ADDRESS;
+    bool is_loaded = false;
+    Status error =
+        m_process->GetFileLoadAddress(entry.file_spec, is_loaded, load_addr);
+    if (error.Success() && is_loaded)
+      entry.base_addr = load_addr;
+  }
+
   return true;
 }
 
@@ -581,8 +604,9 @@ void DYLDRendezvous::DumpToLog(Log *log) const {
   log->Printf("   State  : %s",
               (state == eConsistent)
                   ? "consistent"
-                  : (state == eAdd) ? "add" : (state == eDelete) ? "delete"
-                                                                 : "unknown");
+                  : (state == eAdd)
+                        ? "add"
+                        : (state == eDelete) ? "delete" : "unknown");
 
   iterator I = begin();
   iterator E = end();

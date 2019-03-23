@@ -1,9 +1,8 @@
 //===-- BreakpointResolverName.cpp ------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -21,6 +20,7 @@
 #include "lldb/Target/Target.h"
 #include "lldb/Utility/Log.h"
 #include "lldb/Utility/StreamString.h"
+#include "lldb/Target/SwiftLanguageRuntime.h"
 
 using namespace lldb;
 using namespace lldb_private;
@@ -218,7 +218,7 @@ StructuredData::ObjectSP BreakpointResolverName::SerializeToStructuredData() {
   return WrapOptionsDict(options_dict_sp);
 }
 
-void BreakpointResolverName::AddNameLookup(const ConstString &name,
+void BreakpointResolverName::AddNameLookup(ConstString name,
                                            FunctionNameType name_type_mask) {
   ObjCLanguage::MethodName objc_method(name.GetCString(), false);
   if (objc_method.IsValid(false)) {
@@ -234,6 +234,25 @@ void BreakpointResolverName::AddNameLookup(const ConstString &name,
   } else {
     Module::LookupInfo lookup(name, name_type_mask, m_language);
     m_lookups.push_back(lookup);
+
+    // we need to do this because we don't have a proper parser for Swift
+    // function name syntax
+    // so we try to ensure that if we autocomplete to something, we'll look for
+    // its mangled
+    // equivalent and use the mangled version as a lookup as well - to avoid
+    // overhead
+    // only do it for mangled names that start with _T - i.e. Swift mangled
+    // names!
+    ConstString counterpart;
+    if (name.GetMangledCounterpart(counterpart)) {
+      if (SwiftLanguageRuntime::IsSwiftMangledName(counterpart.GetCString())) {
+        Module::LookupInfo lookup;
+        lookup.SetName(counterpart);
+        lookup.SetLookupName(counterpart);
+        lookup.SetNameTypeMask(eFunctionNameTypeAuto);
+        m_lookups.push_back(lookup);
+      }
+    }
   }
 }
 

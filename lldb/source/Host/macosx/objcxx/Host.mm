@@ -1,9 +1,8 @@
 //===-- Host.mm -------------------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -1300,12 +1299,15 @@ Status Host::LaunchProcess(ProcessLaunchInfo &launch_info) {
 
   lldb::pid_t pid = LLDB_INVALID_PROCESS_ID;
 
-  if (ShouldLaunchUsingXPC(launch_info)) {
-    error = LaunchProcessXPC(exe_spec.GetPath().c_str(), launch_info, pid);
-  } else {
-    error =
-        LaunchProcessPosixSpawn(exe_spec.GetPath().c_str(), launch_info, pid);
-  }
+  // From now on we'll deal with the external (devirtualized) path.
+  auto exe_path = fs.GetExternalPath(exe_spec);
+  if (!exe_path)
+    return Status(exe_path.getError());
+
+  if (ShouldLaunchUsingXPC(launch_info))
+    error = LaunchProcessXPC(exe_path->c_str(), launch_info, pid);
+  else
+    error = LaunchProcessPosixSpawn(exe_path->c_str(), launch_info, pid);
 
   if (pid != LLDB_INVALID_PROCESS_ID) {
     // If all went well, then set the process ID into the launch info
@@ -1435,9 +1437,13 @@ HostThread Host::StartMonitoringChildProcess(
 
   if (source) {
     Host::MonitorChildProcessCallback callback_copy = callback;
+#ifndef __clang_analyzer__
+    // This works around a bug in the static analyzer where it claims
+    // "dispatch_release" isn't a valid identifier.
     ::dispatch_source_set_cancel_handler(source, ^{
       dispatch_release(source);
     });
+#endif
     ::dispatch_source_set_event_handler(source, ^{
 
       int status = 0;

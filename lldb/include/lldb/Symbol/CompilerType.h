@@ -1,9 +1,8 @@
 //===-- CompilerType.h ------------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -15,6 +14,7 @@
 #include <vector>
 
 #include "lldb/Core/ClangForward.h"
+#include "lldb/Core/SwiftForward.h"
 #include "lldb/lldb-private.h"
 #include "llvm/ADT/APSInt.h"
 
@@ -38,6 +38,7 @@ public:
   //----------------------------------------------------------------------
   CompilerType(TypeSystem *type_system, lldb::opaque_compiler_type_t type);
   CompilerType(clang::ASTContext *ast_context, clang::QualType qual_type);
+  CompilerType(swift::Type qual_type);
 
   CompilerType(const CompilerType &rhs)
       : m_type(rhs.m_type), m_type_system(rhs.m_type_system) {}
@@ -121,11 +122,12 @@ public:
 
   bool
   IsPossibleCPlusPlusDynamicType(CompilerType *target_type = nullptr) const {
-    return IsPossibleDynamicType(target_type, true, false);
+    return IsPossibleDynamicType(target_type, true, false, false);
   }
 
   bool IsPossibleDynamicType(CompilerType *target_type, // Can pass nullptr
-                             bool check_cplusplus, bool check_objc) const;
+                             bool check_cplusplus, bool check_objc,
+                             bool check_swift) const;
 
   bool IsPointerToScalarType() const;
 
@@ -170,7 +172,11 @@ public:
 
   ConstString GetTypeName() const;
 
-  ConstString GetDisplayTypeName() const;
+  ConstString GetDisplayTypeName(const SymbolContext *sc = nullptr) const;
+
+  ConstString GetTypeSymbolName() const;
+
+  ConstString GetMangledTypeName() const;
 
   uint32_t
   GetTypeInfo(CompilerType *pointee_or_element_compiler_type = nullptr) const;
@@ -197,6 +203,8 @@ public:
   CompilerType GetArrayType(uint64_t size) const;
 
   CompilerType GetCanonicalType() const;
+
+  CompilerType GetInstanceType() const;
 
   CompilerType GetFullyUnqualifiedType() const;
 
@@ -276,6 +284,8 @@ public:
   // If the current object represents a typedef type, get the underlying type
   CompilerType GetTypedefedType() const;
 
+  CompilerType GetUnboundType() const;
+
   //----------------------------------------------------------------------
   // Create related types using the current type's AST
   //----------------------------------------------------------------------
@@ -287,9 +297,14 @@ public:
 
   struct IntegralTemplateArgument;
 
-  uint64_t GetByteSize(ExecutionContextScope *exe_scope) const;
+  /// Return the size of the type in bytes.
+  llvm::Optional<uint64_t> GetByteSize(ExecutionContextScope *exe_scope) const;
+  /// Return the size of the type in bits.
+  llvm::Optional<uint64_t> GetBitSize(ExecutionContextScope *exe_scope) const;
 
-  uint64_t GetBitSize(ExecutionContextScope *exe_scope) const;
+  uint64_t GetByteStride() const;
+
+  uint64_t GetAlignedBitSize() const;
 
   lldb::Encoding GetEncoding(uint64_t &count) const;
 
@@ -302,7 +317,7 @@ public:
 
   lldb::BasicType GetBasicTypeEnumeration() const;
 
-  static lldb::BasicType GetBasicTypeEnumeration(const ConstString &name);
+  static lldb::BasicType GetBasicTypeEnumeration(ConstString name);
 
   //----------------------------------------------------------------------
   // If this type is an enumeration, iterate through all of its enumerators
@@ -311,7 +326,7 @@ public:
   //----------------------------------------------------------------------
   void ForEachEnumerator(
       std::function<bool(const CompilerType &integer_type,
-                         const ConstString &name,
+                         ConstString name,
                          const llvm::APSInt &value)> const &callback) const;
 
   uint32_t GetNumFields() const;
@@ -366,6 +381,9 @@ public:
   lldb::TemplateArgumentKind GetTemplateArgumentKind(size_t idx) const;
   CompilerType GetTypeTemplateArgument(size_t idx) const;
 
+  lldb::GenericKind GetGenericArgumentKind(size_t idx) const;
+  CompilerType GetGenericArgumentType(size_t idx) const;
+
   // Returns the value of the template argument and its type.
   llvm::Optional<IntegralTemplateArgument>
   GetIntegralTemplateArgument(size_t idx) const;
@@ -388,6 +406,13 @@ public:
   //----------------------------------------------------------------------
   // Dumping types
   //----------------------------------------------------------------------
+
+#ifndef NDEBUG
+  /// Convenience LLVM-style dump method for use in the debugger only.
+  /// Don't call this function from actual code.
+  LLVM_DUMP_METHOD void dump() const;
+#endif
+
   void DumpValue(ExecutionContext *exe_ctx, Stream *s, lldb::Format format,
                  const DataExtractor &data, lldb::offset_t data_offset,
                  size_t data_byte_size, uint32_t bitfield_bit_size,
@@ -397,7 +422,7 @@ public:
   bool DumpTypeValue(Stream *s, lldb::Format format, const DataExtractor &data,
                      lldb::offset_t data_offset, size_t data_byte_size,
                      uint32_t bitfield_bit_size, uint32_t bitfield_bit_offset,
-                     ExecutionContextScope *exe_scope);
+                     ExecutionContextScope *exe_scope, bool is_base_class);
 
   void DumpSummary(ExecutionContext *exe_ctx, Stream *s,
                    const DataExtractor &data, lldb::offset_t data_offset,

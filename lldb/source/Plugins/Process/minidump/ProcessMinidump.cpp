@@ -1,13 +1,13 @@
 //===-- ProcessMinidump.cpp -------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
 #include "ProcessMinidump.h"
+
 #include "ThreadMinidump.h"
 
 #include "lldb/Core/DumpDataExtractor.h"
@@ -34,8 +34,8 @@
 #include "llvm/Support/Threading.h"
 
 #include "Plugins/Process/Utility/StopInfoMachException.h"
-// C includes
-// C++ includes
+
+#include <memory>
 
 using namespace lldb;
 using namespace lldb_private;
@@ -80,7 +80,7 @@ public:
         section_sp, module->base_of_image);
   }
 
-  ObjectFile *GetObjectFile() override { return nullptr; }
+ObjectFile *GetObjectFile() override { return nullptr; }
 
   SectionList *GetSectionList() override {
     return Module::GetUnifiedSectionList();
@@ -154,7 +154,7 @@ ProcessMinidump::~ProcessMinidump() {
 }
 
 void ProcessMinidump::Initialize() {
-  static llvm::once_flag g_once_flag;
+  static std::once_flag g_once_flag;
 
   llvm::call_once(g_once_flag, []() {
     PluginManager::RegisterPlugin(GetPluginNameStatic(),
@@ -305,19 +305,22 @@ void ProcessMinidump::Clear() { Process::m_thread_list.Clear(); }
 
 bool ProcessMinidump::UpdateThreadList(ThreadList &old_thread_list,
                                        ThreadList &new_thread_list) {
-  uint32_t num_threads = 0;
-  if (m_thread_list.size() > 0)
-    num_threads = m_thread_list.size();
+  for (const MinidumpThread& thread : m_thread_list) {
+    MinidumpLocationDescriptor context_location = thread.thread_context;
 
-  for (lldb::tid_t tid = 0; tid < num_threads; ++tid) {
+    // If the minidump contains an exception context, use it
+    if (m_active_exception != nullptr &&
+        m_active_exception->thread_id == thread.thread_id) {
+      context_location = m_active_exception->thread_context;
+    }
+
     llvm::ArrayRef<uint8_t> context;
     if (!m_is_wow64)
-      context = m_minidump_parser.GetThreadContext(m_thread_list[tid]);
+      context = m_minidump_parser.GetThreadContext(context_location);
     else
-      context = m_minidump_parser.GetThreadContextWow64(m_thread_list[tid]);
+      context = m_minidump_parser.GetThreadContextWow64(thread);
 
-    lldb::ThreadSP thread_sp(
-        new ThreadMinidump(*this, m_thread_list[tid], context));
+    lldb::ThreadSP thread_sp(new ThreadMinidump(*this, thread, context));
     new_thread_list.AddThread(thread_sp);
   }
   return new_thread_list.GetSize(false) > 0;
@@ -406,10 +409,10 @@ bool ProcessMinidump::GetProcessInfo(ProcessInstanceInfo &info) {
 // try to set up symbolic breakpoints, which in turn may force loading more
 // debug information than needed.
 JITLoaderList &ProcessMinidump::GetJITLoaders() {
-  if (!m_jit_loaders_ap) {
-    m_jit_loaders_ap = llvm::make_unique<JITLoaderList>();
+  if (!m_jit_loaders_up) {
+    m_jit_loaders_up = llvm::make_unique<JITLoaderList>();
   }
-  return *m_jit_loaders_ap;
+  return *m_jit_loaders_up;
 }
 
 #define INIT_BOOL(VAR, LONG, SHORT, DESC) \
@@ -549,9 +552,9 @@ public:
     APPEND_OPT(m_dump_linux_all);
     m_option_group.Finalize();
   }
-  
+
   ~CommandObjectProcessMinidumpDump() {}
-  
+
   Options *GetOptions() override { return &m_option_group; }
 
   bool DoExecute(Args &command, CommandReturnObject &result) override {
@@ -563,7 +566,7 @@ public:
       return false;
     }
     SetDefaultOptionsIfNoneAreSet();
-    
+
     ProcessMinidump *process = static_cast<ProcessMinidump *>(
         m_interpreter.GetExecutionContext().GetProcessPtr());
     result.SetStatus(eReturnStatusSuccessFinishResult);
@@ -635,13 +638,13 @@ public:
     LoadSubCommand("dump",
         CommandObjectSP(new CommandObjectProcessMinidumpDump(interpreter)));
   }
-  
+
   ~CommandObjectMultiwordProcessMinidump() {}
 };
 
 CommandObject *ProcessMinidump::GetPluginCommandObject() {
   if (!m_command_sp)
-    m_command_sp.reset(new CommandObjectMultiwordProcessMinidump(
-        GetTarget().GetDebugger().GetCommandInterpreter()));
+    m_command_sp = std::make_shared<CommandObjectMultiwordProcessMinidump>(
+        GetTarget().GetDebugger().GetCommandInterpreter());
   return m_command_sp.get();
 }

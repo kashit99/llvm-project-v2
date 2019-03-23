@@ -1,9 +1,8 @@
 //===-- ManualDWARFIndex.cpp -----------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -68,7 +67,11 @@ void ManualDWARFIndex::Index() {
   // to wait until all compile units have been indexed in case a DIE in one
   // compile unit refers to another and the indexes accesses those DIEs.
   //----------------------------------------------------------------------
-  TaskMapOverInt(0, units_to_index.size(), extract_fn);
+  for (int i=0; i<units_to_index.size(); ++i) {
+     extract_fn(i);
+  }
+  // This call can deadlock because we are sometimes holding the module lock.
+  //TaskMapOverInt(0, units_to_index.size(), extract_fn);
 
   // Now create a task runner that can index each DWARF compile unit in a
   // separate thread so we can index quickly.

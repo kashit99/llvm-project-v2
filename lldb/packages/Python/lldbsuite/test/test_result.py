@@ -1,8 +1,7 @@
 """
-                     The LLVM Compiler Infrastructure
-
-This file is distributed under the University of Illinois Open Source
-License. See LICENSE.TXT for details.
+Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+See https://llvm.org/LICENSE.txt for license information.
+SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 Provides the LLDBTestResult class, which holds information about progress
 and results of a single test run.
@@ -135,6 +134,18 @@ class LLDBTestResult(unittest2.TextTestResult):
         """
         Gets all the categories for the currently running test method in test case
         """
+
+        # It isn't possible to reliably attach categories to inline tests
+        # because they all share the same instance method. Adding a category to
+        # one inline test causes all inline tests to be added to that category.
+        # This can result in an unpredictable set of tests being run when the
+        # multiprocess test runner is in use.
+        #
+        # To work around the problem, add all inline tests to the swiftpr
+        # category.
+        if any(['_InlineTest__' in field for field in dir(test)]):
+            return ['swiftpr']
+
         test_categories = []
         test_method = getattr(test, test._testMethodName)
         if test_method is not None and hasattr(test_method, "categories"):

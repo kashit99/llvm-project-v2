@@ -1,9 +1,8 @@
 //===-- HashedNameToDIE.cpp -------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -121,17 +120,20 @@ const char *DWARFMappedHash::GetAtomTypeName(uint16_t atom) {
     return "type-flags";
   case eAtomTypeQualNameHash:
     return "qualified-name-hash";
+  case eAtomTypeString:
+    return "strp";
   }
   return "<invalid>";
 }
 
 DWARFMappedHash::DIEInfo::DIEInfo()
     : cu_offset(DW_INVALID_OFFSET), offset(DW_INVALID_OFFSET), tag(0),
-      type_flags(0), qualified_name_hash(0) {}
+      type_flags(0), qualified_name_hash(0), strp(UINT64_MAX) {}
 
 DWARFMappedHash::DIEInfo::DIEInfo(dw_offset_t c, dw_offset_t o, dw_tag_t t,
-                                  uint32_t f, uint32_t h)
-    : cu_offset(c), offset(o), tag(t), type_flags(f), qualified_name_hash(h) {}
+                                  uint32_t f, uint32_t h, uint64_t s)
+    : cu_offset(c), offset(o), tag(t), type_flags(f), qualified_name_hash(h),
+      strp(s) {}
 
 DWARFMappedHash::Prologue::Prologue(dw_offset_t _die_base_offset)
     : die_base_offset(_die_base_offset), atoms(), atom_mask(0),

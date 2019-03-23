@@ -1,9 +1,8 @@
 //===-- Value.cpp -----------------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -210,34 +209,31 @@ bool Value::ValueOf(ExecutionContext *exe_ctx) {
 }
 
 uint64_t Value::GetValueByteSize(Status *error_ptr, ExecutionContext *exe_ctx) {
-  uint64_t byte_size = 0;
-
   switch (m_context_type) {
   case eContextTypeRegisterInfo: // RegisterInfo *
-    if (GetRegisterInfo())
-      byte_size = GetRegisterInfo()->byte_size;
+    if (GetRegisterInfo()) {
+      if (error_ptr)
+        error_ptr->Clear();
+      return GetRegisterInfo()->byte_size;
+    }
     break;
 
   case eContextTypeInvalid:
   case eContextTypeLLDBType: // Type *
   case eContextTypeVariable: // Variable *
   {
-    const CompilerType &ast_type = GetCompilerType();
-    if (ast_type.IsValid())
-      byte_size = ast_type.GetByteSize(
-          exe_ctx ? exe_ctx->GetBestExecutionContextScope() : nullptr);
-  } break;
-  }
-
-  if (error_ptr) {
-    if (byte_size == 0) {
-      if (error_ptr->Success())
-        error_ptr->SetErrorString("Unable to determine byte size.");
-    } else {
-      error_ptr->Clear();
+    auto *scope = exe_ctx ? exe_ctx->GetBestExecutionContextScope() : nullptr;
+    if (llvm::Optional<uint64_t> size = GetCompilerType().GetByteSize(scope)) {
+      if (error_ptr)
+        error_ptr->Clear();
+      return *size;
     }
+    break;
   }
-  return byte_size;
+  }
+  if (error_ptr && error_ptr->Success())
+    error_ptr->SetErrorString("Unable to determine byte size.");
+  return 0;
 }
 
 const CompilerType &Value::GetCompilerType() {
@@ -326,6 +322,12 @@ Status Value::GetValueAsData(ExecutionContext *exe_ctx, DataExtractor &data,
   AddressType address_type = eAddressTypeFile;
   Address file_so_addr;
   const CompilerType &ast_type = GetCompilerType();
+  llvm::Optional<uint64_t> type_size = ast_type.GetByteSize(
+      exe_ctx ? exe_ctx->GetBestExecutionContextScope() : nullptr);
+  // Nothing to be done for a zero-sized type.
+  if (type_size && *type_size == 0)
+    return error;
+
   switch (m_value_type) {
   case eValueTypeVector:
     if (ast_type.IsValid())
@@ -344,10 +346,8 @@ Status Value::GetValueAsData(ExecutionContext *exe_ctx, DataExtractor &data,
 
     uint32_t limit_byte_size = UINT32_MAX;
 
-    if (ast_type.IsValid()) {
-      limit_byte_size = ast_type.GetByteSize(
-          exe_ctx ? exe_ctx->GetBestExecutionContextScope() : nullptr);
-    }
+    if (type_size)
+      limit_byte_size = *type_size;
 
     if (limit_byte_size <= m_value.GetByteSize()) {
       if (m_value.GetData(data, limit_byte_size))
@@ -512,11 +512,15 @@ Status Value::GetValueAsData(ExecutionContext *exe_ctx, DataExtractor &data,
     return error;
   }
 
-  // If we got here, we need to read the value from memory
+  // If we got here, we need to read the value from memory.
   size_t byte_size = GetValueByteSize(&error, exe_ctx);
 
-  // Bail if we encountered any errors getting the byte size
+  // Bail if we encountered any errors getting the byte size.
   if (error.Fail())
+    return error;
+
+  // No memory to read for zero-sized types.
+  if (byte_size == 0)
     return error;
 
   // Make sure we have enough room within "data", and if we don't make

@@ -1,9 +1,8 @@
 //===-- HostInfoMacOSX.h ----------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -34,11 +33,17 @@ public:
 
 protected:
   static bool ComputeSupportExeDirectory(FileSpec &file_spec);
+  static bool ComputeSupportFileDirectory(FileSpec &file_spec);
   static void ComputeHostArchitectureSupport(ArchSpec &arch_32,
                                              ArchSpec &arch_64);
   static bool ComputeHeaderDirectory(FileSpec &file_spec);
   static bool ComputeSystemPluginsDirectory(FileSpec &file_spec);
   static bool ComputeUserPluginsDirectory(FileSpec &file_spec);
+
+  /// Swift additions.
+  /// @{
+  static bool ComputeSwiftDirectory(FileSpec &file_spec);
+  /// @}
 };
 }
 

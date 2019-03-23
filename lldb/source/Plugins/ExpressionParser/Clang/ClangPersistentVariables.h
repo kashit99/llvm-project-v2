@@ -1,9 +1,8 @@
 //===-- ClangPersistentVariables.h ------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -16,6 +15,13 @@
 #include "ClangModulesDeclVendor.h"
 
 #include "lldb/Expression/ExpressionVariable.h"
+
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/StringRef.h"
+
+#include <set>
+#include <string>
+#include <unordered_map>
 
 namespace lldb_private {
 
@@ -30,6 +36,9 @@ namespace lldb_private {
 //----------------------------------------------------------------------
 class ClangPersistentVariables : public PersistentExpressionState {
 public:
+  //----------------------------------------------------------------------
+  /// Constructor
+  //----------------------------------------------------------------------
   ClangPersistentVariables();
 
   ~ClangPersistentVariables() override = default;
@@ -45,7 +54,7 @@ public:
   CreatePersistentVariable(const lldb::ValueObjectSP &valobj_sp) override;
 
   lldb::ExpressionVariableSP CreatePersistentVariable(
-      ExecutionContextScope *exe_scope, const ConstString &name,
+      ExecutionContextScope *exe_scope, ConstString name,
       const CompilerType &compiler_type, lldb::ByteOrder byte_order,
       uint32_t addr_byte_size) override;
 
@@ -55,9 +64,25 @@ public:
     return "$";
   }
 
-  void RegisterPersistentDecl(const ConstString &name, clang::NamedDecl *decl);
+  // This just adds this module to the list of hand-loaded modules, it doesn't
+  // actually load it.
+  void AddHandLoadedModule(ConstString module_name) {
+    m_hand_loaded_modules.insert(module_name);
+  }
 
-  clang::NamedDecl *GetPersistentDecl(const ConstString &name);
+  using HandLoadedModuleCallback = std::function<bool(const ConstString)>;
+
+  bool RunOverHandLoadedModules(HandLoadedModuleCallback callback) {
+    for (ConstString name : m_hand_loaded_modules) {
+      if (!callback(name))
+        return false;
+    }
+    return true;
+  }
+
+  void RegisterPersistentDecl(ConstString name, clang::NamedDecl *decl);
+
+  clang::NamedDecl *GetPersistentDecl(ConstString name);
 
   void AddHandLoadedClangModule(ClangModulesDeclVendor::ModuleID module) {
     m_hand_loaded_clang_modules.push_back(module);
@@ -70,6 +95,27 @@ public:
 private:
   uint32_t m_next_persistent_variable_id; ///< The counter used by
                                           ///GetNextResultName().
+  uint32_t m_next_persistent_error_id;    ///< The counter used by
+                                       ///GetNextResultName() when is_error is
+                                       ///true.
+
+  typedef llvm::DenseMap<const char *, clang::TypeDecl *>
+      ClangPersistentTypeMap;
+  ClangPersistentTypeMap
+      m_clang_persistent_types; ///< The persistent types declared by the user.
+
+  typedef std::set<lldb::IRExecutionUnitSP> ExecutionUnitSet;
+  ExecutionUnitSet
+      m_execution_units; ///< The execution units that contain valuable symbols.
+
+  typedef std::set<lldb_private::ConstString> HandLoadedModuleSet;
+  HandLoadedModuleSet m_hand_loaded_modules; ///< These are the names of modules
+                                             ///that we have loaded by
+  ///< hand into the Contexts we make for parsing.
+
+  typedef llvm::DenseMap<const char *, lldb::addr_t> SymbolMap;
+  SymbolMap
+      m_symbol_map; ///< The addresses of the symbols in m_execution_units.
 
   typedef llvm::DenseMap<const char *, clang::NamedDecl *> PersistentDeclMap;
   PersistentDeclMap

@@ -1,10 +1,9 @@
 //===-- AppleGetThreadItemInfoHandler.cpp -------------------------------*- C++
 //-*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -140,7 +139,7 @@ void AppleGetThreadItemInfoHandler::Detach() {
 lldb::addr_t AppleGetThreadItemInfoHandler::SetupGetThreadItemInfoFunction(
     Thread &thread, ValueList &get_thread_item_info_arglist) {
   ThreadSP thread_sp(thread.shared_from_this());
-  ExecutionContext exe_ctx(thread_sp);
+  ExecutionContext exe_ctx(thread.shared_from_this());
   Address impl_code_address;
   DiagnosticManager diagnostics;
   Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_SYSTEM_RUNTIME));
@@ -153,7 +152,7 @@ lldb::addr_t AppleGetThreadItemInfoHandler::SetupGetThreadItemInfoFunction(
 
     // First stage is to make the ClangUtility to hold our injected function:
 
-    if (!m_get_thread_item_info_impl_code.get()) {
+    if (!m_get_thread_item_info_impl_code) {
       Status error;
       if (g_get_thread_item_info_function_code != NULL) {
         m_get_thread_item_info_impl_code.reset(

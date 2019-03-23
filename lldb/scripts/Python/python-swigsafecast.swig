@@ -27,20 +27,20 @@ SBTypeToSWIGWrapper (PyObject* py_object)
 
 template <>
 PyObject*
-SBTypeToSWIGWrapper (const char* c_str)
-{
-    if (c_str)
-        return PyString_FromString(c_str);
-    return NULL;
-}
-
-template <>
-PyObject*
 SBTypeToSWIGWrapper (unsigned int* c_int)
 {
     if (!c_int)
         return NULL;
     return PyInt_FromLong(*c_int);
+}
+
+template <>
+PyObject*
+SBTypeToSWIGWrapper (lldb::LanguageType* lang_type)
+{
+    if (!lang_type)
+        return NULL;
+    return PyInt_FromLong((long)(*lang_type));
 }
 
 template <>

@@ -1,9 +1,8 @@
 //===-- File.cpp ------------------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -528,18 +527,18 @@ Status File::Read(size_t &num_bytes, off_t &offset, bool null_terminate,
             num_bytes = bytes_left;
 
           size_t num_bytes_plus_nul_char = num_bytes + (null_terminate ? 1 : 0);
-          std::unique_ptr<DataBufferHeap> data_heap_ap;
-          data_heap_ap.reset(new DataBufferHeap());
-          data_heap_ap->SetByteSize(num_bytes_plus_nul_char);
+          std::unique_ptr<DataBufferHeap> data_heap_up;
+          data_heap_up.reset(new DataBufferHeap());
+          data_heap_up->SetByteSize(num_bytes_plus_nul_char);
 
-          if (data_heap_ap.get()) {
-            error = Read(data_heap_ap->GetBytes(), num_bytes, offset);
+          if (data_heap_up) {
+            error = Read(data_heap_up->GetBytes(), num_bytes, offset);
             if (error.Success()) {
               // Make sure we read exactly what we asked for and if we got
               // less, adjust the array
-              if (num_bytes_plus_nul_char < data_heap_ap->GetByteSize())
-                data_heap_ap->SetByteSize(num_bytes_plus_nul_char);
-              data_buffer_sp.reset(data_heap_ap.release());
+              if (num_bytes_plus_nul_char < data_heap_up->GetByteSize())
+                data_heap_up->SetByteSize(num_bytes_plus_nul_char);
+              data_buffer_sp.reset(data_heap_up.release());
               return error;
             }
           }
@@ -681,6 +680,7 @@ void File::CalculateInteractiveAndTerminal() {
   if (fd >= 0) {
     m_is_interactive = eLazyBoolNo;
     m_is_real_terminal = eLazyBoolNo;
+    m_supports_colors = eLazyBoolNo;
 #if defined(_WIN32)
     if (_isatty(fd)) {
       m_is_interactive = eLazyBoolYes;

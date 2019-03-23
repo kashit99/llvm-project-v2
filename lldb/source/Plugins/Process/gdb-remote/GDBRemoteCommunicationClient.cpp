@@ -1,9 +1,8 @@
 //===-- GDBRemoteCommunicationClient.cpp ------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -3834,6 +3833,7 @@ void GDBRemoteCommunicationClient::ServeSymbolLookups(
                       case eSymbolTypeCompiler:
                       case eSymbolTypeInstrumentation:
                       case eSymbolTypeTrampoline:
+                      case eSymbolTypeASTFile:
                         break;
 
                       case eSymbolTypeCode:
@@ -3847,6 +3847,9 @@ void GDBRemoteCommunicationClient::ServeSymbolLookups(
                       case eSymbolTypeReExported:
                         symbol_load_addr =
                             sc.symbol->GetLoadAddress(&process->GetTarget());
+                        break;
+
+                      case eSymbolTypeIVarOffset:
                         break;
                       }
                     }
@@ -3955,7 +3958,7 @@ Status GDBRemoteCommunicationClient::SendSignalsToIgnore(
 }
 
 Status GDBRemoteCommunicationClient::ConfigureRemoteStructuredData(
-    const ConstString &type_name, const StructuredData::ObjectSP &config_sp) {
+    ConstString type_name, const StructuredData::ObjectSP &config_sp) {
   Status error;
 
   if (type_name.GetLength() == 0) {

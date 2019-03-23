@@ -1,9 +1,8 @@
 //===-- Stream.h ------------------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -34,8 +33,16 @@ public:
   /// \a m_flags bit values.
   //------------------------------------------------------------------
   enum {
-    eBinary = (1 << 0) ///< Get and put data as binary instead of as the default
+    eBinary = (1 << 0), ///< Get and put data as binary instead of as the default
                        /// string mode.
+// START SWIFT PATCH
+    eVerbose = (1 << 1),   ///< If set, verbose logging is enabled
+    eDebug = (eVerbose << 1),     ///< If set, debug logging is enabled
+    eAddPrefix = (eVerbose << 2), ///< Add number prefixes for binary, octal and hex
+                           ///when eBinary is clear
+    eANSIColor = (eVerbose << 3), ///< If set, then it is ok to colorize the output
+                           ///with ANSI escape sequences
+// END SWIFT PATCH
   };
 
   /// Utility class for counting the bytes that were written to a stream in a

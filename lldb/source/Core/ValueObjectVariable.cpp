@@ -1,9 +1,8 @@
 //===-- ValueObjectVariable.cpp ---------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -22,6 +21,7 @@
 #include "lldb/Symbol/Type.h"
 #include "lldb/Symbol/Variable.h"
 #include "lldb/Target/ExecutionContext.h"
+#include "lldb/Target/LanguageRuntime.h"
 #include "lldb/Target/Process.h"
 #include "lldb/Target/RegisterContext.h"
 #include "lldb/Target/Target.h"
@@ -80,8 +80,12 @@ ConstString ValueObjectVariable::GetTypeName() {
 
 ConstString ValueObjectVariable::GetDisplayTypeName() {
   Type *var_type = m_variable_sp->GetType();
-  if (var_type)
-    return var_type->GetForwardCompilerType().GetDisplayTypeName();
+  if (var_type) {
+      const SymbolContext *sc = nullptr;
+      if (GetFrameSP())
+        sc = &GetFrameSP()->GetSymbolContext(lldb::eSymbolContextFunction);
+      return var_type->GetForwardCompilerType().GetDisplayTypeName(sc);
+  }
   return ConstString();
 }
 
@@ -112,7 +116,7 @@ uint64_t ValueObjectVariable::GetByteSize() {
   if (!type.IsValid())
     return 0;
 
-  return type.GetByteSize(exe_ctx.GetBestExecutionContextScope());
+  return type.GetByteSize(exe_ctx.GetBestExecutionContextScope()).getValueOr(0);
 }
 
 lldb::ValueType ValueObjectVariable::GetValueType() const {
@@ -131,12 +135,25 @@ bool ValueObjectVariable::UpdateValue() {
   if (variable->GetLocationIsConstantValueData()) {
     // expr doesn't contain DWARF bytes, it contains the constant variable
     // value bytes themselves...
-    if (expr.GetExpressionData(m_data))
+    if (expr.GetExpressionData(m_data)) {
+      if (m_data.GetDataStart() && m_data.GetByteSize())
+        m_value.SetBytes(m_data.GetDataStart(), m_data.GetByteSize());
       m_value.SetContext(Value::eContextTypeVariable, variable);
-    else
-      m_error.SetErrorString("empty constant data");
+    } else {
+      CompilerType var_type(GetCompilerTypeImpl());
+      if (var_type.IsValid()) {
+        ExecutionContext exe_ctx(GetExecutionContextRef());
+        llvm::Optional<uint64_t> size =
+            var_type.GetByteSize(exe_ctx.GetBestExecutionContextScope());
+        if (size && *size == 0)
+          m_value.SetCompilerType(var_type);
+        else
+          m_error.SetErrorString("empty constant data");
+      }
+    }
     // constant bytes can't be edited - sorry
     m_resolved_value.SetContext(Value::eContextTypeInvalid, NULL);
+    SetAddressTypeOfChildren(eAddressTypeInvalid);
   } else {
     lldb::addr_t loclist_base_load_addr = LLDB_INVALID_ADDRESS;
     ExecutionContext exe_ctx(GetExecutionContextRef());
@@ -169,7 +186,8 @@ bool ValueObjectVariable::UpdateValue() {
 
       Process *process = exe_ctx.GetProcessPtr();
       const bool process_is_alive = process && process->IsAlive();
-      const uint32_t type_info = compiler_type.GetTypeInfo();
+      const uint32_t type_info =
+          compiler_type.IsValid() ? compiler_type.GetTypeInfo() : 0;
       const bool is_pointer_or_ref =
           (type_info & (lldb::eTypeIsPointer | lldb::eTypeIsReference)) != 0;
 

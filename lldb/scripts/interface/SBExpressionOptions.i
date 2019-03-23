@@ -1,9 +1,8 @@
 //===-- SWIG interface for SBExpressionOptions -----------------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -92,6 +91,18 @@ public:
     void
     SetTrapExceptions (bool trap_exceptions = true);
     
+    bool
+    GetPlaygroundTransformEnabled () const;
+    
+    void
+    SetPlaygroundTransformEnabled (bool enable_playground_transform = true);
+
+    bool
+    GetREPLMode () const;
+    
+    void
+    SetREPLMode (bool enable_repl = true);
+
     %feature ("docstring", "Sets the language that LLDB should assume the expression is written in") SetLanguage;
     void
     SetLanguage (lldb::LanguageType language);

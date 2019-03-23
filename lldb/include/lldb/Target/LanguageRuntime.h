@@ -1,10 +1,9 @@
 //===-- LanguageRuntime.h ---------------------------------------------------*-
 // C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -101,6 +100,19 @@ public:
   virtual TypeAndOrName FixUpDynamicType(const TypeAndOrName &type_and_or_name,
                                          ValueObject &static_value) = 0;
 
+  /// This allows a language runtime to adjust references depending on the type.
+  /// \return true if the resulting address needs to be dereferenced.
+  virtual std::pair<lldb::addr_t, bool> FixupPointerValue(lldb::addr_t addr,
+                                                          CompilerType type) {
+    return {addr, false};
+  }
+
+  /// This allows a language runtime to adjust references depending on the type.
+  virtual lldb::addr_t FixupAddress(lldb::addr_t addr, CompilerType type,
+                                    Status &error) {
+    return addr;
+  }
+
   virtual void SetExceptionBreakpoints() {}
 
   virtual void ClearExceptionBreakpoints() {}
@@ -132,6 +144,9 @@ public:
 
   Process *GetProcess() { return m_process; }
 
+  static lldb::LanguageType
+  GuessLanguageForSymbolByName(Target &target, const char *symbol_name);
+
   Target &GetTargetRef() { return m_process->GetTarget(); }
 
   virtual lldb::BreakpointResolverSP
@@ -162,6 +177,8 @@ public:
     return false;
   }
 
+  static bool IsSymbolAnyRuntimeThunk(Symbol &symbol);
+
 protected:
   //------------------------------------------------------------------
   // Classes that inherit from LanguageRuntime can see and modify these
@@ -172,7 +189,7 @@ protected:
 
 private:
   DISALLOW_COPY_AND_ASSIGN(LanguageRuntime);
-};
+  };
 
 } // namespace lldb_private
 

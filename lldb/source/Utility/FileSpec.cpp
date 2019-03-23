@@ -1,9 +1,8 @@
 //===-- FileSpec.cpp --------------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -391,7 +390,7 @@ ConstString &FileSpec::GetDirectory() { return m_directory; }
 //------------------------------------------------------------------
 // Directory string const get accessor.
 //------------------------------------------------------------------
-const ConstString &FileSpec::GetDirectory() const { return m_directory; }
+ConstString FileSpec::GetDirectory() const { return m_directory; }
 
 //------------------------------------------------------------------
 // Filename string get accessor.
@@ -401,7 +400,7 @@ ConstString &FileSpec::GetFilename() { return m_filename; }
 //------------------------------------------------------------------
 // Filename string const get accessor.
 //------------------------------------------------------------------
-const ConstString &FileSpec::GetFilename() const { return m_filename; }
+ConstString FileSpec::GetFilename() const { return m_filename; }
 
 //------------------------------------------------------------------
 // Extract the directory and path into a fixed buffer. This is needed as the
@@ -555,6 +554,11 @@ bool FileSpec::IsAbsolute() const {
     return true;
 
   return llvm::sys::path::is_absolute(current_path, m_style);
+}
+
+void FileSpec::MakeAbsolute(const FileSpec &dir) {
+  if (IsRelative())
+    PrependPathComponent(dir);
 }
 
 void llvm::format_provider<FileSpec>::format(const FileSpec &F,

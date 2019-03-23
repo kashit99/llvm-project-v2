@@ -1,9 +1,8 @@
 //===-- FileSpec.h ----------------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -280,7 +279,7 @@ public:
   /// @return
   ///     A const reference to the directory string object.
   //------------------------------------------------------------------
-  const ConstString &GetDirectory() const;
+  ConstString GetDirectory() const;
 
   //------------------------------------------------------------------
   /// Filename string get accessor.
@@ -296,7 +295,7 @@ public:
   /// @return
   ///     A const reference to the filename string object.
   //------------------------------------------------------------------
-  const ConstString &GetFilename() const;
+  ConstString GetFilename() const;
 
   //------------------------------------------------------------------
   /// Returns true if the filespec represents an implementation source file
@@ -325,6 +324,10 @@ public:
   ///     \b false otherwise.
   //------------------------------------------------------------------
   bool IsAbsolute() const;
+
+  /// Make the FileSpec absolute by treating it relative to \a dir. Absolute
+  /// FileSpecs are never changed by this function.
+  void MakeAbsolute(const FileSpec &dir);
 
   /// Temporary helper for FileSystem change.
   void SetPath(llvm::StringRef p) { SetFile(p); }

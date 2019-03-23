@@ -1,9 +1,8 @@
 //===-- PlatformDarwin.h ----------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -75,6 +74,9 @@ public:
   GetFullNameForDylib(lldb_private::ConstString basename) override;
 
   lldb_private::FileSpec LocateExecutable(const char *basename) override;
+
+  static bool IsUnitTestExecutable(lldb_private::Module &module);
+  static lldb::ModuleSP GetUnitTestModule(lldb_private::ModuleList &modules);
 
   lldb_private::Status
   LaunchProcess(lldb_private::ProcessLaunchInfo &launch_info) override;

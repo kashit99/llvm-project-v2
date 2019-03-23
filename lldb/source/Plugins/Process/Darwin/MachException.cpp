@@ -1,9 +1,8 @@
 //===-- MachException.cpp ---------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -66,7 +65,7 @@ extern "C" kern_return_t catch_mach_exception_raise_state(
     mach_msg_type_number_t old_stateCnt, thread_state_t new_state,
     mach_msg_type_number_t *new_stateCnt) {
   // TODO change to LIBLLDB_LOG_EXCEPTION
-  Log *log(GetLogIfAllCategoriesSet(LIBLLDB_LOG_PROCESS | LIBLLDB_LOG_VERBOSE));
+  Log *log(GetLogIfAllCategoriesSet(LIBLLDB_LOG_PROCESS ));
   if (log) {
     log->Printf("::%s(exc_port = 0x%4.4x, exc_type = %d (%s), "
                 "exc_data = 0x%llx, exc_data_count = %d)",
@@ -82,7 +81,7 @@ extern "C" kern_return_t catch_mach_exception_raise_state_identity(
     mach_msg_type_number_t exc_data_count, int *flavor,
     thread_state_t old_state, mach_msg_type_number_t old_stateCnt,
     thread_state_t new_state, mach_msg_type_number_t *new_stateCnt) {
-  Log *log(GetLogIfAllCategoriesSet(LIBLLDB_LOG_PROCESS | LIBLLDB_LOG_VERBOSE));
+  Log *log(GetLogIfAllCategoriesSet(LIBLLDB_LOG_PROCESS ));
   if (log) {
     log->Printf("::%s(exc_port = 0x%4.4x, thd_port = 0x%4.4x, "
                 "tsk_port = 0x%4.4x, exc_type = %d (%s), exc_data[%d] = "
@@ -101,7 +100,7 @@ catch_mach_exception_raise(mach_port_t exc_port, mach_port_t thread_port,
                            mach_port_t task_port, exception_type_t exc_type,
                            mach_exception_data_t exc_data,
                            mach_msg_type_number_t exc_data_count) {
-  Log *log(GetLogIfAllCategoriesSet(LIBLLDB_LOG_PROCESS | LIBLLDB_LOG_VERBOSE));
+  Log *log(GetLogIfAllCategoriesSet(LIBLLDB_LOG_PROCESS ));
   if (log) {
     log->Printf("::%s(exc_port = 0x%4.4x, thd_port = 0x%4.4x, "
                 "tsk_port = 0x%4.4x, exc_type = %d (%s), exc_data[%d] "
@@ -264,7 +263,7 @@ bool MachException::Message::CatchExceptionRaise(task_t task) {
     success = true;
   } else {
     Log *log(
-        GetLogIfAllCategoriesSet(LIBLLDB_LOG_PROCESS | LIBLLDB_LOG_VERBOSE));
+        GetLogIfAllCategoriesSet(LIBLLDB_LOG_PROCESS ));
     if (log)
       log->Printf("MachException::Message::%s(): mach_exc_server "
                   "returned zero...",
@@ -279,7 +278,7 @@ Status MachException::Message::Reply(::pid_t inferior_pid, task_t inferior_task,
   // Reply to the exception...
   Status error;
 
-  Log *log(GetLogIfAllCategoriesSet(LIBLLDB_LOG_PROCESS | LIBLLDB_LOG_VERBOSE));
+  Log *log(GetLogIfAllCategoriesSet(LIBLLDB_LOG_PROCESS ));
 
   // If we had a soft signal, we need to update the thread first so it can
   // continue without signaling
@@ -436,7 +435,7 @@ Status MachException::PortInfo::Save(task_t task) {
 Status MachException::PortInfo::Restore(task_t task) {
   Status error;
 
-  Log *log(GetLogIfAllCategoriesSet(LIBLLDB_LOG_PROCESS | LIBLLDB_LOG_VERBOSE));
+  Log *log(GetLogIfAllCategoriesSet(LIBLLDB_LOG_PROCESS ));
 
   if (log)
     log->Printf("MachException::PortInfo::Restore(task = 0x%4.4x)", task);

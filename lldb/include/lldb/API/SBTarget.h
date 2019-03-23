@@ -1,9 +1,8 @@
 //===-- SBTarget.h ----------------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -76,8 +75,6 @@ public:
   ///
   /// @param[in] v
   ///     A boolean to control the collection.
-  /// @return
-  ///     void
   //------------------------------------------------------------------
   void SetCollectingStats(bool v);
 
@@ -609,12 +606,14 @@ public:
   lldb::SBBreakpoint BreakpointCreateByName(const char *symbol_name,
                                             const char *module_name = nullptr);
 
-  // This version uses name_type_mask = eFunctionNameTypeAuto
+  // This version uses name_type_mask = eFunctionNameTypeAuto, symbol_language =
+  // eLanguageTypeUnknown
   lldb::SBBreakpoint
   BreakpointCreateByName(const char *symbol_name,
                          const SBFileSpecList &module_list,
                          const SBFileSpecList &comp_unit_list);
 
+  // symbol_language = eLanguageTypeUnknown.
   lldb::SBBreakpoint BreakpointCreateByName(
       const char *symbol_name,
       uint32_t
@@ -679,6 +678,15 @@ public:
 
   lldb::SBBreakpoint BreakpointCreateForException(lldb::LanguageType language,
                                                   bool catch_bp, bool throw_bp);
+
+  // The extra_args parameter will hold any number of pairs, the first element
+  // is the extra
+  // argument type, and the second the value.
+  // The argument types all follow the option long name from "breakpoint set -E
+  // <Language>".
+  lldb::SBBreakpoint BreakpointCreateForException(lldb::LanguageType language,
+                                                  bool catch_bp, bool throw_bp,
+                                                  SBStringList &extra_args);
 
   lldb::SBBreakpoint BreakpointCreateByAddress(addr_t address);
 

@@ -1,18 +1,19 @@
 //===-- lldb.cpp ------------------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
 #include "lldb/lldb-private.h"
+#include "llvm/ADT/StringExtras.h"
 
 using namespace lldb;
 using namespace lldb_private;
 
 #include "clang/Basic/Version.h"
+#include "swift/Basic/Version.h"
 
 #ifdef HAVE_SVN_VERSION_INC
 #include "SVNVersion.inc"
@@ -26,7 +27,7 @@ static const char *GetLLDBRevision() {
 #ifdef LLDB_REVISION
   return LLDB_REVISION;
 #else
-  return NULL;
+  return nullptr;
 #endif
 }
 
@@ -37,6 +38,16 @@ static const char *GetLLDBRepository() {
   return NULL;
 #endif
 }
+
+#if LLDB_IS_BUILDBOT_BUILD
+static std::string GetBuildDate() {
+#if defined(LLDB_BUILD_DATE)
+  return std::string(LLDB_BUILD_DATE);
+#else
+  return std::string();
+#endif
+}
+#endif
 
 #define QUOTE(str) #str
 #define EXPAND_AND_QUOTE(str) QUOTE(str)
@@ -61,7 +72,21 @@ const char *lldb_private::GetVersion() {
       }
       g_version_str += ")";
     }
+    
+#if LLDB_IS_BUILDBOT_BUILD
+    std::string build_date = GetBuildDate();
+    if(!build_date.empty())
+      g_version_str += " (buildbot " + build_date + ")";
+#endif
 
+    auto const swift_version = swift::version::getSwiftFullVersion();
+    g_version_str += "\n" + swift_version;
+
+    // getSwiftFullVersion() also prints clang and llvm versions, no
+    // need to print them again. We keep this code here to not diverge
+    // too much from upstream.
+#undef LLDB_UPSTREAM
+#ifdef LLDB_UPSTREAM
     std::string clang_rev(clang::getClangRevision());
     if (clang_rev.length() > 0) {
       g_version_str += "\n  clang revision ";
@@ -72,6 +97,7 @@ const char *lldb_private::GetVersion() {
       g_version_str += "\n  llvm revision ";
       g_version_str += llvm_rev;
     }
+#endif // LLDB_UPSTREAM
   }
   return g_version_str.c_str();
 }

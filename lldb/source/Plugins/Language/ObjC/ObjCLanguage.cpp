@@ -1,9 +1,8 @@
 //===-- ObjCLanguage.cpp ----------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -120,7 +119,7 @@ bool ObjCLanguage::MethodName::SetName(const char *name, bool strict) {
   return SetName(llvm::StringRef(name), strict);
 }
 
-const ConstString &ObjCLanguage::MethodName::GetClassName() {
+ConstString ObjCLanguage::MethodName::GetClassName() {
   if (!m_class) {
     if (IsValid(false)) {
       const char *full = m_full.GetCString();
@@ -146,7 +145,7 @@ const ConstString &ObjCLanguage::MethodName::GetClassName() {
   return m_class;
 }
 
-const ConstString &ObjCLanguage::MethodName::GetClassNameWithCategory() {
+ConstString ObjCLanguage::MethodName::GetClassNameWithCategory() {
   if (!m_class_category) {
     if (IsValid(false)) {
       const char *full = m_full.GetCString();
@@ -169,7 +168,7 @@ const ConstString &ObjCLanguage::MethodName::GetClassNameWithCategory() {
   return m_class_category;
 }
 
-const ConstString &ObjCLanguage::MethodName::GetSelector() {
+ConstString ObjCLanguage::MethodName::GetSelector() {
   if (!m_selector) {
     if (IsValid(false)) {
       const char *full = m_full.GetCString();
@@ -184,7 +183,7 @@ const ConstString &ObjCLanguage::MethodName::GetSelector() {
   return m_selector;
 }
 
-const ConstString &ObjCLanguage::MethodName::GetCategory() {
+ConstString ObjCLanguage::MethodName::GetCategory() {
   if (!m_category_is_valid && !m_category) {
     if (IsValid(false)) {
       m_category_is_valid = true;
@@ -233,7 +232,7 @@ size_t ObjCLanguage::MethodName::GetFullNames(std::vector<ConstString> &names,
     StreamString strm;
     const bool is_class_method = m_type == eTypeClassMethod;
     const bool is_instance_method = m_type == eTypeInstanceMethod;
-    const ConstString &category = GetCategory();
+    ConstString category = GetCategory();
     if (is_class_method || is_instance_method) {
       names.push_back(m_full);
       if (category) {
@@ -242,8 +241,8 @@ size_t ObjCLanguage::MethodName::GetFullNames(std::vector<ConstString> &names,
         names.emplace_back(strm.GetString());
       }
     } else {
-      const ConstString &class_name = GetClassName();
-      const ConstString &selector = GetSelector();
+      ConstString class_name = GetClassName();
+      ConstString selector = GetSelector();
       strm.Printf("+[%s %s]", class_name.GetCString(), selector.GetCString());
       names.emplace_back(strm.GetString());
       strm.Clear();
@@ -748,6 +747,11 @@ static void LoadObjCFormatters(TypeCategoryImplSP objc_category_sp) {
                 "NSNotification summary provider",
                 ConstString("NSConcreteNotification"), appkit_flags);
 
+  // AddStringSummary(objc_category_sp, "domain: ${var._domain} - code:
+  // ${var._code}", ConstString("NSError"), appkit_flags);
+  // AddStringSummary(objc_category_sp,"name:${var.name%S}
+  // reason:${var.reason%S}",ConstString("NSException"),appkit_flags);
+
   AddCXXSummary(
       objc_category_sp, lldb_private::formatters::NSNumberSummaryProvider,
       "NSNumber summary provider", ConstString("NSNumber"), appkit_flags);
@@ -865,7 +869,7 @@ static void LoadCoreMediaFormatters(TypeCategoryImplSP objc_category_sp) {
 }
 
 lldb::TypeCategoryImplSP ObjCLanguage::GetFormatters() {
-  static llvm::once_flag g_initialize;
+  static std::once_flag g_initialize;
   static TypeCategoryImplSP g_category;
 
   llvm::call_once(g_initialize, [this]() -> void {
@@ -890,8 +894,9 @@ ObjCLanguage::GetPossibleFormattersMatches(ValueObject &valobj,
 
   const bool check_cpp = false;
   const bool check_objc = true;
-  bool canBeObjCDynamic =
-      compiler_type.IsPossibleDynamicType(nullptr, check_cpp, check_objc);
+  const bool check_swift = false;
+  bool canBeObjCDynamic = compiler_type.IsPossibleDynamicType(
+      nullptr, check_cpp, check_objc, check_swift);
 
   if (canBeObjCDynamic) {
     do {

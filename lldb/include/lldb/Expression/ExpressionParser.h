@@ -1,9 +1,8 @@
 //===-- ExpressionParser.h --------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -96,7 +95,9 @@ public:
   ///     The number of errors encountered during parsing.  0 means
   ///     success.
   //------------------------------------------------------------------
-  virtual unsigned Parse(DiagnosticManager &diagnostic_manager) = 0;
+  virtual unsigned Parse(DiagnosticManager &diagnostic_manager,
+                         uint32_t first_line = 0,
+                         uint32_t last_line = UINT32_MAX) = 0;
 
   //------------------------------------------------------------------
   /// Try to use the FixIts in the diagnostic_manager to rewrite the

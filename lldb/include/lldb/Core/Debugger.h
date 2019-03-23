@@ -1,9 +1,8 @@
 //===-- Debugger.h ----------------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -64,6 +63,11 @@ class SymbolContext;
 namespace lldb_private {
 class Target;
 }
+namespace lldb_private {
+namespace repro {
+class DataRecorder;
+}
+} // namespace lldb_private
 namespace llvm {
 class raw_ostream;
 }
@@ -106,7 +110,7 @@ public:
   static lldb::DebuggerSP FindDebuggerWithID(lldb::user_id_t id);
 
   static lldb::DebuggerSP
-  FindDebuggerWithInstanceName(const ConstString &instance_name);
+  FindDebuggerWithInstanceName(ConstString instance_name);
 
   static size_t GetNumDebuggers();
 
@@ -130,7 +134,10 @@ public:
 
   lldb::StreamFileSP GetErrorFile() { return m_error_file_sp; }
 
-  void SetInputFileHandle(FILE *fh, bool tranfer_ownership);
+  repro::DataRecorder *GetInputRecorder();
+
+  void SetInputFileHandle(FILE *fh, bool tranfer_ownership,
+                          repro::DataRecorder *recorder = nullptr);
 
   void SetOutputFileHandle(FILE *fh, bool tranfer_ownership);
 
@@ -145,8 +152,8 @@ public:
   lldb::StreamSP GetAsyncErrorStream();
 
   CommandInterpreter &GetCommandInterpreter() {
-    assert(m_command_interpreter_ap.get());
-    return *m_command_interpreter_ap;
+    assert(m_command_interpreter_up.get());
+    return *m_command_interpreter_up;
   }
 
   lldb::ListenerSP GetListener() { return m_listener_sp; }
@@ -192,6 +199,9 @@ public:
                      bool cancel_top_handler = true);
 
   bool PopIOHandler(const lldb::IOHandlerSP &reader_sp);
+
+  uint32_t PopIOHandlers(const lldb::IOHandlerSP &reader1_sp,
+                         const lldb::IOHandlerSP &reader2_sp);
 
   // Synchronously run an input reader until it is done
   void RunIOHandler(const lldb::IOHandlerSP &reader_sp);
@@ -303,7 +313,7 @@ public:
 
   bool GetNotifyVoid() const;
 
-  const ConstString &GetInstanceName() { return m_instance_name; }
+  ConstString GetInstanceName() { return m_instance_name; }
 
   bool LoadPlugin(const FileSpec &spec, Status &error);
 
@@ -319,6 +329,10 @@ public:
 
   Status RunREPL(lldb::LanguageType language, const char *repl_options);
 
+  bool REPLIsActive() { return m_input_reader_stack.REPLIsActive(); }
+
+  bool REPLIsEnabled() { return m_input_reader_stack.REPLIsEnabled(); }
+
   // This is for use in the command interpreter, when you either want the
   // selected target, or if no target is present you want to prime the dummy
   // target with entities that will be copied over to new targets.
@@ -331,6 +345,7 @@ public:
 
 protected:
   friend class CommandInterpreter;
+  friend class SwiftREPL;
   friend class REPL;
 
   bool StartEventHandlerThread();
@@ -371,6 +386,9 @@ protected:
   lldb::StreamFileSP m_output_file_sp;
   lldb::StreamFileSP m_error_file_sp;
 
+  /// Used for shadowing the input file when capturing a reproducer.
+  repro::DataRecorder *m_input_recorder;
+
   lldb::BroadcasterManagerSP m_broadcaster_manager_sp; // The debugger acts as a
                                                        // broadcaster manager of
                                                        // last resort.
@@ -382,7 +400,7 @@ protected:
 
   PlatformList m_platform_list;
   lldb::ListenerSP m_listener_sp;
-  std::unique_ptr<SourceManager> m_source_manager_ap; // This is a scratch
+  std::unique_ptr<SourceManager> m_source_manager_up; // This is a scratch
                                                       // source manager that we
                                                       // return if we have no
                                                       // targets.
@@ -391,7 +409,7 @@ protected:
                                                       // this debugger used this
                                                       // shared
                                                       // source file cache.
-  std::unique_ptr<CommandInterpreter> m_command_interpreter_ap;
+  std::unique_ptr<CommandInterpreter> m_command_interpreter_up;
 
   IOHandlerStack m_input_reader_stack;
   llvm::StringMap<std::weak_ptr<llvm::raw_ostream>> m_log_streams;
@@ -404,7 +422,7 @@ protected:
   HostThread m_io_handler_thread;
   Broadcaster m_sync_broadcaster;
   lldb::ListenerSP m_forward_listener_sp;
-  llvm::once_flag m_clear_once;
+  std::once_flag m_clear_once;
 
   //----------------------------------------------------------------------
   // Events for m_sync_broadcaster

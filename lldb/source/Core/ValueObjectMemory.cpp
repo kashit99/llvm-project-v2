@@ -1,9 +1,8 @@
 //===-- ValueObjectMemory.cpp ---------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -117,9 +116,13 @@ ConstString ValueObjectMemory::GetTypeName() {
 }
 
 ConstString ValueObjectMemory::GetDisplayTypeName() {
+  const SymbolContext *sc = nullptr;
+  if (GetFrameSP())
+    sc = &GetFrameSP()->GetSymbolContext(eSymbolContextFunction);
+
   if (m_type_sp)
-    return m_type_sp->GetForwardCompilerType().GetDisplayTypeName();
-  return m_compiler_type.GetDisplayTypeName();
+    return m_type_sp->GetForwardCompilerType().GetDisplayTypeName(sc);
+  return m_compiler_type.GetDisplayTypeName(sc);
 }
 
 size_t ValueObjectMemory::CalculateNumChildren(uint32_t max) {
@@ -137,8 +140,8 @@ size_t ValueObjectMemory::CalculateNumChildren(uint32_t max) {
 
 uint64_t ValueObjectMemory::GetByteSize() {
   if (m_type_sp)
-    return m_type_sp->GetByteSize();
-  return m_compiler_type.GetByteSize(nullptr);
+    return m_type_sp->GetByteSize().getValueOr(0);
+  return m_compiler_type.GetByteSize(nullptr).getValueOr(0);
 }
 
 lldb::ValueType ValueObjectMemory::GetValueType() const {

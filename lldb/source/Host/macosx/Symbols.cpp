@@ -1,9 +1,8 @@
 //===-- Symbols.cpp ---------------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -567,10 +566,12 @@ bool Symbols::DownloadObjectAndSymbolFile(ModuleSpec &module_spec,
 
       StreamString command;
       if (!uuid_str.empty())
-        command.Printf("%s --ignoreNegativeCache --copyExecutable %s",
+        command.Printf("%s --ignoreNegativeCache --copyExecutable --databases "
+                       "bursar.apple.com,uuidsymmap.apple.com %s",
                        g_dsym_for_uuid_exe_path, uuid_str.c_str());
       else if (file_path[0] != '\0')
-        command.Printf("%s --ignoreNegativeCache --copyExecutable %s",
+        command.Printf("%s --ignoreNegativeCache --copyExecutable --databases "
+                       "bursar.apple.com,uuidsymmap.apple.com %s",
                        g_dsym_for_uuid_exe_path, file_path);
 
       if (!command.GetString().empty()) {
@@ -593,7 +594,7 @@ bool Symbols::DownloadObjectAndSymbolFile(ModuleSpec &module_spec,
             &signo,          // Signal int *
             &command_output, // Command output
             std::chrono::seconds(
-                30), // Large timeout to allow for long dsym download times
+               120), // Large timeout to allow for long dsym download times
             false);  // Don't run in a shell (we don't need shell expansion)
         if (error.Success() && exit_status == 0 && !command_output.empty()) {
           CFCData data(CFDataCreateWithBytesNoCopy(

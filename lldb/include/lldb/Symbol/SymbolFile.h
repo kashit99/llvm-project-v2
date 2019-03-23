@@ -1,20 +1,22 @@
 //===-- SymbolFile.h --------------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
 #ifndef liblldb_SymbolFile_h_
 #define liblldb_SymbolFile_h_
 
+#include <vector>
+
 #include "lldb/Core/PluginInterface.h"
 #include "lldb/Symbol/CompilerDecl.h"
 #include "lldb/Symbol/CompilerDeclContext.h"
 #include "lldb/Symbol/CompilerType.h"
 #include "lldb/Symbol/Function.h"
+#include "lldb/Symbol/SourceModule.h"
 #include "lldb/Symbol/Type.h"
 #include "lldb/lldb-private.h"
 
@@ -125,22 +127,19 @@ public:
   virtual uint32_t GetNumCompileUnits() = 0;
   virtual lldb::CompUnitSP ParseCompileUnitAtIndex(uint32_t index) = 0;
 
-  virtual lldb::LanguageType
-  ParseCompileUnitLanguage(const SymbolContext &sc) = 0;
-  virtual size_t ParseCompileUnitFunctions(const SymbolContext &sc) = 0;
-  virtual bool ParseCompileUnitLineTable(const SymbolContext &sc) = 0;
-  virtual bool ParseCompileUnitDebugMacros(const SymbolContext &sc) = 0;
-  virtual bool ParseCompileUnitSupportFiles(const SymbolContext &sc,
-                                            FileSpecList &support_files) = 0;
-  virtual bool
-  ParseCompileUnitIsOptimized(const lldb_private::SymbolContext &sc) {
-    return false;
-  }
+  virtual lldb::LanguageType ParseLanguage(CompileUnit &comp_unit) = 0;
+  virtual size_t ParseFunctions(CompileUnit &comp_unit) = 0;
+  virtual bool ParseLineTable(CompileUnit &comp_unit) = 0;
+  virtual bool ParseDebugMacros(CompileUnit &comp_unit) = 0;
+  virtual bool ParseSupportFiles(CompileUnit &comp_unit,
+                                 FileSpecList &support_files) = 0;
+  virtual size_t ParseTypes(CompileUnit &comp_unit) = 0;
+  virtual bool ParseIsOptimized(CompileUnit &comp_unit) { return false; }
+
   virtual bool
   ParseImportedModules(const SymbolContext &sc,
-                       std::vector<ConstString> &imported_modules) = 0;
-  virtual size_t ParseFunctionBlocks(const SymbolContext &sc) = 0;
-  virtual size_t ParseTypes(const SymbolContext &sc) = 0;
+                       std::vector<SourceModule> &imported_modules) = 0;
+  virtual size_t ParseBlocksRecursive(Function &func) = 0;
   virtual size_t ParseVariablesForContext(const SymbolContext &sc) = 0;
   virtual Type *ResolveTypeUID(lldb::user_id_t type_uid) = 0;
 
@@ -181,13 +180,13 @@ public:
 
   virtual void DumpClangAST(Stream &s) {}
   virtual uint32_t
-  FindGlobalVariables(const ConstString &name,
+  FindGlobalVariables(ConstString name,
                       const CompilerDeclContext *parent_decl_ctx,
                       uint32_t max_matches, VariableList &variables);
   virtual uint32_t FindGlobalVariables(const RegularExpression &regex,
                                        uint32_t max_matches,
                                        VariableList &variables);
-  virtual uint32_t FindFunctions(const ConstString &name,
+  virtual uint32_t FindFunctions(ConstString name,
                                  const CompilerDeclContext *parent_decl_ctx,
                                  lldb::FunctionNameType name_type_mask,
                                  bool include_inlines, bool append,
@@ -196,9 +195,8 @@ public:
                                  bool include_inlines, bool append,
                                  SymbolContextList &sc_list);
   virtual uint32_t
-  FindTypes(const SymbolContext &sc, const ConstString &name,
-            const CompilerDeclContext *parent_decl_ctx, bool append,
-            uint32_t max_matches,
+  FindTypes(ConstString name, const CompilerDeclContext *parent_decl_ctx,
+            bool append, uint32_t max_matches,
             llvm::DenseSet<lldb_private::SymbolFile *> &searched_symbol_files,
             TypeMap &types);
   virtual size_t FindTypes(const std::vector<CompilerContext> &context,
@@ -221,7 +219,7 @@ public:
   GetTypeSystemForLanguage(lldb::LanguageType language);
 
   virtual CompilerDeclContext
-  FindNamespace(const SymbolContext &sc, const ConstString &name,
+  FindNamespace(ConstString name,
                 const CompilerDeclContext *parent_decl_ctx) {
     return CompilerDeclContext();
   }
@@ -241,14 +239,79 @@ public:
   //------------------------------------------------------------------
   virtual void SectionFileAddressesChanged() {}
 
+  virtual bool GetCompileOption(const char *option, std::string &value,
+                                CompileUnit *cu = nullptr) {
+    value.clear();
+    return false;
+  }
+
+  virtual int GetCompileOptions(const char *option,
+                                std::vector<std::string> &values,
+                                CompileUnit *cu = nullptr) {
+    values.clear();
+    return false;
+  }
+
+  virtual void GetLoadedModules(lldb::LanguageType language,
+                                FileSpecList &modules) {}
+
+  //------------------------------------------------------------------
+  // Some symbol files might know if we should always check for inline
+  // source file and line entries. This virtual function lets
+  // SymbolFile subclasses control that, but a default implementation
+  // is supplied.
+  //------------------------------------------------------------------
+  virtual bool ForceInlineSourceFileCheck();
+
+  //------------------------------------------------------------------
+  /// Retrieve all the AST data blobs from the SymbolFile.
+  ///
+  /// Symbol files can store AST data for any language that wants to
+  /// store the native AST format supported by the current compiler.
+  /// This information is often only usable by a compiler that is in
+  /// sync with the compiler sources that were used to build LLDB so
+  /// any data should be versioned appropriately so the compiler can
+  /// try to load the data and know if the data will be able to be
+  /// used.
+  ///
+  /// @param[in] language
+  ///   The language for which AST data is being requested.
+  ///   A given file can contain ASTs for more than one language.
+  ///
+  /// @return
+  ///   Zero or more buffers, each of which contain the raw data
+  ///   of an AST in the requested language.
+  //------------------------------------------------------------------
+  virtual std::vector<lldb::DataBufferSP>
+  GetASTData(lldb::LanguageType language);
+
+  // Used for the REPL to limit source file ranges that are valid within "file".
+  // Since
+  // breakpoint setting call fall through, we need to stop the fall through from
+  // happening
+  virtual bool SetLimitSourceFileRange(const FileSpec &file,
+                                       uint32_t first_line, uint32_t last_line);
+
+  virtual bool SymbolContextShouldBeExcluded(const SymbolContext &sc,
+                                             uint32_t actual_line);
   virtual void Dump(Stream &s) {}
 
 protected:
+  class SourceRange {
+  public:
+    SourceRange(const FileSpec &f, uint32_t first, uint32_t last)
+        : file(f), first_line(first), last_line(last) {}
+    FileSpec file;
+    uint32_t first_line;
+    uint32_t last_line;
+  };
+
   void AssertModuleLock();
 
   ObjectFile *m_obj_file; // The object file that symbols can be extracted from.
   uint32_t m_abilities;
   bool m_calculated_abilities;
+  std::vector<SourceRange> m_limit_source_ranges;
 
 private:
   DISALLOW_COPY_AND_ASSIGN(SymbolFile);

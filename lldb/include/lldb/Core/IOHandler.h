@@ -1,9 +1,8 @@
 //===-- IOHandler.h ---------------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -14,6 +13,7 @@
 #include "lldb/Utility/ConstString.h"
 #include "lldb/Utility/Flags.h"
 #include "lldb/Utility/Predicate.h"
+#include "lldb/Utility/Reproducer.h"
 #include "lldb/Utility/Stream.h"
 #include "lldb/Utility/StringList.h"
 #include "lldb/lldb-defines.h"
@@ -59,7 +59,8 @@ public:
   IOHandler(Debugger &debugger, IOHandler::Type type,
             const lldb::StreamFileSP &input_sp,
             const lldb::StreamFileSP &output_sp,
-            const lldb::StreamFileSP &error_sp, uint32_t flags);
+            const lldb::StreamFileSP &error_sp, uint32_t flags,
+            repro::DataRecorder *data_recorder);
 
   virtual ~IOHandler();
 
@@ -170,6 +171,7 @@ protected:
   lldb::StreamFileSP m_input_sp;
   lldb::StreamFileSP m_output_sp;
   lldb::StreamFileSP m_error_sp;
+  repro::DataRecorder *m_data_recorder;
   Predicate<bool> m_popped;
   Flags m_flags;
   Type m_type;
@@ -344,7 +346,8 @@ public:
                     uint32_t line_number_start, // If non-zero show line numbers
                                                 // starting at
                                                 // 'line_number_start'
-                    IOHandlerDelegate &delegate);
+                    IOHandlerDelegate &delegate,
+                    repro::DataRecorder *data_recorder);
 
   IOHandlerEditline(Debugger &debugger, IOHandler::Type type,
                     const lldb::StreamFileSP &input_sp,
@@ -356,7 +359,8 @@ public:
                     uint32_t line_number_start, // If non-zero show line numbers
                                                 // starting at
                                                 // 'line_number_start'
-                    IOHandlerDelegate &delegate);
+                    IOHandlerDelegate &delegate,
+                    repro::DataRecorder *data_recorder);
 
   IOHandlerEditline(Debugger &, IOHandler::Type, const char *, const char *,
                     const char *, bool, bool, uint32_t,
@@ -436,7 +440,7 @@ private:
 
 protected:
 #ifndef LLDB_DISABLE_LIBEDIT
-  std::unique_ptr<Editline> m_editline_ap;
+  std::unique_ptr<Editline> m_editline_up;
 #endif
   IOHandlerDelegate &m_delegate;
   std::string m_prompt;
@@ -514,7 +518,9 @@ protected:
 
 class IOHandlerStack {
 public:
-  IOHandlerStack() : m_stack(), m_mutex(), m_top(nullptr) {}
+  IOHandlerStack()
+      : m_stack(), m_mutex(), m_top(nullptr), m_repl_active(false),
+        m_repl_enabled(false) {}
 
   ~IOHandlerStack() = default;
 
@@ -530,6 +536,8 @@ public:
       m_stack.push_back(sp);
       // Set m_top the non-locking IsTop() call
       m_top = sp.get();
+
+      UpdateREPLIsActive();
     }
   }
 
@@ -556,8 +564,9 @@ public:
       sp->SetPopped(true);
     }
     // Set m_top the non-locking IsTop() call
-
     m_top = (m_stack.empty() ? nullptr : m_stack.back().get());
+
+    UpdateREPLIsActive();
   }
 
   std::recursive_mutex &GetMutex() { return m_mutex; }
@@ -587,13 +596,67 @@ public:
     return ((m_top != nullptr) ? m_top->GetHelpPrologue() : nullptr);
   }
 
+  // Returns true if the REPL is the active IOHandler or if it is just
+  // below the Process IOHandler.
+  bool REPLIsActive() {
+    // This is calculated and cached by UpdateREPLIsActive() as IOHandlers
+    // are pushed and popped since it gets called for all process events.
+    return m_repl_active;
+  }
+
+  // Returns true if any REPL IOHandlers are anywhere on the stack
+  bool REPLIsEnabled() {
+    // This is calculated and cached by UpdateREPLIsActive() as IOHandlers
+    // are pushed and popped since it gets called for all process events.
+    return m_repl_enabled;
+  }
+
   void PrintAsync(Stream *stream, const char *s, size_t len);
 
 protected:
+  void UpdateREPLIsActive() {
+    m_repl_active = false;
+    m_repl_enabled = false;
+    // This function should only be called when the mutex is locked...
+    if (m_top) {
+      switch (m_top->GetType()) {
+      case IOHandler::Type::ProcessIO:
+        // Check the REPL is underneath the process IO handler...
+        if (m_stack.size() > 1) {
+          if (m_stack[m_stack.size() - 2]->GetType() == IOHandler::Type::REPL) {
+            m_repl_active = true;
+            m_repl_enabled = true;
+          }
+        }
+        break;
+
+      case IOHandler::Type::REPL:
+        m_repl_active = true;
+        m_repl_enabled = true;
+        break;
+
+      default:
+        break;
+      }
+    }
+
+    if (!m_repl_enabled) {
+      for (const auto &io_handler_sp : m_stack) {
+        if (io_handler_sp->GetType() == IOHandler::Type::REPL) {
+          m_repl_enabled = true;
+          break;
+        }
+      }
+    }
+  }
+
   typedef std::vector<lldb::IOHandlerSP> collection;
   collection m_stack;
   mutable std::recursive_mutex m_mutex;
   IOHandler *m_top;
+  bool m_repl_active;  // REPL is the active IOHandler or right underneath the
+                       // process IO handler
+  bool m_repl_enabled; // REPL is on IOHandler stack somewhere
 
 private:
   DISALLOW_COPY_AND_ASSIGN(IOHandlerStack);

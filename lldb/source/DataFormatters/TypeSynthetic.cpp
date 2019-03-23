@@ -1,10 +1,9 @@
 //===-- TypeSynthetic.cpp ----------------------------------------*- C++
 //-*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -52,7 +51,7 @@ bool TypeFilterImpl::SetExpressionPathAtIndex(size_t i,
 }
 
 size_t
-TypeFilterImpl::FrontEnd::GetIndexOfChildWithName(const ConstString &name) {
+TypeFilterImpl::FrontEnd::GetIndexOfChildWithName(ConstString name) {
   const char *name_cstr = name.GetCString();
   if (name_cstr) {
     for (size_t i = 0; i < filter->GetCount(); i++) {
@@ -189,7 +188,7 @@ bool ScriptedSyntheticChildren::FrontEnd::MightHaveChildren() {
 }
 
 size_t ScriptedSyntheticChildren::FrontEnd::GetIndexOfChildWithName(
-    const ConstString &name) {
+    ConstString name) {
   if (!m_wrapper_sp || m_interpreter == NULL)
     return UINT32_MAX;
   return m_interpreter->GetIndexOfChildWithName(m_wrapper_sp,

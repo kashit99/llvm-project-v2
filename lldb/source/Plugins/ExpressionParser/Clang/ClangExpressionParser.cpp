@@ -1,24 +1,22 @@
 //===-- ClangExpressionParser.cpp -------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
-#include <cctype>
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/ASTDiagnostic.h"
 #include "clang/AST/ExternalASTSource.h"
 #include "clang/AST/PrettyPrinter.h"
 #include "clang/Basic/DiagnosticIDs.h"
-#include "clang/Basic/FileManager.h"
 #include "clang/Basic/SourceLocation.h"
 #include "clang/Basic/TargetInfo.h"
 #include "clang/Basic/Version.h"
 #include "clang/CodeGen/CodeGenAction.h"
 #include "clang/CodeGen/ModuleBuilder.h"
+#include "clang/CodeGen/ObjectFilePCHContainerOperations.h"
 #include "clang/Edit/Commit.h"
 #include "clang/Edit/EditedSource.h"
 #include "clang/Edit/EditsReceiver.h"
@@ -29,6 +27,7 @@
 #include "clang/Frontend/FrontendPluginRegistry.h"
 #include "clang/Frontend/TextDiagnosticBuffer.h"
 #include "clang/Frontend/TextDiagnosticPrinter.h"
+#include "clang/Lex/HeaderSearch.h"
 #include "clang/Lex/Preprocessor.h"
 #include "clang/Parse/ParseAST.h"
 #include "clang/Rewrite/Core/Rewriter.h"
@@ -56,20 +55,21 @@
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Signals.h"
 
-#include "ClangDiagnostic.h"
-#include "ClangExpressionParser.h"
-
 #include "ClangASTSource.h"
+#include "ClangDiagnostic.h"
 #include "ClangExpressionDeclMap.h"
 #include "ClangExpressionHelper.h"
+#include "ClangExpressionParser.h"
 #include "ClangModulesDeclVendor.h"
 #include "ClangPersistentVariables.h"
 #include "IRForTarget.h"
+#include "ModuleDependencyCollector.h"
 
 #include "lldb/Core/Debugger.h"
 #include "lldb/Core/Disassembler.h"
 #include "lldb/Core/Module.h"
 #include "lldb/Core/StreamFile.h"
+#include "lldb/Expression/ExpressionSourceCode.h"
 #include "lldb/Expression/IRDynamicChecks.h"
 #include "lldb/Expression/IRExecutionUnit.h"
 #include "lldb/Expression/IRInterpreter.h"
@@ -86,9 +86,13 @@
 #include "lldb/Utility/DataBufferHeap.h"
 #include "lldb/Utility/LLDBAssert.h"
 #include "lldb/Utility/Log.h"
+#include "lldb/Utility/Reproducer.h"
 #include "lldb/Utility/Stream.h"
 #include "lldb/Utility/StreamString.h"
 #include "lldb/Utility/StringList.h"
+
+#include <cctype>
+#include <memory>
 
 using namespace clang;
 using namespace llvm;
@@ -111,24 +115,19 @@ public:
 
   void moduleImport(SourceLocation import_location, clang::ModuleIdPath path,
                     const clang::Module * /*null*/) override {
-    std::vector<ConstString> string_path;
+    SourceModule module;
 
-    for (const std::pair<IdentifierInfo *, SourceLocation> &component : path) {
-      string_path.push_back(ConstString(component.first->getName()));
-    }
+    for (const std::pair<IdentifierInfo *, SourceLocation> &component : path)
+      module.path.push_back(ConstString(component.first->getName()));
 
     StreamString error_stream;
 
     ClangModulesDeclVendor::ModuleVector exported_modules;
-
-    if (!m_decl_vendor.AddModule(string_path, &exported_modules,
-                                 m_error_stream)) {
+    if (!m_decl_vendor.AddModule(module, &exported_modules, m_error_stream))
       m_has_errors = true;
-    }
 
-    for (ClangModulesDeclVendor::ModuleID module : exported_modules) {
+    for (ClangModulesDeclVendor::ModuleID module : exported_modules)
       m_persistent_vars.AddHandLoadedClangModule(module);
-    }
   }
 
   bool hasErrors() { return m_has_errors; }
@@ -214,6 +213,50 @@ private:
   std::shared_ptr<clang::TextDiagnosticBuffer> m_passthrough;
 };
 
+class LoggingDiagnosticConsumer : public clang::DiagnosticConsumer {
+public:
+  LoggingDiagnosticConsumer() {
+    m_log = lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_EXPRESSIONS);
+    m_passthrough.reset(new clang::TextDiagnosticBuffer);
+  }
+
+  LoggingDiagnosticConsumer(
+      const std::shared_ptr<clang::TextDiagnosticBuffer> &passthrough) {
+    m_log = lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_EXPRESSIONS);
+    m_passthrough = passthrough;
+  }
+
+  void HandleDiagnostic(DiagnosticsEngine::Level DiagLevel,
+                        const clang::Diagnostic &Info) {
+    if (m_log) {
+      llvm::SmallVector<char, 32> diag_str;
+      Info.FormatDiagnostic(diag_str);
+      diag_str.push_back('\0');
+      const char *data = diag_str.data();
+      m_log->Printf("[clang] COMPILER DIAGNOSTIC: %s", data);
+
+      lldbassert(Info.getID() != clang::diag::err_unsupported_ast_node &&
+                 "'log enable lldb expr' to investigate.");
+    }
+
+    m_passthrough->HandleDiagnostic(DiagLevel, Info);
+  }
+
+  void FlushDiagnostics(DiagnosticsEngine &Diags) {
+    m_passthrough->FlushDiagnostics(Diags);
+  }
+
+  DiagnosticConsumer *clone(DiagnosticsEngine &Diags) const {
+    return new LoggingDiagnosticConsumer(m_passthrough);
+  }
+
+  clang::TextDiagnosticBuffer *GetPassthrough() { return m_passthrough.get(); }
+
+private:
+  Log *m_log;
+  std::shared_ptr<clang::TextDiagnosticBuffer> m_passthrough;
+};
+
 //===----------------------------------------------------------------------===//
 // Implementation of ClangExpressionParser
 //===----------------------------------------------------------------------===//
@@ -249,6 +292,32 @@ ClangExpressionParser::ClangExpressionParser(ExecutionContextScope *exe_scope,
 
   // 1. Create a new compiler instance.
   m_compiler.reset(new CompilerInstance());
+
+  // When capturing a reproducer, hook up the file collector with clang to
+  // collector modules and headers.
+  if (repro::Generator *g = repro::Reproducer::Instance().GetGenerator()) {
+    repro::FileProvider &fp = g->GetOrCreate<repro::FileProvider>();
+    m_compiler->setModuleDepCollector(
+        std::make_shared<ModuleDependencyCollectorAdaptor>(
+            fp.GetFileCollector()));
+    DependencyOutputOptions &opts = m_compiler->getDependencyOutputOpts();
+    opts.IncludeSystemHeaders = true;
+    opts.IncludeModuleFiles = true;
+  }
+
+  // Make sure clang uses the same VFS as LLDB.
+  m_compiler->setVirtualFileSystem(
+      FileSystem::Instance().GetVirtualFileSystem());
+
+  // Register the support for object-file-wrapped Clang modules.
+  std::shared_ptr<clang::PCHContainerOperations> pch_operations =
+      m_compiler->getPCHContainerOperations();
+  pch_operations->registerWriter(
+      llvm::make_unique<ObjectFilePCHContainerWriter>());
+  pch_operations->registerReader(
+      llvm::make_unique<ObjectFilePCHContainerReader>());
+
+  // 2. Install the target.
   lldb::LanguageType frame_lang =
       expr.Language(); // defaults to lldb::eLanguageTypeUnknown
   bool overridden_target_opts = false;
@@ -298,6 +367,9 @@ ClangExpressionParser::ClangExpressionParser(ExecutionContextScope *exe_scope,
       log->Printf("Using default target triple of %s",
                   m_compiler->getTargetOpts().Triple.c_str());
   }
+
+  m_compiler->getTargetOpts().CPU = "";
+
   // Now add some special fixes for known architectures: Any arm32 iOS
   // environment, but not on arm64
   if (m_compiler->getTargetOpts().Triple.find("arm64") == std::string::npos &&
@@ -363,6 +435,7 @@ ClangExpressionParser::ClangExpressionParser(ExecutionContextScope *exe_scope,
 
   // 5. Set language options.
   lldb::LanguageType language = expr.Language();
+  LangOptions &lang_opts = m_compiler->getLangOpts();
 
   switch (language) {
   case lldb::eLanguageTypeC:
@@ -374,13 +447,13 @@ ClangExpressionParser::ClangExpressionParser(ExecutionContextScope *exe_scope,
     // For now, the expression parser must use C++ anytime the language is a C
     // family language, because the expression parser uses features of C++ to
     // capture values.
-    m_compiler->getLangOpts().CPlusPlus = true;
+    lang_opts.CPlusPlus = true;
     break;
   case lldb::eLanguageTypeObjC:
-    m_compiler->getLangOpts().ObjC = true;
+    lang_opts.ObjC = true;
     // FIXME: the following language option is a temporary workaround,
     // to "ask for ObjC, get ObjC++" (see comment above).
-    m_compiler->getLangOpts().CPlusPlus = true;
+    lang_opts.CPlusPlus = true;
 
     // Clang now sets as default C++14 as the default standard (with
     // GNU extensions), so we do the same here to avoid mismatches that
@@ -388,71 +461,67 @@ ClangExpressionParser::ClangExpressionParser(ExecutionContextScope *exe_scope,
     // as it's a C++11 feature). Currently lldb evaluates C++14 as C++11 (see
     // two lines below) so we decide to be consistent with that, but this could
     // be re-evaluated in the future.
-    m_compiler->getLangOpts().CPlusPlus11 = true;
+    lang_opts.CPlusPlus11 = true;
     break;
   case lldb::eLanguageTypeC_plus_plus:
   case lldb::eLanguageTypeC_plus_plus_11:
   case lldb::eLanguageTypeC_plus_plus_14:
-    m_compiler->getLangOpts().CPlusPlus11 = true;
+    lang_opts.CPlusPlus11 = true;
     m_compiler->getHeaderSearchOpts().UseLibcxx = true;
     LLVM_FALLTHROUGH;
   case lldb::eLanguageTypeC_plus_plus_03:
-    m_compiler->getLangOpts().CPlusPlus = true;
+    lang_opts.CPlusPlus = true;
     if (process_sp)
-      m_compiler->getLangOpts().ObjC =
+      lang_opts.ObjC =
           process_sp->GetLanguageRuntime(lldb::eLanguageTypeObjC) != nullptr;
     break;
   case lldb::eLanguageTypeObjC_plus_plus:
   case lldb::eLanguageTypeUnknown:
   default:
-    m_compiler->getLangOpts().ObjC = true;
-    m_compiler->getLangOpts().CPlusPlus = true;
-    m_compiler->getLangOpts().CPlusPlus11 = true;
+    lang_opts.ObjC = true;
+    lang_opts.CPlusPlus = true;
+    lang_opts.CPlusPlus11 = true;
     m_compiler->getHeaderSearchOpts().UseLibcxx = true;
     break;
   }
 
-  m_compiler->getLangOpts().Bool = true;
-  m_compiler->getLangOpts().WChar = true;
-  m_compiler->getLangOpts().Blocks = true;
-  m_compiler->getLangOpts().DebuggerSupport =
+  lang_opts.Bool = true;
+  lang_opts.WChar = true;
+  lang_opts.Blocks = true;
+  lang_opts.DebuggerSupport =
       true; // Features specifically for debugger clients
   if (expr.DesiredResultType() == Expression::eResultTypeId)
-    m_compiler->getLangOpts().DebuggerCastResultToId = true;
+    lang_opts.DebuggerCastResultToId = true;
 
-  m_compiler->getLangOpts().CharIsSigned =
-      ArchSpec(m_compiler->getTargetOpts().Triple.c_str())
-          .CharIsSignedByDefault();
+  lang_opts.CharIsSigned = ArchSpec(m_compiler->getTargetOpts().Triple.c_str())
+                               .CharIsSignedByDefault();
 
   // Spell checking is a nice feature, but it ends up completing a lot of types
   // that we didn't strictly speaking need to complete. As a result, we spend a
   // long time parsing and importing debug information.
-  m_compiler->getLangOpts().SpellChecking = false;
+  lang_opts.SpellChecking = false;
 
-  if (process_sp && m_compiler->getLangOpts().ObjC) {
+  if (process_sp && lang_opts.ObjC) {
     if (process_sp->GetObjCLanguageRuntime()) {
       if (process_sp->GetObjCLanguageRuntime()->GetRuntimeVersion() ==
           ObjCLanguageRuntime::ObjCRuntimeVersions::eAppleObjC_V2)
-        m_compiler->getLangOpts().ObjCRuntime.set(ObjCRuntime::MacOSX,
-                                                  VersionTuple(10, 7));
+        lang_opts.ObjCRuntime.set(ObjCRuntime::MacOSX, VersionTuple(10, 7));
       else
-        m_compiler->getLangOpts().ObjCRuntime.set(ObjCRuntime::FragileMacOSX,
-                                                  VersionTuple(10, 7));
+        lang_opts.ObjCRuntime.set(ObjCRuntime::FragileMacOSX,
+                                  VersionTuple(10, 7));
 
       if (process_sp->GetObjCLanguageRuntime()->HasNewLiteralsAndIndexing())
-        m_compiler->getLangOpts().DebuggerObjCLiteral = true;
+        lang_opts.DebuggerObjCLiteral = true;
     }
   }
 
-  m_compiler->getLangOpts().ThreadsafeStatics = false;
-  m_compiler->getLangOpts().AccessControl =
-      false; // Debuggers get universal access
-  m_compiler->getLangOpts().DollarIdents =
-      true; // $ indicates a persistent variable name
+  lang_opts.ThreadsafeStatics = false;
+  lang_opts.AccessControl = false; // Debuggers get universal access
+  lang_opts.DollarIdents = true;   // $ indicates a persistent variable name
   // We enable all builtin functions beside the builtins from libc/libm (e.g.
   // 'fopen'). Those libc functions are already correctly handled by LLDB, and
   // additionally enabling them as expandable builtins is breaking Clang.
-  m_compiler->getLangOpts().NoBuiltin = true;
+  lang_opts.NoBuiltin = true;
 
   // Set CodeGen options
   m_compiler->getCodeGenOpts().EmitDeclMetadata = true;
@@ -483,14 +552,9 @@ ClangExpressionParser::ClangExpressionParser(ExecutionContextScope *exe_scope,
   m_compiler->getDiagnostics().setClient(new ClangDiagnosticManagerAdapter);
 
   // 7. Set up the source management objects inside the compiler
-
-  clang::FileSystemOptions file_system_options;
-  m_file_manager.reset(new clang::FileManager(file_system_options));
-
-  if (!m_compiler->hasSourceManager())
-    m_compiler->createSourceManager(*m_file_manager.get());
-
   m_compiler->createFileManager();
+  if (!m_compiler->hasSourceManager())
+    m_compiler->createSourceManager(m_compiler->getFileManager());
   m_compiler->createPreprocessor(TU_Complete);
 
   if (ClangModulesDeclVendor *decl_vendor =
@@ -798,7 +862,12 @@ bool ClangExpressionParser::Complete(CompletionRequest &request, unsigned line,
   return true;
 }
 
-unsigned ClangExpressionParser::Parse(DiagnosticManager &diagnostic_manager) {
+// Swift only
+// Extra arguments are only used in Swift. We should get rid of them
+// to avoid clashes when merging from upstream.
+// End Swift only
+unsigned ClangExpressionParser::Parse(DiagnosticManager &diagnostic_manager,
+                                      uint32_t first_line, uint32_t last_line) {
   return ParseInternal(diagnostic_manager);
 }
 
@@ -819,6 +888,23 @@ ClangExpressionParser::ParseInternal(DiagnosticManager &diagnostic_manager,
 
   clang::SourceManager &source_mgr = m_compiler->getSourceManager();
   bool created_main_file = false;
+  /* Swift only */
+  if (m_expr.GetOptions() &&
+      m_expr.GetOptions()->GetPoundLineFilePath() == NULL &&
+      m_compiler->getCodeGenOpts().getDebugInfo() ==
+          codegenoptions::FullDebugInfo) {
+    std::string temp_source_path;
+    if (ExpressionSourceCode::SaveExpressionTextToTempFile(
+            expr_text, *m_expr.GetOptions(), temp_source_path)) {
+      auto file = m_compiler->getFileManager().getFile(temp_source_path);
+      if (file) {
+        source_mgr.setMainFileID(
+            source_mgr.createFileID(file, SourceLocation(), SrcMgr::C_User));
+        created_main_file = true;
+      }
+    }
+  }
+  /* end swift only */
 
   // Clang wants to do completion on a real file known by Clang's file manager,
   // so we have to create one to make this work.
@@ -848,9 +934,9 @@ ClangExpressionParser::ParseInternal(DiagnosticManager &diagnostic_manager,
       if (file.Write(expr_text, bytes_written).Success()) {
         if (bytes_written == expr_text_len) {
           file.Close();
-          source_mgr.setMainFileID(
-              source_mgr.createFileID(m_file_manager->getFile(result_path),
-                                      SourceLocation(), SrcMgr::C_User));
+          source_mgr.setMainFileID(source_mgr.createFileID(
+              m_compiler->getFileManager().getFile(result_path),
+              SourceLocation(), SrcMgr::C_User));
           created_main_file = true;
         }
       }
@@ -1050,13 +1136,24 @@ lldb_private::Status ClangExpressionParser::PrepareForExecution(
 
   lldb_private::Status err;
 
-  std::unique_ptr<llvm::Module> llvm_module_ap(
+  std::unique_ptr<llvm::Module> llvm_module_up(
       m_code_generator->ReleaseModule());
 
-  if (!llvm_module_ap.get()) {
+  if (!llvm_module_up) {
     err.SetErrorToGenericError();
     err.SetErrorString("IR doesn't contain a module");
     return err;
+  }
+
+  for (llvm::Function &function : *llvm_module_up.get()) {
+    llvm::AttributeList attributes = function.getAttributes();
+    llvm::AttrBuilder attributes_to_remove;
+
+    attributes_to_remove.addAttribute("target-cpu");
+
+    function.setAttributes(attributes.removeAttributes(
+        function.getContext(), llvm::AttributeList::FunctionIndex,
+        attributes_to_remove));
   }
 
   ConstString function_name;
@@ -1064,7 +1161,7 @@ lldb_private::Status ClangExpressionParser::PrepareForExecution(
   if (execution_policy != eExecutionPolicyTopLevel) {
     // Find the actual name of the function (it's often mangled somehow)
 
-    if (!FindFunctionInModule(function_name, llvm_module_ap.get(),
+    if (!FindFunctionInModule(function_name, llvm_module_up.get(),
                               m_expr.FunctionName())) {
       err.SetErrorToGenericError();
       err.SetErrorStringWithFormat("Couldn't find %s() in the module",
@@ -1105,14 +1202,14 @@ lldb_private::Status ClangExpressionParser::PrepareForExecution(
                   "expression module '%s'",
                   __FUNCTION__, m_expr.FunctionName());
 
-    custom_passes.EarlyPasses->run(*llvm_module_ap);
+    custom_passes.EarlyPasses->run(*llvm_module_up);
   }
 
-  execution_unit_sp.reset(
-      new IRExecutionUnit(m_llvm_context, // handed off here
-                          llvm_module_ap, // handed off here
-                          function_name, exe_ctx.GetTargetSP(), sc,
-                          m_compiler->getTargetOpts().Features));
+  execution_unit_sp = std::make_shared<IRExecutionUnit>(
+      m_llvm_context, // handed off here
+      llvm_module_up, // handed off here
+      function_name, exe_ctx.GetTargetSP(), sc,
+      m_compiler->getTargetOpts().Features);
 
   ClangExpressionHelper *type_system_helper =
       dyn_cast<ClangExpressionHelper>(m_expr.GetTypeSystemHelper());

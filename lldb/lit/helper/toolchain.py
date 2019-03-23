@@ -24,7 +24,7 @@ def use_lldb_substitutions(config):
 
     build_script = os.path.dirname(__file__)
     build_script = os.path.join(build_script, 'build.py')
-    build_script_args = [build_script, 
+    build_script_args = [build_script,
                         '--compiler=any', # Default to best compiler
                         '--arch=' + str(config.lldb_bitness)]
     if config.lldb_lit_tools_dir:
@@ -44,6 +44,7 @@ def use_lldb_substitutions(config):
                   extra_args=dsargs,
                   unresolved='ignore'),
         'lldb-test',
+        'lldb-instr',
         ToolSubst('%build',
                   command="'" + sys.executable + "'",
                   extra_args=build_script_args)
@@ -97,6 +98,20 @@ def use_support_substitutions(config):
     elif platform.system() in ['OpenBSD', 'Linux']:
         flags = ['-pthread']
 
+    config.target_shared_library_suffix = '.dylib' if platform.system() in ['Darwin'] else '.so'
+    config.substitutions.append(('%target-shared-library-suffix', config.target_shared_library_suffix))
+
+    # Swift support
+    swift_sdk = [' -sdk ', sdk_path] if platform.system() in ['Darwin'] else []
+    tools = [
+        ToolSubst(
+            '%target-swiftc', command=config.swiftc, extra_args=swift_sdk),
+        ToolSubst(
+            '%target-swift-frontend',
+            command=config.swiftc[:-1],
+            extra_args=['-frontend'] + swift_sdk)
+    ]
+    llvm_config.add_tool_substitutions(tools)
 
     additional_tool_dirs=[]
     if config.lldb_lit_tools_dir:

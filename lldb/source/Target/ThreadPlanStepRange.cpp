@@ -1,9 +1,8 @@
 //===-- ThreadPlanStepRange.cpp ---------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -420,24 +419,24 @@ StateType ThreadPlanStepRange::GetPlanRunState() {
 }
 
 bool ThreadPlanStepRange::MischiefManaged() {
-  // If we have pushed some plans between ShouldStop & MischiefManaged, then
-  // we're not done...
-  // I do this check first because we might have stepped somewhere that will
-  // fool InRange into
-  // thinking it needs to step past the end of that line.  This happens, for
-  // instance, when stepping over inlined code that is in the middle of the
-  // current line.
-
-  if (!m_no_more_plans)
-    return false;
-
   bool done = true;
   if (!IsPlanComplete()) {
-    if (InRange()) {
+    // If we have pushed some plans between ShouldStop &
+    // MischiefManaged, then we're not done...  I do this check first
+    // because we might have stepped somewhere that will fool InRange
+    // into thinking it needs to step past the end of that line.  This
+    // happens, for instance, when stepping over inlined code that is
+    // in the middle of the current line.
+
+    if (!m_no_more_plans)
       done = false;
-    } else {
-      FrameComparison frame_order = CompareCurrentFrameToStartFrame();
-      done = (frame_order != eFrameCompareOlder) ? m_no_more_plans : true;
+    else {
+      if (InRange()) {
+        done = false;
+      } else {
+        FrameComparison frame_order = CompareCurrentFrameToStartFrame();
+        done = (frame_order != eFrameCompareOlder) ? m_no_more_plans : true;
+      }
     }
   }
 

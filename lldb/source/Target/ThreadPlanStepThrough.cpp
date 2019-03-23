@@ -1,9 +1,8 @@
 //===-- ThreadPlanStepThrough.cpp -------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -14,6 +13,7 @@
 #include "lldb/Target/ObjCLanguageRuntime.h"
 #include "lldb/Target/Process.h"
 #include "lldb/Target/RegisterContext.h"
+#include "lldb/Target/SwiftLanguageRuntime.h"
 #include "lldb/Target/Target.h"
 #include "lldb/Utility/Log.h"
 #include "lldb/Utility/Stream.h"
@@ -22,11 +22,10 @@ using namespace lldb;
 using namespace lldb_private;
 
 //----------------------------------------------------------------------
-// ThreadPlanStepThrough: If the current instruction is a trampoline, step
-// through it If it is the beginning of the prologue of a function, step
-// through that as well.
-// FIXME: At present only handles DYLD trampolines.
-//----------------------------------------------------------------------
+// ThreadPlanStepThrough: If the current instruction is a trampoline,
+// step through it. If it is the beginning of the prologue of a
+// function, step through that as well.
+// ----------------------------------------------------------------------
 
 ThreadPlanStepThrough::ThreadPlanStepThrough(Thread &thread,
                                              StackID &m_stack_id,
@@ -104,6 +103,13 @@ void ThreadPlanStepThrough::LookForPlanToStepThroughFromCurrentPC() {
     if (!m_sub_plan_sp.get() && cpp_runtime)
       m_sub_plan_sp =
           cpp_runtime->GetStepThroughTrampolinePlan(m_thread, m_stop_others);
+  }
+  if (!m_sub_plan_sp.get()) {
+    SwiftLanguageRuntime *swift_runtime =
+        m_thread.GetProcess()->GetSwiftLanguageRuntime();
+    if (swift_runtime)
+      m_sub_plan_sp =
+          swift_runtime->GetStepThroughTrampolinePlan(m_thread, m_stop_others);
   }
 
   Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_STEP));

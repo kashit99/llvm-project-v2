@@ -1,9 +1,8 @@
 //===-- CompilerType.cpp ----------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -13,6 +12,7 @@
 #include "lldb/Core/StreamFile.h"
 #include "lldb/Symbol/ClangASTContext.h"
 #include "lldb/Symbol/ClangExternalASTSourceCommon.h"
+#include "lldb/Symbol/SwiftASTContext.h"
 #include "lldb/Symbol/Type.h"
 #include "lldb/Target/ExecutionContext.h"
 #include "lldb/Target/Process.h"
@@ -25,6 +25,9 @@
 
 #include <iterator>
 #include <mutex>
+
+#include "swift/AST/Type.h"
+#include "swift/AST/Types.h"
 
 using namespace lldb;
 using namespace lldb_private;
@@ -41,6 +44,11 @@ CompilerType::CompilerType(clang::ASTContext *ast, clang::QualType qual_type)
     assert(m_type_system != nullptr);
 #endif
 }
+
+CompilerType::CompilerType(swift::Type qual_type)
+    : m_type(qual_type.getPointer()),
+      m_type_system(
+          SwiftASTContext::GetSwiftASTContext(&qual_type->getASTContext())) {}
 
 CompilerType::~CompilerType() {}
 
@@ -226,11 +234,11 @@ bool CompilerType::IsPolymorphicClass() const {
 }
 
 bool CompilerType::IsPossibleDynamicType(CompilerType *dynamic_pointee_type,
-                                         bool check_cplusplus,
-                                         bool check_objc) const {
+                                         bool check_cplusplus, bool check_objc,
+                                         bool check_swift) const {
   if (IsValid())
-    return m_type_system->IsPossibleDynamicType(m_type, dynamic_pointee_type,
-                                                check_cplusplus, check_objc);
+    return m_type_system->IsPossibleDynamicType(
+        m_type, dynamic_pointee_type, check_cplusplus, check_objc, check_swift);
   return false;
 }
 
@@ -312,7 +320,27 @@ ConstString CompilerType::GetTypeName() const {
   return ConstString("<invalid>");
 }
 
-ConstString CompilerType::GetDisplayTypeName() const { return GetTypeName(); }
+ConstString
+CompilerType::GetDisplayTypeName(const SymbolContext *sc) const {
+  if (IsValid()) {
+    return m_type_system->GetDisplayTypeName(m_type, sc);
+  }
+  return ConstString();
+}
+
+ConstString CompilerType::GetTypeSymbolName() const {
+  if (IsValid()) {
+    return m_type_system->GetTypeSymbolName(m_type);
+  }
+  return ConstString();
+}
+
+ConstString CompilerType::GetMangledTypeName() const {
+  if (IsValid()) {
+    return m_type_system->GetMangledTypeName(m_type);
+  }
+  return ConstString();
+}
 
 uint32_t CompilerType::GetTypeInfo(
     CompilerType *pointee_or_element_compiler_type) const {
@@ -375,6 +403,12 @@ CompilerType CompilerType::GetArrayType(uint64_t size) const {
 CompilerType CompilerType::GetCanonicalType() const {
   if (IsValid())
     return m_type_system->GetCanonicalType(m_type);
+  return CompilerType();
+}
+
+CompilerType CompilerType::GetInstanceType() const {
+  if (IsValid())
+    return m_type_system->GetInstanceType(m_type);
   return CompilerType();
 }
 
@@ -490,6 +524,20 @@ CompilerType CompilerType::GetTypedefedType() const {
     return CompilerType();
 }
 
+CompilerType CompilerType::GetUnboundType() const {
+  if (IsValid())
+    return m_type_system->GetUnboundType(m_type);
+  return CompilerType();
+}
+
+// CompilerType
+// CompilerType::RemoveFastQualifiers () const
+//{
+//    if (IsValid())
+//        return m_type_system->RemoveFastQualifiers(m_type);
+//    return CompilerType();
+//}
+
 //----------------------------------------------------------------------
 // Create related types using the current type's AST
 //----------------------------------------------------------------------
@@ -504,16 +552,27 @@ CompilerType::GetBasicTypeFromAST(lldb::BasicType basic_type) const {
 // Exploring the type
 //----------------------------------------------------------------------
 
-uint64_t CompilerType::GetBitSize(ExecutionContextScope *exe_scope) const {
-  if (IsValid()) {
+llvm::Optional<uint64_t>
+CompilerType::GetBitSize(ExecutionContextScope *exe_scope) const {
+  if (IsValid())
     return m_type_system->GetBitSize(m_type, exe_scope);
-  }
+  return {};
+}
+
+llvm::Optional<uint64_t>
+CompilerType::GetByteSize(ExecutionContextScope *exe_scope) const {
+  if (llvm::Optional<uint64_t> bit_size = GetBitSize(exe_scope))
+    return (*bit_size + 7) / 8;
+  return {};
+}
+
+uint64_t CompilerType::GetByteStride() const {
+  if (IsValid())
+    return m_type_system->GetByteStride(m_type);
   return 0;
 }
 
-uint64_t CompilerType::GetByteSize(ExecutionContextScope *exe_scope) const {
-  return (GetBitSize(exe_scope) + 7) / 8;
-}
+uint64_t CompilerType::GetAlignedBitSize() const { return 0; }
 
 size_t CompilerType::GetTypeBitAlign() const {
   if (IsValid())
@@ -551,7 +610,7 @@ lldb::BasicType CompilerType::GetBasicTypeEnumeration() const {
 
 void CompilerType::ForEachEnumerator(
     std::function<bool(const CompilerType &integer_type,
-                       const ConstString &name,
+                       ConstString name,
                        const llvm::APSInt &value)> const &callback) const {
   if (IsValid())
     return m_type_system->ForEachEnumerator(m_type, callback);
@@ -702,6 +761,19 @@ CompilerType CompilerType::GetTypeTemplateArgument(size_t idx) const {
   return CompilerType();
 }
 
+GenericKind CompilerType::GetGenericArgumentKind(size_t idx) const {
+  if (IsValid())
+    return m_type_system->GetGenericArgumentKind(m_type, idx);
+  return eNullGenericKindType;
+}
+
+CompilerType CompilerType::GetGenericArgumentType(size_t idx) const {
+  if (IsValid()) {
+    return m_type_system->GetGenericArgumentType(m_type, idx);
+  }
+  return CompilerType();
+}
+
 llvm::Optional<CompilerType::IntegralTemplateArgument>
 CompilerType::GetIntegralTemplateArgument(size_t idx) const {
   if (IsValid())
@@ -772,12 +844,13 @@ bool CompilerType::DumpTypeValue(Stream *s, lldb::Format format,
                                  lldb::offset_t byte_offset, size_t byte_size,
                                  uint32_t bitfield_bit_size,
                                  uint32_t bitfield_bit_offset,
-                                 ExecutionContextScope *exe_scope) {
+                                 ExecutionContextScope *exe_scope,
+                                 bool is_base_class) {
   if (!IsValid())
     return false;
-  return m_type_system->DumpTypeValue(m_type, s, format, data, byte_offset,
-                                      byte_size, bitfield_bit_size,
-                                      bitfield_bit_offset, exe_scope);
+  return m_type_system->DumpTypeValue(
+      m_type, s, format, data, byte_offset, byte_size, bitfield_bit_size,
+      bitfield_bit_offset, exe_scope, is_base_class);
 }
 
 void CompilerType::DumpSummary(ExecutionContext *exe_ctx, Stream *s,
@@ -800,6 +873,15 @@ void CompilerType::DumpTypeDescription(Stream *s) const {
   }
 }
 
+#ifndef NDEBUG
+LLVM_DUMP_METHOD void CompilerType::dump() const {
+  if (IsValid())
+    m_type_system->dump(m_type);
+  else
+    llvm::errs() << "<invalid>\n";
+}
+#endif
+
 bool CompilerType::GetValueAsScalar(const lldb_private::DataExtractor &data,
                                     lldb::offset_t data_byte_offset,
                                     size_t data_byte_size,
@@ -807,7 +889,7 @@ bool CompilerType::GetValueAsScalar(const lldb_private::DataExtractor &data,
   if (!IsValid())
     return false;
 
-  if (IsAggregateType()) {
+  if (0 == (GetTypeInfo() & eTypeHasValue)) {
     return false; // Aggregate types don't have scalar values
   } else {
     uint64_t count = 0;
@@ -816,7 +898,9 @@ bool CompilerType::GetValueAsScalar(const lldb_private::DataExtractor &data,
     if (encoding == lldb::eEncodingInvalid || count != 1)
       return false;
 
-    const uint64_t byte_size = GetByteSize(nullptr);
+    llvm::Optional<uint64_t> byte_size = GetByteSize(nullptr);
+    if (!byte_size)
+      return false;
     lldb::offset_t offset = data_byte_offset;
     switch (encoding) {
     case lldb::eEncodingInvalid:
@@ -824,15 +908,15 @@ bool CompilerType::GetValueAsScalar(const lldb_private::DataExtractor &data,
     case lldb::eEncodingVector:
       break;
     case lldb::eEncodingUint:
-      if (byte_size <= sizeof(unsigned long long)) {
-        uint64_t uval64 = data.GetMaxU64(&offset, byte_size);
-        if (byte_size <= sizeof(unsigned int)) {
+      if (*byte_size <= sizeof(unsigned long long)) {
+        uint64_t uval64 = data.GetMaxU64(&offset, *byte_size);
+        if (*byte_size <= sizeof(unsigned int)) {
           value = (unsigned int)uval64;
           return true;
-        } else if (byte_size <= sizeof(unsigned long)) {
+        } else if (*byte_size <= sizeof(unsigned long)) {
           value = (unsigned long)uval64;
           return true;
-        } else if (byte_size <= sizeof(unsigned long long)) {
+        } else if (*byte_size <= sizeof(unsigned long long)) {
           value = (unsigned long long)uval64;
           return true;
         } else
@@ -841,15 +925,15 @@ bool CompilerType::GetValueAsScalar(const lldb_private::DataExtractor &data,
       break;
 
     case lldb::eEncodingSint:
-      if (byte_size <= sizeof(long long)) {
-        int64_t sval64 = data.GetMaxS64(&offset, byte_size);
-        if (byte_size <= sizeof(int)) {
+      if (*byte_size <= sizeof(long long)) {
+        int64_t sval64 = data.GetMaxS64(&offset, *byte_size);
+        if (*byte_size <= sizeof(int)) {
           value = (int)sval64;
           return true;
-        } else if (byte_size <= sizeof(long)) {
+        } else if (*byte_size <= sizeof(long)) {
           value = (long)sval64;
           return true;
-        } else if (byte_size <= sizeof(long long)) {
+        } else if (*byte_size <= sizeof(long long)) {
           value = (long long)sval64;
           return true;
         } else
@@ -858,10 +942,10 @@ bool CompilerType::GetValueAsScalar(const lldb_private::DataExtractor &data,
       break;
 
     case lldb::eEncodingIEEE754:
-      if (byte_size <= sizeof(long double)) {
+      if (*byte_size <= sizeof(long double)) {
         uint32_t u32;
         uint64_t u64;
-        if (byte_size == sizeof(float)) {
+        if (*byte_size == sizeof(float)) {
           if (sizeof(float) == sizeof(uint32_t)) {
             u32 = data.GetU32(&offset);
             value = *((float *)&u32);
@@ -871,7 +955,7 @@ bool CompilerType::GetValueAsScalar(const lldb_private::DataExtractor &data,
             value = *((float *)&u64);
             return true;
           }
-        } else if (byte_size == sizeof(double)) {
+        } else if (*byte_size == sizeof(double)) {
           if (sizeof(double) == sizeof(uint32_t)) {
             u32 = data.GetU32(&offset);
             value = *((double *)&u32);
@@ -881,7 +965,7 @@ bool CompilerType::GetValueAsScalar(const lldb_private::DataExtractor &data,
             value = *((double *)&u64);
             return true;
           }
-        } else if (byte_size == sizeof(long double)) {
+        } else if (*byte_size == sizeof(long double)) {
           if (sizeof(long double) == sizeof(uint32_t)) {
             u32 = data.GetU32(&offset);
             value = *((long double *)&u32);
@@ -912,12 +996,15 @@ bool CompilerType::SetValueFromScalar(const Scalar &value, Stream &strm) {
     if (encoding == lldb::eEncodingInvalid || count != 1)
       return false;
 
-    const uint64_t bit_width = GetBitSize(nullptr);
-    // This function doesn't currently handle non-byte aligned assignments
-    if ((bit_width % 8) != 0)
+    llvm::Optional<uint64_t> bit_width = GetBitSize(nullptr);
+    if (!bit_width)
       return false;
 
-    const uint64_t byte_size = (bit_width + 7) / 8;
+    // This function doesn't currently handle non-byte aligned assignments
+    if ((*bit_width % 8) != 0)
+      return false;
+
+    const uint64_t byte_size = (*bit_width + 7) / 8;
     switch (encoding) {
     case lldb::eEncodingInvalid:
       break;
@@ -994,20 +1081,23 @@ bool CompilerType::ReadFromMemory(lldb_private::ExecutionContext *exe_ctx,
   if (!GetCompleteType())
     return false;
 
-  const uint64_t byte_size =
+  auto byte_size =
       GetByteSize(exe_ctx ? exe_ctx->GetBestExecutionContextScope() : NULL);
-  if (data.GetByteSize() < byte_size) {
-    lldb::DataBufferSP data_sp(new DataBufferHeap(byte_size, '\0'));
+  if (!byte_size)
+    return false;
+
+  if (data.GetByteSize() < *byte_size) {
+    lldb::DataBufferSP data_sp(new DataBufferHeap(*byte_size, '\0'));
     data.SetData(data_sp);
   }
 
-  uint8_t *dst = const_cast<uint8_t *>(data.PeekData(0, byte_size));
+  uint8_t *dst = const_cast<uint8_t *>(data.PeekData(0, *byte_size));
   if (dst != nullptr) {
     if (address_type == eAddressTypeHost) {
       if (addr == 0)
         return false;
       // The address is an address in this process, so just copy it
-      memcpy(dst, reinterpret_cast<uint8_t *>(addr), byte_size);
+      memcpy(dst, reinterpret_cast<uint8_t *>(addr), *byte_size);
       return true;
     } else {
       Process *process = nullptr;
@@ -1015,7 +1105,7 @@ bool CompilerType::ReadFromMemory(lldb_private::ExecutionContext *exe_ctx,
         process = exe_ctx->GetProcessPtr();
       if (process) {
         Status error;
-        return process->ReadMemory(addr, dst, byte_size, error) == byte_size;
+        return process->ReadMemory(addr, dst, *byte_size, error) == *byte_size;
       }
     }
   }
@@ -1036,13 +1126,15 @@ bool CompilerType::WriteToMemory(lldb_private::ExecutionContext *exe_ctx,
   if (!GetCompleteType())
     return false;
 
-  const uint64_t byte_size =
+  auto byte_size =
       GetByteSize(exe_ctx ? exe_ctx->GetBestExecutionContextScope() : NULL);
+  if (!byte_size)
+    return false;
 
-  if (byte_size > 0) {
+  if (*byte_size > 0) {
     if (address_type == eAddressTypeHost) {
       // The address is an address in this process, so just copy it
-      memcpy((void *)addr, new_value.GetData(), byte_size);
+      memcpy((void *)addr, new_value.GetData(), *byte_size);
       return true;
     } else {
       Process *process = nullptr;
@@ -1050,8 +1142,8 @@ bool CompilerType::WriteToMemory(lldb_private::ExecutionContext *exe_ctx,
         process = exe_ctx->GetProcessPtr();
       if (process) {
         Status error;
-        return process->WriteMemory(addr, new_value.GetData(), byte_size,
-                                    error) == byte_size;
+        return process->WriteMemory(addr, new_value.GetData(), *byte_size,
+                                    error) == *byte_size;
       }
     }
   }

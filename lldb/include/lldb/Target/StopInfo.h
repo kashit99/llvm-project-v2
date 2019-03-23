@@ -1,9 +1,8 @@
 //===-- StopInfo.h ----------------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -122,7 +121,8 @@ public:
   static lldb::StopInfoSP
   CreateStopReasonWithPlan(lldb::ThreadPlanSP &plan,
                            lldb::ValueObjectSP return_valobj_sp,
-                           lldb::ExpressionVariableSP expression_variable_sp);
+                           lldb::ExpressionVariableSP expression_variable_sp,
+                           bool return_is_swift_error_value = false);
 
   static lldb::StopInfoSP
   CreateStopReasonWithException(Thread &thread, const char *description);
@@ -130,7 +130,8 @@ public:
   static lldb::StopInfoSP CreateStopReasonWithExec(Thread &thread);
 
   static lldb::ValueObjectSP
-  GetReturnValueObject(lldb::StopInfoSP &stop_info_sp);
+  GetReturnValueObject(lldb::StopInfoSP &stop_info_sp,
+                       bool &is_swift_error_result);
 
   static lldb::ExpressionVariableSP
   GetExpressionVariable(lldb::StopInfoSP &stop_info_sp);

@@ -1,9 +1,8 @@
 //===-- Broadcaster.h -------------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -48,14 +47,14 @@ namespace lldb_private {
 //----------------------------------------------------------------------
 class BroadcastEventSpec {
 public:
-  BroadcastEventSpec(const ConstString &broadcaster_class, uint32_t event_bits)
+  BroadcastEventSpec(ConstString broadcaster_class, uint32_t event_bits)
       : m_broadcaster_class(broadcaster_class), m_event_bits(event_bits) {}
 
   BroadcastEventSpec(const BroadcastEventSpec &rhs);
 
   ~BroadcastEventSpec() = default;
 
-  const ConstString &GetBroadcasterClass() const { return m_broadcaster_class; }
+  ConstString GetBroadcasterClass() const { return m_broadcaster_class; }
 
   uint32_t GetEventBits() const { return m_event_bits; }
 
@@ -129,7 +128,7 @@ private:
 
   class BroadcasterClassMatches {
   public:
-    BroadcasterClassMatches(const ConstString &broadcaster_class)
+    BroadcasterClassMatches(ConstString broadcaster_class)
         : m_broadcaster_class(broadcaster_class) {}
 
     ~BroadcasterClassMatches() = default;
@@ -352,7 +351,7 @@ public:
   /// @return
   ///     The NULL terminated C string name of this Broadcaster.
   //------------------------------------------------------------------
-  const ConstString &GetBroadcasterName() { return m_broadcaster_name; }
+  ConstString GetBroadcasterName() { return m_broadcaster_name; }
 
   //------------------------------------------------------------------
   /// Get the event name(s) for one or more event bits.

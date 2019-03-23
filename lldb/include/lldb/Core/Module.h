@@ -1,9 +1,8 @@
 //===-- Module.h ------------------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -294,10 +293,10 @@ public:
   ///     nullptr otherwise.
   //------------------------------------------------------------------
   const Symbol *FindFirstSymbolWithNameAndType(
-      const ConstString &name,
+      ConstString name,
       lldb::SymbolType symbol_type = lldb::eSymbolTypeAny);
 
-  size_t FindSymbolsWithNameAndType(const ConstString &name,
+  size_t FindSymbolsWithNameAndType(ConstString name,
                                     lldb::SymbolType symbol_type,
                                     SymbolContextList &sc_list);
 
@@ -322,7 +321,7 @@ public:
   /// @return
   ///     The number of symbol contexts that were added to \a sc_list
   //------------------------------------------------------------------
-  size_t FindFunctionSymbols(const ConstString &name, uint32_t name_type_mask,
+  size_t FindFunctionSymbols(ConstString name, uint32_t name_type_mask,
                              SymbolContextList &sc_list);
 
   //------------------------------------------------------------------
@@ -379,7 +378,7 @@ public:
   /// @return
   ///     The number of matches added to \a sc_list.
   //------------------------------------------------------------------
-  size_t FindFunctions(const ConstString &name,
+  size_t FindFunctions(ConstString name,
                        const CompilerDeclContext *parent_decl_ctx,
                        lldb::FunctionNameType name_type_mask, bool symbols_ok,
                        bool inlines_ok, bool append,
@@ -458,7 +457,7 @@ public:
   /// @return
   ///     The number of matches added to \a variable_list.
   //------------------------------------------------------------------
-  size_t FindGlobalVariables(const ConstString &name,
+  size_t FindGlobalVariables(ConstString name,
                              const CompilerDeclContext *parent_decl_ctx,
                              size_t max_matches, VariableList &variable_list);
 
@@ -499,10 +498,6 @@ public:
   /// have to specify complete scoping on all expressions, but it also allows
   /// for exact matching when required.
   ///
-  /// @param[in] sc
-  ///     A symbol context that scopes where to extract a type list
-  ///     from.
-  ///
   /// @param[in] type_name
   ///     The name of the type we are looking for that is a fully
   ///     or partially qualified type name.
@@ -521,22 +516,17 @@ public:
   ///     The number of matches added to \a type_list.
   //------------------------------------------------------------------
   size_t
-  FindTypes(const SymbolContext &sc, const ConstString &type_name,
-            bool exact_match, size_t max_matches,
+  FindTypes(ConstString type_name, bool exact_match, size_t max_matches,
             llvm::DenseSet<lldb_private::SymbolFile *> &searched_symbol_files,
             TypeList &types);
 
   lldb::TypeSP FindFirstType(const SymbolContext &sc,
-                             const ConstString &type_name, bool exact_match);
+                             ConstString type_name, bool exact_match);
 
   //------------------------------------------------------------------
   /// Find types by name that are in a namespace. This function is used by the
   /// expression parser when searches need to happen in an exact namespace
   /// scope.
-  ///
-  /// @param[in] sc
-  ///     A symbol context that scopes where to extract a type list
-  ///     from.
   ///
   /// @param[in] type_name
   ///     The name of a type within a namespace that should not include
@@ -551,8 +541,7 @@ public:
   /// @return
   ///     The number of matches added to \a type_list.
   //------------------------------------------------------------------
-  size_t FindTypesInNamespace(const SymbolContext &sc,
-                              const ConstString &type_name,
+  size_t FindTypesInNamespace(ConstString type_name,
                               const CompilerDeclContext *parent_decl_ctx,
                               size_t max_matches, TypeList &type_list);
 
@@ -660,7 +649,7 @@ public:
 
   lldb::CompUnitSP GetCompileUnitAtIndex(size_t idx);
 
-  const ConstString &GetObjectName() const;
+  ConstString GetObjectName() const;
 
   uint64_t GetObjectOffset() const { return m_object_offset; }
 
@@ -913,11 +902,28 @@ public:
       lldb::SymbolContextItem resolve_scope, SymbolContextList &sc_list);
 
   void SetFileSpecAndObjectName(const FileSpec &file,
-                                const ConstString &object_name);
+                                ConstString object_name);
 
   bool GetIsDynamicLinkEditor();
 
+  // This function must be called immediately after construction of the Module
+  // in the cases where the AST is to be shared.
+  void SetTypeSystemForLanguage(lldb::LanguageType language,
+                                const lldb::TypeSystemSP &type_system_sp);
+
+#ifdef __clang_analyzer__
+  // See GetScratchTypeSystemForLanguage() in Target.h for what this block does
+  TypeSystem *GetTypeSystemForLanguage(lldb::LanguageType language)
+      __attribute__((always_inline)) {
+    TypeSystem *ret = GetTypeSystemForLanguageImpl(language);
+    return ret ? ret : nullptr;
+  }
+
+  TypeSystem *GetTypeSystemForLanguageImpl(lldb::LanguageType language);
+#else
   TypeSystem *GetTypeSystemForLanguage(lldb::LanguageType language);
+  TypeSystem *GetTypeSystemForLanguageNoCreate(lldb::LanguageType language);
+#endif
 
   // Special error functions that can do printf style formatting that will
   // prepend the message with something appropriate for this module (like the
@@ -1002,6 +1008,12 @@ public:
   bool RemapSourceFile(llvm::StringRef path, std::string &new_path) const;
   bool RemapSourceFile(const char *, std::string &) const = delete;
 
+  void ClearModuleDependentCaches();
+
+  void SetTypeSystemMap(const TypeSystemMap &type_system_map) {
+    m_type_system_map = type_system_map;
+  }
+
   //----------------------------------------------------------------------
   /// @class LookupInfo Module.h "lldb/Core/Module.h"
   /// A class that encapsulates name lookup information.
@@ -1032,16 +1044,16 @@ public:
           m_name_type_mask(lldb::eFunctionNameTypeNone),
           m_match_name_after_lookup(false) {}
 
-    LookupInfo(const ConstString &name, lldb::FunctionNameType name_type_mask,
+    LookupInfo(ConstString name, lldb::FunctionNameType name_type_mask,
                lldb::LanguageType language);
 
-    const ConstString &GetName() const { return m_name; }
+    ConstString GetName() const { return m_name; }
 
-    void SetName(const ConstString &name) { m_name = name; }
+    void SetName(ConstString name) { m_name = name; }
 
-    const ConstString &GetLookupName() const { return m_lookup_name; }
+    ConstString GetLookupName() const { return m_lookup_name; }
 
-    void SetLookupName(const ConstString &name) { m_lookup_name = name; }
+    void SetLookupName(ConstString name) { m_lookup_name = name; }
 
     lldb::FunctionNameType GetNameTypeMask() const { return m_name_type_mask; }
 
@@ -1102,7 +1114,7 @@ protected:
                                    ///parser for this module as it may or may
                                    ///not be shared with the SymbolFile
   lldb::SymbolVendorUP
-      m_symfile_ap; ///< A pointer to the symbol vendor for this module.
+      m_symfile_up; ///< A pointer to the symbol vendor for this module.
   std::vector<lldb::SymbolVendorUP>
       m_old_symfiles; ///< If anyone calls Module::SetSymbolFileFileSpec() and
                       ///changes the symbol file,
@@ -1114,9 +1126,9 @@ protected:
                                      ///when you have debug info for a module
                                      ///that doesn't match where the sources
                                      ///currently are
-  lldb::SectionListUP m_sections_ap; ///< Unified section list for module that
-                                     ///is used by the ObjectFile and and
-                                     ///ObjectFile instances for the debug info
+  lldb::SectionListUP m_sections_up; ///< Unified section list for module that
+                                     /// is used by the ObjectFile and and
+                                     /// ObjectFile instances for the debug info
 
   std::atomic<bool> m_did_load_objfile{false};
   std::atomic<bool> m_did_load_symbol_vendor{false};
@@ -1182,9 +1194,8 @@ private:
   Module(); // Only used internally by CreateJITModule ()
 
   size_t FindTypes_Impl(
-      const SymbolContext &sc, const ConstString &name,
-      const CompilerDeclContext *parent_decl_ctx, bool append,
-      size_t max_matches,
+      ConstString name, const CompilerDeclContext *parent_decl_ctx,
+      bool append, size_t max_matches,
       llvm::DenseSet<lldb_private::SymbolFile *> &searched_symbol_files,
       TypeMap &types);
 

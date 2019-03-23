@@ -1,9 +1,8 @@
 //===-- main.cpp ------------------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -127,12 +126,12 @@ int dotest()
     // Actions are triggered immediately after the thread is spawned
     unsigned num_breakpoint_threads = 1;
     unsigned num_watchpoint_threads = 0;
-    unsigned num_signal_threads = 1;
+    unsigned num_signal_threads = 0;
     unsigned num_crash_threads = 0;
 
     // Actions below are triggered after a 1-second delay
     unsigned num_delay_breakpoint_threads = 0;
-    unsigned num_delay_watchpoint_threads = 0;
+    unsigned num_delay_watchpoint_threads = 1;
     unsigned num_delay_signal_threads = 0;
     unsigned num_delay_crash_threads = 0;
 

@@ -1,9 +1,8 @@
 //===-- IRExecutionUnit.h ---------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -12,6 +11,7 @@
 
 #include <atomic>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -63,8 +63,8 @@ public:
   //------------------------------------------------------------------
   /// Constructor
   //------------------------------------------------------------------
-  IRExecutionUnit(std::unique_ptr<llvm::LLVMContext> &context_ap,
-                  std::unique_ptr<llvm::Module> &module_ap, ConstString &name,
+  IRExecutionUnit(std::unique_ptr<llvm::LLVMContext> &context_up,
+                  std::unique_ptr<llvm::Module> &module_up, ConstString &name,
                   const lldb::TargetSP &target_sp, const SymbolContext &sym_ctx,
                   std::vector<std::string> &cpu_features);
 
@@ -112,7 +112,17 @@ public:
 
   lldb::ModuleSP GetJITModule();
 
-  lldb::addr_t FindSymbol(const ConstString &name);
+  lldb::ModuleSP CreateJITModule(const char *name,
+                                 const FileSpec *limit_file_ptr = NULL,
+                                 uint32_t limit_start_line = 0,
+                                 uint32_t limit_end_line = 0);
+
+  //------------------------------------------------------------------
+  /// Accessor for the mutex that guards LLVM::getGlobalContext()
+  //------------------------------------------------------------------
+  static std::recursive_mutex &GetLLVMGlobalContextMutex();
+
+  lldb::addr_t FindSymbol(ConstString name);
 
   void GetStaticInitializers(std::vector<lldb::addr_t> &static_initializers);
 
@@ -241,7 +251,7 @@ private:
   struct SearchSpec;
 
   void CollectCandidateCNames(std::vector<SearchSpec> &C_specs,
-                              const ConstString &name);
+                              ConstString name);
 
   void CollectCandidateCPlusPlusNames(std::vector<SearchSpec> &CPP_specs,
                                       const std::vector<SearchSpec> &C_specs,
@@ -259,7 +269,7 @@ private:
   lldb::addr_t FindInUserDefinedSymbols(const std::vector<SearchSpec> &specs,
                                         const lldb_private::SymbolContext &sc);
 
-  void ReportSymbolLookupError(const ConstString &name);
+  void ReportSymbolLookupError(ConstString name);
 
   class MemoryManager : public llvm::SectionMemoryManager {
   public:
@@ -331,19 +341,23 @@ private:
     void registerEHFrames(uint8_t *Addr, uint64_t LoadAddr,
                           size_t Size) override {}
 
+    virtual void deregisterEHFrames() override {
+      return;
+    }
+
     uint64_t getSymbolAddress(const std::string &Name) override;
 
     void *getPointerToNamedFunction(const std::string &Name,
                                     bool AbortOnFailure = true) override;
 
   private:
-    std::unique_ptr<SectionMemoryManager> m_default_mm_ap; ///< The memory
-                                                           ///allocator to use
-                                                           ///in actually
-                                                           ///creating space.
-                                                           ///All calls are
-                                                           ///passed through to
-                                                           ///it.
+    std::unique_ptr<SectionMemoryManager> m_default_mm_up; ///< The memory
+                                                           /// allocator to use
+                                                           /// in actually
+                                                           /// creating space.
+                                                           /// All calls are
+                                                           /// passed through to
+                                                           /// it.
     IRExecutionUnit &m_parent; ///< The execution unit this is a proxy for.
   };
 
@@ -393,11 +407,12 @@ private:
   typedef std::vector<AllocationRecord> RecordVector;
   RecordVector m_records;
 
-  std::unique_ptr<llvm::LLVMContext> m_context_ap;
-  std::unique_ptr<llvm::ExecutionEngine> m_execution_engine_ap;
-  std::unique_ptr<llvm::ObjectCache> m_object_cache_ap;
+  std::unique_ptr<llvm::LLVMContext> m_context_up;
+  std::unique_ptr<llvm::ExecutionEngine> m_execution_engine_up;
+  std::unique_ptr<llvm::ObjectCache> m_object_cache_up;
   std::unique_ptr<llvm::Module>
-      m_module_ap;        ///< Holder for the module until it's been handed off
+      m_module_up;        ///< Holder for the module until it's been handed off
+  lldb::ModuleWP m_jit_module_wp;
   llvm::Module *m_module; ///< Owned by the execution engine
   std::vector<std::string> m_cpu_features;
   std::vector<JittedFunction> m_jitted_functions; ///< A vector of all functions

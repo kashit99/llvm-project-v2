@@ -1,9 +1,8 @@
 //===-- ClangExpressionVariable.h -------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -63,12 +62,12 @@ public:
                           lldb::ByteOrder byte_order, uint32_t addr_byte_size);
 
   ClangExpressionVariable(ExecutionContextScope *exe_scope, Value &value,
-                          const ConstString &name, uint16_t flags = EVNone);
+                          ConstString name, uint16_t flags = EVNone);
 
   ClangExpressionVariable(const lldb::ValueObjectSP &valobj_sp);
 
   ClangExpressionVariable(ExecutionContextScope *exe_scope,
-                          const ConstString &name,
+                          ConstString name,
                           const TypeFromUser &user_type,
                           lldb::ByteOrder byte_order, uint32_t addr_byte_size);
 

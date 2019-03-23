@@ -1,9 +1,8 @@
 //===-- TypeCategory.cpp -----------------------------------------*- C++-*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -35,6 +34,12 @@ static bool IsApplicable(lldb::LanguageType category_lang,
   // Unless we know better, allow only exact equality.
   default:
     return category_lang == valobj_lang;
+
+  // Swift knows about itself, and about ObjC++ bridgings
+  case eLanguageTypeSwift:
+    return valobj_lang == eLanguageTypeSwift ||
+           valobj_lang == eLanguageTypeObjC ||
+           valobj_lang == eLanguageTypeObjC_plus_plus;
 
   // the C family, we consider it as one
   case eLanguageTypeC89:

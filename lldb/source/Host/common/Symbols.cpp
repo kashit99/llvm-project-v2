@@ -1,9 +1,8 @@
 //===-- Symbols.cpp ---------------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -265,7 +264,7 @@ FileSpec Symbols::LocateExecutableSymbolFile(const ModuleSpec &module_spec) {
     // We keep the unresolved pathname if it fails.
     FileSystem::Instance().ResolveSymbolicLink(module_file_spec, module_file_spec);
 
-    const ConstString &file_dir = module_file_spec.GetDirectory();
+    ConstString file_dir = module_file_spec.GetDirectory();
     {
       FileSpec file_spec(file_dir.AsCString("."));
       FileSystem::Instance().Resolve(file_spec);

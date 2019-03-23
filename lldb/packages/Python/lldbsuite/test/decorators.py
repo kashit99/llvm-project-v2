@@ -27,6 +27,7 @@ from lldbsuite.test_event.event_builder import EventBuilder
 from lldbsuite.support import funcutils
 from lldbsuite.test import lldbplatform
 from lldbsuite.test import lldbplatformutil
+import swift
 
 
 class DecorateMode:
@@ -162,7 +163,7 @@ def _decorateTest(mode,
                   debug_info=None,
                   swig_version=None, py_version=None,
                   macos_version=None,
-                  remote=None):
+                  remote=None, dwarf_version=None):
     def fn(self):
         skip_for_os = _match_decorator_property(
             lldbplatform.translate(oslist), self.getPlatform())
@@ -197,6 +198,11 @@ def _decorateTest(mode,
                 macos_version[0],
                 macos_version[1],
                 platform.mac_ver()[0])))
+        skip_for_dwarf_version = (
+             dwarf_version is None) or (
+                 (self.getDebugInfo() is 'dwarf') and
+                 _check_expected_version(
+                     dwarf_version[0], dwarf_version[1], self.getDwarfVersion()))
 
         # For the test to be skipped, all specified (e.g. not None) parameters must be True.
         # An unspecified parameter means "any", so those are marked skip by default.  And we skip
@@ -210,7 +216,8 @@ def _decorateTest(mode,
                       (swig_version, skip_for_swig_version, "swig version"),
                       (py_version, skip_for_py_version, "python version"),
                       (macos_version, skip_for_macos_version, "macOS version"),
-                      (remote, skip_for_remote, "platform locality (remote/local)")]
+                      (remote, skip_for_remote, "platform locality (remote/local)"),
+                      (dwarf_version, skip_for_dwarf_version, "dwarf version")]
         reasons = []
         final_skip_result = True
         for this_condition in conditions:
@@ -254,7 +261,7 @@ def expectedFailureAll(bugnumber=None,
                        debug_info=None,
                        swig_version=None, py_version=None,
                        macos_version=None,
-                       remote=None):
+                       remote=None, dwarf_version=None):
     return _decorateTest(DecorateMode.Xfail,
                          bugnumber=bugnumber,
                          oslist=oslist, hostoslist=hostoslist,
@@ -263,7 +270,7 @@ def expectedFailureAll(bugnumber=None,
                          debug_info=debug_info,
                          swig_version=swig_version, py_version=py_version,
                          macos_version=None,
-                         remote=remote)
+                         remote=remote,dwarf_version=dwarf_version)
 
 
 # provide a function to skip on defined oslist, compiler version, and archs
@@ -279,7 +286,7 @@ def skipIf(bugnumber=None,
            debug_info=None,
            swig_version=None, py_version=None,
            macos_version=None,
-           remote=None):
+           remote=None, dwarf_version=None):
     return _decorateTest(DecorateMode.Skip,
                          bugnumber=bugnumber,
                          oslist=oslist, hostoslist=hostoslist,
@@ -288,7 +295,7 @@ def skipIf(bugnumber=None,
                          debug_info=debug_info,
                          swig_version=swig_version, py_version=py_version,
                          macos_version=macos_version,
-                         remote=remote)
+                         remote=remote, dwarf_version=dwarf_version)
 
 
 def _skip_for_android(reason, api_levels, archs):
@@ -357,7 +364,7 @@ def apple_simulator_test(platform):
             return "simulator tests are run only on darwin hosts"
         try:
             DEVNULL = open(os.devnull, 'w')
-            output = subprocess.check_output(["xcodebuild", "-showsdks"], stderr=DEVNULL)
+            output = subprocess.check_output(["xcodebuild", "-showsdks"], stderr=DEVNULL).decode("utf-8")
             if re.search('%ssimulator' % platform, output):
                 return None
             else:
@@ -595,6 +602,22 @@ def skipUnlessDarwin(func):
     return skipUnlessPlatform(lldbplatformutil.getDarwinOSTriples())(func)
 
 
+def swiftTest(func):
+    """Decorate the item as a Swift test (Darwin/Linux only, no i386)."""
+    def is_not_swift_compatible(self):
+        if self.getDebugInfo() == "gmodules":
+            return "skipping (gmodules only makes sense for clang tests)"
+
+        if "i386" == self.getArchitecture():
+            return "skipping Swift test because i386 is not a supported architecture"
+        elif not(any(x in sys.platform for x in ['darwin', 'linux'])):
+            return "skipping Swift test because only Darwin and Linux are supported OSes"
+        else:
+            # This configuration is Swift-compatible
+            return None
+    return skipTestIfFn(is_not_swift_compatible)(func)
+
+
 def skipIfHostIncompatibleWithRemote(func):
     """Decorate the item to skip tests if binaries built on this host are incompatible."""
 
@@ -772,6 +795,38 @@ def skipUnlessAddressSanitizer(func):
         return None
     return skipTestIfFn(is_compiler_with_address_sanitizer)(func)
 
+def skipUnlessSwiftAddressSanitizer(func):
+    """Decorate the item to skip test unless Swift -sanitize=address is supported."""
+
+    def is_swift_compiler_with_address_sanitizer(self):
+        swiftc = swift.getSwiftCompiler()
+        f = tempfile.NamedTemporaryFile()
+        cmd = "echo 'print(1)' | %s -o %s -" % (swiftc, f.name)
+        if os.popen(cmd).close() is not None:
+            return None  # The compiler cannot compile at all, let's *not* skip the test
+        cmd = "echo 'print(1)' | %s -sanitize=address -o %s -" % (swiftc, f.name)
+        if os.popen(cmd).close() is not None:
+            return "Compiler cannot compile with -sanitize=address"
+        return None
+    return skipTestIfFn(is_swift_compiler_with_address_sanitizer)(func)
+
+
+def skipUnlessSwiftThreadSanitizer(func):
+    """Decorate the item to skip test unless Swift -sanitize=thread is supported."""
+
+    def is_swift_compiler_with_thread_sanitizer(self):
+        swiftc = swift.getSwiftCompiler()
+        f = tempfile.NamedTemporaryFile()
+        cmd = "echo 'print(1)' | %s -o %s -" % (swiftc, f.name)
+        if os.popen(cmd).close() is not None:
+            return None  # The compiler cannot compile at all, let's *not* skip the test
+        cmd = "echo 'print(1)' | %s -sanitize=thread -o %s -" % (swiftc, f.name)
+        if os.popen(cmd).close() is not None:
+            return "Compiler cannot compile with -sanitize=thread"
+        return None
+    return skipTestIfFn(is_swift_compiler_with_thread_sanitizer)(func)
+
+
 def skipIfXmlSupportMissing(func):
     config = lldb.SBDebugger.GetBuildConfiguration()
     xml = config.GetValueForKey("xml")
@@ -797,7 +852,7 @@ def skipUnlessFeature(feature):
         if platform.system() == 'Darwin':
             try:
                 DEVNULL = open(os.devnull, 'w')
-                output = subprocess.check_output(["/usr/sbin/sysctl", feature], stderr=DEVNULL)
+                output = subprocess.check_output(["/usr/sbin/sysctl", feature], stderr=DEVNULL).decode("utf-8")
                 # If 'feature: 1' was output, then this feature is available and
                 # the test should not be skipped.
                 if re.match('%s: 1\s*' % feature, output):

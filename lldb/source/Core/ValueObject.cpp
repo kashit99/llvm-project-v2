@@ -1,9 +1,8 @@
 //===-- ValueObject.cpp -----------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -29,6 +28,7 @@
 #include "lldb/Symbol/ClangASTContext.h"
 #include "lldb/Symbol/CompileUnit.h"
 #include "lldb/Symbol/CompilerType.h"
+#include "lldb/Symbol/SwiftASTContext.h"
 #include "lldb/Symbol/Declaration.h"
 #include "lldb/Symbol/SymbolContext.h"
 #include "lldb/Symbol/Type.h"
@@ -78,6 +78,12 @@ using namespace lldb_utility;
 
 static user_id_t g_value_obj_uid = 0;
 
+static const ExecutionContextRef *GetSwiftExeCtx(ValueObject &valobj) {
+  return (valobj.GetPreferredDisplayLanguage() == eLanguageTypeSwift)
+             ? &valobj.GetExecutionContextRef()
+             : nullptr;
+}
+
 //----------------------------------------------------------------------
 // ValueObject constructor
 //----------------------------------------------------------------------
@@ -103,6 +109,8 @@ ValueObject::ValueObject(ValueObject &parent)
       m_did_calculate_complete_objc_class_type(false),
       m_is_synthetic_children_generated(
           parent.m_is_synthetic_children_generated) {
+  m_data.SetByteOrder(parent.GetDataExtractor().GetByteOrder());
+  m_data.SetAddressByteSize(parent.GetDataExtractor().GetAddressByteSize());
   m_manager->ManageObject(this);
 }
 
@@ -131,6 +139,14 @@ ValueObject::ValueObject(ExecutionContextScope *exe_scope,
       m_is_getting_summary(false),
       m_did_calculate_complete_objc_class_type(false),
       m_is_synthetic_children_generated(false) {
+  if (exe_scope) {
+    TargetSP target_sp(exe_scope->CalculateTarget());
+    if (target_sp) {
+      const ArchSpec &arch = target_sp->GetArchitecture();
+      m_data.SetByteOrder(arch.GetByteOrder());
+      m_data.SetAddressByteSize(arch.GetAddressByteSize());
+    }
+  }
   m_manager = new ValueObjectManager();
   m_manager->ManageObject(this);
 }
@@ -144,6 +160,15 @@ bool ValueObject::UpdateValueIfNeeded(bool update_format) {
 
   bool did_change_formats = false;
 
+  // Swift: Check whether the dynamic type system became stale.
+  if (m_dynamic_value) {
+    auto *dyn_val = static_cast<ValueObjectDynamicValue *>(m_dynamic_value);
+    if (dyn_val->DynamicValueTypeInfoNeedsUpdate()) {
+      dyn_val->SetNeedsUpdate();
+      SetNeedsUpdate();
+    }
+  }
+  
   if (update_format)
     did_change_formats = UpdateFormatsIfNeeded();
 
@@ -241,7 +266,8 @@ bool ValueObject::UpdateFormatsIfNeeded() {
 
   bool any_change = false;
 
-  if ((m_last_format_mgr_revision != DataVisualization::GetCurrentRevision())) {
+  if (GetCompilerType().IsValid() &&
+      (m_last_format_mgr_revision != DataVisualization::GetCurrentRevision())) {
     m_last_format_mgr_revision = DataVisualization::GetCurrentRevision();
     any_change = true;
 
@@ -285,6 +311,9 @@ CompilerType ValueObject::MaybeCalculateCompleteType() {
       return compiler_type;
   }
 
+  if (!compiler_type.IsValid())
+    return compiler_type;
+
   CompilerType class_type;
   bool is_pointer_type = false;
 
@@ -295,6 +324,13 @@ CompilerType ValueObject::MaybeCalculateCompleteType() {
   } else {
     return compiler_type;
   }
+
+  auto make_pointer_if_needed = [](CompilerType compiler_type,
+                                   bool is_pointer_type) -> CompilerType {
+    if (is_pointer_type)
+      return compiler_type.GetPointerType();
+    return compiler_type;
+  };
 
   m_did_calculate_complete_objc_class_type = true;
 
@@ -318,15 +354,46 @@ CompilerType ValueObject::MaybeCalculateCompleteType() {
                 complete_objc_class_type_sp->GetFullCompilerType());
 
             if (complete_class.GetCompleteType()) {
-              if (is_pointer_type) {
-                m_override_type = complete_class.GetPointerType();
-              } else {
-                m_override_type = complete_class;
+              m_override_type =
+                  make_pointer_if_needed(complete_class, is_pointer_type);
+              if (m_override_type.IsValid())
+                return m_override_type;
+            }
+          }
+
+          std::vector<clang::NamedDecl *> decls;
+
+          // try the modules
+          if (TargetSP target_sp = GetTargetSP()) {
+            if (auto clang_modules_decl_vendor =
+                    target_sp->GetClangModulesDeclVendor()) {
+              if (clang_modules_decl_vendor->FindDecls(class_name, false,
+                                                       UINT32_MAX, decls) > 0 &&
+                  decls.size() > 0) {
+                CompilerType module_type =
+                    ClangASTContext::GetTypeForDecl(decls.front());
+                m_override_type =
+                    make_pointer_if_needed(module_type, is_pointer_type);
               }
 
               if (m_override_type.IsValid())
                 return m_override_type;
             }
+          }
+
+          // then try the runtime
+          if (auto runtime_vendor = objc_language_runtime->GetDeclVendor()) {
+            if (runtime_vendor->FindDecls(class_name, false, UINT32_MAX,
+                                          decls) > 0 &&
+                decls.size() > 0) {
+              CompilerType runtime_type =
+                  ClangASTContext::GetTypeForDecl(decls.front());
+              m_override_type =
+                  make_pointer_if_needed(runtime_type, is_pointer_type);
+            }
+
+            if (m_override_type.IsValid())
+              return m_override_type;
           }
         }
       }
@@ -351,7 +418,7 @@ const Status &ValueObject::GetError() {
   return m_error;
 }
 
-const ConstString &ValueObject::GetName() const { return m_name; }
+ConstString ValueObject::GetName() const { return m_name; }
 
 const char *ValueObject::GetLocationAsCString() {
   return GetLocationAsCStringImpl(m_value, m_data);
@@ -544,13 +611,13 @@ lldb::ValueObjectSP ValueObject::GetChildAtNamePath(
   return root;
 }
 
-size_t ValueObject::GetIndexOfChildWithName(const ConstString &name) {
+size_t ValueObject::GetIndexOfChildWithName(ConstString name) {
   bool omit_empty_base_classes = true;
   return GetCompilerType().GetIndexOfChildWithName(name.GetCString(),
                                                    omit_empty_base_classes);
 }
 
-ValueObjectSP ValueObject::GetChildMemberWithName(const ConstString &name,
+ValueObjectSP ValueObject::GetChildMemberWithName(ConstString name,
                                                   bool can_create) {
   // when getting a child by name, it could be buried inside some base classes
   // (which really aren't part of the expression path), so we need a vector of
@@ -563,6 +630,10 @@ ValueObjectSP ValueObject::GetChildMemberWithName(const ConstString &name,
 
   std::vector<uint32_t> child_indexes;
   bool omit_empty_base_classes = true;
+
+  if (!GetCompilerType().IsValid())
+    return ValueObjectSP();
+
   const size_t num_child_indexes =
       GetCompilerType().GetIndexOfChildMemberWithName(
           name.GetCString(), omit_empty_base_classes, child_indexes);
@@ -618,7 +689,7 @@ void ValueObject::SetNumChildren(size_t num_children) {
   m_children.SetChildrenCount(num_children);
 }
 
-void ValueObject::SetName(const ConstString &name) { m_name = name; }
+void ValueObject::SetName(ConstString name) { m_name = name; }
 
 ValueObject *ValueObject::CreateChildAtIndex(size_t idx,
                                              bool synthetic_array_member,
@@ -756,10 +827,13 @@ size_t ValueObject::GetPointeeData(DataExtractor &data, uint32_t item_idx,
 
   ExecutionContext exe_ctx(GetExecutionContextRef());
 
-  const uint64_t item_type_size = pointee_or_element_compiler_type.GetByteSize(
-      exe_ctx.GetBestExecutionContextScope());
-  const uint64_t bytes = item_count * item_type_size;
-  const uint64_t offset = item_idx * item_type_size;
+  llvm::Optional<uint64_t> item_type_size =
+      pointee_or_element_compiler_type.GetByteSize(
+          exe_ctx.GetBestExecutionContextScope());
+  if (!item_type_size)
+    return 0;
+  const uint64_t bytes = item_count * *item_type_size;
+  const uint64_t offset = item_idx * *item_type_size;
 
   if (item_idx == 0 && item_count == 1) // simply a deref
   {
@@ -822,10 +896,10 @@ size_t ValueObject::GetPointeeData(DataExtractor &data, uint32_t item_idx,
       }
     } break;
     case eAddressTypeHost: {
-      const uint64_t max_bytes =
+      auto max_bytes =
           GetCompilerType().GetByteSize(exe_ctx.GetBestExecutionContextScope());
-      if (max_bytes > offset) {
-        size_t bytes_read = std::min<uint64_t>(max_bytes - offset, bytes);
+      if (max_bytes && *max_bytes > offset) {
+        size_t bytes_read = std::min<uint64_t>(*max_bytes - offset, bytes);
         addr = m_value.GetScalar().ULongLong(LLDB_INVALID_ADDRESS);
         if (addr == 0 || addr == LLDB_INVALID_ADDRESS)
           break;
@@ -926,7 +1000,7 @@ bool ValueObject::SetData(DataExtractor &data, Status &error) {
 
 static bool CopyStringDataToBufferSP(const StreamString &source,
                                      lldb::DataBufferSP &destination) {
-  destination.reset(new DataBufferHeap(source.GetSize() + 1, 0));
+  destination = std::make_shared<DataBufferHeap>(source.GetSize() + 1, 0);
   memcpy(destination->GetBytes(), source.GetString().data(), source.GetSize());
   return true;
 }
@@ -989,7 +1063,7 @@ ValueObject::ReadPointedString(lldb::DataBufferSP &buffer_sp, Status &error,
           CopyStringDataToBufferSP(s, buffer_sp);
           return {0, was_capped};
         }
-        buffer_sp.reset(new DataBufferHeap(cstr_len, 0));
+        buffer_sp = std::make_shared<DataBufferHeap>(cstr_len, 0);
         memcpy(buffer_sp->GetBytes(), cstr, cstr_len);
         return {cstr_len, was_capped};
       } else {
@@ -1166,7 +1240,7 @@ const char *ValueObject::GetValueAsCString() {
     if (my_format != m_last_format || m_value_str.empty()) {
       m_last_format = my_format;
       if (!format_sp)
-        format_sp.reset(new TypeFormatImpl_Format(my_format));
+        format_sp = std::make_shared<TypeFormatImpl_Format>(my_format);
       if (GetValueAsCString(*format_sp.get(), m_value_str)) {
         if (!m_value_did_change && m_old_value_valid) {
           // The value was gotten successfully, so we consider the value as
@@ -1641,6 +1715,10 @@ bool ValueObject::GetDeclaration(Declaration &decl) {
   return false;
 }
 
+ConstString ValueObject::GetMangledTypeName() {
+  return GetCompilerType().GetMangledTypeName();
+}
+
 ConstString ValueObject::GetTypeName() {
   return GetCompilerType().GetConstTypeName();
 }
@@ -1652,15 +1730,38 @@ ConstString ValueObject::GetQualifiedTypeName() {
 }
 
 LanguageType ValueObject::GetObjectRuntimeLanguage() {
-  return GetCompilerType().GetMinimumLanguage();
+  if (GetCompilerType().IsValid())
+    return GetCompilerType().GetMinimumLanguage();
+  return lldb::eLanguageTypeUnknown;
 }
 
-void ValueObject::AddSyntheticChild(const ConstString &key,
+SwiftASTContext *ValueObject::GetSwiftASTContext() {
+  if (GetObjectRuntimeLanguage() != lldb::eLanguageTypeSwift)
+    return nullptr;
+  lldb::ModuleSP module_sp(GetModule());
+  if (module_sp) {
+    auto ts = module_sp->GetTypeSystemForLanguage(lldb::eLanguageTypeSwift);
+    return llvm::dyn_cast_or_null<SwiftASTContext>(ts);
+  }
+  return GetScratchSwiftASTContext().get();
+}
+
+SwiftASTContextReader ValueObject::GetScratchSwiftASTContext() {
+  lldb::TargetSP target_sp(GetTargetSP());
+  if (!target_sp)
+    return {};
+  Status error;
+  ExecutionContext ctx = GetExecutionContextRef().Lock(false);
+  auto *exe_scope = ctx.GetBestExecutionContextScope();
+  return target_sp->GetScratchSwiftASTContext(error, *exe_scope);
+}
+
+void ValueObject::AddSyntheticChild(ConstString key,
                                     ValueObject *valobj) {
   m_synthetic_children[key] = valobj;
 }
 
-ValueObjectSP ValueObject::GetSyntheticChild(const ConstString &key) const {
+ValueObjectSP ValueObject::GetSyntheticChild(ConstString key) const {
   ValueObjectSP synthetic_child_sp;
   std::map<ConstString, ValueObject *>::const_iterator pos =
       m_synthetic_children.find(key);
@@ -1696,7 +1797,7 @@ bool ValueObject::IsPossibleDynamicType() {
   if (process)
     return process->IsPossibleDynamicValue(*this);
   else
-    return GetCompilerType().IsPossibleDynamicType(NULL, true, true);
+    return GetCompilerType().IsPossibleDynamicType(NULL, true, true, true);
 }
 
 bool ValueObject::IsRuntimeSupportValue() {
@@ -1818,14 +1919,16 @@ ValueObjectSP ValueObject::GetSyntheticChildAtOffset(
     return synthetic_child_sp;
 
   if (!can_create)
-    return ValueObjectSP();
+    return {};
 
   ExecutionContext exe_ctx(GetExecutionContextRef());
-
-  ValueObjectChild *synthetic_child = new ValueObjectChild(
-      *this, type, name_const_str,
-      type.GetByteSize(exe_ctx.GetBestExecutionContextScope()), offset, 0, 0,
-      false, false, eAddressTypeInvalid, 0);
+  llvm::Optional<uint64_t> size =
+      type.GetByteSize(exe_ctx.GetBestExecutionContextScope());
+  if (!size)
+    return {};
+  ValueObjectChild *synthetic_child =
+      new ValueObjectChild(*this, type, name_const_str, *size, offset, 0, 0,
+                           false, false, eAddressTypeInvalid, 0);
   if (synthetic_child) {
     AddSyntheticChild(name_const_str, synthetic_child);
     synthetic_child_sp = synthetic_child->GetSP();
@@ -1856,16 +1959,18 @@ ValueObjectSP ValueObject::GetSyntheticBase(uint32_t offset,
     return synthetic_child_sp;
 
   if (!can_create)
-    return ValueObjectSP();
+    return {};
 
   const bool is_base_class = true;
 
   ExecutionContext exe_ctx(GetExecutionContextRef());
-
-  ValueObjectChild *synthetic_child = new ValueObjectChild(
-      *this, type, name_const_str,
-      type.GetByteSize(exe_ctx.GetBestExecutionContextScope()), offset, 0, 0,
-      is_base_class, false, eAddressTypeInvalid, 0);
+  llvm::Optional<uint64_t> size =
+      type.GetByteSize(exe_ctx.GetBestExecutionContextScope());
+  if (!size)
+    return {};
+  ValueObjectChild *synthetic_child =
+      new ValueObjectChild(*this, type, name_const_str, *size, offset, 0, 0,
+                           is_base_class, false, eAddressTypeInvalid, 0);
   if (synthetic_child) {
     AddSyntheticChild(name_const_str, synthetic_child);
     synthetic_child_sp = synthetic_child->GetSP();
@@ -2730,11 +2835,12 @@ void ValueObject::LogValueObject(Log *log,
 void ValueObject::Dump(Stream &s) { Dump(s, DumpValueObjectOptions(*this)); }
 
 void ValueObject::Dump(Stream &s, const DumpValueObjectOptions &options) {
+  auto swift_scratch_ctx_lock = SwiftASTContextLock(GetSwiftExeCtx(*this));
   ValueObjectPrinter printer(this, &s, options);
   printer.PrintValueObject();
 }
 
-ValueObjectSP ValueObject::CreateConstantValue(const ConstString &name) {
+ValueObjectSP ValueObject::CreateConstantValue(ConstString name) {
   ValueObjectSP valobj_sp;
 
   if (UpdateValueIfNeeded(false) && m_error.Success()) {
@@ -2910,7 +3016,7 @@ ValueObjectSP ValueObject::Cast(const CompilerType &compiler_type) {
   return ValueObjectCast::Create(*this, GetName(), compiler_type);
 }
 
-lldb::ValueObjectSP ValueObject::Clone(const ConstString &new_name) {
+lldb::ValueObjectSP ValueObject::Clone(ConstString new_name) {
   return ValueObjectCast::Create(*this, new_name, GetCompilerType());
 }
 
@@ -3271,9 +3377,16 @@ ValueObjectSP ValueObject::Persist() {
   if (!target_sp)
     return nullptr;
 
-  PersistentExpressionState *persistent_state =
-      target_sp->GetPersistentExpressionStateForLanguage(
-          GetPreferredDisplayLanguage());
+  PersistentExpressionState *persistent_state;
+  if (GetPreferredDisplayLanguage() == eLanguageTypeSwift) {
+    ExecutionContext ctx = GetExecutionContextRef().Lock(false);
+    auto *exe_scope = ctx.GetBestExecutionContextScope();
+    if (!exe_scope)
+      return nullptr;
+    persistent_state = target_sp->GetSwiftPersistentExpressionState(*exe_scope);
+  } else
+    persistent_state = target_sp->GetPersistentExpressionStateForLanguage(
+        GetPreferredDisplayLanguage());
 
   if (!persistent_state)
     return nullptr;

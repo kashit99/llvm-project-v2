@@ -1,9 +1,8 @@
 //===-- ThreadPlanStepInRange.h ---------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -50,6 +49,8 @@ public:
 
   bool IsVirtualStep() override;
 
+  bool MischiefManaged() override;
+
 protected:
   static bool DefaultShouldStopHereCallback(ThreadPlan *current_plan,
                                             Flags &flags,
@@ -86,6 +87,13 @@ private:
 
   void SetupAvoidNoDebug(LazyBool step_in_avoids_code_without_debug_info,
                          LazyBool step_out_avoids_code_without_debug_info);
+
+  bool DefaultShouldStopHereImpl(Flags &flags, bool should_step_out);
+
+  bool StepInDeepBreakpointExplainsStop(lldb::StopInfoSP stop_info_sp);
+
+  void ClearStepInDeepBreakpoints();
+
   // Need an appropriate marker for the current stack so we can tell step out
   // from step in.
 
@@ -93,13 +101,16 @@ private:
                                          // for the ThreadPlanStepThrough.
   lldb::ThreadPlanSP m_sub_plan_sp;      // Keep track of the last plan we were
                                     // running.  If it fails, we should stop.
-  std::unique_ptr<RegularExpression> m_avoid_regexp_ap;
+  std::unique_ptr<RegularExpression> m_avoid_regexp_up;
   bool m_step_past_prologue; // FIXME: For now hard-coded to true, we could put
                              // a switch in for this if there's
                              // demand for that.
   bool m_virtual_step; // true if we've just done a "virtual step", i.e. just
                        // moved the inline stack depth.
   ConstString m_step_into_target;
+  std::vector<lldb::break_id_t> m_step_in_deep_bps; // Places where we might
+                                                    // want to stop when we do a
+                                                    // step out.
   DISALLOW_COPY_AND_ASSIGN(ThreadPlanStepInRange);
 };
 

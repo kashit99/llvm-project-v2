@@ -1,3 +1,5 @@
+include_directories(../Plugins/Process/Utility)
+
 add_lldb_library(lldbTarget
   ABI.cpp
   CPPLanguageRuntime.cpp
@@ -32,6 +34,7 @@ add_lldb_library(lldbTarget
   StackID.cpp
   StopInfo.cpp
   StructuredDataPlugin.cpp
+  SwiftLanguageRuntime.cpp
   SystemRuntime.cpp
   Target.cpp
   TargetList.cpp
@@ -61,6 +64,11 @@ add_lldb_library(lldbTarget
   UnwindAssembly.cpp
 
   LINK_LIBS
+    swiftAST
+    swiftBasic
+    swiftFrontend
+    swiftReflection
+    swiftRemoteAST
     lldbBreakpoint
     lldbCore
     lldbExpression
@@ -69,9 +77,14 @@ add_lldb_library(lldbTarget
     lldbSymbol
     lldbUtility
     lldbPluginExpressionParserClang
+    lldbPluginExpressionParserSwift
     lldbPluginObjCLanguage
+    lldbPluginSwiftLanguage
     lldbPluginProcessUtility
 
   LINK_COMPONENTS
     Support
   )
+if(CMAKE_CXX_COMPILER_ID STREQUAL Clang)
+  target_compile_options(lldbTarget PRIVATE -Wno-dollar-in-identifier-extension)
+endif()

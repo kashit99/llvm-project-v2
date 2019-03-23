@@ -1,9 +1,8 @@
 //===-- ThreadSanitizerRuntime.h --------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -62,7 +61,8 @@ private:
 
   StructuredData::ObjectSP RetrieveReportData(ExecutionContextRef exe_ctx_ref);
 
-  std::string FormatDescription(StructuredData::ObjectSP report);
+  std::string FormatDescription(StructuredData::ObjectSP report,
+                                bool &is_swift_access_race);
 
   std::string GenerateSummary(StructuredData::ObjectSP report);
 

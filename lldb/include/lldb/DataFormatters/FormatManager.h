@@ -1,9 +1,8 @@
 //===-- FormatManager.h -----------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -51,19 +50,19 @@ public:
   }
 
   void
-  EnableCategory(const ConstString &category_name,
+  EnableCategory(ConstString category_name,
                  TypeCategoryMap::Position pos = TypeCategoryMap::Default) {
     EnableCategory(category_name, pos,
                    std::initializer_list<lldb::LanguageType>());
   }
 
-  void EnableCategory(const ConstString &category_name,
+  void EnableCategory(ConstString category_name,
                       TypeCategoryMap::Position pos, lldb::LanguageType lang) {
     std::initializer_list<lldb::LanguageType> langs = {lang};
     EnableCategory(category_name, pos, langs);
   }
 
-  void EnableCategory(const ConstString &category_name,
+  void EnableCategory(ConstString category_name,
                       TypeCategoryMap::Position pos = TypeCategoryMap::Default,
                       std::initializer_list<lldb::LanguageType> langs = {}) {
     TypeCategoryMap::ValueSP category_sp;
@@ -74,7 +73,7 @@ public:
     }
   }
 
-  void DisableCategory(const ConstString &category_name) {
+  void DisableCategory(ConstString category_name) {
     m_categories_map.Disable(category_name);
   }
 
@@ -92,7 +91,7 @@ public:
 
   void DisableAllCategories();
 
-  bool DeleteCategory(const ConstString &category_name) {
+  bool DeleteCategory(ConstString category_name) {
     return m_categories_map.Delete(category_name);
   }
 
@@ -113,7 +112,7 @@ public:
     return GetCategory(ConstString(category_name));
   }
 
-  lldb::TypeCategoryImplSP GetCategory(const ConstString &category_name,
+  lldb::TypeCategoryImplSP GetCategory(ConstString category_name,
                                        bool can_create = true);
 
   lldb::TypeFormatImplSP
@@ -174,7 +173,7 @@ public:
   // method looks for the case where the user is adding a
   // "class","struct","enum" or "union" Foo and strips the unnecessary
   // qualifier
-  static ConstString GetValidTypeName(const ConstString &type);
+  static ConstString GetValidTypeName(ConstString type);
 
   // when DataExtractor dumps a vectorOfT, it uses a predefined format for each
   // item this method returns it, or eFormatInvalid if vector_format is not a
@@ -229,6 +228,7 @@ private:
   ConstString m_default_category_name;
   ConstString m_system_category_name;
   ConstString m_vectortypes_category_name;
+  ConstString m_runtime_synths_category_name;
 
   lldb::TypeFormatImplSP GetHardcodedFormat(FormattersMatchData &);
 

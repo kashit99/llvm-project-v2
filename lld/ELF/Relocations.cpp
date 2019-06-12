@@ -380,7 +380,8 @@ static bool needsGot(RelExpr Expr) {
 // file (PC, or GOT for example).
 static bool isRelExpr(RelExpr Expr) {
   return oneof<R_PC, R_GOTREL, R_GOTPLTREL, R_MIPS_GOTREL, R_PPC64_CALL,
-               R_PPC64_RELAX_TOC, R_AARCH64_PAGE_PC, R_RELAX_GOT_PC>(Expr);
+               R_PPC64_RELAX_TOC, R_AARCH64_PAGE_PC, R_RELAX_GOT_PC,
+               R_RISCV_PC_INDIRECT>(Expr);
 }
 
 // Returns true if a given relocation can be computed at link-time.
@@ -717,6 +718,15 @@ static bool maybeReportUndefined(Symbol &Sym, InputSectionBase &Sec,
   if (Config->UnresolvedSymbols == UnresolvedPolicy::Ignore && CanBeExternal)
     return false;
 
+  // clang (as of 2019-06-12) / gcc (as of 8.2.1) PPC64 may emit a .rela.toc
+  // which references a switch table in a discarded .rodata/.text section. The
+  // .toc and the .rela.toc are incorrectly not placed in the comdat. The ELF
+  // spec says references from outside the group to a STB_LOCAL symbol are not
+  // allowed. Work around the bug.
+  if (Config->EMachine == EM_PPC64 &&
+      cast<Undefined>(Sym).DiscardedSecIdx != 0 && Sec.Name == ".toc")
+    return false;
+
   auto Visibility = [&]() -> std::string {
     switch (Sym.Visibility) {
     case STV_INTERNAL:
@@ -861,19 +871,19 @@ static void addGotEntry(Symbol &Sym) {
   bool IsLinkTimeConstant =
       !Sym.IsPreemptible && (!Config->Pic || isAbsolute(Sym));
   if (IsLinkTimeConstant) {
-    In.Got->Relocations.push_back({Expr, Target->GotRel, Off, 0, &Sym});
+    In.Got->Relocations.push_back({Expr, Target->SymbolicRel, Off, 0, &Sym});
     return;
   }
 
   // Otherwise, we emit a dynamic relocation to .rel[a].dyn so that
   // the GOT slot will be fixed at load-time.
   if (!Sym.isTls() && !Sym.IsPreemptible && Config->Pic && !isAbsolute(Sym)) {
-    addRelativeReloc(In.Got, Off, &Sym, 0, R_ABS, Target->GotRel);
+    addRelativeReloc(In.Got, Off, &Sym, 0, R_ABS, Target->SymbolicRel);
     return;
   }
-  Main->RelaDyn->addReloc(Sym.isTls() ? Target->TlsGotRel : Target->GotRel,
-                          In.Got, Off, &Sym, 0,
-                          Sym.IsPreemptible ? R_ADDEND : R_ABS, Target->GotRel);
+  Main->RelaDyn->addReloc(
+      Sym.isTls() ? Target->TlsGotRel : Target->GotRel, In.Got, Off, &Sym, 0,
+      Sym.IsPreemptible ? R_ADDEND : R_ABS, Target->SymbolicRel);
 }
 
 // Return true if we can define a symbol in the executable that
@@ -919,10 +929,10 @@ static void processRelocAux(InputSectionBase &Sec, RelExpr Expr, RelType Type,
   }
   bool CanWrite = (Sec.Flags & SHF_WRITE) || !Config->ZText;
   if (CanWrite) {
-    // R_GOT refers to a position in the got, even if the symbol is preemptible.
-    bool IsPreemptibleValue = Sym.IsPreemptible && Expr != R_GOT;
-
-    if (!IsPreemptibleValue) {
+    if ((!Sym.IsPreemptible && Type == Target->SymbolicRel) || Expr == R_GOT) {
+      // If this is a symbolic relocation to a non-preemptable symbol, or an
+      // R_GOT, its address is its link-time value plus load address. Represent
+      // it with a relative relocation.
       addRelativeReloc(&Sec, Offset, &Sym, Addend, Expr, Type);
       return;
     } else if (RelType Rel = Target->getDynRel(Type)) {
@@ -967,11 +977,18 @@ static void processRelocAux(InputSectionBase &Sec, RelExpr Expr, RelType Type,
     return;
   }
 
-  // Copy relocations are only possible if we are creating an executable.
-  if (Config->Shared) {
-    errorOrWarn("relocation " + toString(Type) +
-                " cannot be used against symbol " + toString(Sym) +
-                "; recompile with -fPIC" + getLocation(Sec, Sym, Offset));
+  // Copy relocations (for STT_OBJECT) and canonical PLT (for STT_FUNC) are only
+  // possible in an executable.
+  //
+  // Among R_ABS relocatoin types, SymbolicRel has the same size as the word
+  // size. Others have fewer bits and may cause runtime overflow in -pie/-shared
+  // mode. Disallow them.
+  if (Config->Shared ||
+      (Config->Pie && Expr == R_ABS && Type != Target->SymbolicRel)) {
+    errorOrWarn(
+        "relocation " + toString(Type) + " cannot be used against " +
+        (Sym.getName().empty() ? "local symbol" : "symbol " + toString(Sym)) +
+        "; recompile with -fPIC" + getLocation(Sec, Sym, Offset));
     return;
   }
 

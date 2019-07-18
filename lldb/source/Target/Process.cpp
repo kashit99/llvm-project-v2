@@ -22,7 +22,7 @@
 #include "lldb/Core/PluginManager.h"
 #include "lldb/Core/StreamFile.h"
 #include "lldb/Expression/DiagnosticManager.h"
-#include "lldb/Expression/IRDynamicChecks.h"
+#include "lldb/Expression/DynamicCheckerFunctions.h"
 #include "lldb/Expression/UserExpression.h"
 #include "lldb/Expression/UtilityFunction.h"
 #include "lldb/Host/ConnectionFileDescriptor.h"
@@ -2687,7 +2687,7 @@ Status Process::LoadCore() {
     // Wait for a stopped event since we just posted one above...
     lldb::EventSP event_sp;
     StateType state =
-        WaitForProcessToStop(seconds(10), &event_sp, true, listener_sp);
+        WaitForProcessToStop(llvm::None, &event_sp, true, listener_sp);
 
     if (!StateIsStoppedState(state, false)) {
       Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_PROCESS));
@@ -3019,8 +3019,16 @@ void Process::CompleteAttach() {
     }
   }
 
-  if (!m_os_up)
+  if (!m_os_up) {
     LoadOperatingSystemPlugin(false);
+    if (m_os_up) {
+      // Somebody might have gotten threads before now, but we need to force the
+      // update after we've loaded the OperatingSystem plugin or it won't get a
+      // chance to process the threads.
+      m_thread_list.Clear();
+      UpdateThreadListIfNeeded();
+    }
+  }
   // Figure out which one is the executable, and set that in our target:
   const ModuleList &target_modules = GetTarget().GetImages();
   std::lock_guard<std::recursive_mutex> guard(target_modules.GetMutex());
@@ -3580,14 +3588,20 @@ bool Process::StartPrivateStateThread(bool is_secondary_thread) {
   // Create the private state thread, and start it running.
   PrivateStateThreadArgs *args_ptr =
       new PrivateStateThreadArgs(this, is_secondary_thread);
-  m_private_state_thread =
+  llvm::Expected<HostThread> private_state_thread =
       ThreadLauncher::LaunchThread(thread_name, Process::PrivateStateThread,
-                                   (void *)args_ptr, nullptr, 8 * 1024 * 1024);
-  if (m_private_state_thread.IsJoinable()) {
-    ResumePrivateStateThread();
-    return true;
-  } else
+                                   (void *)args_ptr, 8 * 1024 * 1024);
+  if (!private_state_thread) {
+    LLDB_LOG(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_HOST),
+             "failed to launch host thread: {}",
+             llvm::toString(private_state_thread.takeError()));
     return false;
+  }
+
+  assert(private_state_thread->IsJoinable());
+  m_private_state_thread = *private_state_thread;
+  ResumePrivateStateThread();
+  return true;
 }
 
 void Process::PausePrivateStateThread() {

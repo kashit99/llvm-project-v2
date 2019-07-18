@@ -142,6 +142,21 @@ else()
   message(STATUS "lldb debugserver will not be available.")
 endif()
 
+# On MacOS, debugserver needs to be codesigned when built. Check if we have
+# a certificate instead of failing in the middle of the build.
+if(build_and_sign_debugserver)
+  execute_process(
+    COMMAND security find-certificate -Z -p -c ${LLDB_CODESIGN_IDENTITY_USED} /Library/Keychains/System.keychain
+    RESULT_VARIABLE cert_return
+    OUTPUT_QUIET
+    ERROR_QUIET)
+
+  if (cert_return)
+    message(FATAL_ERROR "Certificate for debugserver not found. Run scripts/macos-setup-codesign.sh or "
+                        "use the system debugserver passing -DLLDB_USE_SYSTEM_DEBUGSERVER=ON to CMake")
+  endif()
+endif()
+
 if(APPLE)
   if(IOS)
     find_library(BACKBOARD_LIBRARY BackBoardServices
@@ -257,21 +272,13 @@ if(build_and_sign_debugserver)
                  COMPILE_DEFINITIONS HAVE_LIBCOMPRESSION)
   endif()
   set(LLVM_OPTIONAL_SOURCES ${lldbDebugserverCommonSources})
-  add_lldb_tool(debugserver
+  add_lldb_tool(debugserver ADD_TO_FRAMEWORK
     debugserver.cpp
-
-    LINK_LIBS
-      lldbDebugserverCommon
-
-    ENTITLEMENTS
-      ${entitlements}
-    )
+    LINK_LIBS lldbDebugserverCommon
+    ENTITLEMENTS ${entitlements}
+  )
 
   set_target_properties(debugserver PROPERTIES FOLDER "lldb libraries/debugserver")
-
-  if(LLDB_BUILD_FRAMEWORK)
-    lldb_add_to_framework(debugserver)
-  endif()
 
   if(IOS)
     set_property(TARGET lldbDebugserverCommon APPEND PROPERTY COMPILE_DEFINITIONS

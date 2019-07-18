@@ -7,10 +7,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "lldb/Target/Target.h"
-#include "Plugins/ExpressionParser/Clang/ClangASTSource.h"
 #include "Plugins/ExpressionParser/Clang/ClangModulesDeclVendor.h"
-#include "Plugins/ExpressionParser/Clang/ClangPersistentVariables.h"
 #include "lldb/Breakpoint/BreakpointIDList.h"
+#include "lldb/Breakpoint/BreakpointPrecondition.h"
 #include "lldb/Breakpoint/BreakpointResolver.h"
 #include "lldb/Breakpoint/BreakpointResolverAddress.h"
 #include "lldb/Breakpoint/BreakpointResolverFileLine.h"
@@ -38,6 +37,7 @@
 #include "lldb/Interpreter/OptionValues.h"
 #include "lldb/Interpreter/Property.h"
 #include "lldb/Symbol/ClangASTContext.h"
+#include "lldb/Symbol/ClangASTImporter.h"
 #include "lldb/Symbol/Function.h"
 #include "lldb/Symbol/ObjectFile.h"
 #include "lldb/Symbol/Symbol.h"
@@ -573,8 +573,7 @@ Target::CreateExceptionBreakpoint(enum lldb::LanguageType language,
   BreakpointSP exc_bkpt_sp = LanguageRuntime::CreateExceptionBreakpoint(
       *this, language, catch_bp, throw_bp, internal);
   if (exc_bkpt_sp && additional_args) {
-    Breakpoint::BreakpointPreconditionSP precondition_sp =
-        exc_bkpt_sp->GetPrecondition();
+    BreakpointPreconditionSP precondition_sp = exc_bkpt_sp->GetPrecondition();
     if (precondition_sp && additional_args) {
       if (error)
         *error = precondition_sp->ConfigurePrecondition(*additional_args);
@@ -2328,13 +2327,6 @@ FileSpecList Target::GetDefaultDebugFileSearchPaths() {
   TargetPropertiesSP properties_sp(Target::GetGlobalProperties());
   if (properties_sp)
     return properties_sp->GetDebugFileSearchPaths();
-  return FileSpecList();
-}
-
-FileSpecList Target::GetDefaultClangModuleSearchPaths() {
-  TargetPropertiesSP properties_sp(Target::GetGlobalProperties());
-  if (properties_sp)
-    return properties_sp->GetClangModuleSearchPaths();
   return FileSpecList();
 }
 

@@ -1,8 +1,9 @@
 //===- DLL.cpp ------------------------------------------------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                             The LLVM Linker
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -46,7 +47,6 @@ public:
   }
 
   void writeTo(uint8_t *Buf) const override {
-    memset(Buf + OutputSectionOff, 0, getSize());
     write16le(Buf + OutputSectionOff, Hint);
     memcpy(Buf + OutputSectionOff + 2, Name.data(), Name.size());
   }
@@ -63,10 +63,7 @@ public:
   size_t getSize() const override { return Config->Wordsize; }
 
   void writeTo(uint8_t *Buf) const override {
-    if (Config->is64())
-      write64le(Buf + OutputSectionOff, HintName->getRVA());
-    else
-      write32le(Buf + OutputSectionOff, HintName->getRVA());
+    write32le(Buf + OutputSectionOff, HintName->getRVA());
   }
 
   Chunk *HintName;
@@ -102,8 +99,6 @@ public:
   size_t getSize() const override { return sizeof(ImportDirectoryTableEntry); }
 
   void writeTo(uint8_t *Buf) const override {
-    memset(Buf + OutputSectionOff, 0, getSize());
-
     auto *E = (coff_import_directory_table_entry *)(Buf + OutputSectionOff);
     E->ImportLookupTableRVA = LookupTab->getRVA();
     E->NameRVA = DLLName->getRVA();
@@ -122,10 +117,6 @@ public:
   explicit NullChunk(size_t N) : Size(N) {}
   bool hasData() const override { return false; }
   size_t getSize() const override { return Size; }
-
-  void writeTo(uint8_t *Buf) const override {
-    memset(Buf + OutputSectionOff, 0, Size);
-  }
 
 private:
   size_t Size;
@@ -169,8 +160,6 @@ public:
   }
 
   void writeTo(uint8_t *Buf) const override {
-    memset(Buf + OutputSectionOff, 0, getSize());
-
     auto *E = (delay_import_directory_table_entry *)(Buf + OutputSectionOff);
     E->Attributes = 1;
     E->Name = DLLName->getRVA();
@@ -403,8 +392,6 @@ public:
   }
 
   void writeTo(uint8_t *Buf) const override {
-    memset(Buf + OutputSectionOff, 0, getSize());
-
     auto *E = (export_directory_table_entry *)(Buf + OutputSectionOff);
     E->NameRVA = DLLName->getRVA();
     E->OrdinalBase = 0;

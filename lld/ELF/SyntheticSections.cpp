@@ -1,8 +1,9 @@
 //===- SyntheticSections.cpp ----------------------------------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                             The LLVM Linker
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -1512,10 +1513,8 @@ void RelocationBaseSection::finalizeContents() {
   else
     getParent()->Link = 0;
 
-  if (In.RelaPlt == this)
+  if (In.RelaIplt == this || In.RelaPlt == this)
     getParent()->Info = In.GotPlt->getParent()->SectionIndex;
-  if (In.RelaIplt == this)
-    getParent()->Info = In.IgotPlt->getParent()->SectionIndex;
 }
 
 RelrBaseSection::RelrBaseSection()
@@ -1804,7 +1803,7 @@ template <class ELFT> bool RelrSection<ELFT>::updateAllocSize() {
   std::vector<uint64_t> Offsets;
   for (const RelativeReloc &Rel : Relocs)
     Offsets.push_back(Rel.getOffset());
-  llvm::sort(Offsets);
+  llvm::sort(Offsets.begin(), Offsets.end());
 
   // For each leading relocation, find following ones that can be folded
   // as a bitmap and fold them.

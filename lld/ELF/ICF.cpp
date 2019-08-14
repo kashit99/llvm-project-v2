@@ -1,8 +1,9 @@
 //===- ICF.cpp ------------------------------------------------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                             The LLVM Linker
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -425,17 +426,16 @@ void ICF<ELFT>::forEachClass(llvm::function_ref<void(size_t, size_t)> Fn) {
 // Combine the hashes of the sections referenced by the given section into its
 // hash.
 template <class ELFT, class RelTy>
-static void combineRelocHashes(unsigned Cnt, InputSection *IS,
-                               ArrayRef<RelTy> Rels) {
-  uint32_t Hash = IS->Class[Cnt % 2];
+static void combineRelocHashes(InputSection *IS, ArrayRef<RelTy> Rels) {
+  uint32_t Hash = IS->Class[1];
   for (RelTy Rel : Rels) {
     Symbol &S = IS->template getFile<ELFT>()->getRelocTargetSym(Rel);
     if (auto *D = dyn_cast<Defined>(&S))
       if (auto *RelSec = dyn_cast_or_null<InputSection>(D->Section))
-        Hash += RelSec->Class[Cnt % 2];
+        Hash ^= RelSec->Class[1];
   }
   // Set MSB to 1 to avoid collisions with non-hash IDs.
-  IS->Class[(Cnt + 1) % 2] = Hash | (1U << 31);
+  IS->Class[0] = Hash | (1U << 31);
 }
 
 static void print(const Twine &S) {
@@ -453,17 +453,15 @@ template <class ELFT> void ICF<ELFT>::run() {
 
   // Initially, we use hash values to partition sections.
   parallelForEach(Sections, [&](InputSection *S) {
-    S->Class[0] = xxHash64(S->data());
+    S->Class[1] = xxHash64(S->data());
   });
 
-  for (unsigned Cnt = 0; Cnt != 2; ++Cnt) {
-    parallelForEach(Sections, [&](InputSection *S) {
-      if (S->AreRelocsRela)
-        combineRelocHashes<ELFT>(Cnt, S, S->template relas<ELFT>());
-      else
-        combineRelocHashes<ELFT>(Cnt, S, S->template rels<ELFT>());
-    });
-  }
+  parallelForEach(Sections, [&](InputSection *S) {
+    if (S->AreRelocsRela)
+      combineRelocHashes<ELFT>(S, S->template relas<ELFT>());
+    else
+      combineRelocHashes<ELFT>(S, S->template rels<ELFT>());
+  });
 
   // From now on, sections in Sections vector are ordered so that sections
   // in the same equivalence class are consecutive in the vector.

@@ -1,7 +1,6 @@
 cmake_minimum_required( VERSION 3.9.2 )
 
 project( libclc VERSION 0.2.0 LANGUAGES CXX )
-include( GNUInstallDirs )
 
 # List of all targets
 set( LIBCLC_TARGETS_ALL
@@ -146,8 +145,8 @@ endif()
 
 # pkg-config file
 configure_file( libclc.pc.in libclc.pc @ONLY )
-install( FILES ${CMAKE_CURRENT_BINARY_DIR}/libclc.pc DESTINATION ${CMAKE_INSTALL_DATADIR}/pkgconfig )
-install( DIRECTORY generic/include/clc DESTINATION ${CMAKE_INSTALL_INCLUDEDIR} )
+install( FILES ${CMAKE_CURRENT_BINARY_DIR}/libclc.pc DESTINATION share/pkgconfig )
+install( DIRECTORY generic/include/clc DESTINATION include )
 
 if( ENABLE_RUNTIME_SUBNORMAL )
 	add_library( subnormal_use_default STATIC
@@ -155,7 +154,7 @@ if( ENABLE_RUNTIME_SUBNORMAL )
 	add_library( subnormal_disable STATIC
 		generic/lib/subnormal_disable.ll )
 	install( TARGETS subnormal_use_default subnormal_disable ARCHIVE
-		DESTINATION ${CMAKE_INSTALL_DATADIR}/clc )
+		DESTINATION lib/clc )
 endif()
 
 find_program( PYTHON python )
@@ -275,7 +274,7 @@ foreach( t ${LIBCLC_TARGETS_TO_BUILD} )
 				            prepare_builtins )
 		add_custom_target( "prepare-${obj_suffix}" ALL
 		                   DEPENDS "${obj_suffix}" )
-		install( FILES ${CMAKE_CURRENT_BINARY_DIR}/${obj_suffix} DESTINATION ${CMAKE_INSTALL_DATADIR}/clc )
+		install( FILES ${CMAKE_CURRENT_BINARY_DIR}/${obj_suffix} DESTINATION lib/clc )
 		# nvptx-- targets don't include workitem builtins
 		if( NOT ${t} MATCHES ".*ptx.*--$" )
 			add_test( NAME external-calls-${obj_suffix}
@@ -293,7 +292,7 @@ foreach( t ${LIBCLC_TARGETS_TO_BUILD} )
 					   create_symlink ${obj_suffix}
 					   ${alias_suffix}
 			                   DEPENDS "prepare-${obj_suffix}" )
-			install( FILES ${CMAKE_CURRENT_BINARY_DIR}/${alias_suffix} DESTINATION ${CMAKE_INSTALL_DATADIR}/clc )
+			install( FILES ${CMAKE_CURRENT_BINARY_DIR}/${alias_suffix} DESTINATION lib/clc )
 		endforeach( a )
 	endforeach( d )
 endforeach( t )

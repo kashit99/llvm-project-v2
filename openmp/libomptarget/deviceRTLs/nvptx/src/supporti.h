@@ -1,8 +1,9 @@
 //===--------- supporti.h - NVPTX OpenMP support functions ------- CUDA -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is dual licensed under the MIT and the University of Illinois Open
+// Source Licenses. See LICENSE.txt for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -129,11 +130,11 @@ INLINE int GetNumberOfWorkersInTeam() { return GetMasterThreadID(); }
 // or a serial region by the master.  If the master (whose CUDA thread
 // id is GetMasterThreadID()) calls this routine, we return 0 because
 // it is a shadow for the first worker.
-INLINE int GetLogicalThreadIdInBlock(bool isSPMDExecutionMode) {
+INLINE int GetLogicalThreadIdInBlock() {
   // Implemented using control flow (predication) instead of with a modulo
   // operation.
   int tid = GetThreadIdInBlock();
-  if (!isSPMDExecutionMode && tid >= GetMasterThreadID())
+  if (isGenericMode() && tid >= GetMasterThreadID())
     return 0;
   else
     return tid;
@@ -154,7 +155,8 @@ INLINE int GetOmpThreadId(int threadId, bool isSPMDExecutionMode,
     ASSERT0(LT_FUSSY, isSPMDExecutionMode,
             "Uninitialized runtime with non-SPMD mode.");
     // For level 2 parallelism all parallel regions are executed sequentially.
-    if (parallelLevel > 0)
+    if (omptarget_nvptx_simpleThreadPrivateContext
+            ->InL2OrHigherParallelRegion())
       rc = 0;
     else
       rc = GetThreadIdInBlock();
@@ -175,7 +177,8 @@ INLINE int GetNumberOfOmpThreads(int threadId, bool isSPMDExecutionMode,
     ASSERT0(LT_FUSSY, isSPMDExecutionMode,
             "Uninitialized runtime with non-SPMD mode.");
     // For level 2 parallelism all parallel regions are executed sequentially.
-    if (parallelLevel > 0)
+    if (omptarget_nvptx_simpleThreadPrivateContext
+            ->InL2OrHigherParallelRegion())
       rc = 1;
     else
       rc = GetNumberOfThreadsInBlock();
@@ -211,15 +214,13 @@ INLINE int IsTeamMaster(int ompThreadId) { return (ompThreadId == 0); }
 // get OpenMP number of procs
 
 // Get the number of processors in the device.
-INLINE int GetNumberOfProcsInDevice(bool isSPMDExecutionMode) {
-  if (!isSPMDExecutionMode)
+INLINE int GetNumberOfProcsInDevice() {
+  if (isGenericMode())
     return GetNumberOfWorkersInTeam();
   return GetNumberOfThreadsInBlock();
 }
 
-INLINE int GetNumberOfProcsInTeam(bool isSPMDExecutionMode) {
-  return GetNumberOfProcsInDevice(isSPMDExecutionMode);
-}
+INLINE int GetNumberOfProcsInTeam() { return GetNumberOfProcsInDevice(); }
 
 ////////////////////////////////////////////////////////////////////////////////
 // Memory

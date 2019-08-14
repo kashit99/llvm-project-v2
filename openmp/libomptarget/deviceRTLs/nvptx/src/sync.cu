@@ -1,8 +1,9 @@
 //===------------ sync.h - NVPTX OpenMP synchronizations --------- CUDA -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is dual licensed under the MIT and the University of Illinois Open
+// Source Licenses. See LICENSE.txt for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -45,7 +46,7 @@ EXTERN void __kmpc_barrier(kmp_Ident *loc_ref, int32_t tid) {
             "Expected SPMD mode with uninitialized runtime.");
     __kmpc_barrier_simple_spmd(loc_ref, tid);
   } else {
-    tid = GetLogicalThreadIdInBlock(checkSPMDMode(loc_ref));
+    tid = GetLogicalThreadIdInBlock();
     omptarget_nvptx_TaskDescr *currTaskDescr =
         omptarget_nvptx_threadPrivateContext->GetTopLevelTaskDescr(tid);
     int numberOfActiveOMPThreads = GetNumberOfOmpThreads(

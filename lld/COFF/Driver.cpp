@@ -1,8 +1,9 @@
 //===- Driver.cpp ---------------------------------------------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                             The LLVM Linker
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -985,17 +986,11 @@ void LinkerDriver::link(ArrayRef<const char *> ArgsArr) {
 
   // Handle /ignore
   for (auto *Arg : Args.filtered(OPT_ignore)) {
-    SmallVector<StringRef, 8> Vec;
-    StringRef(Arg->getValue()).split(Vec, ',');
-    for (StringRef S : Vec) {
-      if (S == "4037")
-        Config->WarnMissingOrderSymbol = false;
-      else if (S == "4099")
-        Config->WarnDebugInfoUnusable = false;
-      else if (S == "4217")
-        Config->WarnLocallyDefinedImported = false;
-      // Other warning numbers are ignored.
-    }
+    if (StringRef(Arg->getValue()) == "4037")
+      Config->WarnMissingOrderSymbol = false;
+    else if (StringRef(Arg->getValue()) == "4217")
+      Config->WarnLocallyDefinedImported = false;
+    // Other warning numbers are ignored.
   }
 
   // Handle /out

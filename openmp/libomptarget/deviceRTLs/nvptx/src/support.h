@@ -1,8 +1,9 @@
 //===--------- support.h - NVPTX OpenMP support functions -------- CUDA -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is dual licensed under the MIT and the University of Illinois Open
+// Source Licenses. See LICENSE.txt for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -42,7 +43,7 @@ INLINE int GetNumberOfBlocksInKernel();
 INLINE int GetNumberOfThreadsInBlock();
 
 // get global ids to locate tread/team info (constant regardless of OMP)
-INLINE int GetLogicalThreadIdInBlock(bool isSPMDExecutionMode);
+INLINE int GetLogicalThreadIdInBlock();
 INLINE int GetMasterThreadID();
 INLINE int GetNumberOfWorkersInTeam();
 
@@ -58,8 +59,8 @@ GetNumberOfOmpThreads(int threadId, bool isSPMDExecutionMode,
 INLINE int GetNumberOfOmpTeams();                   // omp_num_teams
 
 // get OpenMP number of procs
-INLINE int GetNumberOfProcsInTeam(bool isSPMDExecutionMode);
-INLINE int GetNumberOfProcsInDevice(bool isSPMDExecutionMode);
+INLINE int GetNumberOfProcsInTeam();
+INLINE int GetNumberOfProcsInDevice();
 
 // masters
 INLINE int IsTeamMaster(int ompThreadId);

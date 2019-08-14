@@ -1,8 +1,9 @@
 //===- OutputSegment.h ------------------------------------------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                             The LLVM Linker
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -25,7 +26,7 @@ public:
   void addInputSegment(InputSegment *InSeg) {
     Alignment = std::max(Alignment, InSeg->getAlignment());
     InputSegments.push_back(InSeg);
-    Size = llvm::alignTo(Size, 1ULL << InSeg->getAlignment());
+    Size = llvm::alignTo(Size, InSeg->getAlignment());
     InSeg->OutputSeg = this;
     InSeg->OutputSegmentOffset = Size;
     Size += InSeg->getSize();

@@ -105,48 +105,21 @@ set_property(SOURCE ${LIBUNWIND_CXX_SOURCES}
 set_property(SOURCE ${LIBUNWIND_C_SOURCES}
              APPEND_STRING PROPERTY COMPILE_FLAGS " ${LIBUNWIND_C_FLAGS}")
 
-macro(unwind_object_library name)
-  cmake_parse_arguments(ARGS "" "" "DEFINES;FLAGS" ${ARGN})
-
 # Add a object library that contains the compiled source files.
-  add_library(${name} OBJECT ${LIBUNWIND_SOURCES} ${LIBUNWIND_HEADERS})
+add_library(unwind_objects OBJECT ${LIBUNWIND_SOURCES} ${LIBUNWIND_HEADERS})
 
-  if(ARGS_DEFINES)
-    target_compile_definitions(${name} PRIVATE ${ARGS_DEFINES})
-  endif()
-
-  set_target_properties(${name}
-                        PROPERTIES
-                          COMPILE_FLAGS "${LIBUNWIND_COMPILE_FLAGS}"
-                          POSITION_INDEPENDENT_CODE ON)
-
-  if(ARGS_FLAGS)
-    target_compile_options(${name} PRIVATE ${ARGS_FLAGS})
-  endif()
-endmacro()
-
-if(LIBUNWIND_HERMETIC_STATIC_LIBRARY)
-  append_flags_if_supported(UNWIND_STATIC_OBJECTS_FLAGS -fvisibility=hidden)
-  append_flags_if_supported(UNWIND_STATIC_OBJECTS_FLAGS -fvisibility-global-new-delete-hidden)
-  unwind_object_library(unwind_static_objects
-    DEFINES _LIBUNWIND_DISABLE_VISIBILITY_ANNOTATIONS
-    FLAGS ${UNWIND_STATIC_OBJECTS_FLAGS})
-  unwind_object_library(unwind_shared_objects)
-  set(unwind_static_sources $<TARGET_OBJECTS:unwind_static_objects>)
-  set(unwind_shared_sources $<TARGET_OBJECTS:unwind_shared_objects>)
-else()
-  unwind_object_library(unwind_objects)
-  set(unwind_static_sources $<TARGET_OBJECTS:unwind_objects>)
-  set(unwind_shared_sources $<TARGET_OBJECTS:unwind_objects>)
-endif()
+set_target_properties(unwind_objects
+                      PROPERTIES
+                        COMPILE_FLAGS "${LIBUNWIND_COMPILE_FLAGS}"
+                        POSITION_INDEPENDENT_CODE ON)
 
 # Build the shared library.
 if (LIBUNWIND_ENABLE_SHARED)
-  add_library(unwind_shared SHARED ${unwind_shared_sources})
+  add_library(unwind_shared SHARED $<TARGET_OBJECTS:unwind_objects>)
   if(COMMAND llvm_setup_rpath)
     llvm_setup_rpath(unwind_shared)
   endif()
-  target_link_libraries(unwind_shared PRIVATE ${libraries})
+  target_link_libraries(unwind_shared ${libraries})
   set_target_properties(unwind_shared
                         PROPERTIES
                           LINK_FLAGS    "${LIBUNWIND_LINK_FLAGS}"
@@ -161,8 +134,8 @@ endif()
 
 # Build the static library.
 if (LIBUNWIND_ENABLE_STATIC)
-  add_library(unwind_static STATIC ${unwind_static_sources})
-  target_link_libraries(unwind_static PRIVATE ${libraries})
+  add_library(unwind_static STATIC $<TARGET_OBJECTS:unwind_objects>)
+  target_link_libraries(unwind_static ${libraries})
   set_target_properties(unwind_static
                         PROPERTIES
                           LINK_FLAGS    "${LIBUNWIND_LINK_FLAGS}"

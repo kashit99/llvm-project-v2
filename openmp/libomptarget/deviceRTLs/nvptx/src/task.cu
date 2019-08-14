@@ -1,8 +1,9 @@
 //===------------- task.h - NVPTX OpenMP tasks support ----------- CUDA -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is dual licensed under the MIT and the University of Illinois Open
+// Source Licenses. See LICENSE.txt for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -95,7 +96,7 @@ EXTERN int32_t __kmpc_omp_task_with_deps(kmp_Ident *loc, uint32_t global_tid,
           "bad assumptions");
 
   // 2. push new context: update new task descriptor
-  int tid = GetLogicalThreadIdInBlock(checkSPMDMode(loc));
+  int tid = GetLogicalThreadIdInBlock();
   omptarget_nvptx_TaskDescr *parentTaskDescr = getMyTopTaskDescriptor(tid);
   newTaskDescr->CopyForExplicitTask(parentTaskDescr);
   // set new task descriptor as top
@@ -134,7 +135,7 @@ EXTERN void __kmpc_omp_task_begin_if0(kmp_Ident *loc, uint32_t global_tid,
           "bad assumptions");
 
   // 2. push new context: update new task descriptor
-  int tid = GetLogicalThreadIdInBlock(checkSPMDMode(loc));
+  int tid = GetLogicalThreadIdInBlock();
   omptarget_nvptx_TaskDescr *parentTaskDescr = getMyTopTaskDescriptor(tid);
   newTaskDescr->CopyForExplicitTask(parentTaskDescr);
   // set new task descriptor as top
@@ -162,7 +163,7 @@ EXTERN void __kmpc_omp_task_complete_if0(kmp_Ident *loc, uint32_t global_tid,
   omptarget_nvptx_TaskDescr *parentTaskDescr = newTaskDescr->GetPrevTaskDescr();
   // 3... noting to call... is inline
   // 4. pop context
-  int tid = GetLogicalThreadIdInBlock(checkSPMDMode(loc));
+  int tid = GetLogicalThreadIdInBlock();
   omptarget_nvptx_threadPrivateContext->SetTopLevelTaskDescr(tid,
                                                              parentTaskDescr);
   // 5. free

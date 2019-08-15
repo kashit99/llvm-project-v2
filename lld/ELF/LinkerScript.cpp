@@ -305,6 +305,30 @@ bool LinkerScript::shouldKeep(InputSectionBase *s) {
 }
 
 // A helper function for the SORT() command.
+static std::function<bool(InputSectionBase *, InputSectionBase *)>
+getComparator(SortSectionPolicy k) {
+  switch (k) {
+  case SortSectionPolicy::Alignment:
+    return [](InputSectionBase *a, InputSectionBase *b) {
+      // ">" is not a mistake. Sections with larger alignments are placed
+      // before sections with smaller alignments in order to reduce the
+      // amount of padding necessary. This is compatible with GNU.
+      return a->alignment > b->alignment;
+    };
+  case SortSectionPolicy::Name:
+    return [](InputSectionBase *a, InputSectionBase *b) {
+      return a->name < b->name;
+    };
+  case SortSectionPolicy::Priority:
+    return [](InputSectionBase *a, InputSectionBase *b) {
+      return getPriority(a->name) < getPriority(b->name);
+    };
+  default:
+    llvm_unreachable("unknown sort policy");
+  }
+}
+
+// A helper function for the SORT() command.
 static bool matchConstraints(ArrayRef<InputSection *> sections,
                              ConstraintKind kind) {
   if (kind == ConstraintKind::NoConstraint)
@@ -319,30 +343,8 @@ static bool matchConstraints(ArrayRef<InputSection *> sections,
 
 static void sortSections(MutableArrayRef<InputSection *> vec,
                          SortSectionPolicy k) {
-  auto alignmentComparator = [](InputSectionBase *a, InputSectionBase *b) {
-    // ">" is not a mistake. Sections with larger alignments are placed
-    // before sections with smaller alignments in order to reduce the
-    // amount of padding necessary. This is compatible with GNU.
-    return a->alignment > b->alignment;
-  };
-  auto nameComparator = [](InputSectionBase *a, InputSectionBase *b) {
-    return a->name < b->name;
-  };
-  auto priorityComparator = [](InputSectionBase *a, InputSectionBase *b) {
-    return getPriority(a->name) < getPriority(b->name);
-  };
-
-  switch (k) {
-  case SortSectionPolicy::Default:
-  case SortSectionPolicy::None:
-    return;
-  case SortSectionPolicy::Alignment:
-    return llvm::stable_sort(vec, alignmentComparator);
-  case SortSectionPolicy::Name:
-    return llvm::stable_sort(vec, nameComparator);
-  case SortSectionPolicy::Priority:
-    return llvm::stable_sort(vec, priorityComparator);
-  }
+  if (k != SortSectionPolicy::Default && k != SortSectionPolicy::None)
+    llvm::stable_sort(vec, getComparator(k));
 }
 
 // Sort sections as instructed by SORT-family commands and --sort-section

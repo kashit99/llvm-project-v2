@@ -116,9 +116,13 @@ ConstString ValueObjectMemory::GetTypeName() {
 }
 
 ConstString ValueObjectMemory::GetDisplayTypeName() {
+  const SymbolContext *sc = nullptr;
+  if (GetFrameSP())
+    sc = &GetFrameSP()->GetSymbolContext(eSymbolContextFunction);
+
   if (m_type_sp)
-    return m_type_sp->GetForwardCompilerType().GetDisplayTypeName();
-  return m_compiler_type.GetDisplayTypeName();
+    return m_type_sp->GetForwardCompilerType().GetDisplayTypeName(sc);
+  return m_compiler_type.GetDisplayTypeName(sc);
 }
 
 size_t ValueObjectMemory::CalculateNumChildren(uint32_t max) {
@@ -168,7 +172,7 @@ bool ValueObjectMemory::UpdateValue() {
     case Value::eValueTypeScalar:
       // The variable value is in the Scalar value inside the m_value. We can
       // point our m_data right to it.
-      m_error = m_value.GetValueAsData(&exe_ctx, m_data, 0, GetModule().get());
+      m_error = m_value.GetValueAsData(&exe_ctx, m_data, GetModule().get());
       break;
 
     case Value::eValueTypeFileAddress:
@@ -209,7 +213,7 @@ bool ValueObjectMemory::UpdateValue() {
           value.SetCompilerType(m_compiler_type);
         }
 
-        m_error = value.GetValueAsData(&exe_ctx, m_data, 0, GetModule().get());
+        m_error = value.GetValueAsData(&exe_ctx, m_data, GetModule().get());
       }
       break;
     }

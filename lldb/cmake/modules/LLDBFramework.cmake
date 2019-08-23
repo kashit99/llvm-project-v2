@@ -78,6 +78,7 @@ endforeach()
 
 # Wrap output in a target, so lldb-framework can depend on it.
 add_custom_target(liblldb-resource-headers DEPENDS ${lldb_staged_headers})
+set_target_properties(liblldb-resource-headers PROPERTIES FOLDER "lldb misc")
 add_dependencies(liblldb liblldb-resource-headers)
 
 # At build time, copy the staged headers into the framework bundle (and do
@@ -117,6 +118,9 @@ if(NOT IOS)
     COMMAND ${CMAKE_COMMAND} -E copy_directory
             ${clang_resource_headers_dir}
             $<TARGET_FILE_DIR:liblldb>/Resources/Clang/include
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${SWIFT_BINARY_DIR}/lib/swift
+            $<TARGET_FILE_DIR:liblldb>/Resources/Swift
     COMMENT "LLDB.framework: copy clang vendor-specific headers"
   )
 endif()

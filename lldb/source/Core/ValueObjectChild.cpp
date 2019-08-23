@@ -11,6 +11,7 @@
 #include "lldb/Core/Value.h"
 #include "lldb/Symbol/CompilerType.h"
 #include "lldb/Target/ExecutionContext.h"
+#include "lldb/Target/LanguageRuntime.h"
 #include "lldb/Target/Process.h"
 #include "lldb/Utility/Flags.h"
 #include "lldb/Utility/Scalar.h"
@@ -83,7 +84,10 @@ ConstString ValueObjectChild::GetQualifiedTypeName() {
 }
 
 ConstString ValueObjectChild::GetDisplayTypeName() {
-  ConstString display_name = GetCompilerType().GetDisplayTypeName();
+  const SymbolContext *sc = nullptr;
+  if (GetFrameSP())
+    sc = &GetFrameSP()->GetSymbolContext(lldb::eSymbolContextFunction);
+  ConstString display_name = GetCompilerType().GetDisplayTypeName(sc);
   AdjustForBitfieldness(display_name, m_bitfield_bit_size);
   return display_name;
 }
@@ -128,6 +132,24 @@ bool ValueObjectChild::UpdateValue() {
 
       if (parent->GetCompilerType().ShouldTreatScalarValueAsAddress()) {
         lldb::addr_t addr = parent->GetPointerValue();
+
+        // BEGIN Swift
+        if (parent_type_flags.AnySet(lldb::eTypeInstanceIsPointer))
+          if (auto process_sp = GetProcessSP())
+            if (auto runtime = process_sp->GetLanguageRuntime(
+                    parent_type.GetMinimumLanguage())) {
+              bool deref;
+              std::tie(addr, deref) =
+                  runtime->FixupPointerValue(addr, parent_type);
+              if (deref) {
+                // Read the pointer to the Objective-C object.
+                Target &target = process_sp->GetTarget();
+                size_t ptr_size = process_sp->GetAddressByteSize();
+                target.ReadMemory(addr, false, &addr, ptr_size, m_error);
+              }
+            }
+        // END Swift
+
         m_value.GetScalar() = addr;
 
         if (addr == LLDB_INVALID_ADDRESS) {
@@ -147,9 +169,17 @@ bool ValueObjectChild::UpdateValue() {
               m_value.SetValueType(Value::eValueTypeFileAddress);
           } break;
           case eAddressTypeLoad:
-            m_value.SetValueType(is_instance_ptr_base
-                                     ? Value::eValueTypeScalar
-                                     : Value::eValueTypeLoadAddress);
+            // BEGIN SWIFT MOD
+            // We need to detect when we cross TypeSystem boundaries,
+            // e.g. when we try to print Obj-C fields of a Swift object.
+            if (parent->GetCompilerType().GetTypeSystem()->getKind() ==
+                GetCompilerType().GetTypeSystem()->getKind())
+                m_value.SetValueType(is_instance_ptr_base
+                                    ? Value::eValueTypeScalar
+                                    : Value::eValueTypeLoadAddress);
+            else
+              m_value.SetValueType(Value::eValueTypeLoadAddress);
+            // END SWIFT MOD
             break;
           case eAddressTypeHost:
             m_value.SetValueType(Value::eValueTypeHostAddress);
@@ -175,6 +205,30 @@ bool ValueObjectChild::UpdateValue() {
             // Set this object's scalar value to the address of its value by
             // adding its byte offset to the parent address
             m_value.GetScalar() += GetByteOffset();
+
+            // If a bitfield doesn't fit into the child_byte_size'd
+            // window at child_byte_offset, move the window forward
+            // until it fits.  The problem here is that Value has no
+            // notion of bitfields and thus the Value's DataExtractor
+            // is sized like the bitfields CompilerType; a sequence of
+            // bitfields, however, can be larger than their underlying
+            // type.
+            if (m_bitfield_bit_offset) {
+              const bool thread_and_frame_only_if_stopped = true;
+              ExecutionContext exe_ctx(GetExecutionContextRef().Lock(
+                  thread_and_frame_only_if_stopped));
+              if (auto type_bit_size = GetCompilerType().GetBitSize(
+                      exe_ctx.GetBestExecutionContextScope())) {
+                uint64_t bitfield_end =
+                    m_bitfield_bit_size + m_bitfield_bit_offset;
+                if (bitfield_end > *type_bit_size) {
+                  uint64_t overhang_bytes =
+                      (bitfield_end - *type_bit_size + 7) / 8;
+                  m_value.GetScalar() += overhang_bytes;
+                  m_bitfield_bit_offset -= overhang_bytes * 8;
+                }
+              }
+            }
           }
         } break;
 
@@ -203,7 +257,7 @@ bool ValueObjectChild::UpdateValue() {
         if (GetCompilerType().GetTypeInfo() & lldb::eTypeHasValue) {
           Value &value = is_instance_ptr_base ? m_parent->GetValue() : m_value;
           m_error =
-              value.GetValueAsData(&exe_ctx, m_data, 0, GetModule().get());
+              value.GetValueAsData(&exe_ctx, m_data, GetModule().get());
         } else {
           m_error.Clear(); // No value so nothing to read...
         }

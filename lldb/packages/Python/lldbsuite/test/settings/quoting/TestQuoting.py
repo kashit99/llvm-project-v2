@@ -5,9 +5,6 @@ Test quoting of arguments to lldb commands
 from __future__ import print_function
 
 
-import os
-import re
-import time
 
 import lldb
 from lldbsuite.test.decorators import *
@@ -22,7 +19,7 @@ class SettingsCommandTestCase(TestBase):
     @classmethod
     def classCleanup(cls):
         """Cleanup the test byproducts."""
-        cls.RemoveTempFile("stdout.txt")
+        cls.RemoveTempFile(self.getBuildArtifact("stdout.txt"))
 
     @no_debug_info_test
     def test_no_quote(self):

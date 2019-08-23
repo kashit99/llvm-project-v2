@@ -183,6 +183,9 @@ public:
 
   bool PopIOHandler(const lldb::IOHandlerSP &reader_sp);
 
+  uint32_t PopIOHandlers(const lldb::IOHandlerSP &reader1_sp,
+                         const lldb::IOHandlerSP &reader2_sp);
+
   // Synchronously run an input reader until it is done
   void RunIOHandler(const lldb::IOHandlerSP &reader_sp);
 
@@ -307,6 +310,10 @@ public:
 
   Status RunREPL(lldb::LanguageType language, const char *repl_options);
 
+  bool REPLIsActive() { return m_input_reader_stack.REPLIsActive(); }
+
+  bool REPLIsEnabled() { return m_input_reader_stack.REPLIsEnabled(); }
+
   // This is for use in the command interpreter, when you either want the
   // selected target, or if no target is present you want to prime the dummy
   // target with entities that will be copied over to new targets.
@@ -319,6 +326,7 @@ public:
 
 protected:
   friend class CommandInterpreter;
+  friend class SwiftREPL;
   friend class REPL;
 
   bool StartEventHandlerThread();
@@ -345,9 +353,10 @@ protected:
 
   void HandleThreadEvent(const lldb::EventSP &event_sp);
 
-  size_t GetProcessSTDOUT(Process *process, Stream *stream);
-
-  size_t GetProcessSTDERR(Process *process, Stream *stream);
+  // Ensures two threads don't attempt to flush process output in parallel.
+  std::mutex m_output_flush_mutex;
+  void FlushProcessOutput(Process &process, bool flush_stdout,
+                          bool flush_stderr);
 
   SourceManager::SourceFileCache &GetSourceFileCache() {
     return m_source_file_cache;
@@ -398,7 +407,7 @@ protected:
   HostThread m_io_handler_thread;
   Broadcaster m_sync_broadcaster;
   lldb::ListenerSP m_forward_listener_sp;
-  llvm::once_flag m_clear_once;
+  std::once_flag m_clear_once;
 
   // Events for m_sync_broadcaster
   enum {

@@ -1,6 +1,7 @@
 # -*- Python -*-
 
 import os
+import platform
 import re
 import shutil
 import site
@@ -35,6 +36,12 @@ config.test_source_root = os.path.dirname(__file__)
 # test_exec_root: The root path where tests should be run.
 config.test_exec_root = os.path.join(config.lldb_obj_root, 'lit')
 
+# Begin Swift mod.
+# Swift's libReflection builds without ASAN, which causes a known
+# false positive in std::vector. If sanitizers are off, this is just
+# a no-op
+config.environment['ASAN_OPTIONS'] = 'detect_container_overflow=0'
+# End Swift mod.
 
 llvm_config.use_default_substitutions()
 
@@ -68,20 +75,21 @@ llvm_config.feature_config(
 # so doing it once per lit.py invocation is close enough.
 
 for i in ['module-cache-clang', 'module-cache-lldb']:
-    cachedir = os.path.join(config.lldb_libs_dir, '..',
+    cachedir = os.path.join(os.path.dirname(config.lldb_libs_dir),
                             'lldb-test-build.noindex', i)
     if os.path.isdir(cachedir):
         print("Deleting module cache at %s."%cachedir)
         shutil.rmtree(cachedir)
 
 # Set a default per-test timeout of 10 minutes. Setting a timeout per test
-# requires the psutil module and lit complains if the value is set but the
-# module can't be found.
-try:
-    import psutil  # noqa: F401
+# requires that killProcessAndChildren() is supported on the platform and
+# lit complains if the value is set but it is not supported.
+supported, errormsg = lit_config.maxIndividualTestTimeIsSupported
+if supported:
     lit_config.maxIndividualTestTime = 600
-except ImportError:
-    pass
+else:
+    lit_config.warning("Could not set a default per-test timeout. " + errormsg)
+
 
 # If running tests natively, check for CPU features needed for some tests.
 

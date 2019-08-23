@@ -9,7 +9,6 @@
 #ifndef liblldb_Type_h_
 #define liblldb_Type_h_
 
-#include "lldb/Core/ClangForward.h"
 #include "lldb/Symbol/CompilerDecl.h"
 #include "lldb/Symbol/CompilerType.h"
 #include "lldb/Symbol/Declaration.h"
@@ -22,21 +21,27 @@
 #include <set>
 
 namespace lldb_private {
-// CompilerContext allows an array of these items to be passed to perform
-// detailed lookups in SymbolVendor and SymbolFile functions.
+
+/// CompilerContext allows an array of these items to be passed to perform
+/// detailed lookups in SymbolVendor and SymbolFile functions.
 struct CompilerContext {
-  CompilerContext(CompilerContextKind t, ConstString n)
-      : type(t), name(n) {}
+  CompilerContext(CompilerContextKind t, ConstString n) : kind(t), name(n) {}
 
   bool operator==(const CompilerContext &rhs) const {
-    return type == rhs.type && name == rhs.name;
+    return kind == rhs.kind && name == rhs.name;
   }
+  bool operator!=(const CompilerContext &rhs) const { return !(*this == rhs); }
 
   void Dump() const;
 
-  CompilerContextKind type;
+  CompilerContextKind kind;
   ConstString name;
 };
+
+/// Match \p context_chain against \p pattern, which may contain "Any"
+/// kinds. The \p context_chain should *not* contain any "Any" kinds.
+bool contextMatches(llvm::ArrayRef<CompilerContext> context_chain,
+                    llvm::ArrayRef<CompilerContext> pattern);
 
 class SymbolFileType : public std::enable_shared_from_this<SymbolFileType>,
                        public UserID {
@@ -117,11 +122,10 @@ public:
   SymbolFile *GetSymbolFile() { return m_symbol_file; }
   const SymbolFile *GetSymbolFile() const { return m_symbol_file; }
 
-  TypeList *GetTypeList();
-
   ConstString GetName();
 
-  llvm::Optional<uint64_t> GetByteSize();
+  llvm::Optional<uint64_t>
+  GetByteSize(ExecutionContextScope *exe_scope = nullptr);
 
   uint32_t GetNumChildren(bool omit_empty_base_classes);
 
@@ -203,6 +207,17 @@ public:
     m_flags.is_complete_objc_class = is_complete_objc_class;
   }
 
+  /// \return whether this is a Swift fixed-size buffer. Resilient variables in
+  /// fixed-size buffers may be indirect depending on the runtime size of the
+  /// type. This is more a property of the value than of its type.
+  bool IsSwiftFixedValueBuffer() const {
+    return m_flags.is_swift_fixed_value_buffer;
+  }
+
+  void SetSwiftFixedValueBuffer(bool is_swift_fixed_value_buffer) {
+    m_flags.is_swift_fixed_value_buffer = is_swift_fixed_value_buffer;
+  }
+
 protected:
   ConstString m_name;
   SymbolFile *m_symbol_file;
@@ -224,6 +239,7 @@ protected:
     ResolveState compiler_type_resolve_state : 2;
 #endif
     bool is_complete_objc_class : 1;
+    bool is_swift_fixed_value_buffer : 1;
   } m_flags;
 
   Type *GetEncodingType();
@@ -233,6 +249,9 @@ protected:
 
 // the two classes here are used by the public API as a backend to the SBType
 // and SBTypeList classes
+
+// the two classes here are used by the public API as a backend to
+// the SBType and SBTypeList classes
 
 class TypeImpl {
 public:

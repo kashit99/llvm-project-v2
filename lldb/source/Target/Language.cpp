@@ -30,7 +30,7 @@ typedef std::map<lldb::LanguageType, LanguageUP> LanguagesMap;
 
 static LanguagesMap &GetLanguagesMap() {
   static LanguagesMap *g_map = nullptr;
-  static llvm::once_flag g_initialize;
+  static std::once_flag g_initialize;
 
   llvm::call_once(g_initialize, [] {
     g_map = new LanguagesMap(); // NOTE: INTENTIONAL LEAK due to global
@@ -41,7 +41,7 @@ static LanguagesMap &GetLanguagesMap() {
 }
 static std::mutex &GetLanguagesMutex() {
   static std::mutex *g_mutex = nullptr;
-  static llvm::once_flag g_initialize;
+  static std::once_flag g_initialize;
 
   llvm::call_once(g_initialize, [] {
     g_mutex = new std::mutex(); // NOTE: INTENTIONAL LEAK due to global
@@ -357,26 +357,16 @@ std::set<lldb::LanguageType> Language::GetSupportedLanguages() {
   return supported_languages;
 }
 
-void Language::GetLanguagesSupportingTypeSystems(
-    std::set<lldb::LanguageType> &languages,
-    std::set<lldb::LanguageType> &languages_for_expressions) {
-  uint32_t idx = 0;
-
-  while (TypeSystemEnumerateSupportedLanguages enumerate = PluginManager::
-             GetTypeSystemEnumerateSupportedLanguagesCallbackAtIndex(idx++)) {
-    (*enumerate)(languages, languages_for_expressions);
-  }
+LanguageSet Language::GetLanguagesSupportingTypeSystems() {
+  return PluginManager::GetAllTypeSystemSupportedLanguagesForTypes();
 }
 
-void Language::GetLanguagesSupportingREPLs(
-    std::set<lldb::LanguageType> &languages) {
-  uint32_t idx = 0;
+LanguageSet Language::GetLanguagesSupportingTypeSystemsForExpressions() {
+  return PluginManager::GetAllTypeSystemSupportedLanguagesForExpressions();
+}
 
-  while (REPLEnumerateSupportedLanguages enumerate =
-             PluginManager::GetREPLEnumerateSupportedLanguagesCallbackAtIndex(
-                 idx++)) {
-    (*enumerate)(languages);
-  }
+LanguageSet Language::GetLanguagesSupportingREPLs() {
+  return PluginManager::GetREPLAllTypeSystemSupportedLanguages();
 }
 
 std::unique_ptr<Language::TypeScavenger> Language::GetTypeScavenger() {

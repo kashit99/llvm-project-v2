@@ -16,11 +16,6 @@ def use_lldb_substitutions(config):
 
     dsname = 'debugserver' if platform.system() in ['Darwin'] else 'lldb-server'
     dsargs = [] if platform.system() in ['Darwin'] else ['gdbserver']
-    lldbmi = ToolSubst('%lldbmi',
-                       command=FindTool('lldb-mi'),
-                       extra_args=['--synchronous'],
-                       unresolved='ignore')
-
 
     build_script = os.path.dirname(__file__)
     build_script = os.path.join(build_script, 'build.py')
@@ -43,7 +38,6 @@ def use_lldb_substitutions(config):
         ToolSubst('%lldb-init',
                   command=FindTool('lldb'),
                   extra_args=['-S', lldb_init]),
-        lldbmi,
         ToolSubst('%debugserver',
                   command=FindTool(dsname),
                   extra_args=dsargs,
@@ -61,9 +55,6 @@ def use_lldb_substitutions(config):
 
     llvm_config.add_tool_substitutions(primary_tools,
                                        [config.lldb_tools_dir])
-    # lldb-mi always fails without Python support
-    if lldbmi.was_resolved and not config.lldb_disable_python:
-        config.available_features.add('lldb-mi')
 
 def _use_msvc_substitutions(config):
     # If running from a Visual Studio Command prompt (e.g. vcvars), this will
@@ -107,6 +98,28 @@ def use_support_substitutions(config):
             flags = ['-isysroot', sdk_path]
     elif platform.system() in ['NetBSD', 'OpenBSD', 'Linux']:
         flags = ['-pthread']
+
+    config.target_shared_library_suffix = '.dylib' if platform.system() in ['Darwin'] else '.so'
+    config.substitutions.append(('%target-shared-library-suffix', config.target_shared_library_suffix))
+
+    # Swift support
+    swift_args = ['-module-cache-path',
+                  os.path.join(os.path.dirname(config.lldb_libs_dir),
+                               'lldb-test-build.noindex',
+                               'module-cache-clang')]
+    swift_driver_args = []
+    if platform.system() in ['Darwin']:
+        swift_args += ['-sdk', sdk_path]
+        swift_driver_args += ['-toolchain-stdlib-rpath']
+    tools = [
+        ToolSubst(
+            '%target-swiftc', command=config.swiftc,
+            extra_args=swift_args + swift_driver_args),
+        ToolSubst(
+            '%target-swift-frontend', command=config.swiftc[:-1],
+            extra_args=(['-frontend'] + swift_args))
+    ]
+    llvm_config.add_tool_substitutions(tools)
 
     if sys.platform.startswith('netbsd'):
         # needed e.g. to use freshly built libc++

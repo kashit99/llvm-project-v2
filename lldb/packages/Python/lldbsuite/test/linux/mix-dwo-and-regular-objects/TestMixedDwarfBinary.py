@@ -1,7 +1,5 @@
 """ Testing debugging of a binary with "mixed" dwarf (with/without fission). """
-import os
 import lldb
-import sys
 from lldbsuite.test.decorators import *
 from lldbsuite.test.lldbtest import *
 from lldbsuite.test import lldbutil
@@ -16,6 +14,7 @@ class TestMixedDwarfBinary(TestBase):
     @no_debug_info_test  # Prevent the genaration of the dwarf version of this test
     @add_test_categories(["dwo"])
     @skipUnlessPlatform(["linux"])
+    @skipIf(bugnumber="rdar://38550275")
     def test_mixed_dwarf(self):
         """Test that 'frame variable' works
         for the executable built from two source files compiled

@@ -50,6 +50,7 @@
 #include "lldb/lldb-private.h"
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/Support/Threading.h"
 #include "llvm/Support/VersionTuple.h"
 
 namespace lldb_private {
@@ -382,7 +383,7 @@ public:
   };
 
   /// Process warning types.
-  enum Warnings { eWarningsOptimization = 1 };
+  enum Warnings { eWarningsOptimization = 1, eWarningsSwiftImport };
 
   typedef Range<lldb::addr_t, lldb::addr_t> LoadRange;
   // We use a read/write lock to allow on or more clients to access the process
@@ -680,10 +681,19 @@ public:
   /// shared library load state.
   ///
   /// \return
-  ///    The number of shared libraries that were loaded
-  virtual size_t LoadModules() { return 0; }
+  ///    A status object indicating if the operation was sucessful or not.
+  virtual llvm::Error LoadModules() {
+    return llvm::make_error<llvm::StringError>("Not implemented.",
+                                               llvm::inconvertibleErrorCode());
+  }
 
-  virtual size_t LoadModules(LoadedModuleInfoList &) { return 0; }
+  /// Query remote GDBServer for a detailed loaded library list
+  /// \return
+  ///    The list of modules currently loaded by the process, or an error.
+  virtual llvm::Expected<LoadedModuleInfoList> GetLoadedModuleList() {
+    return llvm::createStringError(llvm::inconvertibleErrorCode(),
+                                   "Not implemented");
+  }
 
 protected:
   virtual JITLoaderList &GetJITLoaders();
@@ -1186,6 +1196,9 @@ public:
   ///     VersionTuple is returner.
   virtual llvm::VersionTuple GetHostOSVersion() { return llvm::VersionTuple(); }
 
+  /// \return the macCatalyst version of the host OS.
+  virtual llvm::VersionTuple GetHostMacCatalystVersion() { return {}; }
+
   /// Get the target object pointer for this module.
   ///
   /// \return
@@ -1306,6 +1319,15 @@ public:
   ///     A SymbolContext with eSymbolContextFunction and eSymbolContextModule
   ///     pre-computed.
   void PrintWarningOptimization(const SymbolContext &sc);
+
+  /// Prints a async warning message to the user one time per Process
+  /// for a Module whose Swift AST sections couldn't be loaded because
+  /// they aren't buildable on the current machine.
+  ///
+  /// @param [in] module
+  ///     The affected Module.
+  void PrintWarningCantLoadSwiftModule(const Module &module,
+                                       std::string details);
 
   virtual bool GetProcessInfo(ProcessInstanceInfo &info);
 
@@ -2127,12 +2149,18 @@ public:
   ///     the process
   ///     needs to have its process IOHandler popped.
   ///
+  /// \param[out] pop_command_interpreter
+  ///     This variable will be set to \b true or \b false ot indicate if the
+  ///     process needs
+  ///     to have its command interpreter popped.
+  ///
   /// \return
   ///     \b true if the event describes a process state changed event, \b false
   ///     otherwise.
   static bool HandleProcessStateChangedEvent(const lldb::EventSP &event_sp,
                                              Stream *stream,
-                                             bool &pop_process_io_handler);
+                                             bool &pop_process_io_handler,
+                                             bool &pop_command_interpreter);
 
   Event *PeekAtStateChangedEvents();
 
@@ -2716,11 +2744,12 @@ protected:
   bool m_finalize_called; // This is set at the end of Process::Finalize()
   bool m_clear_thread_plans_on_stop;
   bool m_force_next_event_delivery;
+  bool m_destroy_in_process;
+  bool m_destroy_complete;
   lldb::StateType m_last_broadcast_state; /// This helps with the Public event
                                           /// coalescing in
                                           /// ShouldBroadcastEvent.
   std::map<lldb::addr_t, lldb::addr_t> m_resolved_indirect_addresses;
-  bool m_destroy_in_process;
   bool m_can_interpret_function_calls;  // Some targets, e.g the OSX kernel,
                                         // don't support the ability to modify
                                         // the stack.
@@ -2732,7 +2761,7 @@ protected:
   enum { eCanJITDontKnow = 0, eCanJITYes, eCanJITNo } m_can_jit;
   
   std::unique_ptr<UtilityFunction> m_dlopen_utility_func_up;
-  std::once_flag m_dlopen_utility_func_flag_once;
+  llvm::once_flag m_dlopen_utility_func_flag_once;
 
   size_t RemoveBreakpointOpcodesFromBuffer(lldb::addr_t addr, size_t size,
                                            uint8_t *buf) const;
@@ -2802,7 +2831,7 @@ protected:
 
   bool PushProcessIOHandler();
 
-  bool PopProcessIOHandler();
+  bool PopProcessIOHandler(bool pop_command_interpreter);
 
   bool ProcessIOHandlerIsActive();
 

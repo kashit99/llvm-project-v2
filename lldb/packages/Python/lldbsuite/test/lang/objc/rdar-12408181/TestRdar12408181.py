@@ -5,8 +5,6 @@ Test that we are able to find out how many children NSWindow has
 from __future__ import print_function
 
 
-import os
-import time
 import lldb
 from lldbsuite.test.decorators import *
 from lldbsuite.test.lldbtest import *
@@ -19,6 +17,7 @@ from lldbsuite.test import lldbutil
 # Note: Simply applying the @skipIf decorator here confuses the test harness
 # and gives a spurious failure.
 @skipUnlessDarwin
+@skipIfDarwin  # <rdar://problem/23298079> Modify TestRdar12408181.py to self.skipTest() if WindowServer isn't available
 class Rdar12408181TestCase(TestBase):
 
     mydir = TestBase.compute_mydir(__file__)

@@ -63,6 +63,10 @@ public:
 
   bool CanInterpret() override { return m_can_interpret; }
 
+  virtual Materializer *GetMaterializer() override {
+    return m_materializer_up.get();
+  }
+
   /// Return the string that the parser should parse.  Must be a full
   /// translation unit.
   const char *Text() override { return m_transformed_text.c_str(); }
@@ -103,6 +107,7 @@ protected:
                                                    /// when running the
                                                    /// expression.
   lldb::ModuleWP m_jit_module_wp;
+
   bool m_enforce_valid_object; ///< True if the expression parser should enforce
                                ///the presence of a valid class pointer
   /// in order to generate the expression as a method.
@@ -119,6 +124,7 @@ protected:
                            ///passed in.  False if the expression
                            /// doesn't really use them and they can be NULL.
   bool m_const_object;     ///< True if "this" is const.
+
   Target *m_target; ///< The target for storing persistent data like types and
                     ///variables.
 

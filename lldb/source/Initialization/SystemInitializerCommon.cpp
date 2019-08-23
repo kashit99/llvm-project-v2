@@ -25,6 +25,7 @@
 #if defined(_WIN32)
 #include "Plugins/Process/Windows/Common/ProcessWindowsLog.h"
 #include "lldb/Host/windows/windows.h"
+#include <crtdbg.h>
 #endif
 
 #include "llvm/Support/TargetSelect.h"
@@ -98,6 +99,7 @@ llvm::Error SystemInitializerCommon::Initialize() {
 
   process_gdb_remote::ProcessGDBRemoteLog::Initialize();
 
+  // Initialize plug-ins
 #if defined(__linux__) || defined(__FreeBSD__) || defined(__NetBSD__)
   ProcessPOSIXLog::Initialize();
 #endif

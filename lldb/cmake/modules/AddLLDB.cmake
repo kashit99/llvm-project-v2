@@ -116,13 +116,23 @@ function(add_lldb_library name)
   # headers without negatively impacting much of anything.
   if(NOT LLDB_BUILT_STANDALONE)
     add_dependencies(${name} clang-tablegen-targets)
+
+    # BEGIN Swift Mods
+	if(swift IN_LIST LLVM_EXTERNAL_PROJECTS)
+      add_dependencies(${name} swift-syntax-generated-headers)
+    endif()
+    # END Swift Mods
   endif()
 
   # Add in any extra C++ compilation flags for this library.
   target_compile_options(${name} PRIVATE ${PARAM_EXTRA_CXXFLAGS})
 
   if(PARAM_PLUGIN)
-    set_target_properties(${name} PROPERTIES FOLDER "lldb plugins")
+    get_property(parent_dir DIRECTORY PROPERTY PARENT_DIRECTORY)
+    if(EXISTS ${parent_dir})
+      get_filename_component(category ${parent_dir} NAME)
+      set_target_properties(${name} PROPERTIES FOLDER "lldb plugins/${category}")
+    endif()
   else()
     set_target_properties(${name} PROPERTIES FOLDER "lldb libraries")
   endif()
@@ -199,7 +209,8 @@ endfunction()
 function(lldb_add_to_buildtree_lldb_framework name subdir)
   # Destination for the copy in the build-tree. While the framework target may
   # not exist yet, it will exist when the generator expression gets expanded.
-  set(copy_dest "$<TARGET_FILE_DIR:liblldb>/../../../${subdir}")
+  get_target_property(framework_build_dir liblldb LIBRARY_OUTPUT_DIRECTORY)
+  set(copy_dest "${framework_build_dir}/${subdir}/$<TARGET_FILE_NAME:${name}>")
 
   # Copy into the given subdirectory for testing.
   add_custom_command(TARGET ${name} POST_BUILD
@@ -241,19 +252,22 @@ function(lldb_add_post_install_steps_darwin name install_prefix)
   endif()
 
   # Generate dSYM
-  set(dsym_name ${output_name}.dSYM)
-  if(is_framework)
-    set(dsym_name ${output_name}.framework.dSYM)
-  endif()
-  if(LLDB_DEBUGINFO_INSTALL_PREFIX)
-    # This makes the path absolute, so we must respect DESTDIR.
-    set(dsym_name "\$ENV\{DESTDIR\}${LLDB_DEBUGINFO_INSTALL_PREFIX}/${dsym_name}")
-  endif()
+  # TODO: Add an option to skip dSYM creation
+  if(NOT ${name} STREQUAL "repl_swift")
+    set(dsym_name ${output_name}.dSYM)
+    if(is_framework)
+      set(dsym_name ${output_name}.framework.dSYM)
+    endif()
+    if(LLDB_DEBUGINFO_INSTALL_PREFIX)
+      # This makes the path absolute, so we must respect DESTDIR.
+      set(dsym_name "\$ENV\{DESTDIR\}${LLDB_DEBUGINFO_INSTALL_PREFIX}/${dsym_name}")
+    endif()
 
-  set(buildtree_name ${buildtree_dir}/${bundle_subdir}${output_name})
-  install(CODE "message(STATUS \"Externalize debuginfo: ${dsym_name}\")" COMPONENT ${name})
-  install(CODE "execute_process(COMMAND xcrun dsymutil -o=${dsym_name} ${buildtree_name})"
-          COMPONENT ${name})
+    set(buildtree_name ${buildtree_dir}/${bundle_subdir}${output_name})
+    install(CODE "message(STATUS \"Externalize debuginfo: ${dsym_name}\")" COMPONENT ${name})
+    install(CODE "execute_process(COMMAND xcrun dsymutil -o=${dsym_name} ${buildtree_name})"
+            COMPONENT ${name})
+  endif()
 
   # Strip distribution binary with -ST (removing debug symbol table entries and
   # Swift symbols). Avoid CMAKE_INSTALL_DO_STRIP and llvm_externalize_debuginfo()
@@ -274,4 +288,28 @@ function(lldb_setup_rpaths name)
     BUILD_RPATH "${LIST_BUILD_RPATH}"
     INSTALL_RPATH "${LIST_INSTALL_RPATH}"
   )
+endfunction()
+
+function(lldb_find_system_debugserver path)
+  execute_process(COMMAND xcode-select -p
+                  RESULT_VARIABLE exit_code
+                  OUTPUT_VARIABLE xcode_dev_dir
+                  ERROR_VARIABLE error_msg
+                  OUTPUT_STRIP_TRAILING_WHITESPACE)
+  if(exit_code)
+    message(WARNING "`xcode-select -p` failed:\n${error_msg}")
+  else()
+    set(subpath "LLDB.framework/Resources/debugserver")
+    set(path_shared "${xcode_dev_dir}/../SharedFrameworks/${subpath}")
+    set(path_private "${xcode_dev_dir}/Library/PrivateFrameworks/${subpath}")
+
+    if(EXISTS ${path_shared})
+      set(${path} ${path_shared} PARENT_SCOPE)
+    elseif(EXISTS ${path_private})
+      set(${path} ${path_private} PARENT_SCOPE)
+    else()
+      message(WARNING "System debugserver requested, but not found. "
+                      "Candidates don't exist: ${path_shared}\n${path_private}")
+    endif()
+  endif()
 endfunction()

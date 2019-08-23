@@ -27,6 +27,7 @@
 #include "lldb/Target/Platform.h"
 #include "lldb/Target/Process.h"
 #include "lldb/Target/SectionLoadList.h"
+#include "lldb/Target/SwiftLanguageRuntime.h"
 #include "lldb/Target/Target.h"
 #include "lldb/Target/Thread.h"
 #include "lldb/Target/ThreadList.h"
@@ -830,6 +831,8 @@ static uint32_t MachHeaderSizeFromMagic(uint32_t magic) {
 
 #define MACHO_NLIST_ARM_SYMBOL_IS_THUMB 0x0008
 
+char ObjectFileMachO::ID;
+
 void ObjectFileMachO::Initialize() {
   PluginManager::RegisterPlugin(
       GetPluginNameStatic(), GetPluginDescriptionStatic(), CreateInstance,
@@ -872,7 +875,7 @@ ObjectFile *ObjectFileMachO::CreateInstance(const lldb::ModuleSP &module_sp,
       return nullptr;
     data_offset = 0;
   }
-  auto objfile_up = llvm::make_unique<ObjectFileMachO>(
+  auto objfile_up = std::make_unique<ObjectFileMachO>(
       module_sp, data_sp, data_offset, file, file_offset, length);
   if (!objfile_up || !objfile_up->ParseHeader())
     return nullptr;
@@ -911,16 +914,11 @@ size_t ObjectFileMachO::GetModuleSpecifications(
         data_offset = MachHeaderSizeFromMagic(header.magic);
       }
       if (data_sp) {
-        ModuleSpec spec;
-        spec.GetFileSpec() = file;
-        spec.SetObjectOffset(file_offset);
-        spec.SetObjectSize(length);
-
-        spec.GetArchitecture() = GetArchitecture(header, data, data_offset);
-        if (spec.GetArchitecture().IsValid()) {
-          spec.GetUUID() = GetUUID(header, data, data_offset);
-          specs.Append(spec);
-        }
+        ModuleSpec base_spec;
+        base_spec.GetFileSpec() = file;
+        base_spec.SetObjectOffset(file_offset);
+        base_spec.SetObjectSize(length);
+        GetAllArchSpecs(header, data, data_offset, base_spec, specs);
       }
     }
   }
@@ -1102,11 +1100,19 @@ bool ObjectFileMachO::ParseHeader() {
     if (can_parse) {
       m_data.GetU32(&offset, &m_header.cputype, 6);
 
-      if (ArchSpec mach_arch = GetArchitecture()) {
+      ModuleSpecList all_specs;
+      ModuleSpec base_spec;
+      GetAllArchSpecs(m_header, m_data, MachHeaderSizeFromMagic(m_header.magic),
+                      base_spec, all_specs);
+
+      for (unsigned i = 0, e = all_specs.GetSize(); i != e; ++i) {
+        ArchSpec mach_arch =
+            all_specs.GetModuleSpecRefAtIndex(i).GetArchitecture();
+
         // Check if the module has a required architecture
         const ArchSpec &module_arch = module_sp->GetArchitecture();
         if (module_arch.IsValid() && !module_arch.IsCompatibleMatch(mach_arch))
-          return false;
+          continue;
 
         if (SetModulesArchitecture(mach_arch)) {
           const size_t header_and_lc_size =
@@ -1121,7 +1127,7 @@ bool ObjectFileMachO::ParseHeader() {
               // Read in all only the load command data from the file on disk
               data_sp = MapFileData(m_file, header_and_lc_size, m_file_offset);
               if (data_sp->GetByteSize() != header_and_lc_size)
-                return false;
+                continue;
             }
             if (data_sp)
               m_data.SetData(data_sp);
@@ -1129,6 +1135,8 @@ bool ObjectFileMachO::ParseHeader() {
         }
         return true;
       }
+      // None found.
+      return false;
     } else {
       memset(&m_header, 0, sizeof(struct mach_header));
     }
@@ -1142,6 +1150,10 @@ ByteOrder ObjectFileMachO::GetByteOrder() const {
 
 bool ObjectFileMachO::IsExecutable() const {
   return m_header.filetype == MH_EXECUTE;
+}
+
+bool ObjectFileMachO::IsDynamicLoader() const {
+  return m_header.filetype == MH_DYLINKER;
 }
 
 uint32_t ObjectFileMachO::GetAddressByteSize() const {
@@ -1215,8 +1227,10 @@ AddressClass ObjectFileMachO::GetAddressClass(lldb::addr_t file_addr) {
           case eSectionTypeDWARFDebugTypesDwo:
           case eSectionTypeDWARFAppleNames:
           case eSectionTypeDWARFAppleTypes:
+          case eSectionTypeDWARFAppleExternalTypes:
           case eSectionTypeDWARFAppleNamespaces:
           case eSectionTypeDWARFAppleObjC:
+          case eSectionTypeSwiftModules:
           case eSectionTypeDWARFGNUDebugAltLink:
             return AddressClass::eDebug;
 
@@ -1303,6 +1317,11 @@ AddressClass ObjectFileMachO::GetAddressClass(lldb::addr_t file_addr) {
         return AddressClass::eRuntime;
       case eSymbolTypeReExported:
         return AddressClass::eRuntime;
+      case eSymbolTypeASTFile:
+        return AddressClass::eDebug;
+
+      case eSymbolTypeIVarOffset:
+        break;
       }
     }
   }
@@ -1477,6 +1496,7 @@ static lldb::SectionType GetSectionType(uint32_t flags,
   static ConstString g_sect_name_compact_unwind("__unwind_info");
   static ConstString g_sect_name_text("__text");
   static ConstString g_sect_name_data("__data");
+  static ConstString g_sect_name_swift_ast("__swift_ast");
   static ConstString g_sect_name_go_symtab("__gosymtab");
 
   if (section_name == g_sect_name_dwarf_debug_abbrev)
@@ -1525,6 +1545,8 @@ static lldb::SectionType GetSectionType(uint32_t flags,
     return eSectionTypeCompactUnwind;
   if (section_name == g_sect_name_cfstring)
     return eSectionTypeDataObjCCFStrings;
+  if (section_name == g_sect_name_swift_ast)
+    return eSectionTypeSwiftModules;
   if (section_name == g_sect_name_go_symtab)
     return eSectionTypeGoSymtab;
   if (section_name == g_sect_name_objc_data ||
@@ -2009,8 +2031,44 @@ struct TrieEntryWithOffset {
   }
 };
 
+static LazyBool CalculateNameIsSwift(std::vector<llvm::StringRef> &nameSlices) {
+  // Currently a symbol is defined to possibly be in the Trie only if
+  // it is a swift symbol. Swift mangled names start with "__T" so we
+  // need to see if the nameSlices start with "__T", but of course
+  // this could be broken up into at most 3 entries.
+
+  llvm::StringRef swift_prefix("__T");
+
+  for (const auto &name : nameSlices) {
+    const size_t name_len = name.size();
+    const size_t swift_prefix_len =
+        swift_prefix.size(); // This length changes as we trim it down so we
+                             // must always fetch it
+    if (swift_prefix_len > name_len) {
+      // The remaining swift prefix is longer than the current
+      // name slice, so if the prefix starts with the name, then
+      // trim characters off the swift prefix and keep looking,
+      // else we are done if the swift prefix doesn't start with
+      // the name
+      if (swift_prefix.startswith(name))
+        swift_prefix = swift_prefix.substr(name_len);
+      else
+        return eLazyBoolNo;
+    } else {
+      // The current name slice is greater than or equal to
+      // the remaining prefix, so just test if it starts with
+      // the prefix and we are done
+      if (name.startswith(swift_prefix))
+        return eLazyBoolYes;
+      else
+        return eLazyBoolNo;
+    }
+  }
+  return eLazyBoolCalculate;
+}
+
 static bool ParseTrieEntries(DataExtractor &data, lldb::offset_t offset,
-                             const bool is_arm,
+                             const bool is_arm, const LazyBool symbol_is_swift,
                              std::vector<llvm::StringRef> &nameSlices,
                              std::set<lldb::addr_t> &resolver_addresses,
                              std::vector<TrieEntryWithOffset> &output) {
@@ -2039,8 +2097,9 @@ static bool ParseTrieEntries(DataExtractor &data, lldb::offset_t offset,
         e.entry.other = 0;
     }
     // Only add symbols that are reexport symbols with a valid import name
-    if (EXPORT_SYMBOL_FLAGS_REEXPORT & e.entry.flags && import_name &&
-        import_name[0]) {
+    if ((EXPORT_SYMBOL_FLAGS_REEXPORT & e.entry.flags && import_name &&
+         import_name[0]) ||
+        symbol_is_swift == eLazyBoolYes) {
       std::string name;
       if (!nameSlices.empty()) {
         for (auto name_slice : nameSlices)
@@ -2065,9 +2124,16 @@ static bool ParseTrieEntries(DataExtractor &data, lldb::offset_t offset,
       nameSlices.push_back(llvm::StringRef(cstr));
     else
       return false; // Corrupt data
+
+    const LazyBool child_symbol_is_swift =
+        (symbol_is_swift == eLazyBoolCalculate)
+            ? CalculateNameIsSwift(nameSlices)
+            : symbol_is_swift;
+
     lldb::offset_t childNodeOffset = data.GetULEB128(&children_offset);
     if (childNodeOffset) {
-      if (!ParseTrieEntries(data, childNodeOffset, is_arm, nameSlices,
+      if (!ParseTrieEntries(data, childNodeOffset, is_arm,
+                            child_symbol_is_swift, nameSlices,
                             resolver_addresses, output)) {
         return false;
       }
@@ -2099,10 +2165,85 @@ UUID ObjectFileMachO::GetSharedCacheUUID(FileSpec dyld_shared_cache,
   }
   Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_SYMBOLS));
   if (log && dsc_uuid.IsValid()) {
-    log->Printf("Shared cache %s has UUID %s", dyld_shared_cache.GetPath().c_str(), 
-                dsc_uuid.GetAsString().c_str());
+    LLDB_LOGF(log, "Shared cache %s has UUID %s",
+              dyld_shared_cache.GetPath().c_str(),
+              dsc_uuid.GetAsString().c_str());
   }
   return dsc_uuid;
+}
+
+static SymbolType GetSymbolType(
+    const char *&symbol_name, const char *&symbol_name_non_abi_mangled,
+    bool &demangled_is_synthesized, const SectionSP &text_section_sp,
+    const SectionSP &data_section_sp, const SectionSP &data_dirty_section_sp,
+    const SectionSP &data_const_section_sp, const SectionSP &objc_section_sp,
+    const SectionSP &symbol_section) {
+  SymbolType type = eSymbolTypeInvalid;
+
+  const char *symbol_sect_name = symbol_section->GetName().AsCString();
+  if (symbol_section->IsDescendant(text_section_sp.get())) {
+    if (symbol_section->IsClear(S_ATTR_PURE_INSTRUCTIONS |
+                                S_ATTR_SELF_MODIFYING_CODE |
+                                S_ATTR_SOME_INSTRUCTIONS))
+      type = eSymbolTypeData;
+    else
+      type = eSymbolTypeCode;
+  } else if (symbol_section->IsDescendant(data_section_sp.get()) ||
+             symbol_section->IsDescendant(data_dirty_section_sp.get()) ||
+             symbol_section->IsDescendant(data_const_section_sp.get())) {
+    if (symbol_sect_name &&
+        ::strstr(symbol_sect_name, "__objc") == symbol_sect_name) {
+      type = eSymbolTypeRuntime;
+
+      if (symbol_name) {
+        llvm::StringRef symbol_name_ref(symbol_name);
+        if (symbol_name_ref.startswith("_OBJC_")) {
+          static const llvm::StringRef g_objc_v2_prefix_class("_OBJC_CLASS_$_");
+          static const llvm::StringRef g_objc_v2_prefix_metaclass(
+              "_OBJC_METACLASS_$_");
+          static const llvm::StringRef g_objc_v2_prefix_ivar("_OBJC_IVAR_$_");
+          if (symbol_name_ref.startswith(g_objc_v2_prefix_class)) {
+            symbol_name_non_abi_mangled = symbol_name + 1;
+            symbol_name = symbol_name + g_objc_v2_prefix_class.size();
+            type = eSymbolTypeObjCClass;
+            demangled_is_synthesized = true;
+          } else if (symbol_name_ref.startswith(g_objc_v2_prefix_metaclass)) {
+            symbol_name_non_abi_mangled = symbol_name + 1;
+            symbol_name = symbol_name + g_objc_v2_prefix_metaclass.size();
+            type = eSymbolTypeObjCMetaClass;
+            demangled_is_synthesized = true;
+          } else if (symbol_name_ref.startswith(g_objc_v2_prefix_ivar)) {
+            symbol_name_non_abi_mangled = symbol_name + 1;
+            symbol_name = symbol_name + g_objc_v2_prefix_ivar.size();
+            type = eSymbolTypeObjCIVar;
+            demangled_is_synthesized = true;
+          }
+        }
+      }
+    } else if (symbol_sect_name &&
+               ::strstr(symbol_sect_name, "__gcc_except_tab") ==
+                   symbol_sect_name) {
+      type = eSymbolTypeException;
+    } else {
+      type = eSymbolTypeData;
+    }
+  } else if (symbol_sect_name &&
+             ::strstr(symbol_sect_name, "__IMPORT") == symbol_sect_name) {
+    type = eSymbolTypeTrampoline;
+  } else if (symbol_section->IsDescendant(objc_section_sp.get())) {
+    type = eSymbolTypeRuntime;
+    if (symbol_name && symbol_name[0] == '.') {
+      llvm::StringRef symbol_name_ref(symbol_name);
+      static const llvm::StringRef g_objc_v1_prefix_class(".objc_class_name_");
+      if (symbol_name_ref.startswith(g_objc_v1_prefix_class)) {
+        symbol_name_non_abi_mangled = symbol_name;
+        symbol_name = symbol_name + g_objc_v1_prefix_class.size();
+        type = eSymbolTypeObjCClass;
+        demangled_is_synthesized = true;
+      }
+    }
+  }
+  return type;
 }
 
 size_t ObjectFileMachO::ParseSymtab() {
@@ -2561,11 +2702,13 @@ size_t ObjectFileMachO::ParseSymtab() {
 
     std::vector<TrieEntryWithOffset> trie_entries;
     std::set<lldb::addr_t> resolver_addresses;
+    std::set<lldb::addr_t> symbol_file_addresses;
 
     if (dyld_trie_data.GetByteSize() > 0) {
       std::vector<llvm::StringRef> nameSlices;
-      ParseTrieEntries(dyld_trie_data, 0, is_arm, nameSlices,
-                       resolver_addresses, trie_entries);
+      ParseTrieEntries(dyld_trie_data, 0, is_arm,
+                       eLazyBoolNo, // eLazyBoolCalculate,
+                       nameSlices, resolver_addresses, trie_entries);
 
       ConstString text_segment_name("__TEXT");
       SectionSP text_segment_sp =
@@ -2602,8 +2745,7 @@ size_t ObjectFileMachO::ParseSymtab() {
 
       // Next we need to determine the correct path for the dyld shared cache.
 
-      ArchSpec header_arch;
-      GetArchitecture(header_arch);
+      ArchSpec header_arch = GetArchitecture();
       char dsc_path[PATH_MAX];
       char dsc_path_development[PATH_MAX];
 
@@ -3507,6 +3649,13 @@ size_t ObjectFileMachO::ParseSymtab() {
                           }
                         }
                         if (symbol_section) {
+                          // Keep track of the symbols we added by address in
+                          // case we have other sources
+                          // for symbols where we only want to add a symbol if
+                          // it isn't already in the
+                          // symbol table.
+                          symbol_file_addresses.insert(nlist.n_value);
+
                           const addr_t section_file_addr =
                               symbol_section->GetFileAddress();
                           if (symbol_byte_size == 0 &&
@@ -4172,6 +4321,11 @@ size_t ObjectFileMachO::ParseSymtab() {
             type = eSymbolTypeAdditional;
             break;
 
+          case N_AST:
+            // A path to a compiler AST file
+            type = eSymbolTypeASTFile;
+            break;
+
           default:
             break;
           }
@@ -4392,6 +4546,7 @@ size_t ObjectFileMachO::ParseSymtab() {
 
             if (symbol_name && symbol_name[0] == '_') {
               symbol_name_is_mangled = symbol_name[1] == '_';
+              symbol_name_is_mangled |= symbol_name[1] == '$';
               symbol_name++; // Skip the leading underscore
             }
 
@@ -4413,6 +4568,13 @@ size_t ObjectFileMachO::ParseSymtab() {
           }
 
           if (symbol_section) {
+            // Keep track of the symbols we added by address in case we have
+            // other sources
+            // for symbols where we only want to add a symbol if it isn't
+            // already in the
+            // symbol table.
+            symbol_file_addresses.insert(nlist.n_value);
+
             const addr_t section_file_addr = symbol_section->GetFileAddress();
             if (symbol_byte_size == 0 && function_starts_count > 0) {
               addr_t symbol_lookup_file_addr = nlist.n_value;
@@ -4603,6 +4765,58 @@ size_t ObjectFileMachO::ParseSymtab() {
     }
 
     uint32_t synthetic_sym_id = symtab_load_command.nsyms;
+
+    // Check the trie for any symbols that are in the trie only and make symbols
+    // for those
+    if (!trie_entries.empty()) {
+      for (const auto &e : trie_entries) {
+        // Don't handle the re-exported symbols here, just the symbols that were
+        // in the trie only
+        if (e.entry.name && !e.entry.import_name &&
+            symbol_file_addresses.find(e.entry.address) ==
+                symbol_file_addresses.end()) {
+          SectionSP symbol_section =
+              section_list->FindSectionContainingFileAddress(e.entry.address);
+          if (symbol_section) {
+            const addr_t section_file_addr = symbol_section->GetFileAddress();
+
+            // Keep track of the symbols we added by address in case we have
+            // other sources
+            // for symbols where we only want to add a symbol if it isn't
+            // already in the
+            // symbol table.
+            symbol_file_addresses.insert(e.entry.address);
+
+            if (e.entry.address >= section_file_addr) {
+              const uint64_t symbol_value = e.entry.address - section_file_addr;
+
+              const char *symbol_name = e.entry.name.GetCString();
+              const char *symbol_name_non_abi_mangled = nullptr;
+              bool demangled_is_synthesized = false;
+              SymbolType type = GetSymbolType(
+                  symbol_name, symbol_name_non_abi_mangled,
+                  demangled_is_synthesized, text_section_sp, data_section_sp,
+                  data_dirty_section_sp, data_const_section_sp, objc_section_sp,
+                  symbol_section);
+
+              // Make a synthetic symbol to describe re-exported symbol.
+              if (sym_idx >= num_syms)
+                sym = symtab->Resize(++num_syms);
+              sym[sym_idx].SetID(synthetic_sym_id++);
+              sym[sym_idx].GetMangled() = Mangled(e.entry.name, true);
+              sym[sym_idx].SetType(type);
+              sym[sym_idx].SetIsSynthetic(true);
+              sym[sym_idx].GetAddressRef().SetSection(symbol_section);
+              sym[sym_idx].GetAddressRef().SetOffset(symbol_value);
+              if (demangled_is_synthesized)
+                sym[sym_idx].SetDemangledNameIsSynthesized(true);
+
+              ++sym_idx;
+            }
+          }
+        }
+      }
+    }
 
     if (function_starts_count > 0) {
       uint32_t num_synthetic_function_symbols = 0;
@@ -4888,6 +5102,10 @@ static llvm::StringRef GetOSName(uint32_t cmd) {
   }
 }
 
+#ifndef PLATFORM_MACCATALYST
+#define PLATFORM_MACCATALYST 6
+#endif
+
 namespace {
   struct OSEnv {
     llvm::StringRef os_type;
@@ -4926,11 +5144,14 @@ namespace {
             llvm::Triple::getEnvironmentTypeName(llvm::Triple::Simulator);
         return;
 #endif
+      case PLATFORM_MACCATALYST:
+        os_type = llvm::Triple::getOSTypeName(llvm::Triple::IOS);
+        environment = "macabi";
+        return;
       default: {
         Log *log(lldb_private::GetLogIfAnyCategoriesSet(LIBLLDB_LOG_SYMBOLS |
                                                         LIBLLDB_LOG_PROCESS));
-        if (log)
-          log->Printf("unsupported platform in LC_BUILD_VERSION");
+        LLDB_LOGF(log, "unsupported platform in LC_BUILD_VERSION");
       }
       }
     }
@@ -4945,116 +5166,154 @@ namespace {
   };
 } // namespace
 
+/// Find all ArchSpecs supported by a Mach-O header.
+void ObjectFileMachO::GetAllArchSpecs(const llvm::MachO::mach_header &header,
+                                      const lldb_private::DataExtractor &data,
+                                      lldb::offset_t lc_offset,
+                                      ModuleSpec &base_spec,
+                                      lldb_private::ModuleSpecList &all_specs) {
+  auto &base_arch = base_spec.GetArchitecture();
+  base_arch.SetArchitecture(eArchTypeMachO, header.cputype, header.cpusubtype);
+  if (!base_arch.IsValid())
+    return;
+
+  bool found_any = false;
+  auto add_triple = [&](const llvm::Triple &triple) {
+    auto spec = base_spec;
+    spec.GetArchitecture().GetTriple() = triple;
+    if (spec.GetArchitecture().IsValid()) {
+      spec.GetUUID() = ObjectFileMachO::GetUUID(header, data, lc_offset);
+      all_specs.Append(spec);
+      found_any = true;
+    }
+  };
+
+  // Set OS to an unspecified unknown or a "*" so it can match any OS
+  llvm::Triple base_triple = base_arch.GetTriple();
+  base_triple.setOS(llvm::Triple::UnknownOS);
+  base_triple.setOSName(llvm::StringRef());
+
+  if (header.filetype == MH_PRELOAD) {
+    if (header.cputype == CPU_TYPE_ARM) {
+      // If this is a 32-bit arm binary, and it's a standalone binary, force
+      // the Vendor to Apple so we don't accidentally pick up the generic
+      // armv7 ABI at runtime.  Apple's armv7 ABI always uses r7 for the
+      // frame pointer register; most other armv7 ABIs use a combination of
+      // r7 and r11.
+      base_triple.setVendor(llvm::Triple::Apple);
+    } else {
+      // Set vendor to an unspecified unknown or a "*" so it can match any
+      // vendor This is required for correct behavior of EFI debugging on
+      // x86_64
+      base_triple.setVendor(llvm::Triple::UnknownVendor);
+      base_triple.setVendorName(llvm::StringRef());
+    }
+    return add_triple(base_triple);
+  }
+
+  struct load_command load_cmd;
+
+  // See if there is an LC_VERSION_MIN_* load command that can give
+  // us the OS type.
+  lldb::offset_t offset = lc_offset;
+  for (uint32_t i = 0; i < header.ncmds; ++i) {
+    const lldb::offset_t cmd_offset = offset;
+    if (data.GetU32(&offset, &load_cmd, 2) == NULL)
+      break;
+
+    struct version_min_command version_min;
+    switch (load_cmd.cmd) {
+    case llvm::MachO::LC_VERSION_MIN_IPHONEOS:
+    case llvm::MachO::LC_VERSION_MIN_MACOSX:
+    case llvm::MachO::LC_VERSION_MIN_TVOS:
+    case llvm::MachO::LC_VERSION_MIN_WATCHOS: {
+      if (load_cmd.cmdsize != sizeof(version_min))
+        break;
+      if (data.ExtractBytes(cmd_offset, sizeof(version_min),
+                            data.GetByteOrder(), &version_min) == 0)
+        break;
+      MinOS min_os(version_min.version);
+      llvm::SmallString<32> os_name;
+      llvm::raw_svector_ostream os(os_name);
+      os << GetOSName(load_cmd.cmd) << min_os.major_version << '.'
+         << min_os.minor_version << '.' << min_os.patch_version;
+
+      auto triple = base_triple;
+      triple.setOSName(os.str());
+      os_name.clear();
+      add_triple(triple);
+      break;
+    }
+    default:
+      break;
+    }
+
+    offset = cmd_offset + load_cmd.cmdsize;
+  }
+
+  // See if there are LC_BUILD_VERSION load commands that can give
+  // us the OS type.
+  offset = lc_offset;
+  for (uint32_t i = 0; i < header.ncmds; ++i) {
+    const lldb::offset_t cmd_offset = offset;
+    if (data.GetU32(&offset, &load_cmd, 2) == NULL)
+      break;
+
+    do {
+      if (load_cmd.cmd == llvm::MachO::LC_BUILD_VERSION) {
+        struct build_version_command build_version;
+        if (load_cmd.cmdsize < sizeof(build_version)) {
+          // Malformed load command.
+          break;
+        }
+        if (data.ExtractBytes(cmd_offset, sizeof(build_version),
+                              data.GetByteOrder(), &build_version) == 0)
+          break;
+        MinOS min_os(build_version.minos);
+        OSEnv os_env(build_version.platform);
+        llvm::SmallString<16> os_name;
+        llvm::raw_svector_ostream os(os_name);
+        os << os_env.os_type << min_os.major_version << '.'
+           << min_os.minor_version << '.' << min_os.patch_version;
+        auto triple = base_triple;
+        triple.setOSName(os.str());
+        os_name.clear();
+        if (!os_env.environment.empty())
+          triple.setEnvironmentName(os_env.environment);
+        add_triple(triple);
+      }
+    } while (0);
+    offset = cmd_offset + load_cmd.cmdsize;
+  }
+
+  if (!found_any) {
+    if (header.filetype == MH_KEXT_BUNDLE) {
+      base_triple.setVendor(llvm::Triple::Apple);
+      add_triple (base_triple);
+    } else {
+      // We didn't find a LC_VERSION_MIN load command and this isn't a KEXT
+      // so lets not say our Vendor is Apple, leave it as an unspecified
+      // unknown.
+      base_triple.setVendor(llvm::Triple::UnknownVendor);
+      base_triple.setVendorName(llvm::StringRef());
+      add_triple(base_triple);
+    }
+  }
+}
+
 ArchSpec
 ObjectFileMachO::GetArchitecture(const llvm::MachO::mach_header &header,
                                  const lldb_private::DataExtractor &data,
                                  lldb::offset_t lc_offset) {
-  ArchSpec arch;
-  arch.SetArchitecture(eArchTypeMachO, header.cputype, header.cpusubtype);
+  ModuleSpecList all_specs;
+  ModuleSpec base_spec;
+  GetAllArchSpecs(header, data, MachHeaderSizeFromMagic(header.magic),
+                  base_spec, all_specs);
 
-  if (arch.IsValid()) {
-    llvm::Triple &triple = arch.GetTriple();
-
-    // Set OS to an unspecified unknown or a "*" so it can match any OS
-    triple.setOS(llvm::Triple::UnknownOS);
-    triple.setOSName(llvm::StringRef());
-
-    if (header.filetype == MH_PRELOAD) {
-      if (header.cputype == CPU_TYPE_ARM) {
-        // If this is a 32-bit arm binary, and it's a standalone binary, force
-        // the Vendor to Apple so we don't accidentally pick up the generic
-        // armv7 ABI at runtime.  Apple's armv7 ABI always uses r7 for the
-        // frame pointer register; most other armv7 ABIs use a combination of
-        // r7 and r11.
-        triple.setVendor(llvm::Triple::Apple);
-      } else {
-        // Set vendor to an unspecified unknown or a "*" so it can match any
-        // vendor This is required for correct behavior of EFI debugging on
-        // x86_64
-        triple.setVendor(llvm::Triple::UnknownVendor);
-        triple.setVendorName(llvm::StringRef());
-      }
-      return arch;
-    } else {
-      struct load_command load_cmd;
-      llvm::SmallString<16> os_name;
-      llvm::raw_svector_ostream os(os_name);
-
-      // See if there is an LC_VERSION_MIN_* load command that can give
-      // us the OS type.
-      lldb::offset_t offset = lc_offset;
-      for (uint32_t i = 0; i < header.ncmds; ++i) {
-        const lldb::offset_t cmd_offset = offset;
-        if (data.GetU32(&offset, &load_cmd, 2) == nullptr)
-          break;
-
-        struct version_min_command version_min;
-        switch (load_cmd.cmd) {
-        case llvm::MachO::LC_VERSION_MIN_IPHONEOS:
-        case llvm::MachO::LC_VERSION_MIN_MACOSX:
-        case llvm::MachO::LC_VERSION_MIN_TVOS:
-        case llvm::MachO::LC_VERSION_MIN_WATCHOS: {
-          if (load_cmd.cmdsize != sizeof(version_min))
-            break;
-          if (data.ExtractBytes(cmd_offset, sizeof(version_min),
-                                data.GetByteOrder(), &version_min) == 0)
-            break;
-          MinOS min_os(version_min.version);
-          os << GetOSName(load_cmd.cmd) << min_os.major_version << '.'
-             << min_os.minor_version << '.' << min_os.patch_version;
-          triple.setOSName(os.str());
-          return arch;
-        }
-        default:
-          break;
-        }
-
-        offset = cmd_offset + load_cmd.cmdsize;
-      }
-
-      // See if there is an LC_BUILD_VERSION load command that can give
-      // us the OS type.
-
-      offset = lc_offset;
-      for (uint32_t i = 0; i < header.ncmds; ++i) {
-        const lldb::offset_t cmd_offset = offset;
-        if (data.GetU32(&offset, &load_cmd, 2) == nullptr)
-          break;
-        do {
-          if (load_cmd.cmd == llvm::MachO::LC_BUILD_VERSION) {
-            struct build_version_command build_version;
-            if (load_cmd.cmdsize < sizeof(build_version)) {
-              // Malformed load command.
-              break;
-            }
-            if (data.ExtractBytes(cmd_offset, sizeof(build_version),
-                                  data.GetByteOrder(), &build_version) == 0)
-              break;
-            MinOS min_os(build_version.minos);
-            OSEnv os_env(build_version.platform);
-            if (os_env.os_type.empty())
-              break;
-            os << os_env.os_type << min_os.major_version << '.'
-               << min_os.minor_version << '.' << min_os.patch_version;
-            triple.setOSName(os.str());
-            if (!os_env.environment.empty())
-              triple.setEnvironmentName(os_env.environment);
-            return arch;
-          }
-        } while (false);
-        offset = cmd_offset + load_cmd.cmdsize;
-      }
-
-      if (header.filetype != MH_KEXT_BUNDLE) {
-        // We didn't find a LC_VERSION_MIN load command and this isn't a KEXT
-        // so lets not say our Vendor is Apple, leave it as an unspecified
-        // unknown
-        triple.setVendor(llvm::Triple::UnknownVendor);
-        triple.setVendorName(llvm::StringRef());
-      }
-    }
-  }
-  return arch;
+  // Return the first arch we found.
+  if (all_specs.GetSize() == 0)
+    return {};
+  return all_specs.GetModuleSpecRefAtIndex(0).GetArchitecture();
 }
 
 UUID ObjectFileMachO::GetUUID() {
@@ -5177,8 +5436,10 @@ lldb_private::Address ObjectFileMachO::GetEntryPointAddress() {
   // return that. If m_entry_point_address is valid it means we've found it
   // already, so return the cached value.
 
-  if (!IsExecutable() || m_entry_point_address.IsValid())
+  if ((!IsExecutable() && !IsDynamicLoader()) || 
+      m_entry_point_address.IsValid()) {
     return m_entry_point_address;
+  }
 
   // Otherwise, look for the UnixThread or Thread command.  The data for the
   // Thread command is given in /usr/include/mach-o.h, but it is basically:
@@ -5298,6 +5559,17 @@ lldb_private::Address ObjectFileMachO::GetEntryPointAddress() {
 
       // Go to the next load command:
       offset = cmd_offset + load_cmd.cmdsize;
+    }
+
+    if (start_address == LLDB_INVALID_ADDRESS && IsDynamicLoader()) {
+      if (GetSymtab()) {
+        Symbol *dyld_start_sym = GetSymtab()->FindFirstSymbolWithNameAndType(
+                      ConstString("_dyld_start"), SymbolType::eSymbolTypeCode, 
+                      Symtab::eDebugAny, Symtab::eVisibilityAny);
+        if (dyld_start_sym && dyld_start_sym->GetAddress().IsValid()) {
+          start_address = dyld_start_sym->GetAddress().GetFileAddress();
+        }
+      }
     }
 
     if (start_address != LLDB_INVALID_ADDRESS) {
@@ -5680,14 +5952,12 @@ llvm::VersionTuple ObjectFileMachO::GetVersion() {
 
 ArchSpec ObjectFileMachO::GetArchitecture() {
   ModuleSP module_sp(GetModule());
-  ArchSpec arch;
   if (module_sp) {
     std::lock_guard<std::recursive_mutex> guard(module_sp->GetMutex());
-
     return GetArchitecture(m_header, m_data,
                            MachHeaderSizeFromMagic(m_header.magic));
   }
-  return arch;
+  return {};
 }
 
 void ObjectFileMachO::GetProcessSharedCacheUUID(Process *process, addr_t &base_addr, UUID &uuid) {
@@ -5701,8 +5971,10 @@ void ObjectFileMachO::GetProcessSharedCacheUUID(Process *process, addr_t &base_a
                                   private_shared_cache);
   }
   Log *log(lldb_private::GetLogIfAnyCategoriesSet(LIBLLDB_LOG_SYMBOLS | LIBLLDB_LOG_PROCESS));
-  if (log)
-    log->Printf("inferior process shared cache has a UUID of %s, base address 0x%" PRIx64 , uuid.GetAsString().c_str(), base_addr);
+  LLDB_LOGF(
+      log,
+      "inferior process shared cache has a UUID of %s, base address 0x%" PRIx64,
+      uuid.GetAsString().c_str(), base_addr);
 }
 
 // From dyld SPI header dyld_process_info.h
@@ -5787,7 +6059,10 @@ void ObjectFileMachO::GetLLDBSharedCacheUUID(addr_t &base_addr, UUID &uuid) {
   }
   Log *log(lldb_private::GetLogIfAnyCategoriesSet(LIBLLDB_LOG_SYMBOLS | LIBLLDB_LOG_PROCESS));
   if (log && uuid.IsValid())
-    log->Printf("lldb's in-memory shared cache has a UUID of %s base address of 0x%" PRIx64, uuid.GetAsString().c_str(), base_addr);
+    LLDB_LOGF(log,
+              "lldb's in-memory shared cache has a UUID of %s base address of "
+              "0x%" PRIx64,
+              uuid.GetAsString().c_str(), base_addr);
 #endif
 }
 

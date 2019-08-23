@@ -6,9 +6,9 @@ LD_EXTRAS := -L. -l$(LIB_PREFIX)d
 CXX_SOURCES := main.cpp
 USE_LIBDL := 1
 
-include $(LEVEL)/Makefile.rules
+all: lib_a lib_b lib_c lib_d hidden_lib_d install_name_tool
 
-a.out: lib_a lib_b lib_c lib_d hidden_lib_d install_name_tool
+include $(LEVEL)/Makefile.rules
 
 lib_%:
 	$(MAKE) VPATH=$(SRCDIR) -I $(SRCDIR) -f $(SRCDIR)/$*.mk

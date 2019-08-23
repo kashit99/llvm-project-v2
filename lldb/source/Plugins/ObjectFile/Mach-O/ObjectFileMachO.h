@@ -63,6 +63,13 @@ public:
   static bool MagicBytesMatch(lldb::DataBufferSP &data_sp, lldb::addr_t offset,
                               lldb::addr_t length);
 
+  // LLVM RTTI support
+  static char ID;
+  bool isA(const void *ClassID) const override {
+    return ClassID == &ID || ObjectFile::isA(ClassID);
+  }
+  static bool classof(const ObjectFile *obj) { return obj->isA(&ID); }
+
   // Member Functions
   bool ParseHeader() override;
 
@@ -72,6 +79,8 @@ public:
   lldb::ByteOrder GetByteOrder() const override;
 
   bool IsExecutable() const override;
+
+  bool IsDynamicLoader() const;
 
   uint32_t GetAddressByteSize() const override;
 
@@ -141,6 +150,12 @@ protected:
   GetArchitecture(const llvm::MachO::mach_header &header,
                   const lldb_private::DataExtractor &data,
                   lldb::offset_t lc_offset);
+
+  static void GetAllArchSpecs(const llvm::MachO::mach_header &header,
+                              const lldb_private::DataExtractor &data,
+                              lldb::offset_t lc_offset,
+                              lldb_private::ModuleSpec &base_spec,
+                              lldb_private::ModuleSpecList &all_specs);
 
   // Intended for same-host arm device debugging where lldb needs to
   // detect libraries in the shared cache and augment the nlist entries

@@ -275,15 +275,35 @@ void REPL::IOHandlerInputComplete(IOHandler &io_handler, std::string &code) {
       expr_options.SetUseDynamic(m_varobj_options.use_dynamic);
       expr_options.SetGenerateDebugInfo(true);
       expr_options.SetREPLEnabled(true);
+      expr_options.SetTrapExceptions(false);
       expr_options.SetColorizeErrors(colorize_err);
       expr_options.SetPoundLine(m_repl_source_path.c_str(),
                                 m_code.GetSize() + 1);
+
+      // There is no point in trying to run REPL expressions on just the
+      // current thread of the program, since the REPL tracks the states of
+      // individual threads as you would in a regular debugging session.
+      // Interrupting the process to switch from one thread to many has
+      // observable effects (for instance it causes anything waiting in the
+      // kernel to be interrupted). Since we aren't getting any benefit from
+      // doing this in the REPL, let's not.
+      expr_options.SetStopOthers(false);
+
+      // Don't time out REPL expressions.
+      expr_options.SetTimeout(llvm::None);
 
       expr_options.SetLanguage(GetLanguage());
 
       PersistentExpressionState *persistent_state =
           m_target.GetPersistentExpressionStateForLanguage(GetLanguage());
 
+      if (!persistent_state)
+      {
+        error_sp->PutCString("error getting the expression "
+                             "context for the REPL.\n");
+        io_handler.SetIsDone(true);
+        return;
+      }
       const size_t var_count_before = persistent_state->GetSize();
 
       const char *expr_prefix = nullptr;
@@ -433,31 +453,30 @@ void REPL::IOHandlerInputComplete(IOHandler &io_handler, std::string &code) {
   }
 }
 
-int REPL::IOHandlerComplete(IOHandler &io_handler, const char *current_line,
-                            const char *cursor, const char *last_char,
-                            int skip_first_n_matches, int max_matches,
-                            StringList &matches, StringList &descriptions) {
-  matches.Clear();
-
-  llvm::StringRef line(current_line, cursor - current_line);
-
+void REPL::IOHandlerComplete(IOHandler &io_handler,
+                             CompletionRequest &request) {
   // Complete an LLDB command if the first character is a colon...
-  if (!line.empty() && line[0] == ':') {
+  if (request.GetRawLine().startswith(":")) {
     Debugger &debugger = m_target.GetDebugger();
 
     // auto complete LLDB commands
-    const char *lldb_current_line = line.substr(1).data();
-    return debugger.GetCommandInterpreter().HandleCompletion(
-        lldb_current_line, cursor, last_char, skip_first_n_matches, max_matches,
-        matches, descriptions);
+    llvm::StringRef new_line = request.GetRawLine().drop_front();
+    CompletionResult sub_result;
+    CompletionRequest sub_request(new_line, request.GetRawCursorPos() - 1,
+                                  sub_result);
+    debugger.GetCommandInterpreter().HandleCompletion(sub_request);
+    StringList matches, descriptions;
+    sub_result.GetMatches(matches);
+    sub_result.GetDescriptions(descriptions);
+    request.AddCompletions(matches, descriptions);
+    return;
   }
 
   // Strip spaces from the line and see if we had only spaces
-  line = line.ltrim();
-  if (line.empty()) {
+  if (request.GetRawLineUntilCursor().trim().empty()) {
     // Only spaces on this line, so just indent
-    matches.AppendString(m_indent_str);
-    return 1;
+    request.AddCompletion(m_indent_str);
+    return;
   }
 
   std::string current_code;
@@ -479,12 +498,17 @@ int REPL::IOHandlerComplete(IOHandler &io_handler, const char *current_line,
     }
   }
 
-  if (cursor > current_line) {
-    current_code.append("\n");
-    current_code.append(current_line, cursor - current_line);
-  }
+  current_code.append("\n");
+  current_code += request.GetRawLineUntilCursor();
 
-  return CompleteCode(current_code, matches);
+  StringList matches;
+  int result = CompleteCode(current_code, matches);
+  if (result == -2) {
+    assert(matches.GetSize() == 1);
+    request.AddCompletion(matches.GetStringAtIndex(0), "",
+                          CompletionMode::RewriteLine);
+  } else
+    request.AddCompletions(matches);
 }
 
 bool QuitCommandOverrideCallback(void *baton, const char **argv) {

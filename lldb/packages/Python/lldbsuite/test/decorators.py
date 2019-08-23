@@ -2,9 +2,8 @@ from __future__ import absolute_import
 from __future__ import print_function
 
 # System modules
-from distutils.version import LooseVersion, StrictVersion
+from distutils.version import LooseVersion
 from functools import wraps
-import inspect
 import os
 import platform
 import re
@@ -17,8 +16,6 @@ import six
 import unittest2
 
 # LLDB modules
-import use_lldb_suite
-
 import lldb
 from . import configuration
 from . import test_categories
@@ -27,6 +24,7 @@ from lldbsuite.test_event.event_builder import EventBuilder
 from lldbsuite.support import funcutils
 from lldbsuite.test import lldbplatform
 from lldbsuite.test import lldbplatformutil
+import swift
 
 
 class DecorateMode:
@@ -197,11 +195,9 @@ def _decorateTest(mode,
                 macos_version[0],
                 macos_version[1],
                 platform.mac_ver()[0])))
-        skip_for_dwarf_version = (
-             dwarf_version is None) or (
-                 (self.getDebugInfo() is 'dwarf') and
-                 _check_expected_version(
-                     dwarf_version[0], dwarf_version[1], self.getDwarfVersion()))
+        skip_for_dwarf_version = (dwarf_version is None) or (
+            _check_expected_version(dwarf_version[0], dwarf_version[1],
+                                    self.getDwarfVersion()))
 
         # For the test to be skipped, all specified (e.g. not None) parameters must be True.
         # An unspecified parameter means "any", so those are marked skip by default.  And we skip
@@ -596,11 +592,6 @@ def skipIfWindows(func):
     """Decorate the item to skip tests that should be skipped on Windows."""
     return skipIfPlatform(["windows"])(func)
 
-def skipIfTargetAndroid(func):
-    return unittest2.skipIf(lldbplatformutil.target_is_android(),
-                                "skip on target Android")(func)
-
-
 def skipUnlessWindows(func):
     """Decorate the item to skip tests that should be skipped on any non-Windows platform."""
     return skipUnlessPlatform(["windows"])(func)
@@ -613,6 +604,22 @@ def skipUnlessDarwin(func):
 def skipUnlessTargetAndroid(func):
     return unittest2.skipUnless(lldbplatformutil.target_is_android(),
                                 "requires target to be Android")(func)
+
+
+def swiftTest(func):
+    """Decorate the item as a Swift test (Darwin/Linux only, no i386)."""
+    def is_not_swift_compatible(self):
+        if self.getDebugInfo() == "gmodules":
+            return "skipping (gmodules only makes sense for clang tests)"
+
+        if "i386" == self.getArchitecture():
+            return "skipping Swift test because i386 is not a supported architecture"
+        elif not(any(x in sys.platform for x in ['darwin', 'linux'])):
+            return "skipping Swift test because only Darwin and Linux are supported OSes"
+        else:
+            # This configuration is Swift-compatible
+            return None
+    return skipTestIfFn(is_not_swift_compatible)(func)
 
 
 def skipIfHostIncompatibleWithRemote(func):
@@ -652,7 +659,7 @@ def skipUnlessPlatform(oslist):
                                 "requires one of %s" % (", ".join(oslist)))
 
 
-def skipIfTargetAndroid(api_levels=None, archs=None):
+def skipIfTargetAndroid(bugnumber=None, api_levels=None, archs=None):
     """Decorator to skip tests when the target is Android.
 
     Arguments:
@@ -665,7 +672,8 @@ def skipIfTargetAndroid(api_levels=None, archs=None):
         _skip_for_android(
             "skipping for android",
             api_levels,
-            archs))
+            archs),
+        bugnumber)
 
 def skipUnlessSupportedTypeAttribute(attr):
     """Decorate the item to skip test unless Clang supports type __attribute__(attr)."""
@@ -792,6 +800,38 @@ def skipUnlessAddressSanitizer(func):
         return None
     return skipTestIfFn(is_compiler_with_address_sanitizer)(func)
 
+def skipUnlessSwiftAddressSanitizer(func):
+    """Decorate the item to skip test unless Swift -sanitize=address is supported."""
+
+    def is_swift_compiler_with_address_sanitizer(self):
+        swiftc = swift.getSwiftCompiler()
+        f = tempfile.NamedTemporaryFile()
+        cmd = "echo 'print(1)' | %s -o %s -" % (swiftc, f.name)
+        if os.popen(cmd).close() is not None:
+            return None  # The compiler cannot compile at all, let's *not* skip the test
+        cmd = "echo 'print(1)' | %s -sanitize=address -o %s -" % (swiftc, f.name)
+        if os.popen(cmd).close() is not None:
+            return "Compiler cannot compile with -sanitize=address"
+        return None
+    return skipTestIfFn(is_swift_compiler_with_address_sanitizer)(func)
+
+
+def skipUnlessSwiftThreadSanitizer(func):
+    """Decorate the item to skip test unless Swift -sanitize=thread is supported."""
+
+    def is_swift_compiler_with_thread_sanitizer(self):
+        swiftc = swift.getSwiftCompiler()
+        f = tempfile.NamedTemporaryFile()
+        cmd = "echo 'print(1)' | %s -o %s -" % (swiftc, f.name)
+        if os.popen(cmd).close() is not None:
+            return None  # The compiler cannot compile at all, let's *not* skip the test
+        cmd = "echo 'print(1)' | %s -sanitize=thread -o %s -" % (swiftc, f.name)
+        if os.popen(cmd).close() is not None:
+            return "Compiler cannot compile with -sanitize=thread"
+        return None
+    return skipTestIfFn(is_swift_compiler_with_thread_sanitizer)(func)
+
+
 def skipIfXmlSupportMissing(func):
     config = lldb.SBDebugger.GetBuildConfiguration()
     xml = config.GetValueForKey("xml")
@@ -828,9 +868,10 @@ def skipUnlessFeature(feature):
                 return "%s is not supported on this system." % feature
     return skipTestIfFn(is_feature_enabled)
 
-def skipIfSanitized(func):
+def skipIfAsan(func):
     """Skip this test if the environment is set up to run LLDB itself under ASAN."""
-    def is_sanitized():
-        return (('DYLD_INSERT_LIBRARIES' in os.environ) and
-                'libclang_rt.asan' in os.environ['DYLD_INSERT_LIBRARIES'])
-    return skipTestIfFn(is_sanitized)(func)
+    def is_asan():
+        if ('ASAN_OPTIONS' in os.environ):
+            return "ASAN unsupported"
+        return None
+    return skipTestIfFn(is_asan)(func)

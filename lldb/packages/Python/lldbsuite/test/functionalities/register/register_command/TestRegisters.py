@@ -7,8 +7,6 @@ from __future__ import print_function
 
 import os
 import sys
-import time
-import re
 import lldb
 from lldbsuite.test.decorators import *
 from lldbsuite.test.lldbtest import *
@@ -30,6 +28,7 @@ class RegisterCommandsTestCase(TestBase):
 
     @skipIfiOSSimulator
     @skipIf(archs=no_match(['amd64', 'arm', 'i386', 'x86_64']))
+    @skipIfOutOfTreeDebugserver # rdar://38480016
     @expectedFailureNetBSD
     def test_register_commands(self):
         """Test commands related to registers, in particular vector registers."""
@@ -60,6 +59,7 @@ class RegisterCommandsTestCase(TestBase):
     # problem
     @skipIfTargetAndroid(archs=["i386"])
     @skipIf(archs=no_match(['amd64', 'arm', 'i386', 'x86_64']))
+    @skipIfOutOfTreeDebugserver # rdar://38480016
     @expectedFailureAll(oslist=["windows"], bugnumber="llvm.org/pr37995")
     @expectedFailureNetBSD
     def test_fp_register_write(self):
@@ -82,6 +82,7 @@ class RegisterCommandsTestCase(TestBase):
 
     @skipIfiOSSimulator
     @skipIf(archs=no_match(['amd64', 'arm', 'i386', 'x86_64']))
+    @skipIfOutOfTreeDebugserver # rdar://38480016
     @expectedFailureAll(oslist=["windows"], bugnumber="llvm.org/pr37683")
     def test_register_expressions(self):
         """Test expression evaluation with commands related to registers."""
@@ -111,6 +112,7 @@ class RegisterCommandsTestCase(TestBase):
 
     @skipIfiOSSimulator
     @skipIf(archs=no_match(['amd64', 'x86_64']))
+    @skipIfOutOfTreeDebugserver # rdar://38480016
     @expectedFailureAll(oslist=["windows"], bugnumber="llvm.org/pr37683")
     def test_convenience_registers(self):
         """Test convenience registers."""
@@ -119,6 +121,7 @@ class RegisterCommandsTestCase(TestBase):
 
     @skipIfiOSSimulator
     @skipIf(archs=no_match(['amd64', 'x86_64']))
+    @skipIfOutOfTreeDebugserver # rdar://38480016
     @expectedFailureAll(oslist=["windows"], bugnumber="llvm.org/pr37683")
     @expectedFailureNetBSD
     def test_convenience_registers_with_process_attach(self):
@@ -128,6 +131,7 @@ class RegisterCommandsTestCase(TestBase):
 
     @skipIfiOSSimulator
     @skipIf(archs=no_match(['amd64', 'x86_64']))
+    @skipIfOutOfTreeDebugserver # rdar://38480016
     @expectedFailureAll(oslist=["windows"], bugnumber="llvm.org/pr37683")
     @expectedFailureNetBSD
     def test_convenience_registers_16bit_with_process_attach(self):
@@ -477,3 +481,16 @@ class RegisterCommandsTestCase(TestBase):
         if test_16bit_regs:
             self.expect("expr -- $ax == (($ah << 8) | $al)",
                         substrs=['true'])
+
+    @skipIfiOSSimulator
+    @skipIf(archs=no_match(['amd64', 'arm', 'i386', 'x86_64']))
+    @expectedFailureNetBSD
+    def test_invalid_invocation(self):
+        self.build()
+        self.common_setup()
+
+        self.expect("register read -a arg", error=True,
+                    substrs=["the --all option can't be used when registers names are supplied as arguments"])
+
+        self.expect("register read --set 0 r", error=True,
+                    substrs=["the --set <set> option can't be used when registers names are supplied as arguments"])

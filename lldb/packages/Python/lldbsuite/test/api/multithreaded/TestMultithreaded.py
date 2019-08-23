@@ -6,13 +6,13 @@ from __future__ import print_function
 
 
 import os
-import re
 from lldbsuite.test.decorators import *
 from lldbsuite.test.lldbtest import *
 from lldbsuite.test import lldbutil
-import subprocess
+import unittest2
 
 
+@unittest2.skip("skipping due to frequent timeouts: rdar://28183131")
 class SBBreakpointCallbackCase(TestBase):
 
     NO_DEBUG_INFO_TESTCASE = True
@@ -47,7 +47,6 @@ class SBBreakpointCallbackCase(TestBase):
         self.build_and_test(
             'driver.cpp listener_test.cpp test_listener_event_description.cpp',
             'test_listener_event_description')
-        pass
 
     @skipIfRemote
     @skipIfNoSBHeaders
@@ -61,7 +60,6 @@ class SBBreakpointCallbackCase(TestBase):
         self.build_and_test(
             'driver.cpp listener_test.cpp test_listener_event_process_state.cpp',
             'test_listener_event_process_state')
-        pass
 
     @skipIfRemote
     @skipIfNoSBHeaders
@@ -74,7 +72,6 @@ class SBBreakpointCallbackCase(TestBase):
         self.build_and_test(
             'driver.cpp listener_test.cpp test_listener_resume.cpp',
             'test_listener_resume')
-        pass
 
     def build_and_test(self, sources, test_name, args=None):
         """ Build LLDB test from sources, and run expecting 0 exit code """

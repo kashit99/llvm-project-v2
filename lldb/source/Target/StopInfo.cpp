@@ -147,10 +147,10 @@ public:
         } else {
           Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_PROCESS));
 
-          if (log)
-            log->Printf(
-                "Process::%s could not find breakpoint site id: %" PRId64 "...",
-                __FUNCTION__, m_value);
+          LLDB_LOGF(log,
+                    "Process::%s could not find breakpoint site id: %" PRId64
+                    "...",
+                    __FUNCTION__, m_value);
 
           m_should_stop = true;
         }
@@ -270,7 +270,7 @@ protected:
       if (!thread_sp->IsValid()) {
         // This shouldn't ever happen, but just in case, don't do more harm.
         if (log) {
-          log->Printf("PerformAction got called with an invalid thread.");
+          LLDB_LOGF(log, "PerformAction got called with an invalid thread.");
         }
         m_should_stop = true;
         m_should_stop_is_valid = true;
@@ -339,10 +339,9 @@ protected:
               return;
             }
 
-            if (log)
-              log->Printf("StopInfoBreakpoint::PerformAction - Hit a "
-                          "breakpoint while running an expression,"
-                          " not running commands to avoid recursion.");
+            LLDB_LOGF(log, "StopInfoBreakpoint::PerformAction - Hit a "
+                           "breakpoint while running an expression,"
+                           " not running commands to avoid recursion.");
             bool ignoring_breakpoints =
                 process->GetIgnoreBreakpointsInExpressions();
             if (ignoring_breakpoints) {
@@ -359,10 +358,10 @@ protected:
             } else {
               m_should_stop = true;
             }
-            if (log)
-              log->Printf("StopInfoBreakpoint::PerformAction - in expression, "
-                          "continuing: %s.",
-                          m_should_stop ? "true" : "false");
+            LLDB_LOGF(log,
+                      "StopInfoBreakpoint::PerformAction - in expression, "
+                      "continuing: %s.",
+                      m_should_stop ? "true" : "false");
             process->GetTarget().GetDebugger().GetAsyncOutputStream()->Printf(
                 "Warning: hit breakpoint while running function, skipping "
                 "commands and conditions to prevent recursion.\n");
@@ -402,10 +401,11 @@ protected:
             // aren't:
             if (!bp_loc_sp->ValidForThisThread(thread_sp.get())) {
               if (log) {
-                log->Printf("Breakpoint %s hit on thread 0x%llx but it was not "
-                            "for this thread, continuing.",
-                            loc_desc.GetData(), static_cast<unsigned long long>(
-                                             thread_sp->GetID()));
+                LLDB_LOGF(log,
+                          "Breakpoint %s hit on thread 0x%llx but it was not "
+                          "for this thread, continuing.",
+                          loc_desc.GetData(),
+                          static_cast<unsigned long long>(thread_sp->GetID()));
               }
               continue;
             }
@@ -445,21 +445,18 @@ protected:
                 error_sp->EOL();
                 const char *err_str =
                     condition_error.AsCString("<Unknown Error>");
-                if (log)
-                  log->Printf("Error evaluating condition: \"%s\"\n", err_str);
+                LLDB_LOGF(log, "Error evaluating condition: \"%s\"\n", err_str);
 
                 error_sp->PutCString(err_str);
                 error_sp->EOL();
                 error_sp->Flush();
               } else {
-                if (log) {
-                  log->Printf("Condition evaluated for breakpoint %s on thread "
-                              "0x%llx conditon_says_stop: %i.",
-                              loc_desc.GetData(), 
-                              static_cast<unsigned long long>(
-                                               thread_sp->GetID()),
-                              condition_says_stop);
-                }
+                LLDB_LOGF(log,
+                          "Condition evaluated for breakpoint %s on thread "
+                          "0x%llx conditon_says_stop: %i.",
+                          loc_desc.GetData(),
+                          static_cast<unsigned long long>(thread_sp->GetID()),
+                          condition_says_stop);
                 if (!condition_says_stop) {
                   // We don't want to increment the hit count of breakpoints if
                   // the condition fails. We've already bumped it by the time
@@ -479,9 +476,9 @@ protected:
             bool auto_continue_says_stop = true;
             if (bp_loc_sp->IsAutoContinue())
             {
-              if (log)
-                log->Printf("Continuing breakpoint %s as AutoContinue was set.",
-                            loc_desc.GetData());
+              LLDB_LOGF(log,
+                        "Continuing breakpoint %s as AutoContinue was set.",
+                        loc_desc.GetData());
               // We want this stop reported, so you will know we auto-continued
               // but only for external breakpoints:
               if (!internal_breakpoint)
@@ -533,10 +530,10 @@ protected:
         Log *log_process(
             lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_PROCESS));
 
-        if (log_process)
-          log_process->Printf(
-              "Process::%s could not find breakpoint site id: %" PRId64 "...",
-              __FUNCTION__, m_value);
+        LLDB_LOGF(log_process,
+                  "Process::%s could not find breakpoint site id: %" PRId64
+                  "...",
+                  __FUNCTION__, m_value);
       }
 
       if ((!m_should_stop || internal_breakpoint) &&
@@ -546,15 +543,15 @@ protected:
         // additionally to the breakpoint
         m_should_stop = true;
         
-        // Here we clean the preset stop info so the next GetStopInfo call will
-        // find the appropriate stop info, which should be the stop info
-        // related to the completed plan
-        thread_sp->ResetStopInfo();
+        // We know we're stopping for a completed plan and we don't want to
+        // show the breakpoint stop, so compute the public stop info immediately
+        // here.
+        thread_sp->CalculatePublicStopInfo();
       }
 
-      if (log)
-        log->Printf("Process::%s returning from action with m_should_stop: %d.",
-                    __FUNCTION__, m_should_stop);
+      LLDB_LOGF(log,
+                "Process::%s returning from action with m_should_stop: %d.",
+                __FUNCTION__, m_should_stop);
     }
   }
 
@@ -664,11 +661,10 @@ protected:
       } else {
         Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_PROCESS));
 
-        if (log)
-          log->Printf(
-              "Process::%s could not find watchpoint location id: %" PRId64
-              "...",
-              __FUNCTION__, GetValue());
+        LLDB_LOGF(log,
+                  "Process::%s could not find watchpoint location id: %" PRId64
+                  "...",
+                  __FUNCTION__, GetValue());
 
         m_should_stop = true;
       }
@@ -817,15 +813,14 @@ protected:
                   m_should_stop = false;
                 } else
                   m_should_stop = true;
-                if (log)
-                  log->Printf(
-                      "Condition successfully evaluated, result is %s.\n",
-                      m_should_stop ? "true" : "false");
+                LLDB_LOGF(log,
+                          "Condition successfully evaluated, result is %s.\n",
+                          m_should_stop ? "true" : "false");
               } else {
                 m_should_stop = true;
-                if (log)
-                  log->Printf(
-                      "Failed to get an integer result from the expression.");
+                LLDB_LOGF(
+                    log,
+                    "Failed to get an integer result from the expression.");
               }
             }
           } else {
@@ -836,8 +831,7 @@ protected:
             error_sp->Printf(": \"%s\"", wp_sp->GetConditionText());
             error_sp->EOL();
             const char *err_str = error.AsCString("<Unknown Error>");
-            if (log)
-              log->Printf("Error evaluating condition: \"%s\"\n", err_str);
+            LLDB_LOGF(log, "Error evaluating condition: \"%s\"\n", err_str);
 
             error_sp->PutCString(err_str);
             error_sp->EOL();
@@ -889,14 +883,13 @@ protected:
         Log *log_process(
             lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_PROCESS));
 
-        if (log_process)
-          log_process->Printf(
-              "Process::%s could not find watchpoint id: %" PRId64 "...",
-              __FUNCTION__, m_value);
+        LLDB_LOGF(log_process,
+                  "Process::%s could not find watchpoint id: %" PRId64 "...",
+                  __FUNCTION__, m_value);
       }
-      if (log)
-        log->Printf("Process::%s returning from action with m_should_stop: %d.",
-                    __FUNCTION__, m_should_stop);
+      LLDB_LOGF(log,
+                "Process::%s returning from action with m_should_stop: %d.",
+                __FUNCTION__, m_should_stop);
 
       m_should_stop_is_valid = true;
     }
@@ -1028,10 +1021,12 @@ public:
 class StopInfoThreadPlan : public StopInfo {
 public:
   StopInfoThreadPlan(ThreadPlanSP &plan_sp, ValueObjectSP &return_valobj_sp,
-                     ExpressionVariableSP &expression_variable_sp)
+                     ExpressionVariableSP &expression_variable_sp,
+                     bool return_is_swift_error_value)
       : StopInfo(plan_sp->GetThread(), LLDB_INVALID_UID), m_plan_sp(plan_sp),
         m_return_valobj_sp(return_valobj_sp),
-        m_expression_variable_sp(expression_variable_sp) {}
+        m_expression_variable_sp(expression_variable_sp),
+        m_return_value_is_swift_error_value(return_is_swift_error_value) {}
 
   ~StopInfoThreadPlan() override = default;
 
@@ -1046,7 +1041,10 @@ public:
     return m_description.c_str();
   }
 
-  ValueObjectSP GetReturnValueObject() { return m_return_valobj_sp; }
+  ValueObjectSP GetReturnValueObject(bool &is_swift_error_result) {
+    is_swift_error_result = m_return_value_is_swift_error_value;
+    return m_return_valobj_sp;
+  }
 
   ExpressionVariableSP GetExpressionVariable() {
     return m_expression_variable_sp;
@@ -1064,6 +1062,7 @@ private:
   ThreadPlanSP m_plan_sp;
   ValueObjectSP m_return_valobj_sp;
   ExpressionVariableSP m_expression_variable_sp;
+  bool m_return_value_is_swift_error_value;
 };
 
 // StopInfoExec
@@ -1128,11 +1127,14 @@ StopInfoSP StopInfo::CreateStopReasonToTrace(Thread &thread) {
   return StopInfoSP(new StopInfoTrace(thread));
 }
 
-StopInfoSP StopInfo::CreateStopReasonWithPlan(
-    ThreadPlanSP &plan_sp, ValueObjectSP return_valobj_sp,
-    ExpressionVariableSP expression_variable_sp) {
+StopInfoSP
+StopInfo::CreateStopReasonWithPlan(ThreadPlanSP &plan_sp,
+                                   ValueObjectSP return_valobj_sp,
+                                   ExpressionVariableSP expression_variable_sp,
+                                   bool return_is_swift_error_value) {
   return StopInfoSP(new StopInfoThreadPlan(plan_sp, return_valobj_sp,
-                                           expression_variable_sp));
+                                           expression_variable_sp,
+                                           return_is_swift_error_value));
 }
 
 StopInfoSP StopInfo::CreateStopReasonWithException(Thread &thread,
@@ -1144,12 +1146,13 @@ StopInfoSP StopInfo::CreateStopReasonWithExec(Thread &thread) {
   return StopInfoSP(new StopInfoExec(thread));
 }
 
-ValueObjectSP StopInfo::GetReturnValueObject(StopInfoSP &stop_info_sp) {
+ValueObjectSP StopInfo::GetReturnValueObject(StopInfoSP &stop_info_sp,
+                                             bool &is_swift_error_result) {
   if (stop_info_sp &&
       stop_info_sp->GetStopReason() == eStopReasonPlanComplete) {
     StopInfoThreadPlan *plan_stop_info =
         static_cast<StopInfoThreadPlan *>(stop_info_sp.get());
-    return plan_stop_info->GetReturnValueObject();
+    return plan_stop_info->GetReturnValueObject(is_swift_error_result);
   } else
     return ValueObjectSP();
 }

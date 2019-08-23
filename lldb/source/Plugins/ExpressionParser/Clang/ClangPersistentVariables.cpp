@@ -7,6 +7,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "ClangPersistentVariables.h"
+#include "lldb/Expression/IRExecutionUnit.h"
 
 #include "lldb/Core/Value.h"
 #include "lldb/Symbol/ClangASTContext.h"
@@ -15,6 +16,11 @@
 #include "lldb/Utility/Log.h"
 #include "lldb/Utility/StreamString.h"
 
+#include "lldb/Symbol/SwiftASTContext.h" // Needed for llvm::isa<SwiftASTContext>(...)
+#include "lldb/Symbol/TypeSystem.h"
+
+#include "swift/AST/Decl.h"
+#include "swift/AST/Pattern.h"
 #include "clang/AST/Decl.h"
 
 #include "llvm/ADT/StringMap.h"
@@ -23,8 +29,7 @@ using namespace lldb;
 using namespace lldb_private;
 
 ClangPersistentVariables::ClangPersistentVariables()
-    : lldb_private::PersistentExpressionState(LLVMCastKind::eKindClang),
-      m_next_persistent_variable_id(0) {}
+    : lldb_private::PersistentExpressionState(LLVMCastKind::eKindClang) {}
 
 ExpressionVariableSP ClangPersistentVariables::CreatePersistentVariable(
     const lldb::ValueObjectSP &valobj_sp) {
@@ -41,6 +46,9 @@ ExpressionVariableSP ClangPersistentVariables::CreatePersistentVariable(
 
 void ClangPersistentVariables::RemovePersistentVariable(
     lldb::ExpressionVariableSP variable) {
+  if (!variable)
+    return;
+
   RemoveVariable(variable);
 
   const char *name = variable->GetName().AsCString();
@@ -49,8 +57,29 @@ void ClangPersistentVariables::RemovePersistentVariable(
     return;
   name++;
 
-  if (strtoul(name, nullptr, 0) == m_next_persistent_variable_id - 1)
-    m_next_persistent_variable_id--;
+  bool is_error = false;
+
+  if (llvm::isa<SwiftASTContext>(variable->GetCompilerType().GetTypeSystem())) {
+    switch (*name) {
+    case 'R':
+      break;
+    case 'E':
+      is_error = true;
+      break;
+    default:
+      return;
+    }
+    name++;
+  }
+
+  uint32_t value = strtoul(name, nullptr, 0);
+  if (is_error) {
+    if (value == m_next_persistent_error_id - 1)
+      m_next_persistent_error_id--;
+  } else {
+    if (value == m_next_persistent_variable_id - 1)
+      m_next_persistent_variable_id--;
+  }
 }
 
 llvm::Optional<CompilerType>

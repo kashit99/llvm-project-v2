@@ -13,8 +13,12 @@
 #include "lldb/Core/ModuleList.h"
 #include "lldb/Symbol/CompileUnit.h"
 #include "lldb/Symbol/SymbolContext.h"
-#include "lldb/Symbol/SymbolVendor.h"
+#include "lldb/Symbol/SymbolFile.h"
 #include "lldb/Target/Target.h"
+
+#include "lldb/Utility/FileSpec.h"
+#include "lldb/lldb-private.h"
+
 #include "lldb/Utility/ConstString.h"
 #include "lldb/Utility/Status.h"
 #include "lldb/Utility/Stream.h"
@@ -316,10 +320,10 @@ SearchFilter::DoCUIteration(const ModuleSP &module_sp,
           // First make sure this compile unit's functions are parsed
           // since CompUnit::ForeachFunction only iterates over already
           // parsed functions.
-          SymbolVendor *sym_vendor = module_sp->GetSymbolVendor();
-          if (!sym_vendor)
+          SymbolFile *sym_file = module_sp->GetSymbolFile();
+          if (!sym_file)
             continue;
-          if (!sym_vendor->ParseFunctions(*cu_sp))
+          if (!sym_file->ParseFunctions(*cu_sp))
             continue;
           // If we got any functions, use ForeachFunction to do the iteration.
           cu_sp->ForeachFunction([&](const FunctionSP &func_sp) {
@@ -640,7 +644,7 @@ SearchFilterSP SearchFilterByModuleList::CreateFromStructuredData(
             "SFBM::CFSD: filter module item %zu not a string.", i);
         return nullptr;
       }
-      modules.Append(FileSpec(module));
+      modules.EmplaceBack(module);
     }
   }
 
@@ -703,7 +707,7 @@ lldb::SearchFilterSP SearchFilterByModuleListAndCU::CreateFromStructuredData(
             "SFBM::CFSD: filter module item %zu not a string.", i);
         return result_sp;
       }
-      modules.Append(FileSpec(module));
+      modules.EmplaceBack(module);
     }
   }
 
@@ -725,7 +729,7 @@ lldb::SearchFilterSP SearchFilterByModuleListAndCU::CreateFromStructuredData(
           "SFBM::CFSD: filter cu item %zu not a string.", i);
       return nullptr;
     }
-    cus.Append(FileSpec(cu));
+    cus.EmplaceBack(cu);
   }
 
   return std::make_shared<SearchFilterByModuleListAndCU>(
@@ -757,17 +761,20 @@ bool SearchFilterByModuleListAndCU::CompUnitPasses(FileSpec &fileSpec) {
 }
 
 bool SearchFilterByModuleListAndCU::CompUnitPasses(CompileUnit &compUnit) {
+  // If it comes from "<stdin>" then we should check it
+  static ConstString g_stdin_filename("<stdin>");
   bool in_cu_list =
-      m_cu_spec_list.FindFileIndex(0, compUnit, false) != UINT32_MAX;
+      (m_cu_spec_list.FindFileIndex(0, compUnit, false) != UINT32_MAX) ||
+      (compUnit.GetFilename() == g_stdin_filename);
   if (in_cu_list) {
     ModuleSP module_sp(compUnit.GetModule());
     if (module_sp) {
-      bool module_passes = SearchFilterByModuleList::ModulePasses(module_sp);
+      bool module_passes = ModulePasses(module_sp);
       return module_passes;
     } else
       return true;
-  } else
-    return false;
+  }
+  return false;
 }
 
 void SearchFilterByModuleListAndCU::Search(Searcher &searcher) {
@@ -784,7 +791,6 @@ void SearchFilterByModuleListAndCU::Search(Searcher &searcher) {
   // filespec that passes.  Otherwise, we need to go through all modules and
   // find the ones that match the file name.
 
-  ModuleList matching_modules;
   const ModuleList &target_images = m_target_sp->GetImages();
   std::lock_guard<std::recursive_mutex> guard(target_images.GetMutex());
 
@@ -792,7 +798,7 @@ void SearchFilterByModuleListAndCU::Search(Searcher &searcher) {
   bool no_modules_in_filter = m_module_spec_list.GetSize() == 0;
   for (size_t i = 0; i < num_modules; i++) {
     lldb::ModuleSP module_sp = target_images.GetModuleAtIndexUnlocked(i);
-    if (no_modules_in_filter ||
+    if (no_modules_in_filter || ModulePasses(module_sp) ||
         m_module_spec_list.FindFileIndex(0, module_sp->GetFileSpec(), false) !=
             UINT32_MAX) {
       SymbolContext matchingContext(m_target_sp, module_sp);

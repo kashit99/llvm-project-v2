@@ -10,6 +10,7 @@
 #define liblldb_IOHandler_h_
 
 #include "lldb/Core/ValueObjectList.h"
+#include "lldb/Utility/CompletionRequest.h"
 #include "lldb/Utility/ConstString.h"
 #include "lldb/Utility/Flags.h"
 #include "lldb/Utility/Predicate.h"
@@ -198,10 +199,8 @@ public:
 
   virtual void IOHandlerDeactivated(IOHandler &io_handler) {}
 
-  virtual int IOHandlerComplete(IOHandler &io_handler, const char *current_line,
-                                const char *cursor, const char *last_char,
-                                int skip_first_n_matches, int max_matches,
-                                StringList &matches, StringList &descriptions);
+  virtual void IOHandlerComplete(IOHandler &io_handler,
+                                 CompletionRequest &request);
 
   virtual const char *IOHandlerGetFixIndentationCharacters() { return nullptr; }
 
@@ -415,11 +414,7 @@ private:
   static int FixIndentationCallback(Editline *editline, const StringList &lines,
                                     int cursor_position, void *baton);
 
-  static int AutoCompleteCallback(const char *current_line, const char *cursor,
-                                  const char *last_char,
-                                  int skip_first_n_matches, int max_matches,
-                                  StringList &matches, StringList &descriptions,
-                                  void *baton);
+  static void AutoCompleteCallback(CompletionRequest &request, void *baton);
 #endif
 
 protected:
@@ -450,10 +445,8 @@ public:
 
   bool GetResponse() const { return m_user_response; }
 
-  int IOHandlerComplete(IOHandler &io_handler, const char *current_line,
-                        const char *cursor, const char *last_char,
-                        int skip_first_n_matches, int max_matches,
-                        StringList &matches, StringList &descriptions) override;
+  void IOHandlerComplete(IOHandler &io_handler,
+                         CompletionRequest &request) override;
 
   void IOHandlerInputComplete(IOHandler &io_handler,
                               std::string &data) override;
@@ -502,7 +495,9 @@ protected:
 
 class IOHandlerStack {
 public:
-  IOHandlerStack() : m_stack(), m_mutex(), m_top(nullptr) {}
+  IOHandlerStack()
+      : m_stack(), m_mutex(), m_top(nullptr), m_repl_active(false),
+        m_repl_enabled(false) {}
 
   ~IOHandlerStack() = default;
 
@@ -518,6 +513,8 @@ public:
       m_stack.push_back(sp);
       // Set m_top the non-locking IsTop() call
       m_top = sp.get();
+
+      UpdateREPLIsActive();
     }
   }
 
@@ -544,8 +541,9 @@ public:
       sp->SetPopped(true);
     }
     // Set m_top the non-locking IsTop() call
-
     m_top = (m_stack.empty() ? nullptr : m_stack.back().get());
+
+    UpdateREPLIsActive();
   }
 
   std::recursive_mutex &GetMutex() { return m_mutex; }
@@ -575,13 +573,67 @@ public:
     return ((m_top != nullptr) ? m_top->GetHelpPrologue() : nullptr);
   }
 
+  // Returns true if the REPL is the active IOHandler or if it is just
+  // below the Process IOHandler.
+  bool REPLIsActive() {
+    // This is calculated and cached by UpdateREPLIsActive() as IOHandlers
+    // are pushed and popped since it gets called for all process events.
+    return m_repl_active;
+  }
+
+  // Returns true if any REPL IOHandlers are anywhere on the stack
+  bool REPLIsEnabled() {
+    // This is calculated and cached by UpdateREPLIsActive() as IOHandlers
+    // are pushed and popped since it gets called for all process events.
+    return m_repl_enabled;
+  }
+
   void PrintAsync(Stream *stream, const char *s, size_t len);
 
 protected:
+  void UpdateREPLIsActive() {
+    m_repl_active = false;
+    m_repl_enabled = false;
+    // This function should only be called when the mutex is locked...
+    if (m_top) {
+      switch (m_top->GetType()) {
+      case IOHandler::Type::ProcessIO:
+        // Check the REPL is underneath the process IO handler...
+        if (m_stack.size() > 1) {
+          if (m_stack[m_stack.size() - 2]->GetType() == IOHandler::Type::REPL) {
+            m_repl_active = true;
+            m_repl_enabled = true;
+          }
+        }
+        break;
+
+      case IOHandler::Type::REPL:
+        m_repl_active = true;
+        m_repl_enabled = true;
+        break;
+
+      default:
+        break;
+      }
+    }
+
+    if (!m_repl_enabled) {
+      for (const auto &io_handler_sp : m_stack) {
+        if (io_handler_sp->GetType() == IOHandler::Type::REPL) {
+          m_repl_enabled = true;
+          break;
+        }
+      }
+    }
+  }
+
   typedef std::vector<lldb::IOHandlerSP> collection;
   collection m_stack;
   mutable std::recursive_mutex m_mutex;
   IOHandler *m_top;
+  bool m_repl_active;  // REPL is the active IOHandler or right underneath the
+                       // process IO handler
+  bool m_repl_enabled; // REPL is on IOHandler stack somewhere
 
 private:
   DISALLOW_COPY_AND_ASSIGN(IOHandlerStack);

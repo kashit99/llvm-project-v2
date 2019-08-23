@@ -8,7 +8,6 @@ from __future__ import print_function
 
 
 import os
-import time
 import lldb
 from lldbsuite.test.decorators import *
 from lldbsuite.test.lldbtest import *
@@ -72,7 +71,6 @@ class HelpCommandTestCase(TestBase):
             # Just fallthrough...
             import traceback
             traceback.print_exc()
-            pass
 
         # Use None to signify that we are not able to grok the version number.
         return None
@@ -91,7 +89,8 @@ class HelpCommandTestCase(TestBase):
         import re
         version_str = self.version_number_string()
         match = re.match('[0-9]+', version_str)
-        search_regexp = ['lldb( version|-' + (version_str if match else '[0-9]+') + ').*\n']
+        search_regexp = ['lldb( version|-' + (version_str if match else '[0-9]+') + '| \(swift-.*\)).*\n']
+        search_regexp[0] += 'Swift'
 
         self.expect("version",
                     patterns=search_regexp)
@@ -240,6 +239,22 @@ class HelpCommandTestCase(TestBase):
         self.runCmd('command alias alongaliasname help')
         self.expect("help alongaliasna", matching=True,
                     substrs=["'alongaliasna' is an abbreviation for 'help'"])
+
+    @no_debug_info_test
+    def test_hidden_help(self):
+        self.expect("help -h",
+                    substrs=["_regexp-bt"])
+
+    @no_debug_info_test
+    def test_help_ambiguous(self):
+        self.expect("help g",
+                    substrs=["Help requested with ambiguous command name, possible completions:",
+                             "gdb-remote", "gui"])
+
+    @no_debug_info_test
+    def test_help_unknown_flag(self):
+        self.expect("help -z", error=True,
+                    substrs=["unknown or ambiguous option"])
 
     @no_debug_info_test
     def test_help_format_output(self):

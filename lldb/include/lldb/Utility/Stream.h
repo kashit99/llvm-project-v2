@@ -29,17 +29,17 @@ class Stream {
 public:
   /// \a m_flags bit values.
   enum {
-    eBinary = (1 << 0) ///< Get and put data as binary instead of as the default
+    eBinary = (1 << 0), ///< Get and put data as binary instead of as the default
                        /// string mode.
   };
 
   /// Utility class for counting the bytes that were written to a stream in a
   /// certain time span.
+  ///
   /// \example
   ///   ByteDelta delta(*this);
   ///   WriteDataToStream("foo");
   ///   return *delta;
-  /// \endcode
   class ByteDelta {
     Stream *m_stream;
     /// Bytes we have written so far when ByteDelta was created.

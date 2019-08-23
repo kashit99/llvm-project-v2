@@ -16,6 +16,7 @@
 #include "clang/Basic/Version.h"
 #include "clang/CodeGen/CodeGenAction.h"
 #include "clang/CodeGen/ModuleBuilder.h"
+#include "clang/CodeGen/ObjectFilePCHContainerOperations.h"
 #include "clang/Edit/Commit.h"
 #include "clang/Edit/EditedSource.h"
 #include "clang/Edit/EditsReceiver.h"
@@ -26,6 +27,7 @@
 #include "clang/Frontend/FrontendPluginRegistry.h"
 #include "clang/Frontend/TextDiagnosticBuffer.h"
 #include "clang/Frontend/TextDiagnosticPrinter.h"
+#include "clang/Lex/HeaderSearch.h"
 #include "clang/Lex/Preprocessor.h"
 #include "clang/Parse/ParseAST.h"
 #include "clang/Rewrite/Core/Rewriter.h"
@@ -70,6 +72,7 @@
 #include "lldb/Core/Disassembler.h"
 #include "lldb/Core/Module.h"
 #include "lldb/Core/StreamFile.h"
+#include "lldb/Expression/ExpressionSourceCode.h"
 #include "lldb/Expression/IRExecutionUnit.h"
 #include "lldb/Expression/IRInterpreter.h"
 #include "lldb/Host/File.h"
@@ -213,6 +216,50 @@ private:
   std::shared_ptr<clang::TextDiagnosticBuffer> m_passthrough;
 };
 
+class LoggingDiagnosticConsumer : public clang::DiagnosticConsumer {
+public:
+  LoggingDiagnosticConsumer() {
+    m_log = lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_EXPRESSIONS);
+    m_passthrough.reset(new clang::TextDiagnosticBuffer);
+  }
+
+  LoggingDiagnosticConsumer(
+      const std::shared_ptr<clang::TextDiagnosticBuffer> &passthrough) {
+    m_log = lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_EXPRESSIONS);
+    m_passthrough = passthrough;
+  }
+
+  void HandleDiagnostic(DiagnosticsEngine::Level DiagLevel,
+                        const clang::Diagnostic &Info) {
+    if (m_log) {
+      llvm::SmallVector<char, 32> diag_str;
+      Info.FormatDiagnostic(diag_str);
+      diag_str.push_back('\0');
+      const char *data = diag_str.data();
+      m_log->Printf("[clang] COMPILER DIAGNOSTIC: %s", data);
+
+      lldbassert(Info.getID() != clang::diag::err_unsupported_ast_node &&
+                 "'log enable lldb expr' to investigate.");
+    }
+
+    m_passthrough->HandleDiagnostic(DiagLevel, Info);
+  }
+
+  void FlushDiagnostics(DiagnosticsEngine &Diags) {
+    m_passthrough->FlushDiagnostics(Diags);
+  }
+
+  DiagnosticConsumer *clone(DiagnosticsEngine &Diags) const {
+    return new LoggingDiagnosticConsumer(m_passthrough);
+  }
+
+  clang::TextDiagnosticBuffer *GetPassthrough() { return m_passthrough.get(); }
+
+private:
+  Log *m_log;
+  std::shared_ptr<clang::TextDiagnosticBuffer> m_passthrough;
+};
+
 static void
 SetupModuleHeaderPaths(CompilerInstance *compiler,
                        std::vector<ConstString> include_directories,
@@ -307,6 +354,15 @@ ClangExpressionParser::ClangExpressionParser(
   // Make sure clang uses the same VFS as LLDB.
   m_compiler->createFileManager(FileSystem::Instance().GetVirtualFileSystem());
 
+  // Register the support for object-file-wrapped Clang modules.
+  std::shared_ptr<clang::PCHContainerOperations> pch_operations =
+      m_compiler->getPCHContainerOperations();
+  pch_operations->registerWriter(
+      std::make_unique<ObjectFilePCHContainerWriter>());
+  pch_operations->registerReader(
+      std::make_unique<ObjectFilePCHContainerReader>());
+
+  // 2. Install the target.
   lldb::LanguageType frame_lang =
       expr.Language(); // defaults to lldb::eLanguageTypeUnknown
   bool overridden_target_opts = false;
@@ -331,9 +387,8 @@ ClangExpressionParser::ClangExpressionParser(
 
   if (process_sp && frame_lang != lldb::eLanguageTypeUnknown) {
     lang_rt = process_sp->GetLanguageRuntime(frame_lang);
-    if (log)
-      log->Printf("Frame has language of type %s",
-                  Language::GetNameForLanguageType(frame_lang));
+    LLDB_LOGF(log, "Frame has language of type %s",
+              Language::GetNameForLanguageType(frame_lang));
   }
 
   // 2. Configure the compiler with a set of default options that are
@@ -341,9 +396,8 @@ ClangExpressionParser::ClangExpressionParser(
   if (target_arch.IsValid()) {
     std::string triple = target_arch.GetTriple().str();
     m_compiler->getTargetOpts().Triple = triple;
-    if (log)
-      log->Printf("Using %s as the target triple",
-                  m_compiler->getTargetOpts().Triple.c_str());
+    LLDB_LOGF(log, "Using %s as the target triple",
+              m_compiler->getTargetOpts().Triple.c_str());
   } else {
     // If we get here we don't have a valid target and just have to guess.
     // Sometimes this will be ok to just use the host target triple (when we
@@ -352,10 +406,12 @@ ClangExpressionParser::ClangExpressionParser(
     // the host triple. In such a case the language runtime should expose an
     // overridden options set (3), below.
     m_compiler->getTargetOpts().Triple = llvm::sys::getDefaultTargetTriple();
-    if (log)
-      log->Printf("Using default target triple of %s",
-                  m_compiler->getTargetOpts().Triple.c_str());
+    LLDB_LOGF(log, "Using default target triple of %s",
+              m_compiler->getTargetOpts().Triple.c_str());
   }
+
+  m_compiler->getTargetOpts().CPU = "";
+
   // Now add some special fixes for known architectures: Any arm32 iOS
   // environment, but not on arm64
   if (m_compiler->getTargetOpts().Triple.find("arm64") == std::string::npos &&
@@ -408,12 +464,13 @@ ClangExpressionParser::ClangExpressionParser(
   auto target_info = TargetInfo::CreateTargetInfo(
       m_compiler->getDiagnostics(), m_compiler->getInvocation().TargetOpts);
   if (log) {
-    log->Printf("Using SIMD alignment: %d", target_info->getSimdDefaultAlign());
-    log->Printf("Target datalayout string: '%s'",
-                target_info->getDataLayout().getStringRepresentation().c_str());
-    log->Printf("Target ABI: '%s'", target_info->getABI().str().c_str());
-    log->Printf("Target vector alignment: %d",
-                target_info->getMaxVectorAlign());
+    LLDB_LOGF(log, "Using SIMD alignment: %d",
+              target_info->getSimdDefaultAlign());
+    LLDB_LOGF(log, "Target datalayout string: '%s'",
+              target_info->getDataLayout().getStringRepresentation().c_str());
+    LLDB_LOGF(log, "Target ABI: '%s'", target_info->getABI().str().c_str());
+    LLDB_LOGF(log, "Target vector alignment: %d",
+              target_info->getMaxVectorAlign());
   }
   m_compiler->setTarget(target_info);
 
@@ -537,8 +594,8 @@ ClangExpressionParser::ClangExpressionParser(
   // Set CodeGen options
   m_compiler->getCodeGenOpts().EmitDeclMetadata = true;
   m_compiler->getCodeGenOpts().InstrumentFunctions = false;
-  m_compiler->getCodeGenOpts().DisableFPElim = true;
-  m_compiler->getCodeGenOpts().OmitLeafFramePointer = false;
+  m_compiler->getCodeGenOpts().setFramePointer(
+                                    CodeGenOptions::FramePointerKind::All);
   if (generate_debug_info)
     m_compiler->getCodeGenOpts().setDebugInfo(codegenoptions::FullDebugInfo);
   else
@@ -860,7 +917,12 @@ bool ClangExpressionParser::Complete(CompletionRequest &request, unsigned line,
   return true;
 }
 
-unsigned ClangExpressionParser::Parse(DiagnosticManager &diagnostic_manager) {
+// Swift only
+// Extra arguments are only used in Swift. We should get rid of them
+// to avoid clashes when merging from upstream.
+// End Swift only
+unsigned ClangExpressionParser::Parse(DiagnosticManager &diagnostic_manager,
+                                      uint32_t first_line, uint32_t last_line) {
   return ParseInternal(diagnostic_manager);
 }
 
@@ -881,6 +943,23 @@ ClangExpressionParser::ParseInternal(DiagnosticManager &diagnostic_manager,
 
   clang::SourceManager &source_mgr = m_compiler->getSourceManager();
   bool created_main_file = false;
+  /* Swift only */
+  if (m_expr.GetOptions() &&
+      m_expr.GetOptions()->GetPoundLineFilePath() == NULL &&
+      m_compiler->getCodeGenOpts().getDebugInfo() ==
+          codegenoptions::FullDebugInfo) {
+    std::string temp_source_path;
+    if (ExpressionSourceCode::SaveExpressionTextToTempFile(
+            expr_text, *m_expr.GetOptions(), temp_source_path)) {
+      auto file = m_compiler->getFileManager().getFile(temp_source_path);
+      if (file) {
+        source_mgr.setMainFileID(
+            source_mgr.createFileID(*file, SourceLocation(), SrcMgr::C_User));
+        created_main_file = true;
+      }
+    }
+  }
+  /* end swift only */
 
   // Clang wants to do completion on a real file known by Clang's file manager,
   // so we have to create one to make this work.
@@ -910,10 +989,13 @@ ClangExpressionParser::ParseInternal(DiagnosticManager &diagnostic_manager,
       if (file.Write(expr_text, bytes_written).Success()) {
         if (bytes_written == expr_text_len) {
           file.Close();
-          source_mgr.setMainFileID(source_mgr.createFileID(
-              m_compiler->getFileManager().getFile(result_path),
-              SourceLocation(), SrcMgr::C_User));
-          created_main_file = true;
+          if (auto fileEntry =
+                  m_compiler->getFileManager().getFile(result_path)) {
+            source_mgr.setMainFileID(source_mgr.createFileID(
+                *fileEntry,
+                SourceLocation(), SrcMgr::C_User));
+            created_main_file = true;
+          }
         }
       }
     }
@@ -1169,6 +1251,17 @@ lldb_private::Status ClangExpressionParser::PrepareForExecution(
     return err;
   }
 
+  for (llvm::Function &function : *llvm_module_up.get()) {
+    llvm::AttributeList attributes = function.getAttributes();
+    llvm::AttrBuilder attributes_to_remove;
+
+    attributes_to_remove.addAttribute("target-cpu");
+
+    function.setAttributes(attributes.removeAttributes(
+        function.getContext(), llvm::AttributeList::FunctionIndex,
+        attributes_to_remove));
+  }
+
   ConstString function_name;
 
   if (execution_policy != eExecutionPolicyTopLevel) {
@@ -1181,9 +1274,8 @@ lldb_private::Status ClangExpressionParser::PrepareForExecution(
                                    m_expr.FunctionName());
       return err;
     } else {
-      if (log)
-        log->Printf("Found function %s for %s", function_name.AsCString(),
-                    m_expr.FunctionName());
+      LLDB_LOGF(log, "Found function %s for %s", function_name.AsCString(),
+                m_expr.FunctionName());
     }
   }
 
@@ -1198,9 +1290,8 @@ lldb_private::Status ClangExpressionParser::PrepareForExecution(
   LLVMUserExpression::IRPasses custom_passes;
   {
     auto lang = m_expr.Language();
-    if (log)
-      log->Printf("%s - Current expression language is %s\n", __FUNCTION__,
-                  Language::GetNameForLanguageType(lang));
+    LLDB_LOGF(log, "%s - Current expression language is %s\n", __FUNCTION__,
+              Language::GetNameForLanguageType(lang));
     lldb::ProcessSP process_sp = exe_ctx.GetProcessSP();
     if (process_sp && lang != lldb::eLanguageTypeUnknown) {
       auto runtime = process_sp->GetLanguageRuntime(lang);
@@ -1210,10 +1301,10 @@ lldb_private::Status ClangExpressionParser::PrepareForExecution(
   }
 
   if (custom_passes.EarlyPasses) {
-    if (log)
-      log->Printf("%s - Running Early IR Passes from LanguageRuntime on "
-                  "expression module '%s'",
-                  __FUNCTION__, m_expr.FunctionName());
+    LLDB_LOGF(log,
+              "%s - Running Early IR Passes from LanguageRuntime on "
+              "expression module '%s'",
+              __FUNCTION__, m_expr.FunctionName());
 
     custom_passes.EarlyPasses->run(*llvm_module_up);
   }
@@ -1298,9 +1389,8 @@ lldb_private::Status ClangExpressionParser::PrepareForExecution(
 
           process->SetDynamicCheckers(dynamic_checkers);
 
-          if (log)
-            log->Printf("== [ClangExpressionParser::PrepareForExecution] "
-                        "Finished installing dynamic checkers ==");
+          LLDB_LOGF(log, "== [ClangExpressionParser::PrepareForExecution] "
+                         "Finished installing dynamic checkers ==");
         }
 
         if (auto *checker_funcs = llvm::dyn_cast<ClangDynamicCheckerFunctions>(
@@ -1316,10 +1406,10 @@ lldb_private::Status ClangExpressionParser::PrepareForExecution(
           }
 
           if (custom_passes.LatePasses) {
-            if (log)
-              log->Printf("%s - Running Late IR Passes from LanguageRuntime on "
-                          "expression module '%s'",
-                          __FUNCTION__, m_expr.FunctionName());
+            LLDB_LOGF(log,
+                      "%s - Running Late IR Passes from LanguageRuntime on "
+                      "expression module '%s'",
+                      __FUNCTION__, m_expr.FunctionName());
 
             custom_passes.LatePasses->run(*module);
           }

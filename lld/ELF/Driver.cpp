@@ -82,7 +82,7 @@ bool elf::link(ArrayRef<const char *> args, bool canExitEarly,
       "-error-limit=0 to see all errors)";
   errorHandler().errorOS = &error;
   errorHandler().exitEarly = canExitEarly;
-  errorHandler().colorDiagnostics = error.has_colors();
+  enableColors(error.has_colors());
 
   inputSections.clear();
   outputSections.clear();
@@ -378,9 +378,10 @@ static bool isKnownZFlag(StringRef s) {
          s == "execstack" || s == "global" || s == "hazardplt" ||
          s == "ifunc-noplt" || s == "initfirst" || s == "interpose" ||
          s == "keep-text-section-prefix" || s == "lazy" || s == "muldefs" ||
-         s == "nocombreloc" || s == "nocopyreloc" || s == "nodefaultlib" ||
-         s == "nodelete" || s == "nodlopen" || s == "noexecstack" ||
-         s == "nokeep-text-section-prefix" || s == "norelro" || s == "notext" ||
+         s == "separate-code" || s == "nocombreloc" || s == "nocopyreloc" ||
+         s == "nodefaultlib" || s == "nodelete" || s == "nodlopen" ||
+         s == "noexecstack" || s == "nokeep-text-section-prefix" ||
+         s == "norelro" || s == "noseparate-code" || s == "notext" ||
          s == "now" || s == "origin" || s == "relro" || s == "retpolineplt" ||
          s == "rodynamic" || s == "text" || s == "wxneeded" ||
          s.startswith("common-page-size") || s.startswith("max-page-size=") ||
@@ -786,6 +787,8 @@ static void readConfigs(opt::InputArgList &args) {
   errorHandler().verbose = args.hasArg(OPT_verbose);
   errorHandler().fatalWarnings =
       args.hasFlag(OPT_fatal_warnings, OPT_no_fatal_warnings, false);
+  errorHandler().vsDiagnostics =
+      args.hasArg(OPT_visual_studio_diagnostics_format, false);
   threadsEnabled = args.hasFlag(OPT_threads, OPT_no_threads, true);
 
   config->allowMultipleDefinition =
@@ -933,6 +936,7 @@ static void readConfigs(opt::InputArgList &args) {
   config->zRelro = getZFlag(args, "relro", "norelro", true);
   config->zRetpolineplt = hasZOption(args, "retpolineplt");
   config->zRodynamic = hasZOption(args, "rodynamic");
+  config->zSeparateCode = getZFlag(args, "separate-code", "noseparate-code", false);
   config->zStackSize = args::getZOptionValue(args, OPT_z, "stack-size", 0);
   config->zText = getZFlag(args, "text", "notext", true);
   config->zWxneeded = hasZOption(args, "wxneeded");
@@ -1007,30 +1011,33 @@ static void readConfigs(opt::InputArgList &args) {
     }
   }
 
+  assert(config->versionDefinitions.empty());
+  config->versionDefinitions.push_back({"local", (uint16_t)VER_NDX_LOCAL, {}});
+  config->versionDefinitions.push_back(
+      {"global", (uint16_t)VER_NDX_GLOBAL, {}});
+
   // If --retain-symbol-file is used, we'll keep only the symbols listed in
   // the file and discard all others.
   if (auto *arg = args.getLastArg(OPT_retain_symbols_file)) {
-    config->defaultSymbolVersion = VER_NDX_LOCAL;
+    config->versionDefinitions[VER_NDX_LOCAL].patterns.push_back(
+        {"*", /*isExternCpp=*/false, /*hasWildcard=*/true});
     if (Optional<MemoryBufferRef> buffer = readFile(arg->getValue()))
       for (StringRef s : args::getLines(*buffer))
-        config->versionScriptGlobals.push_back(
-            {s, /*IsExternCpp*/ false, /*HasWildcard*/ false});
+        config->versionDefinitions[VER_NDX_GLOBAL].patterns.push_back(
+            {s, /*isExternCpp=*/false, /*hasWildcard=*/false});
   }
-
-  bool hasExportDynamic =
-      args.hasFlag(OPT_export_dynamic, OPT_no_export_dynamic, false);
 
   // Parses -dynamic-list and -export-dynamic-symbol. They make some
   // symbols private. Note that -export-dynamic takes precedence over them
   // as it says all symbols should be exported.
-  if (!hasExportDynamic) {
+  if (!config->exportDynamic) {
     for (auto *arg : args.filtered(OPT_dynamic_list))
       if (Optional<MemoryBufferRef> buffer = readFile(arg->getValue()))
         readDynamicList(*buffer);
 
     for (auto *arg : args.filtered(OPT_export_dynamic_symbol))
       config->dynamicList.push_back(
-          {arg->getValue(), /*IsExternCpp*/ false, /*HasWildcard*/ false});
+          {arg->getValue(), /*isExternCpp=*/false, /*hasWildcard=*/false});
   }
 
   // If --export-dynamic-symbol=foo is given and symbol foo is defined in

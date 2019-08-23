@@ -442,7 +442,7 @@ public:
   void Register(Signature *f, llvm::StringRef result = {},
                 llvm::StringRef scope = {}, llvm::StringRef name = {},
                 llvm::StringRef args = {}) {
-    DoRegister(uintptr_t(f), llvm::make_unique<DefaultReplayer<Signature>>(f),
+    DoRegister(uintptr_t(f), std::make_unique<DefaultReplayer<Signature>>(f),
                SignatureStr(result, scope, name, args));
   }
 
@@ -452,7 +452,7 @@ public:
   void Register(Signature *f, Signature *g, llvm::StringRef result = {},
                 llvm::StringRef scope = {}, llvm::StringRef name = {},
                 llvm::StringRef args = {}) {
-    DoRegister(uintptr_t(f), llvm::make_unique<DefaultReplayer<Signature>>(g),
+    DoRegister(uintptr_t(f), std::make_unique<DefaultReplayer<Signature>>(g),
                SignatureStr(result, scope, name, args));
   }
 
@@ -687,6 +687,7 @@ private:
   }
 
   bool ShouldCapture() { return m_local_boundary; }
+  void Log(unsigned id);
 
 #ifdef LLDB_REPRO_INSTR_TRACE
   void Log(unsigned id) {

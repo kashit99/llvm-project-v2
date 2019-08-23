@@ -1,3 +1,11 @@
+lldb_tablegen(TargetProperties.inc -gen-lldb-property-defs
+  SOURCE TargetProperties.td
+  TARGET LLDBTargetPropertiesGen)
+
+lldb_tablegen(TargetPropertiesEnum.inc -gen-lldb-property-enum-defs
+  SOURCE TargetProperties.td
+  TARGET LLDBTargetPropertiesEnumGen)
+
 add_lldb_library(lldbTarget
   ABI.cpp
   ExecutionContext.cpp
@@ -28,6 +36,7 @@ add_lldb_library(lldbTarget
   StackID.cpp
   StopInfo.cpp
   StructuredDataPlugin.cpp
+  SwiftLanguageRuntime.cpp
   SystemRuntime.cpp
   Target.cpp
   TargetList.cpp
@@ -57,6 +66,10 @@ add_lldb_library(lldbTarget
   UnwindAssembly.cpp
 
   LINK_LIBS
+    swiftAST
+    swiftBasic
+    swiftReflection
+    swiftRemoteAST
     lldbBreakpoint
     lldbCore
     lldbExpression
@@ -65,8 +78,18 @@ add_lldb_library(lldbTarget
     lldbSymbol
     lldbUtility
     lldbPluginExpressionParserClang
+    lldbPluginExpressionParserSwift
+    lldbPluginSwiftLanguage
     lldbPluginProcessUtility
 
   LINK_COMPONENTS
     Support
   )
+
+if(CMAKE_CXX_COMPILER_ID STREQUAL Clang)
+  target_compile_options(lldbTarget PRIVATE -Wno-dollar-in-identifier-extension)
+endif()
+
+add_dependencies(lldbTarget
+  LLDBTargetPropertiesGen
+  LLDBTargetPropertiesEnumGen)

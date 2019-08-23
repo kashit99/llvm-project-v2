@@ -25,10 +25,12 @@
 #include "lldb/API/SBStringList.h"
 #include "lldb/API/SBStructuredData.h"
 #include "lldb/API/SBSymbolContextList.h"
+#include "lldb/Breakpoint/Breakpoint.h"
 #include "lldb/Breakpoint/BreakpointID.h"
 #include "lldb/Breakpoint/BreakpointIDList.h"
 #include "lldb/Breakpoint/BreakpointList.h"
 #include "lldb/Breakpoint/BreakpointLocation.h"
+#include "lldb/Breakpoint/BreakpointPrecondition.h"
 #include "lldb/Core/Address.h"
 #include "lldb/Core/AddressResolver.h"
 #include "lldb/Core/AddressResolverName.h"
@@ -49,6 +51,7 @@
 #include "lldb/Symbol/ObjectFile.h"
 #include "lldb/Symbol/SymbolFile.h"
 #include "lldb/Symbol/SymbolVendor.h"
+#include "lldb/Symbol/TypeSystem.h"
 #include "lldb/Symbol/VariableList.h"
 #include "lldb/Target/ABI.h"
 #include "lldb/Target/Language.h"
@@ -218,7 +221,7 @@ SBStructuredData SBTarget::GetStatistics() {
   if (!target_sp)
     return LLDB_RECORD_RESULT(data);
 
-  auto stats_up = llvm::make_unique<StructuredData::Dictionary>();
+  auto stats_up = std::make_unique<StructuredData::Dictionary>();
   int i = 0;
   for (auto &Entry : target_sp->GetStatistics()) {
     std::string Desc = lldb_private::GetStatDescription(
@@ -1075,6 +1078,19 @@ SBTarget::BreakpointCreateForException(lldb::LanguageType language,
                      (lldb::LanguageType, bool, bool), language, catch_bp,
                      throw_bp);
 
+  SBStringList no_extra_args;
+  return BreakpointCreateForException(language, catch_bp, throw_bp,
+                                      no_extra_args);
+}
+
+lldb::SBBreakpoint
+SBTarget::BreakpointCreateForException(lldb::LanguageType language,
+                                       bool catch_bp, bool throw_bp,
+                                       SBStringList &extra_args) {
+  LLDB_RECORD_METHOD(lldb::SBBreakpoint, SBTarget, BreakpointCreateForException,
+                     (lldb::LanguageType, bool, bool, SBStringList &), language,
+                     catch_bp, throw_bp, extra_args);
+
   SBBreakpoint sb_bp;
   TargetSP target_sp(GetSP());
   if (target_sp) {
@@ -1082,6 +1098,22 @@ SBTarget::BreakpointCreateForException(lldb::LanguageType language,
     const bool hardware = false;
     sb_bp = target_sp->CreateExceptionBreakpoint(language, catch_bp, throw_bp,
                                                   hardware);
+    size_t num_extra_args = extra_args.GetSize();
+    if (num_extra_args > 0) {
+      // Have to convert this to Args, and pass it to the precondition:
+      if (num_extra_args % 2 == 0) {
+        Args args;
+        for (size_t i = 0; i < num_extra_args; i += 2) {
+          args.AppendArgument(extra_args.GetStringAtIndex(i));
+          args.AppendArgument(extra_args.GetStringAtIndex(i + 1));
+        }
+        BreakpointSP bkpt = sb_bp.GetSP();
+        BreakpointPreconditionSP pre_condition_sp =
+            bkpt->GetPrecondition();
+        if (pre_condition_sp)
+          pre_condition_sp->ConfigurePrecondition(args);
+      }
+    }
   }
 
   return LLDB_RECORD_RESULT(sb_bp);
@@ -1847,22 +1879,28 @@ lldb::SBType SBTarget::FindFirstType(const char *typename_cstr) {
     }
 
     // Didn't find the type in the symbols; Try the loaded language runtimes
+    // FIXME: This depends on clang, but should be able to support any
+    // TypeSystem/compiler.
     if (auto process_sp = target_sp->GetProcessSP()) {
       for (auto *runtime : process_sp->GetLanguageRuntimes()) {
         if (auto vendor = runtime->GetDeclVendor()) {
-          auto types = vendor->FindTypes(const_typename, /*max_matches*/ 1);
-          if (!types.empty())
-            return LLDB_RECORD_RESULT(SBType(types.front()));
+          std::vector<clang::NamedDecl *> decls;
+          if (vendor->FindDecls(const_typename, /*append*/ true,
+                                /*max_matches*/ 1, decls) > 0) {
+            if (CompilerType type =
+                    ClangASTContext::GetTypeForDecl(decls.front()))
+              return LLDB_RECORD_RESULT(SBType(type));
+          }
         }
       }
     }
 
     // No matches, search for basic typename matches
-    ClangASTContext *clang_ast = target_sp->GetScratchClangASTContext();
-    if (clang_ast)
-      return LLDB_RECORD_RESULT(SBType(ClangASTContext::GetBasicType(
-          clang_ast->getASTContext(), const_typename)));
+    for (auto *type_system : target_sp->GetScratchTypeSystems())
+      if (auto type = type_system->GetBuiltinTypeByName(const_typename))
+        return LLDB_RECORD_RESULT(SBType(type));
   }
+
   return LLDB_RECORD_RESULT(SBType());
 }
 
@@ -1872,10 +1910,9 @@ SBType SBTarget::GetBasicType(lldb::BasicType type) {
 
   TargetSP target_sp(GetSP());
   if (target_sp) {
-    ClangASTContext *clang_ast = target_sp->GetScratchClangASTContext();
-    if (clang_ast)
-      return LLDB_RECORD_RESULT(SBType(
-          ClangASTContext::GetBasicType(clang_ast->getASTContext(), type)));
+    for (auto *type_system : target_sp->GetScratchTypeSystems())
+      if (auto compiler_type = type_system->GetBasicTypeFromAST(type))
+        return LLDB_RECORD_RESULT(SBType(compiler_type));
   }
   return LLDB_RECORD_RESULT(SBType());
 }
@@ -1905,23 +1942,29 @@ lldb::SBTypeList SBTarget::FindTypes(const char *typename_cstr) {
     }
 
     // Try the loaded language runtimes
+    // FIXME: This depends on clang, but should be able to support any
+    // TypeSystem/compiler.
     if (auto process_sp = target_sp->GetProcessSP()) {
       for (auto *runtime : process_sp->GetLanguageRuntimes()) {
         if (auto *vendor = runtime->GetDeclVendor()) {
-          auto types =
-              vendor->FindTypes(const_typename, /*max_matches*/ UINT32_MAX);
-          for (auto type : types)
-            sb_type_list.Append(SBType(type));
+          std::vector<clang::NamedDecl *> decls;
+          if (vendor->FindDecls(const_typename, /*append*/ true,
+                                /*max_matches*/ 1, decls) > 0) {
+            for (auto *decl : decls) {
+              if (CompilerType type = ClangASTContext::GetTypeForDecl(decl))
+                sb_type_list.Append(SBType(type));
+            }
+          }
         }
       }
     }
 
     if (sb_type_list.GetSize() == 0) {
       // No matches, search for basic typename matches
-      ClangASTContext *clang_ast = target_sp->GetScratchClangASTContext();
-      if (clang_ast)
-        sb_type_list.Append(SBType(ClangASTContext::GetBasicType(
-            clang_ast->getASTContext(), const_typename)));
+      for (auto *type_system : target_sp->GetScratchTypeSystems())
+        if (auto compiler_type =
+                type_system->GetBuiltinTypeByName(const_typename))
+          sb_type_list.Append(SBType(compiler_type));
     }
   }
   return LLDB_RECORD_RESULT(sb_type_list);
@@ -2355,10 +2398,10 @@ lldb::SBValue SBTarget::EvaluateExpression(const char *expr,
       expr_result.SetSP(expr_value_sp, options.GetFetchDynamicValue());
     }
   }
-  if (expr_log)
-    expr_log->Printf("** [SBTarget::EvaluateExpression] Expression result is "
-                     "%s, summary %s **",
-                     expr_result.GetValue(), expr_result.GetSummary());
+  LLDB_LOGF(expr_log,
+            "** [SBTarget::EvaluateExpression] Expression result is "
+            "%s, summary %s **",
+            expr_result.GetValue(), expr_result.GetSummary());
   return LLDB_RECORD_RESULT(expr_result);
 }
 

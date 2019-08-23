@@ -24,6 +24,7 @@
 #include "lldb/Utility/Logging.h"
 #include "lldb/Utility/UUID.h"
 #include "lldb/lldb-defines.h"
+#include "lldb/lldb-private-types.h"
 
 #if defined(_WIN32)
 #include "lldb/Host/windows/PosixApi.h"
@@ -63,43 +64,49 @@ class TypeList;
 using namespace lldb;
 using namespace lldb_private;
 
+static bool KeepLookingInDylinker(SymbolContextList &sc_list, size_t start_idx);
+
 namespace {
 
-static constexpr PropertyDefinition g_properties[] = {
-    {"enable-external-lookup", OptionValue::eTypeBoolean, true, true, nullptr,
-     {},
-     "Control the use of external tools and repositories to locate symbol "
-     "files. Directories listed in target.debug-file-search-paths and "
-     "directory of the executable are always checked first for separate debug "
-     "info files. Then depending on this setting: "
-     "On macOS, Spotlight would be also used to locate a matching .dSYM "
-     "bundle based on the UUID of the executable. "
-     "On NetBSD, directory /usr/libdata/debug would be also searched. "
-     "On platforms other than NetBSD directory /usr/lib/debug would be "
-     "also searched."
-    },
-    {"clang-modules-cache-path", OptionValue::eTypeFileSpec, true, 0, nullptr,
-     {},
-     "The path to the clang modules cache directory (-fmodules-cache-path)."}};
+static constexpr OptionEnumValueElement g_swift_module_loading_mode_enums[] = {
+  {eSwiftModuleLoadingModePreferParseable, "prefer-parseable",
+    "Prefer loading Swift modules via their .swiftinterface file, but fall back "
+    " to the .swiftmodule if it is missing."},
+  {eSwiftModuleLoadingModePreferSerialized, "prefer-serialized",
+    "Prefer loading Swift module via their .swiftmodule file if present, but "
+    "fall back to the .swiftinterface if it is missing or invalid (default)."},
+  {eSwiftModuleLoadingModeOnlyParseable, "only-parseable",
+    "Only load Swift modules via their .swiftinterface file - ignore "
+    ".swiftmodule files."},
+  {eSwiftModuleLoadingModeOnlySerialized, "only-serialized",
+    "Only load Swift modules via their .swiftmodule file - ignore "
+    ".swiftinterface files."} };
 
-enum { ePropertyEnableExternalLookup, ePropertyClangModulesCachePath };
+#define LLDB_PROPERTIES_modulelist
+#include "CoreProperties.inc"
+
+enum {
+#define LLDB_PROPERTIES_modulelist
+#include "CorePropertiesEnum.inc"
+};
 
 } // namespace
 
 ModuleListProperties::ModuleListProperties() {
   m_collection_sp =
       std::make_shared<OptionValueProperties>(ConstString("symbols"));
-  m_collection_sp->Initialize(g_properties);
+  m_collection_sp->Initialize(g_modulelist_properties);
 
   llvm::SmallString<128> path;
   clang::driver::Driver::getDefaultModuleCachePath(path);
   SetClangModulesCachePath(path);
+  SetSwiftModuleLoadingMode(eSwiftModuleLoadingModePreferSerialized);
 }
 
 bool ModuleListProperties::GetEnableExternalLookup() const {
   const uint32_t idx = ePropertyEnableExternalLookup;
   return m_collection_sp->GetPropertyAtIndexAsBoolean(
-      nullptr, idx, g_properties[idx].default_uint_value != 0);
+      nullptr, idx, g_modulelist_properties[idx].default_uint_value != 0);
 }
 
 bool ModuleListProperties::SetEnableExternalLookup(bool new_value) {
@@ -114,9 +121,27 @@ FileSpec ModuleListProperties::GetClangModulesCachePath() const {
       ->GetCurrentValue();
 }
 
+bool ModuleListProperties::GetUseDWARFImporter() const {
+  const uint32_t idx = ePropertyUseDWARFImporter;
+  return m_collection_sp->GetPropertyAtIndexAsBoolean(
+      NULL, idx, g_modulelist_properties[idx].default_uint_value != 0);
+}
+
 bool ModuleListProperties::SetClangModulesCachePath(llvm::StringRef path) {
   return m_collection_sp->SetPropertyAtIndexAsString(
       nullptr, ePropertyClangModulesCachePath, path);
+}
+
+SwiftModuleLoadingMode ModuleListProperties::GetSwiftModuleLoadingMode() const {
+  const uint32_t idx = ePropertySwiftModuleLoadingMode;
+  return (SwiftModuleLoadingMode)
+      m_collection_sp->GetPropertyAtIndexAsEnumeration(
+          nullptr, idx, g_modulelist_properties[idx].default_uint_value);
+}
+
+bool ModuleListProperties::SetSwiftModuleLoadingMode(SwiftModuleLoadingMode mode) {
+  return m_collection_sp->SetPropertyAtIndexAsEnumeration(
+      nullptr, ePropertySwiftModuleLoadingMode, mode);
 }
 
 ModuleList::ModuleList()
@@ -135,9 +160,9 @@ ModuleList::ModuleList(ModuleList::Notifier *notifier)
 const ModuleList &ModuleList::operator=(const ModuleList &rhs) {
   if (this != &rhs) {
     std::lock(m_modules_mutex, rhs.m_modules_mutex);
-    std::lock_guard<std::recursive_mutex> lhs_guard(m_modules_mutex, 
+    std::lock_guard<std::recursive_mutex> lhs_guard(m_modules_mutex,
                                                     std::adopt_lock);
-    std::lock_guard<std::recursive_mutex> rhs_guard(rhs.m_modules_mutex, 
+    std::lock_guard<std::recursive_mutex> rhs_guard(rhs.m_modules_mutex,
                                                     std::adopt_lock);
     m_modules = rhs.m_modules;
   }
@@ -155,8 +180,8 @@ void ModuleList::AppendImpl(const ModuleSP &module_sp, bool use_notifier) {
   }
 }
 
-void ModuleList::Append(const ModuleSP &module_sp, bool notify) { 
-  AppendImpl(module_sp, notify); 
+void ModuleList::Append(const ModuleSP &module_sp, bool notify) {
+  AppendImpl(module_sp, notify);
 }
 
 void ModuleList::ReplaceEquivalent(const ModuleSP &module_sp) {
@@ -408,16 +433,27 @@ size_t ModuleList::FindFunctionSymbols(ConstString name,
 size_t ModuleList::FindFunctions(const RegularExpression &name,
                                  bool include_symbols, bool include_inlines,
                                  bool append, SymbolContextList &sc_list) {
-  const size_t old_size = sc_list.GetSize();
+  const size_t initial_size = sc_list.GetSize();
 
   std::lock_guard<std::recursive_mutex> guard(m_modules_mutex);
   collection::const_iterator pos, end = m_modules.end();
+  collection dylinker_modules;
   for (pos = m_modules.begin(); pos != end; ++pos) {
-    (*pos)->FindFunctions(name, include_symbols, include_inlines, append,
-                          sc_list);
+    if (!(*pos)->GetIsDynamicLinkEditor())
+      (*pos)->FindFunctions(name, include_symbols, include_inlines, append,
+                            sc_list);
+    else
+      dylinker_modules.push_back(*pos);
   }
+  bool keep_looking = KeepLookingInDylinker(sc_list, initial_size);
 
-  return sc_list.GetSize() - old_size;
+  if (keep_looking) {
+    end = dylinker_modules.end();
+    for (pos = dylinker_modules.begin(); pos != end; pos++)
+      (*pos)->FindFunctions(name, include_symbols, include_inlines, append,
+                            sc_list);
+  }
+  return sc_list.GetSize() - initial_size;
 }
 
 size_t ModuleList::FindCompileUnits(const FileSpec &path, bool append,
@@ -458,6 +494,36 @@ size_t ModuleList::FindGlobalVariables(const RegularExpression &regex,
   return variable_list.GetSize() - initial_size;
 }
 
+// We don't want to find symbols in the dylinker file if we've found
+// a viable candidate anywhere else.  This function looks at the symbols
+// added to the sc_list since start_idx, and if there's one in there that
+// looks real, returns false, in which case we should terminate the search.
+// If it returns true, we should go on to look in the dylinker.
+
+static bool KeepLookingInDylinker(SymbolContextList &sc_list,
+                                  size_t start_idx) {
+  bool keep_looking = true;
+  if (sc_list.GetSize() == start_idx) {
+    return true;
+  }
+
+  SymbolContext sc;
+  size_t num_symbols = sc_list.GetSize();
+  for (size_t idx = start_idx; idx < num_symbols; idx++) {
+    sc_list.GetContextAtIndex(idx, sc);
+    if (sc.symbol && sc.symbol->GetType() != lldb::eSymbolTypeUndefined) {
+      keep_looking = false;
+      break;
+    }
+    // If we have a function it's not going to be an undefined symbol...
+    if (sc.function) {
+      keep_looking = false;
+      break;
+    }
+  }
+  return keep_looking;
+}
+
 size_t ModuleList::FindSymbolsWithNameAndType(ConstString name,
                                               SymbolType symbol_type,
                                               SymbolContextList &sc_list,
@@ -468,8 +534,24 @@ size_t ModuleList::FindSymbolsWithNameAndType(ConstString name,
   size_t initial_size = sc_list.GetSize();
 
   collection::const_iterator pos, end = m_modules.end();
-  for (pos = m_modules.begin(); pos != end; ++pos)
-    (*pos)->FindSymbolsWithNameAndType(name, symbol_type, sc_list);
+  collection dylinker_modules;
+  for (pos = m_modules.begin(); pos != end; ++pos) {
+    if (!(*pos)->GetIsDynamicLinkEditor())
+      (*pos)->FindSymbolsWithNameAndType(name, symbol_type, sc_list);
+    else
+      dylinker_modules.push_back(*pos);
+  }
+
+  // Lets see if we found anything but undefined symbols.  If so, then we'll
+  // also look in the dylinker.
+  bool keep_looking = KeepLookingInDylinker(sc_list, initial_size);
+
+  if (keep_looking) {
+    end = dylinker_modules.end();
+    for (pos = dylinker_modules.begin(); pos != end; ++pos)
+      (*pos)->FindSymbolsWithNameAndType(name, symbol_type, sc_list);
+  }
+
   return sc_list.GetSize() - initial_size;
 }
 
@@ -482,8 +564,21 @@ size_t ModuleList::FindSymbolsMatchingRegExAndType(
   size_t initial_size = sc_list.GetSize();
 
   collection::const_iterator pos, end = m_modules.end();
-  for (pos = m_modules.begin(); pos != end; ++pos)
-    (*pos)->FindSymbolsMatchingRegExAndType(regex, symbol_type, sc_list);
+  collection dylinker_modules;
+  for (pos = m_modules.begin(); pos != end; ++pos) {
+    if (!(*pos)->GetIsDynamicLinkEditor())
+      (*pos)->FindSymbolsMatchingRegExAndType(regex, symbol_type, sc_list);
+    else
+      dylinker_modules.push_back(*pos);
+  }
+
+  bool keep_looking = KeepLookingInDylinker(sc_list, initial_size);
+
+  if (keep_looking) {
+    end = dylinker_modules.end();
+    for (pos = dylinker_modules.begin(); pos != end; ++pos)
+      (*pos)->FindSymbolsMatchingRegExAndType(regex, symbol_type, sc_list);
+  }
   return sc_list.GetSize() - initial_size;
 }
 
@@ -641,11 +736,11 @@ void ModuleList::LogUUIDAndPaths(Log *log, const char *prefix_cstr) {
     for (pos = begin; pos != end; ++pos) {
       Module *module = pos->get();
       const FileSpec &module_file_spec = module->GetFileSpec();
-      log->Printf("%s[%u] %s (%s) \"%s\"", prefix_cstr ? prefix_cstr : "",
-                  (uint32_t)std::distance(begin, pos),
-                  module->GetUUID().GetAsString().c_str(),
-                  module->GetArchitecture().GetArchitectureName(),
-                  module_file_spec.GetPath().c_str());
+      LLDB_LOGF(log, "%s[%u] %s (%s) \"%s\"", prefix_cstr ? prefix_cstr : "",
+                (uint32_t)std::distance(begin, pos),
+                module->GetUUID().GetAsString().c_str(),
+                module->GetArchitecture().GetArchitectureName(),
+                module_file_spec.GetPath().c_str());
     }
   }
 }
@@ -808,8 +903,9 @@ Status ModuleList::GetSharedModule(const ModuleSpec &module_spec,
 
           Log *log(lldb_private::GetLogIfAnyCategoriesSet(LIBLLDB_LOG_MODULES));
           if (log != nullptr)
-            log->Printf("module changed: %p, removing from global module list",
-                        static_cast<void *>(module_sp.get()));
+            LLDB_LOGF(log,
+                      "module changed: %p, removing from global module list",
+                      static_cast<void *>(module_sp.get()));
 
           shared_module_list.Remove(module_sp);
           module_sp.reset();
@@ -1055,4 +1151,10 @@ void ModuleList::ForEach(
     if (!callback(module))
       break;
   }
+}
+
+void ModuleList::ClearModuleDependentCaches() {
+  std::lock_guard<std::recursive_mutex> guard(m_modules_mutex);
+  for (const auto &module : m_modules)
+    module->ClearModuleDependentCaches();
 }

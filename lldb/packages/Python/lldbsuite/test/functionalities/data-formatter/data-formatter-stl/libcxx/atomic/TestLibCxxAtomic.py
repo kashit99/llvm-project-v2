@@ -5,8 +5,6 @@ Test lldb data formatter subsystem.
 from __future__ import print_function
 
 
-import os
-import time
 import lldb
 from lldbsuite.test.decorators import *
 from lldbsuite.test.lldbtest import *
@@ -23,7 +21,7 @@ class LibCxxAtomicTestCase(TestBase):
         var.SetPreferSyntheticValue(True)
         return var
 
-    @skipIf(compiler=["gcc"])
+    @skipIf(compiler="gcc")
     @add_test_categories(["libc++"])
     def test(self):
         """Test that std::atomic as defined by libc++ is correctly printed by LLDB"""

@@ -23,6 +23,7 @@
 #include "lldb/Expression/LLVMUserExpression.h"
 #include "lldb/Expression/Materializer.h"
 #include "lldb/Target/ExecutionContext.h"
+#include "lldb/Target/Target.h"
 #include "lldb/lldb-forward.h"
 #include "lldb/lldb-private.h"
 
@@ -44,6 +45,15 @@ public:
   }
 
   enum { kDefaultTimeout = 500000u };
+
+  enum {
+    eLanguageFlagNeedsObjectPointer = 1 << 0,
+    eLanguageFlagEnforceValidObject = 1 << 1,
+    eLanguageFlagInCPlusPlusMethod = 1 << 2,
+    eLanguageFlagInObjectiveCMethod = 1 << 3,
+    eLanguageFlagInStaticMethod = 1 << 4,
+    eLanguageFlagConstObject = 1 << 5
+  };
 
   class ClangUserExpressionHelper : public ClangExpressionHelper {
   public:
@@ -104,6 +114,9 @@ public:
   /// \param[in] desired_type
   ///     If not eResultTypeAny, the type to use for the expression
   ///     result.
+  ///
+  /// \param[in] options
+  ///     Additional options for the expression.
   ///
   /// \param[in] ctx_obj
   ///     The object (if any) in which context the expression
@@ -176,10 +189,11 @@ private:
                     DiagnosticManager &diagnostic_manager) override;
 
   std::vector<std::string> GetModulesToImport(ExecutionContext &exe_ctx);
-  void UpdateLanguageForExpr(DiagnosticManager &diagnostic_manager,
-                             ExecutionContext &exe_ctx,
-                             std::vector<std::string> modules_to_import,
-                             bool for_completion);
+  void CreateSourceCode(DiagnosticManager &diagnostic_manager,
+                        ExecutionContext &exe_ctx,
+                        std::vector<std::string> modules_to_import,
+                        bool for_completion);
+  void UpdateLanguageForExpr();
   bool SetupPersistentState(DiagnosticManager &diagnostic_manager,
                                    ExecutionContext &exe_ctx);
   bool PrepareForParsing(DiagnosticManager &diagnostic_manager,

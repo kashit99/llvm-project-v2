@@ -9,6 +9,8 @@
 #ifndef liblldb_SymbolFile_h_
 #define liblldb_SymbolFile_h_
 
+#include <vector>
+
 #include "lldb/Core/PluginInterface.h"
 #include "lldb/Symbol/CompilerDecl.h"
 #include "lldb/Symbol/CompilerDeclContext.h"
@@ -16,6 +18,8 @@
 #include "lldb/Symbol/Function.h"
 #include "lldb/Symbol/SourceModule.h"
 #include "lldb/Symbol/Type.h"
+#include "lldb/Symbol/TypeList.h"
+#include "lldb/Symbol/TypeSystem.h"
 #include "lldb/lldb-private.h"
 
 #include "llvm/ADT/DenseSet.h"
@@ -49,11 +53,12 @@ public:
     kAllAbilities = ((1u << 7) - 1u)
   };
 
-  static SymbolFile *FindPlugin(ObjectFile *obj_file);
+  static SymbolFile *FindPlugin(lldb::ObjectFileSP objfile_sp);
 
   // Constructors and Destructors
-  SymbolFile(ObjectFile *obj_file)
-      : m_obj_file(obj_file), m_abilities(0), m_calculated_abilities(false) {}
+  SymbolFile(lldb::ObjectFileSP objfile_sp)
+      : m_objfile_sp(std::move(objfile_sp)), m_abilities(0),
+        m_calculated_abilities(false) {}
 
   ~SymbolFile() override {}
 
@@ -110,8 +115,10 @@ public:
 
   // Compile Unit function calls
   // Approach 1 - iterator
-  virtual uint32_t GetNumCompileUnits() = 0;
-  virtual lldb::CompUnitSP ParseCompileUnitAtIndex(uint32_t index) = 0;
+  uint32_t GetNumCompileUnits();
+  lldb::CompUnitSP GetCompileUnitAtIndex(uint32_t idx);
+
+  Symtab *GetSymtab();
 
   virtual lldb::LanguageType ParseLanguage(CompileUnit &comp_unit) = 0;
   virtual size_t ParseFunctions(CompileUnit &comp_unit) = 0;
@@ -185,23 +192,24 @@ public:
             bool append, uint32_t max_matches,
             llvm::DenseSet<lldb_private::SymbolFile *> &searched_symbol_files,
             TypeMap &types);
-  virtual size_t FindTypes(const std::vector<CompilerContext> &context,
-                           bool append, TypeMap &types);
+
+  /// Find types specified by a CompilerContextPattern.
+  /// \param languages    Only return results in these languages.
+  virtual size_t FindTypes(llvm::ArrayRef<CompilerContext> pattern,
+                           LanguageSet languages, bool append,
+                           TypeMap &types);
 
   virtual void
   GetMangledNamesForFunction(const std::string &scope_qualified_name,
                              std::vector<ConstString> &mangled_names);
-  //  virtual uint32_t        FindTypes (const SymbolContext& sc, const
-  //  RegularExpression& regex, bool append, uint32_t max_matches, TypeList&
-  //  types) = 0;
-  virtual TypeList *GetTypeList();
+
   virtual size_t GetTypes(lldb_private::SymbolContextScope *sc_scope,
                           lldb::TypeClass type_mask,
                           lldb_private::TypeList &type_list) = 0;
 
   virtual void PreloadSymbols();
 
-  virtual lldb_private::TypeSystem *
+  virtual llvm::Expected<lldb_private::TypeSystem &>
   GetTypeSystemForLanguage(lldb::LanguageType language);
 
   virtual CompilerDeclContext
@@ -210,8 +218,9 @@ public:
     return CompilerDeclContext();
   }
 
-  ObjectFile *GetObjectFile() { return m_obj_file; }
-  const ObjectFile *GetObjectFile() const { return m_obj_file; }
+  ObjectFile *GetObjectFile() { return m_objfile_sp.get(); }
+  const ObjectFile *GetObjectFile() const { return m_objfile_sp.get(); }
+  ObjectFile *GetMainObjectFile();
 
   virtual std::vector<CallEdge> ParseCallEdgesInFunction(UserID func_id) {
     return {};
@@ -221,8 +230,59 @@ public:
 
   /// Notify the SymbolFile that the file addresses in the Sections
   /// for this module have been changed.
-  virtual void SectionFileAddressesChanged() {}
+  virtual void SectionFileAddressesChanged();
 
+  virtual bool GetCompileOption(const char *option, std::string &value,
+                                CompileUnit *cu = nullptr) {
+    value.clear();
+    return false;
+  }
+
+  virtual int GetCompileOptions(const char *option,
+                                std::vector<std::string> &values,
+                                CompileUnit *cu = nullptr) {
+    values.clear();
+    return false;
+  }
+
+  virtual void GetLoadedModules(lldb::LanguageType language,
+                                FileSpecList &modules) {}
+
+  // Some symbol files might know if we should always check for inline
+  // source file and line entries. This virtual function lets
+  // SymbolFile subclasses control that, but a default implementation
+  // is supplied.
+  virtual bool ForceInlineSourceFileCheck();
+
+  /// Retrieve all the AST data blobs from the SymbolFile.
+  ///
+  /// Symbol files can store AST data for any language that wants to
+  /// store the native AST format supported by the current compiler.
+  /// This information is often only usable by a compiler that is in
+  /// sync with the compiler sources that were used to build LLDB so
+  /// any data should be versioned appropriately so the compiler can
+  /// try to load the data and know if the data will be able to be
+  /// used.
+  ///
+  /// @param[in] language
+  ///   The language for which AST data is being requested.
+  ///   A given file can contain ASTs for more than one language.
+  ///
+  /// @return
+  ///   Zero or more buffers, each of which contain the raw data
+  ///   of an AST in the requested language.
+  virtual std::vector<lldb::DataBufferSP>
+  GetASTData(lldb::LanguageType language);
+
+  // Used for the REPL to limit source file ranges that are valid within "file".
+  // Since
+  // breakpoint setting call fall through, we need to stop the fall through from
+  // happening
+  virtual bool SetLimitSourceFileRange(const FileSpec &file,
+                                       uint32_t first_line, uint32_t last_line);
+
+  virtual bool SymbolContextShouldBeExcluded(const SymbolContext &sc,
+                                             uint32_t actual_line);
   struct RegisterInfoResolver {
     virtual ~RegisterInfoResolver(); // anchor
 
@@ -235,14 +295,35 @@ public:
     return nullptr;
   }
 
-  virtual void Dump(Stream &s) {}
+  virtual void Dump(Stream &s);
 
 protected:
-  void AssertModuleLock();
+  class SourceRange {
+  public:
+    SourceRange(const FileSpec &f, uint32_t first, uint32_t last)
+        : file(f), first_line(first), last_line(last) {}
+    FileSpec file;
+    uint32_t first_line;
+    uint32_t last_line;
+  };
 
-  ObjectFile *m_obj_file; // The object file that symbols can be extracted from.
+  void AssertModuleLock();
+  virtual uint32_t CalculateNumCompileUnits() = 0;
+  virtual lldb::CompUnitSP ParseCompileUnitAtIndex(uint32_t idx) = 0;
+  virtual TypeList &GetTypeList() { return m_type_list; }
+
+  void SetCompileUnitAtIndex(uint32_t idx, const lldb::CompUnitSP &cu_sp);
+
+  lldb::ObjectFileSP m_objfile_sp; // Keep a reference to the object file in
+                                   // case it isn't the same as the module
+                                   // object file (debug symbols in a separate
+                                   // file)
+  llvm::Optional<std::vector<lldb::CompUnitSP>> m_compile_units;
+  TypeList m_type_list;
+  Symtab *m_symtab = nullptr;
   uint32_t m_abilities;
   bool m_calculated_abilities;
+  std::vector<SourceRange> m_limit_source_ranges;
 
 private:
   DISALLOW_COPY_AND_ASSIGN(SymbolFile);

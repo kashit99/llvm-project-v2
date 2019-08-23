@@ -6,7 +6,6 @@ from __future__ import print_function
 
 
 import lldb
-import sys
 from lldbsuite.test.decorators import *
 from lldbsuite.test.lldbtest import *
 from lldbsuite.test import lldbutil
@@ -23,25 +22,27 @@ class targetCommandTestCase(TestBase):
         self.line_b = line_number('b.c', '// Set break point at this line.')
         self.line_c = line_number('c.c', '// Set break point at this line.')
 
-    def test_target_command(self):
-        """Test some target commands: create, list, select."""
+    def buildB(self):
+        db = {'C_SOURCES': 'b.c', 'EXE': self.getBuildArtifact('b.out')}
+        self.build(dictionary=db)
+        self.addTearDownCleanup(dictionary=db)
+
+    def buildAll(self):
         da = {'C_SOURCES': 'a.c', 'EXE': self.getBuildArtifact('a.out')}
         self.build(dictionary=da)
         self.addTearDownCleanup(dictionary=da)
 
-        db = {'C_SOURCES': 'b.c', 'EXE': self.getBuildArtifact('b.out')}
-        self.build(dictionary=db)
-        self.addTearDownCleanup(dictionary=db)
+        self.buildB()
 
         dc = {'C_SOURCES': 'c.c', 'EXE': self.getBuildArtifact('c.out')}
         self.build(dictionary=dc)
         self.addTearDownCleanup(dictionary=dc)
 
+    def test_target_command(self):
+        """Test some target commands: create, list, select."""
+        self.buildAll()
         self.do_target_command()
 
-    # rdar://problem/9763907
-    # 'target variable' command fails if the target program has been run
-    @expectedFailureAndroid(archs=['aarch64'])
     def test_target_variable_command(self):
         """Test 'target variable' command before and after starting the inferior."""
         d = {'C_SOURCES': 'globals.c', 'EXE': self.getBuildArtifact('globals')}
@@ -50,7 +51,6 @@ class targetCommandTestCase(TestBase):
 
         self.do_target_variable_command('globals')
 
-    @expectedFailureAndroid(archs=['aarch64'])
     def test_target_variable_command_no_fail(self):
         """Test 'target variable' command before and after starting the inferior."""
         d = {'C_SOURCES': 'globals.c', 'EXE': self.getBuildArtifact('globals')}
@@ -275,3 +275,21 @@ class targetCommandTestCase(TestBase):
             substrs=[
                 "my_global_char",
                 "'X'"])
+
+    @no_debug_info_test
+    def test_target_stop_hook_disable_enable(self):
+        self.buildB()
+        self.runCmd("file " + self.getBuildArtifact("b.out"), CURRENT_EXECUTABLE_SET)
+
+        self.expect("target stop-hook disable 1", error=True, substrs=['unknown stop hook id: "1"'])
+        self.expect("target stop-hook disable blub", error=True, substrs=['invalid stop hook id: "blub"'])
+        self.expect("target stop-hook enable 1", error=True, substrs=['unknown stop hook id: "1"'])
+        self.expect("target stop-hook enable blub", error=True, substrs=['invalid stop hook id: "blub"'])
+
+    @no_debug_info_test
+    def test_target_stop_hook_delete(self):
+        self.buildB()
+        self.runCmd("file " + self.getBuildArtifact("b.out"), CURRENT_EXECUTABLE_SET)
+
+        self.expect("target stop-hook delete 1", error=True, substrs=['unknown stop hook id: "1"'])
+        self.expect("target stop-hook delete blub", error=True, substrs=['invalid stop hook id: "blub"'])

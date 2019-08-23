@@ -726,6 +726,13 @@ public:
       LazyBool step_in_avoids_code_without_debug_info = eLazyBoolCalculate,
       LazyBool step_out_avoids_code_without_debug_info = eLazyBoolCalculate);
 
+  virtual lldb::ThreadPlanSP QueueThreadPlanForStepInRangeNoShouldStop(
+      bool abort_other_plans, const AddressRange &range,
+      const SymbolContext &addr_context, const char *step_in_target,
+      lldb::RunMode stop_other_threads, Status &status,
+      LazyBool step_in_avoids_code_without_debug_info = eLazyBoolCalculate,
+      LazyBool step_out_avoids_code_without_debug_info = eLazyBoolCalculate);
+
   // Helper function that takes a LineEntry to step, insted of an AddressRange.
   // This may combine multiple LineEntries of the same source line number to
   // step over a longer address range in a single operation.
@@ -926,10 +933,14 @@ public:
 
   /// Gets the outer-most return value from the completed plans
   ///
+  /// \param[out] is_swift_error_value
+  ///     If non-NULL, will be set to true if this is a Swift error value
+  ///     not a true return.
+  ///
   /// \return
   ///     A ValueObjectSP, either empty if there is no return value,
   ///     or containing the return value.
-  lldb::ValueObjectSP GetReturnValueObject();
+  lldb::ValueObjectSP GetReturnValueObject(bool *is_swift_error_value);
 
   /// Gets the outer-most expression variable from the completed plans
   ///
@@ -1101,6 +1112,17 @@ public:
   // right even if you have not calculated this yourself, or if it disagrees
   // with what you might have calculated.
   virtual lldb::StopInfoSP GetPrivateStopInfo();
+  
+  // Calculate the stop info that will be shown to lldb clients.  For instance,
+  // a "step out" is implemented by running to a breakpoint on the function 
+  // return PC, so the process plugin initially sets the stop info to a
+  // StopInfoBreakpoint. But once we've run the ShouldStop machinery, we
+  // discover that there's a completed ThreadPlanStepOut, and that's really
+  // the StopInfo we want to show.  That will happen naturally the next
+  // time GetStopInfo is called, but if you want to force the replacement,
+  // you can call this.
+
+  void CalculatePublicStopInfo();
 
   // Ask the thread subclass to set its stop info.
   //
@@ -1203,7 +1225,7 @@ protected:
     m_temporary_resume_state = new_state;
   }
 
-  void FunctionOptimizationWarning(lldb_private::StackFrame *frame);
+  void FrameSelectedCallback(lldb_private::StackFrame *frame);
 
   // Classes that inherit from Process can see and modify these
   lldb::ProcessWP m_process_wp;    ///< The process that owns this thread.

@@ -4,7 +4,6 @@ from __future__ import absolute_import
 # System modules
 import argparse
 import sys
-import multiprocessing
 import os
 import textwrap
 
@@ -32,15 +31,6 @@ def parse_args(parser, argv):
             os.environ['LLDB_TEST_ARGUMENTS'].split()), namespace=args)
 
     return parser.parse_args(args=argv, namespace=args)
-
-
-def default_thread_count():
-    # Check if specified in the environment
-    num_threads_str = os.environ.get("LLDB_TEST_THREADS")
-    if num_threads_str:
-        return int(num_threads_str)
-    else:
-        return multiprocessing.cpu_count()
 
 
 def create_parser():
@@ -73,6 +63,14 @@ def create_parser():
         help=textwrap.dedent('''Specify the architecture(s) to test. This option can be specified more than once'''))
     group.add_argument('-C', '--compiler', metavar='compiler', dest='compiler', help=textwrap.dedent(
         '''Specify the compiler(s) used to build the inferior executables. The compiler path can be an executable basename or a full path to a compiler executable. This option can be specified multiple times.'''))
+    group.add_argument(
+        '--swift-compiler',
+        dest='swiftcompiler',
+        help='The path to a valid Swift compiler')
+    group.add_argument(
+        '--swift-library',
+        dest='swiftlibrary',
+        help='The path to a folder that contains valid Swift library files')
     if sys.platform == 'darwin':
         group.add_argument('--apple-sdk', metavar='apple_sdk', dest='apple_sdk', default="macosx", help=textwrap.dedent(
             '''Specify the name of the Apple SDK (macosx, macosx.internal, iphoneos, iphoneos.internal, or path to SDK) and use the appropriate tools from that SDK's toolchain.'''))
@@ -135,6 +133,12 @@ def create_parser():
         dest='out_of_tree_debugserver',
         action='store_true',
         help='A flag to indicate an out-of-tree debug server is being used')
+    group.add_argument(
+        '--dwarf-version',
+        metavar='dwarf_version',
+        dest='dwarf_version',
+        type=int,
+        help='Override the DWARF version.')
     group.add_argument(
         '-s',
         metavar='name',
@@ -223,35 +227,6 @@ def create_parser():
         action='store_false',
         help='(Windows only) When LLDB crashes, display the Windows crash dialog.')
     group.set_defaults(disable_crash_dialog=True)
-
-    group = parser.add_argument_group('Parallel execution options')
-    group.add_argument(
-        '--inferior',
-        action='store_true',
-        help=('specify this invocation is a multiprocess inferior, '
-              'used internally'))
-    group.add_argument(
-        '--no-multiprocess',
-        action='store_true',
-        help='skip running the multiprocess test runner')
-    group.add_argument(
-        '--threads',
-        type=int,
-        dest='num_threads',
-        default=default_thread_count(),
-        help=('The number of threads/processes to use when running tests '
-              'separately, defaults to the number of CPU cores available'))
-    group.add_argument(
-        '--test-subdir',
-        action='store',
-        help='Specify a test subdirectory to use relative to the test root dir'
-    )
-    group.add_argument(
-        '--test-runner-name',
-        action='store',
-        help=('Specify a test runner strategy.  Valid values: multiprocessing,'
-              ' multiprocessing-pool, serial, threading, threading-pool')
-    )
 
     # Test results support.
     group = parser.add_argument_group('Test results options')

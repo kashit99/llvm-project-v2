@@ -30,6 +30,7 @@
 #include "lldb/Symbol/Variable.h"
 #include "lldb/Symbol/VariableList.h"
 #include "lldb/Target/ExecutionContext.h"
+#include "lldb/Target/LanguageRuntime.h"
 #include "lldb/Target/Process.h"
 #include "lldb/Target/RegisterContext.h"
 #include "lldb/Target/StackFrame.h"
@@ -1107,7 +1108,7 @@ lldb::SBValue SBFrame::EvaluateExpression(const char *expr,
         if (target->GetDisplayExpressionsInCrashlogs()) {
           StreamString frame_description;
           frame->DumpUsingSettingsFormat(&frame_description);
-          stack_trace = llvm::make_unique<llvm::PrettyStackTraceFormat>(
+          stack_trace = std::make_unique<llvm::PrettyStackTraceFormat>(
               "SBFrame::EvaluateExpression (expr = \"%s\", fetch_dynamic_value "
               "= %u) %s",
               expr, options.GetFetchDynamicValue(),
@@ -1120,10 +1121,10 @@ lldb::SBValue SBFrame::EvaluateExpression(const char *expr,
     }
   }
 
-  if (expr_log)
-    expr_log->Printf("** [SBFrame::EvaluateExpression] Expression result is "
-                     "%s, summary %s **",
-                     expr_result.GetValue(), expr_result.GetSummary());
+  LLDB_LOGF(expr_log,
+            "** [SBFrame::EvaluateExpression] Expression result is "
+            "%s, summary %s **",
+            expr_result.GetValue(), expr_result.GetSummary());
 
   return LLDB_RECORD_RESULT(expr_result);
 }
@@ -1202,6 +1203,31 @@ lldb::LanguageType SBFrame::GuessLanguage() const {
     }
   }
   return eLanguageTypeUnknown;
+}
+
+bool SBFrame::IsSwiftThunk() const {
+  std::unique_lock<std::recursive_mutex> lock;
+  ExecutionContext exe_ctx(m_opaque_sp.get(), lock);
+  
+  StackFrame *frame = nullptr;
+  Target *target = exe_ctx.GetTargetPtr();
+  Process *process = exe_ctx.GetProcessPtr();
+  if (!target || !process)
+    return false;
+  Process::StopLocker stop_locker;
+  if (!stop_locker.TryLock(&process->GetRunLock()))
+    return false;
+  frame = exe_ctx.GetFramePtr();
+  if (!frame)
+    return false;
+  SymbolContext sc;
+  sc = frame->GetSymbolContext(eSymbolContextSymbol);
+  if (!sc.symbol)
+    return false;
+  auto *runtime = process->GetLanguageRuntime(eLanguageTypeSwift);
+  if (!runtime)
+    return false;
+  return runtime->IsSymbolARuntimeThunk(*sc.symbol);
 }
 
 const char *SBFrame::GetFunctionName() const {

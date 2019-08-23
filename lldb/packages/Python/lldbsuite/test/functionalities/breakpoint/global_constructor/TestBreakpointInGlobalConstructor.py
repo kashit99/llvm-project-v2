@@ -5,7 +5,6 @@ Test that we can hit breakpoints in global constructors
 from __future__ import print_function
 
 
-import os
 import lldb
 from lldbsuite.test.decorators import *
 from lldbsuite.test.lldbtest import *
@@ -22,6 +21,11 @@ class TestBreakpointInGlobalConstructors(TestBase):
         self.build()
         self.line_foo = line_number('foo.cpp', '// !BR_foo')
         self.line_main = line_number('main.cpp', '// !BR_main')
+
+        target = self.dbg.CreateTarget(self.getBuildArtifact("a.out"))
+        self.assertTrue(target, VALID_TARGET)
+
+        env= self.registerSharedLibrariesWithTarget(target, ["foo"])
 
         target = self.dbg.CreateTarget(self.getBuildArtifact("a.out"))
         self.assertTrue(target, VALID_TARGET)

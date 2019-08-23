@@ -25,6 +25,7 @@
 #include "lldb/Symbol/SymbolVendor.h"
 #include "lldb/Target/ExecutionContext.h"
 #include "lldb/Target/LanguageRuntime.h"
+#include "lldb/Target/SwiftLanguageRuntime.h"
 #include "lldb/Target/Target.h"
 #include "lldb/Utility/DataBufferHeap.h"
 #include "lldb/Utility/DataExtractor.h"
@@ -43,11 +44,29 @@ IRExecutionUnit::IRExecutionUnit(std::unique_ptr<llvm::LLVMContext> &context_up,
                                  const SymbolContext &sym_ctx,
                                  std::vector<std::string> &cpu_features)
     : IRMemoryMap(target_sp), m_context_up(context_up.release()),
-      m_module_up(module_up.release()), m_module(m_module_up.get()),
-      m_cpu_features(cpu_features), m_name(name), m_sym_ctx(sym_ctx),
-      m_did_jit(false), m_function_load_addr(LLDB_INVALID_ADDRESS),
+      m_module_up(module_up.release()), m_jit_module_wp(),
+      m_module(m_module_up.get()), m_cpu_features(cpu_features), m_name(name),
+      m_sym_ctx(sym_ctx), m_did_jit(false),
+      m_function_load_addr(LLDB_INVALID_ADDRESS),
       m_function_end_load_addr(LLDB_INVALID_ADDRESS),
       m_reported_allocations(false) {}
+
+IRExecutionUnit::~IRExecutionUnit() {
+  std::lock_guard<std::recursive_mutex> global_context_locker(
+      IRExecutionUnit::GetLLVMGlobalContextMutex());
+
+  m_module_up.reset();
+  m_execution_engine_up.reset();
+  m_context_up.reset();
+
+  lldb::ModuleSP jit_module_sp(m_jit_module_wp.lock());
+  if (jit_module_sp) {
+    ExecutionContext exe_ctx(GetBestExecutionContextScope());
+    Target *target = exe_ctx.GetTargetPtr();
+    if (target)
+      target->GetImages().Remove(jit_module_sp);
+  }
+}
 
 lldb::addr_t IRExecutionUnit::WriteNow(const uint8_t *bytes, size_t size,
                                        Status &error) {
@@ -122,10 +141,10 @@ Status IRExecutionUnit::DisassembleFunction(Stream &stream,
     return ret;
   }
 
-  if (log)
-    log->Printf("Found function, has local address 0x%" PRIx64
-                " and remote address 0x%" PRIx64,
-                (uint64_t)func_local_addr, (uint64_t)func_remote_addr);
+  LLDB_LOGF(log,
+            "Found function, has local address 0x%" PRIx64
+            " and remote address 0x%" PRIx64,
+            (uint64_t)func_local_addr, (uint64_t)func_remote_addr);
 
   std::pair<lldb::addr_t, lldb::addr_t> func_range;
 
@@ -138,9 +157,8 @@ Status IRExecutionUnit::DisassembleFunction(Stream &stream,
     return ret;
   }
 
-  if (log)
-    log->Printf("Function's code range is [0x%" PRIx64 "+0x%" PRIx64 "]",
-                func_range.first, func_range.second);
+  LLDB_LOGF(log, "Function's code range is [0x%" PRIx64 "+0x%" PRIx64 "]",
+            func_range.first, func_range.second);
 
   Target *target = exe_ctx.GetTargetPtr();
   if (!target) {
@@ -188,7 +206,7 @@ Status IRExecutionUnit::DisassembleFunction(Stream &stream,
                           target->GetArchitecture().GetAddressByteSize());
 
   if (log) {
-    log->Printf("Function data has contents:");
+    LLDB_LOGF(log, "Function data has contents:");
     extractor.PutToLog(log, 0, extractor.GetByteSize(), func_remote_addr, 16,
                        DataExtractor::TypeUInt8);
   }
@@ -255,7 +273,7 @@ void IRExecutionUnit::GetRunnableInfo(Status &error, lldb::addr_t &func_addr,
 
     oss.flush();
 
-    log->Printf("Module being sent to JIT: \n%s", s.c_str());
+    LLDB_LOGF(log, "Module being sent to JIT: \n%s", s.c_str());
   }
 
   m_module_up->getContext().setInlineAsmDiagnosticHandler(ReportInlineAsmError,
@@ -317,7 +335,7 @@ void IRExecutionUnit::GetRunnableInfo(Status &error, lldb::addr_t &func_addr,
   };
 
   if (process_sp->GetTarget().GetEnableSaveObjects()) {
-    m_object_cache_up = llvm::make_unique<ObjectDumper>();
+    m_object_cache_up = std::make_unique<ObjectDumper>();
     m_execution_engine_up->setObjectCache(m_object_cache_up.get());
   }
 
@@ -433,20 +451,20 @@ void IRExecutionUnit::GetRunnableInfo(Status &error, lldb::addr_t &func_addr,
   }
 
   if (log) {
-    log->Printf("Code can be run in the target.");
+    LLDB_LOGF(log, "Code can be run in the target.");
 
     StreamString disassembly_stream;
 
     Status err = DisassembleFunction(disassembly_stream, process_sp);
 
     if (!err.Success()) {
-      log->Printf("Couldn't disassemble function : %s",
-                  err.AsCString("unknown error"));
+      LLDB_LOGF(log, "Couldn't disassemble function : %s",
+                err.AsCString("unknown error"));
     } else {
-      log->Printf("Function disassembly:\n%s", disassembly_stream.GetData());
+      LLDB_LOGF(log, "Function disassembly:\n%s", disassembly_stream.GetData());
     }
 
-    log->Printf("Sections: ");
+    LLDB_LOGF(log, "Sections: ");
     for (AllocationRecord &record : m_records) {
       if (record.m_process_address != LLDB_INVALID_ADDRESS) {
         record.dump(log);
@@ -479,12 +497,6 @@ void IRExecutionUnit::GetRunnableInfo(Status &error, lldb::addr_t &func_addr,
   func_end = m_function_end_load_addr;
 
   return;
-}
-
-IRExecutionUnit::~IRExecutionUnit() {
-  m_module_up.reset();
-  m_execution_engine_up.reset();
-  m_context_up.reset();
 }
 
 IRExecutionUnit::MemoryManager::MemoryManager(IRExecutionUnit &parent)
@@ -599,11 +611,10 @@ uint8_t *IRExecutionUnit::MemoryManager::allocateCodeSection(
       GetSectionTypeFromSectionName(SectionName, AllocationKind::Code), Size,
       Alignment, SectionID, SectionName.str().c_str()));
 
-  if (log) {
-    log->Printf("IRExecutionUnit::allocateCodeSection(Size=0x%" PRIx64
-                ", Alignment=%u, SectionID=%u) = %p",
-                (uint64_t)Size, Alignment, SectionID, (void *)return_value);
-  }
+  LLDB_LOGF(log,
+            "IRExecutionUnit::allocateCodeSection(Size=0x%" PRIx64
+            ", Alignment=%u, SectionID=%u) = %p",
+            (uint64_t)Size, Alignment, SectionID, (void *)return_value);
 
   if (m_parent.m_reported_allocations) {
     Status err;
@@ -631,11 +642,10 @@ uint8_t *IRExecutionUnit::MemoryManager::allocateDataSection(
       (uintptr_t)return_value, permissions,
       GetSectionTypeFromSectionName(SectionName, AllocationKind::Data), Size,
       Alignment, SectionID, SectionName.str().c_str()));
-  if (log) {
-    log->Printf("IRExecutionUnit::allocateDataSection(Size=0x%" PRIx64
-                ", Alignment=%u, SectionID=%u) = %p",
-                (uint64_t)Size, Alignment, SectionID, (void *)return_value);
-  }
+  LLDB_LOGF(log,
+            "IRExecutionUnit::allocateDataSection(Size=0x%" PRIx64
+            ", Alignment=%u, SectionID=%u) = %p",
+            (uint64_t)Size, Alignment, SectionID, (void *)return_value);
 
   if (m_parent.m_reported_allocations) {
     Status err;
@@ -661,11 +671,7 @@ FindBestAlternateMangledName(ConstString demangled,
   if (!sym_ctx.module_sp)
     return ConstString();
 
-  SymbolVendor *sym_vendor = sym_ctx.module_sp->GetSymbolVendor();
-  if (!sym_vendor)
-    return ConstString();
-
-  lldb_private::SymbolFile *sym_file = sym_vendor->GetSymbolFile();
+  lldb_private::SymbolFile *sym_file = sym_ctx.module_sp->GetSymbolFile();
   if (!sym_file)
     return ConstString();
 
@@ -1042,17 +1048,15 @@ IRExecutionUnit::MemoryManager::GetSymbolAddressAndPresence(
   lldb::addr_t ret = m_parent.FindSymbol(name_cs, missing_weak);
 
   if (ret == LLDB_INVALID_ADDRESS) {
-    if (log)
-      log->Printf(
-          "IRExecutionUnit::getSymbolAddress(Name=\"%s\") = <not found>",
-          Name.c_str());
+    LLDB_LOGF(log,
+              "IRExecutionUnit::getSymbolAddress(Name=\"%s\") = <not found>",
+              Name.c_str());
 
     m_parent.ReportSymbolLookupError(name_cs);
     return 0;
   } else {
-    if (log)
-      log->Printf("IRExecutionUnit::getSymbolAddress(Name=\"%s\") = %" PRIx64,
-                  Name.c_str(), ret);
+    LLDB_LOGF(log, "IRExecutionUnit::getSymbolAddress(Name=\"%s\") = %" PRIx64,
+              Name.c_str(), ret);
     return ret;
   }
 }
@@ -1075,15 +1079,14 @@ IRExecutionUnit::GetRemoteAddressForLocal(lldb::addr_t local_address) {
       lldb::addr_t ret =
           record.m_process_address + (local_address - record.m_host_address);
 
-      if (log) {
-        log->Printf(
-            "IRExecutionUnit::GetRemoteAddressForLocal() found 0x%" PRIx64
-            " in [0x%" PRIx64 "..0x%" PRIx64 "], and returned 0x%" PRIx64
-            " from [0x%" PRIx64 "..0x%" PRIx64 "].",
-            local_address, (uint64_t)record.m_host_address,
-            (uint64_t)record.m_host_address + (uint64_t)record.m_size, ret,
-            record.m_process_address, record.m_process_address + record.m_size);
-      }
+      LLDB_LOGF(log,
+                "IRExecutionUnit::GetRemoteAddressForLocal() found 0x%" PRIx64
+                " in [0x%" PRIx64 "..0x%" PRIx64 "], and returned 0x%" PRIx64
+                " from [0x%" PRIx64 "..0x%" PRIx64 "].",
+                local_address, (uint64_t)record.m_host_address,
+                (uint64_t)record.m_host_address + (uint64_t)record.m_size, ret,
+                record.m_process_address,
+                record.m_process_address + record.m_size);
 
       return ret;
     }
@@ -1210,10 +1213,11 @@ void IRExecutionUnit::AllocationRecord::dump(Log *log) {
   if (!log)
     return;
 
-  log->Printf("[0x%llx+0x%llx]->0x%llx (alignment %d, section ID %d, name %s)",
-              (unsigned long long)m_host_address, (unsigned long long)m_size,
-              (unsigned long long)m_process_address, (unsigned)m_alignment,
-              (unsigned)m_section_id, m_name.c_str());
+  LLDB_LOGF(log,
+            "[0x%llx+0x%llx]->0x%llx (alignment %d, section ID %d, name %s)",
+            (unsigned long long)m_host_address, (unsigned long long)m_size,
+            (unsigned long long)m_process_address, (unsigned)m_alignment,
+            (unsigned)m_section_id, m_name.c_str());
 }
 
 lldb::ByteOrder IRExecutionUnit::GetByteOrder() const {
@@ -1228,7 +1232,90 @@ uint32_t IRExecutionUnit::GetAddressByteSize() const {
 
 void IRExecutionUnit::PopulateSymtab(lldb_private::ObjectFile *obj_file,
                                      lldb_private::Symtab &symtab) {
-  // No symbols yet...
+  if (m_execution_engine_up) {
+    uint32_t symbol_id = 0;
+    lldb_private::SectionList *section_list = obj_file->GetSectionList();
+    for (llvm::Function &function : *m_module) {
+      if (function.isDeclaration() ||
+          !(function.hasExternalLinkage() || function.hasLinkOnceODRLinkage()))
+        continue;
+
+      const lldb::addr_t function_addr =
+          (intptr_t)m_execution_engine_up->getPointerToFunction(&function);
+
+      if (function_addr != 0) {
+        lldb::SectionSP section_sp(
+            section_list->FindSectionContainingFileAddress(function_addr));
+        const lldb::addr_t section_addr =
+            section_sp ? section_sp->GetFileAddress() : 0;
+        const lldb::addr_t function_offset = function_addr - section_addr;
+        llvm::GlobalValue::LinkageTypes linkage = function.getLinkage();
+        llvm::StringRef function_name_ref = function.getName();
+        std::string function_name = function_name_ref.str();
+        bool is_mangled = SwiftLanguageRuntime::IsSwiftMangledName(function_name.c_str())
+                          || function_name_ref.startswith("_Z");
+        Symbol symbol(++symbol_id, function_name.c_str(),
+                      is_mangled,
+                      lldb::eSymbolTypeCode,
+                      linkage ==
+                          llvm::GlobalValue::ExternalLinkage, //  external
+                      false,                                  // is_debug,
+                      false,                                  // is_trampoline,
+                      false,                                  // is_artificial,
+                      section_sp,                             // section
+                      function_offset,                        // offset
+                      0,     // Don't know the size of functions that I know of
+                      false, // size_is_valid
+                      false, // contains_linker_annotations
+                      0);    // flags
+        symbol.SetType(ObjectFile::GetSymbolTypeFromName(
+            symbol.GetMangled().GetMangledName().GetStringRef(),
+            symbol.GetType()));
+        symtab.AddSymbol(symbol);
+      }
+    }
+
+    for (llvm::GlobalVariable &global_var : m_module->getGlobalList()) {
+      if (global_var.isDeclaration() ||
+          !(global_var.hasExternalLinkage() ||
+            global_var.hasLinkOnceODRLinkage()))
+        continue;
+      llvm::StringRef global_name = global_var.getName();
+      if (global_name.empty())
+        continue;
+      const lldb::addr_t global_addr =
+          m_execution_engine_up->getGlobalValueAddress(global_name.str());
+      if (global_addr != 0) {
+        lldb::SectionSP section_sp(
+            section_list->FindSectionContainingFileAddress(global_addr));
+        const lldb::addr_t section_addr =
+            section_sp ? section_sp->GetFileAddress() : 0;
+        const lldb::addr_t global_offset = global_addr - section_addr;
+        llvm::StringRef global_name_ref = global_var.getName();
+        std::string global_name = global_name_ref.str();
+        bool is_mangled = SwiftLanguageRuntime::IsSwiftMangledName(global_name.c_str())
+                          || global_name_ref.startswith("_Z");
+        Symbol symbol(++symbol_id, global_name_ref.str().c_str(),
+                      is_mangled,
+                      lldb::eSymbolTypeData,
+                      global_var.hasExternalLinkage(), // is_external
+                      false,                           // is_debug,
+                      false,                           // is_trampoline,
+                      false,                           // is_artificial,
+                      section_sp,                      // section
+                      global_offset,                   // offset
+                      0,     // Don't know the size of functions that I know of
+                      false, // size_is_valid
+                      false, // contains_linker_annotations
+                      0);    // flags
+        symbol.SetType(ObjectFile::GetSymbolTypeFromName(
+            symbol.GetMangled().GetMangledName().GetStringRef(),
+            symbol.GetType()));
+        symtab.AddSymbol(symbol);
+      }
+    }
+    symtab.CalculateSymbolSizes();
+  }
 }
 
 void IRExecutionUnit::PopulateSectionList(
@@ -1258,20 +1345,58 @@ ArchSpec IRExecutionUnit::GetArchitecture() {
 }
 
 lldb::ModuleSP IRExecutionUnit::GetJITModule() {
-  ExecutionContext exe_ctx(GetBestExecutionContextScope());
-  Target *target = exe_ctx.GetTargetPtr();
-  if (!target)
-    return nullptr;
+  // Accessor only, might return empty shared pointer
+  return m_jit_module_wp.lock();
+}
 
-  auto Delegate = std::static_pointer_cast<lldb_private::ObjectFileJITDelegate>(
-      shared_from_this());
+lldb::ModuleSP IRExecutionUnit::CreateJITModule(const char *name,
+                                                const FileSpec *limit_file_ptr,
+                                                uint32_t limit_start_line,
+                                                uint32_t limit_end_line) {
+  lldb::ModuleSP jit_module_sp(m_jit_module_wp.lock());
+  if (jit_module_sp)
+    return jit_module_sp;
 
-  lldb::ModuleSP jit_module_sp =
-      lldb_private::Module::CreateModuleFromObjectFile<ObjectFileJIT>(Delegate);
-  if (!jit_module_sp)
-    return nullptr;
+  // Only create a JIT module if we are going to run it in the target
+  if (m_execution_engine_up) {
+    ExecutionContext exe_ctx(GetBestExecutionContextScope());
+    Target *target = exe_ctx.GetTargetPtr();
+    if (target) {
+      auto Delegate =
+          std::static_pointer_cast<lldb_private::ObjectFileJITDelegate>(
+              shared_from_this());
 
-  bool changed = false;
-  jit_module_sp->SetLoadAddress(*target, 0, true, changed);
-  return jit_module_sp;
+      lldb::ModuleSP jit_module_sp =
+          lldb_private::Module::CreateModuleFromObjectFile<ObjectFileJIT>(
+              Delegate);
+      if (!jit_module_sp)
+        return nullptr;
+
+      m_jit_module_wp = jit_module_sp;
+      bool changed = false;
+      jit_module_sp->SetLoadAddress(*target, 0, true, changed);
+
+      jit_module_sp->SetTypeSystemMap(target->GetTypeSystemMap());
+
+      ConstString const_name(name);
+      FileSpec jit_file;
+      jit_file.GetFilename() = const_name;
+      jit_module_sp->SetFileSpecAndObjectName(jit_file, ConstString());
+
+      if (limit_file_ptr)
+        if (SymbolFile *symbol_file = jit_module_sp->GetSymbolFile())
+          symbol_file->SetLimitSourceFileRange(
+              *limit_file_ptr, limit_start_line, limit_end_line);
+
+      target->GetImages().Append(jit_module_sp);
+      return jit_module_sp;
+    }
+  }
+  return lldb::ModuleSP();
+}
+
+std::recursive_mutex &IRExecutionUnit::GetLLVMGlobalContextMutex() {
+  static std::recursive_mutex s_llvm_context_mutex;
+
+  return s_llvm_context_mutex;
 }

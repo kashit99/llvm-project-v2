@@ -13,7 +13,7 @@
 #include <string>
 #include <vector>
 
-#include "lldb/Core/ClangForward.h"
+#include "lldb/Core/SwiftForward.h"
 #include "lldb/lldb-private.h"
 #include "llvm/ADT/APSInt.h"
 
@@ -32,7 +32,7 @@ class CompilerType {
 public:
   // Constructors and Destructors
   CompilerType(TypeSystem *type_system, lldb::opaque_compiler_type_t type);
-  CompilerType(clang::ASTContext *ast_context, clang::QualType qual_type);
+  CompilerType(swift::Type qual_type);
 
   CompilerType(const CompilerType &rhs)
       : m_type(rhs.m_type), m_type_system(rhs.m_type_system) {}
@@ -112,11 +112,12 @@ public:
 
   bool
   IsPossibleCPlusPlusDynamicType(CompilerType *target_type = nullptr) const {
-    return IsPossibleDynamicType(target_type, true, false);
+    return IsPossibleDynamicType(target_type, true, false, false);
   }
 
   bool IsPossibleDynamicType(CompilerType *target_type, // Can pass nullptr
-                             bool check_cplusplus, bool check_objc) const;
+                             bool check_cplusplus, bool check_objc,
+                             bool check_swift) const;
 
   bool IsPointerToScalarType() const;
 
@@ -155,7 +156,9 @@ public:
 
   ConstString GetTypeName() const;
 
-  ConstString GetDisplayTypeName() const;
+  ConstString GetDisplayTypeName(const SymbolContext *sc = nullptr) const;
+
+  ConstString GetMangledTypeName() const;
 
   uint32_t
   GetTypeInfo(CompilerType *pointee_or_element_compiler_type = nullptr) const;
@@ -169,8 +172,6 @@ public:
   void SetCompilerType(TypeSystem *type_system,
                        lldb::opaque_compiler_type_t type);
 
-  void SetCompilerType(clang::ASTContext *ast, clang::QualType qual_type);
-
   unsigned GetTypeQualifiers() const;
 
   // Creating related types
@@ -180,6 +181,8 @@ public:
   CompilerType GetArrayType(uint64_t size) const;
 
   CompilerType GetCanonicalType() const;
+
+  CompilerType GetInstanceType() const;
 
   CompilerType GetFullyUnqualifiedType() const;
 
@@ -241,6 +244,8 @@ public:
   // If the current object represents a typedef type, get the underlying type
   CompilerType GetTypedefedType() const;
 
+  CompilerType GetUnboundType() const;
+
   // Create related types using the current type's AST
   CompilerType GetBasicTypeFromAST(lldb::BasicType basic_type) const;
 
@@ -252,12 +257,17 @@ public:
   llvm::Optional<uint64_t> GetByteSize(ExecutionContextScope *exe_scope) const;
   /// Return the size of the type in bits.
   llvm::Optional<uint64_t> GetBitSize(ExecutionContextScope *exe_scope) const;
+  /// Return the stride of the type in bits.
+  llvm::Optional<uint64_t>
+  GetByteStride(ExecutionContextScope *exe_scope) const;
 
   lldb::Encoding GetEncoding(uint64_t &count) const;
 
   lldb::Format GetFormat() const;
 
-  size_t GetTypeBitAlign() const;
+  uint64_t GetAlignedBitSize() const;
+
+  llvm::Optional<size_t> GetTypeBitAlign(ExecutionContextScope *exe_scope) const;
 
   uint32_t GetNumChildren(bool omit_empty_base_classes,
                           const ExecutionContext *exe_ctx) const;
@@ -326,6 +336,9 @@ public:
   lldb::TemplateArgumentKind GetTemplateArgumentKind(size_t idx) const;
   CompilerType GetTypeTemplateArgument(size_t idx) const;
 
+  lldb::GenericKind GetGenericArgumentKind(size_t idx) const;
+  CompilerType GetGenericArgumentType(size_t idx) const;
+
   // Returns the value of the template argument and its type.
   llvm::Optional<IntegralTemplateArgument>
   GetIntegralTemplateArgument(size_t idx) const;
@@ -335,13 +348,6 @@ public:
   LazyBool ShouldPrintAsOneLiner(ValueObject *valobj) const;
 
   bool IsMeaninglessWithoutDynamicResolution() const;
-
-  // Pointers & References
-
-  // Converts "s" to a floating point value and place resulting floating point
-  // bytes in the "dst" buffer.
-  size_t ConvertStringToFloatValue(const char *s, uint8_t *dst,
-                                   size_t dst_size) const;
 
   // Dumping types
 
@@ -360,7 +366,7 @@ public:
   bool DumpTypeValue(Stream *s, lldb::Format format, const DataExtractor &data,
                      lldb::offset_t data_offset, size_t data_byte_size,
                      uint32_t bitfield_bit_size, uint32_t bitfield_bit_offset,
-                     ExecutionContextScope *exe_scope);
+                     ExecutionContextScope *exe_scope, bool is_base_class);
 
   void DumpSummary(ExecutionContext *exe_ctx, Stream *s,
                    const DataExtractor &data, lldb::offset_t data_offset,

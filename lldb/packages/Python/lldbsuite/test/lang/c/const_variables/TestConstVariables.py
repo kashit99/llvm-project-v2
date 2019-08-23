@@ -3,8 +3,6 @@
 from __future__ import print_function
 
 
-import os
-import time
 import lldb
 from lldbsuite.test.decorators import *
 from lldbsuite.test.lldbtest import *
@@ -15,22 +13,13 @@ class ConstVariableTestCase(TestBase):
 
     mydir = TestBase.compute_mydir(__file__)
 
-    @expectedFailureAll(
-        oslist=["freebsd", "linux"],
-        compiler="clang", compiler_version=["<", "3.5"])
-    @expectedFailureAll(
-        oslist=["freebsd", "linux"],
-        compiler="clang", compiler_version=["=", "3.7"])
-    @expectedFailureAll(
-        oslist=["freebsd", "linux"],
-        compiler="clang", compiler_version=["=", "3.8"])
-    @expectedFailureAll(oslist=["freebsd", "linux"], compiler="icc")
     @expectedFailureAll(archs=['mips', 'mipsel', 'mips64', 'mips64el'])
     @expectedFailureAll(
         oslist=["linux"],
         archs=[
             'arm',
             'aarch64'],
+        triple=no_match(".*-android"),
         bugnumber="llvm.org/pr27883")
     @expectedFailureAll(
         oslist=["windows"],

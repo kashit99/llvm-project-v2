@@ -19,21 +19,16 @@
 #include "llvm/Target/TargetOptions.h"
 
 // Define an externally visible version of
-// initTargetOptionsFromCodeGenFlags, so that its functionality can be
+// InitTargetOptionsFromCodeGenFlags, so that its functionality can be
 // used without having to include llvm/CodeGen/CommandFlags.inc, which
 // would lead to multiple definitions of the command line flags.
-llvm::TargetOptions lld::initTargetOptionsFromCodeGenFlags() {
+llvm::TargetOptions lld::InitTargetOptionsFromCodeGenFlags() {
   return ::InitTargetOptionsFromCodeGenFlags();
 }
 
-llvm::Optional<llvm::Reloc::Model> lld::getRelocModelFromCMModel() {
-  return getRelocModel();
-}
-
-llvm::Optional<llvm::CodeModel::Model> lld::getCodeModelFromCMModel() {
+llvm::Optional<llvm::CodeModel::Model> lld::GetCodeModelFromCMModel() {
   return getCodeModel();
 }
 
-std::string lld::getCPUStr() { return ::getCPUStr(); }
-
-std::vector<std::string> lld::getMAttrs() { return ::MAttrs; }
+std::string lld::GetCPUStr() { return ::getCPUStr(); }
+std::vector<std::string> lld::GetMAttrs() { return ::MAttrs; }

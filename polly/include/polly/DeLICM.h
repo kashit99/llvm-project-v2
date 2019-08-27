@@ -17,12 +17,11 @@
 #ifndef POLLY_DELICM_H
 #define POLLY_DELICM_H
 
-#include "isl/isl-noexceptions.h"
+#include "polly/Support/GICHelper.h"
 
 namespace llvm {
 class PassRegistry;
 class Pass;
-class raw_ostream;
 } // namespace llvm
 
 namespace polly {

@@ -17,9 +17,8 @@
 #define POLLY_POLYHEDRAL_INFO_H
 
 #include "llvm/Pass.h"
-#include "isl/aff_type.h"
 #include "isl/ctx.h"
-#include "isl/union_map_type.h"
+#include "isl/union_map.h"
 
 namespace llvm {
 class Loop;

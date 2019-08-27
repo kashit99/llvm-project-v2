@@ -15,6 +15,3 @@ BreakBeforeBraces: Allman
 # Disable formatting options which may break tests.
 SortIncludes: false
 ReflowComments: false
-
-# Indent preprocessor directives
-IndentPPDirectives: AfterHash

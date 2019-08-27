@@ -108,8 +108,7 @@ sub process(\%) {
     foreach my $entry ( keys( %$entries ) ) {
         if ( not $entries->{ $entry }->{ obsolete } ) {
             my $ordinal = $entries->{ $entry }->{ ordinal };
-            # omp_alloc and omp_free are C/C++ only functions, skip "1000+ordinal" for them
-            if ( $entry =~ m{\A[ok]mp_} and $entry ne "omp_alloc" and $entry ne "omp_free" ) {
+            if ( $entry =~ m{\A[ok]mp_} ) {
                 if ( not defined( $ordinal ) ) {
                     runtime_error(
                         "Bad entry \"$entry\": ordinal number is not specified."

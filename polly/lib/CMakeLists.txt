@@ -36,8 +36,6 @@ add_library(PollyCore OBJECT
   CodeGen/BlockGenerators.cpp
   ${ISL_CODEGEN_FILES}
   CodeGen/LoopGenerators.cpp
-  CodeGen/LoopGeneratorsGOMP.cpp
-  CodeGen/LoopGeneratorsKMP.cpp
   CodeGen/IRBuilder.cpp
   CodeGen/Utils.cpp
   CodeGen/RuntimeDebugBuilder.cpp
@@ -58,7 +56,6 @@ add_library(PollyCore OBJECT
   Transform/CodePreparation.cpp
   Transform/DeadCodeElimination.cpp
   Transform/ScheduleOptimizer.cpp
-  Transform/ScheduleTreeTransform.cpp
   Transform/FlattenSchedule.cpp
   Transform/FlattenAlgo.cpp
   Transform/ForwardOpTree.cpp
@@ -161,3 +158,4 @@ if (TARGET intrinsics_gen)
   # Check if we are building as part of an LLVM build
   add_dependencies(PollyCore intrinsics_gen)
 endif()
+

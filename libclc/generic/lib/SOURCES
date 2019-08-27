@@ -89,7 +89,6 @@ math/atan2pi.cl
 math/atanh.cl
 math/atanpi.cl
 math/cbrt.cl
-math/ceil.cl
 math/copysign.cl
 math/cos.cl
 math/cosh.cl
@@ -103,9 +102,7 @@ math/expm1.cl
 math/exp2.cl
 math/clc_exp10.cl
 math/exp10.cl
-math/fabs.cl
 math/fdim.cl
-math/floor.cl
 math/clc_fma.cl
 math/fma.cl
 math/fmax.cl
@@ -172,10 +169,8 @@ math/clc_remainder.cl
 math/remainder.cl
 math/clc_remquo.cl
 math/remquo.cl
-math/rint.cl
 math/clc_rootn.cl
 math/rootn.cl
-math/round.cl
 math/sin.cl
 math/sincos.cl
 math/sincos_helpers.cl
@@ -189,7 +184,6 @@ math/tanh.cl
 math/clc_tanpi.cl
 math/tanpi.cl
 math/tgamma.cl
-math/trunc.cl
 misc/shuffle.cl
 misc/shuffle2.cl
 relational/all.cl

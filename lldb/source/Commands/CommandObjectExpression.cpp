@@ -191,9 +191,6 @@ void CommandObjectExpression::CommandOptions::OptionParsingStarting(
   try_all_threads = true;
   timeout = 0;
   debug = false;
-#ifdef LLDB_CONFIGURATION_DEBUG
-  playground = false;
-#endif
   language = eLanguageTypeUnknown;
   m_verbosity = eLanguageRuntimeDescriptionDisplayVerbosityCompact;
   auto_apply_fixits = eLazyBoolCalculate;
@@ -217,11 +214,6 @@ CommandObjectExpression::CommandObjectExpression(
       m_option_group(), m_format_options(eFormatDefault),
       m_repl_option(LLDB_OPT_SET_1, false, "repl", 'r', "Drop into Swift REPL",
                     false, true),
-#ifdef LLDB_CONFIGURATION_DEBUG
-      m_playground_option(LLDB_OPT_SET_1, false, "playground", 'z',
-                          "Execute the expresssion as a playground expression",
-                          false, true),
-#endif
       m_command_options(), m_expr_line_count(0), m_expr_lines() {
   SetHelpLong(
       R"(
@@ -296,9 +288,6 @@ Examples:
   m_option_group.Append(&m_varobj_options, LLDB_OPT_SET_ALL,
                         LLDB_OPT_SET_1 | LLDB_OPT_SET_2);
   m_option_group.Append(&m_repl_option, LLDB_OPT_SET_ALL, LLDB_OPT_SET_3);
-#ifdef LLDB_CONFIGURATION_DEBUG
-  m_option_group.Append(&m_playground_option, LLDB_OPT_SET_ALL, LLDB_OPT_SET_1);
-#endif
   m_option_group.Finalize();
 }
 
@@ -330,10 +319,7 @@ void CommandObjectExpression::HandleCompletion(CompletionRequest &request) {
   Target *target = exe_ctx.GetTargetPtr();
 
   if (!target)
-    target = GetDummyTarget();
-
-  if (!target)
-    return;
+    target = &GetDummyTarget();
 
   unsigned cursor_pos = request.GetRawCursorPos();
   llvm::StringRef code = request.GetRawLine();
@@ -394,157 +380,127 @@ bool CommandObjectExpression::EvaluateExpression(llvm::StringRef expr,
   Target *target = exe_ctx.GetTargetPtr();
 
   if (!target)
-    target = GetDummyTarget();
+    target = &GetDummyTarget();
 
-  if (target) {
-    lldb::ValueObjectSP result_valobj_sp;
-    bool keep_in_memory = true;
-    StackFrame *frame = exe_ctx.GetFramePtr();
+  lldb::ValueObjectSP result_valobj_sp;
+  bool keep_in_memory = true;
+  StackFrame *frame = exe_ctx.GetFramePtr();
 
-    EvaluateExpressionOptions options;
-    options.SetCoerceToId(m_varobj_options.use_objc);
-    options.SetUnwindOnError(m_command_options.unwind_on_error);
-    options.SetIgnoreBreakpoints(m_command_options.ignore_breakpoints);
-    options.SetKeepInMemory(keep_in_memory);
-    options.SetUseDynamic(m_varobj_options.use_dynamic);
-    options.SetTryAllThreads(m_command_options.try_all_threads);
-    options.SetDebug(m_command_options.debug);
+  EvaluateExpressionOptions options;
+  options.SetCoerceToId(m_varobj_options.use_objc);
+  options.SetUnwindOnError(m_command_options.unwind_on_error);
+  options.SetIgnoreBreakpoints(m_command_options.ignore_breakpoints);
+  options.SetKeepInMemory(keep_in_memory);
+  options.SetUseDynamic(m_varobj_options.use_dynamic);
+  options.SetTryAllThreads(m_command_options.try_all_threads);
+  options.SetDebug(m_command_options.debug);
 #ifdef LLDB_CONFIGURATION_DEBUG
-    options.SetPlaygroundTransformEnabled(m_command_options.playground);
+  options.SetPlaygroundTransformEnabled(m_command_options.playground);
 #endif
 
-    // If the language was not specified in the expression command,
-    // set it to the language in the target's properties if
-    // specified, else default to the language for the frame.
-    if (m_command_options.language != eLanguageTypeUnknown)
-      options.SetLanguage(m_command_options.language);
-    options.SetExecutionPolicy(
-        m_command_options.allow_jit
-            ? EvaluateExpressionOptions::default_execution_policy
-            : lldb_private::eExecutionPolicyNever);
+  // If the language was not specified in the expression command,
+  // set it to the language in the target's properties if
+  // specified, else default to the language for the frame.
+  if (m_command_options.language != eLanguageTypeUnknown)
+    options.SetLanguage(m_command_options.language);
 
-    bool auto_apply_fixits;
-    if (m_command_options.auto_apply_fixits == eLazyBoolCalculate)
-      auto_apply_fixits = target->GetEnableAutoApplyFixIts();
-    else
-      auto_apply_fixits = m_command_options.auto_apply_fixits == eLazyBoolYes;
+  options.SetExecutionPolicy(
+      m_command_options.allow_jit
+          ? EvaluateExpressionOptions::default_execution_policy
+          : lldb_private::eExecutionPolicyNever);
 
-    options.SetAutoApplyFixIts(auto_apply_fixits);
+  bool auto_apply_fixits;
+  if (m_command_options.auto_apply_fixits == eLazyBoolCalculate)
+    auto_apply_fixits = target->GetEnableAutoApplyFixIts();
+  else
+    auto_apply_fixits = m_command_options.auto_apply_fixits == eLazyBoolYes;
 
-    if (m_command_options.top_level)
-      options.SetExecutionPolicy(eExecutionPolicyTopLevel);
+  options.SetAutoApplyFixIts(auto_apply_fixits);
 
-    // If there is any chance we are going to stop and want to see what went
-    // wrong with our expression, we should generate debug info
-    if (!m_command_options.ignore_breakpoints ||
-        !m_command_options.unwind_on_error)
-      options.SetGenerateDebugInfo(true);
+  if (m_command_options.top_level)
+    options.SetExecutionPolicy(eExecutionPolicyTopLevel);
 
-    if (m_command_options.timeout > 0)
-      options.SetTimeout(std::chrono::microseconds(m_command_options.timeout));
-    else
-      options.SetTimeout(llvm::None);
+  // If there is any chance we are going to stop and want to see what went
+  // wrong with our expression, we should generate debug info
+  if (!m_command_options.ignore_breakpoints ||
+      !m_command_options.unwind_on_error)
+    options.SetGenerateDebugInfo(true);
 
-    ExpressionResults success = target->EvaluateExpression(
-        expr, frame, result_valobj_sp, options, &m_fixed_expression);
+  if (m_command_options.timeout > 0)
+    options.SetTimeout(std::chrono::microseconds(m_command_options.timeout));
+  else
+    options.SetTimeout(llvm::None);
 
-    // We only tell you about the FixIt if we applied it.  The compiler errors
-    // will suggest the FixIt if it parsed.
-    if (error_stream && !m_fixed_expression.empty() &&
-        (m_fixed_expression != expr) && target->GetEnableNotifyAboutFixIts()) {
-      if (success == eExpressionCompleted)
-        error_stream->Printf(
-            "  Fix-it applied, fixed expression was: \n    %s\n",
-            m_fixed_expression.c_str());
-    }
+  ExpressionResults success = target->EvaluateExpression(
+      expr, frame, result_valobj_sp, options, &m_fixed_expression);
 
-    if (result_valobj_sp) {
-      Format format = m_format_options.GetFormat();
+  // We only tell you about the FixIt if we applied it.  The compiler errors
+  // will suggest the FixIt if it parsed.
+  if (error_stream && !m_fixed_expression.empty() &&
+      target->GetEnableNotifyAboutFixIts()) {
+    if (success == eExpressionCompleted)
+      error_stream->Printf("  Fix-it applied, fixed expression was: \n    %s\n",
+                           m_fixed_expression.c_str());
+  }
 
-      const Status &expr_error = result_valobj_sp->GetError();
-      if (expr_error.Success()) {
-        bool treat_as_void = (format == eFormatVoid);
-        // if we are asked to suppress void, check if this is the empty tuple
-        // type, and if so suppress it
-        if (!treat_as_void && !m_interpreter.GetDebugger().GetNotifyVoid()) {
-          const CompilerType &expr_type(result_valobj_sp->GetCompilerType());
-          Flags expr_type_flags(expr_type.GetTypeInfo());
-          if (expr_type_flags.AllSet(eTypeIsSwift | eTypeIsTuple)) {
-            treat_as_void = (expr_type.GetNumFields() == 0);
-          }
-        }
+  if (result_valobj_sp) {
+    Format format = m_format_options.GetFormat();
 
-        if (!treat_as_void) {
-          if (format != eFormatDefault)
-            result_valobj_sp->SetFormat(format);
+    if (result_valobj_sp->GetError().Success()) {
+      if (format != eFormatVoid) {
+        if (format != eFormatDefault)
+          result_valobj_sp->SetFormat(format);
 
-          if (m_varobj_options.elem_count > 0) {
-            Status error(CanBeUsedForElementCountPrinting(*result_valobj_sp));
-            if (error.Fail()) {
-              result->AppendErrorWithFormat(
-                  "expression cannot be used with --element-count %s\n",
-                  error.AsCString(""));
-              result->SetStatus(eReturnStatusFailed);
-              return false;
-            }
-          }
-
-          DumpValueObjectOptions options(m_varobj_options.GetAsDumpOptions(
-              m_command_options.m_verbosity, format));
-          options.SetVariableFormatDisplayLanguage(
-              result_valobj_sp->GetPreferredDisplayLanguage());
-
-          result_valobj_sp->Dump(*output_stream, options);
-
-          if (result)
-            result->SetStatus(eReturnStatusSuccessFinishResult);
-        }
-      } else {
-        if (result_valobj_sp->GetError().GetError() ==
-            UserExpression::kNoResult) {
-          if (format != eFormatVoid && GetDebugger().GetNotifyVoid()) {
-            error_stream->PutCString("(void)\n");
-          }
-
-          if (result)
-            result->SetStatus(eReturnStatusSuccessFinishResult);
-        } else if (expr_error.GetError() == lldb::eExpressionStoppedForDebug) {
-          const char *error_cstr = expr_error.AsCString();
-          if (error_cstr && error_cstr[0]) {
-            const size_t error_cstr_len = strlen(error_cstr);
-            const bool ends_with_newline =
-                error_cstr[error_cstr_len - 1] == '\n';
-            error_stream->Write(error_cstr, error_cstr_len);
-            if (!ends_with_newline)
-              error_stream->EOL();
-          } else {
-            error_stream->PutCString("error: unknown error\n");
-          }
-          if (result)
-            result->SetStatus(eReturnStatusSuccessFinishNoResult);
-        } else {
-          const char *error_cstr = expr_error.AsCString();
-          if (error_cstr && error_cstr[0]) {
-            const size_t error_cstr_len = strlen(error_cstr);
-            const bool ends_with_newline =
-                error_cstr[error_cstr_len - 1] == '\n';
-            if (strstr(error_cstr, "error:") != error_cstr)
-              error_stream->PutCString("error: ");
-            error_stream->Write(error_cstr, error_cstr_len);
-            if (!ends_with_newline)
-              error_stream->EOL();
-          } else {
-            error_stream->PutCString("error: unknown error\n");
-          }
-
-          if (result)
+        if (m_varobj_options.elem_count > 0) {
+          Status error(CanBeUsedForElementCountPrinting(*result_valobj_sp));
+          if (error.Fail()) {
+            result->AppendErrorWithFormat(
+                "expression cannot be used with --element-count %s\n",
+                error.AsCString(""));
             result->SetStatus(eReturnStatusFailed);
+            return false;
+          }
         }
+
+        DumpValueObjectOptions options(m_varobj_options.GetAsDumpOptions(
+            m_command_options.m_verbosity, format));
+        options.SetVariableFormatDisplayLanguage(
+            result_valobj_sp->GetPreferredDisplayLanguage());
+
+        result_valobj_sp->Dump(*output_stream, options);
+
+        if (result)
+          result->SetStatus(eReturnStatusSuccessFinishResult);
+      }
+    } else {
+      if (result_valobj_sp->GetError().GetError() ==
+          UserExpression::kNoResult) {
+        if (format != eFormatVoid && GetDebugger().GetNotifyVoid()) {
+          error_stream->PutCString("(void)\n");
+        }
+
+        if (result)
+          result->SetStatus(eReturnStatusSuccessFinishResult);
+      } else {
+        const Status &expr_error = result_valobj_sp->GetError();
+        const char *error_cstr = expr_error.AsCString();
+        if (error_cstr && error_cstr[0]) {
+          const size_t error_cstr_len = strlen(error_cstr);
+          const bool ends_with_newline =
+              error_cstr[error_cstr_len - 1] == '\n';
+          if (strstr(error_cstr, "error:") != error_cstr)
+            error_stream->PutCString("error: ");
+          error_stream->Write(error_cstr, error_cstr_len);
+          if (!ends_with_newline)
+            error_stream->EOL();
+        } else {
+          error_stream->PutCString("error: unknown error\n");
+        }
+
+        if (result)
+          result->SetStatus(eReturnStatusFailed);
       }
     }
-  } else {
-    error_stream->Printf("error: invalid execution context for expression\n");
-    return false;
   }
 
   return true;
@@ -665,18 +621,13 @@ bool CommandObjectExpression::DoExecute(llvm::StringRef command,
     if (!ParseOptionsAndNotify(args.GetArgs(), result, m_option_group, exe_ctx))
       return false;
 
-#ifdef LLDB_CONFIGURATION_DEBUG
-    m_command_options.playground =
-        m_playground_option.GetOptionValue().GetCurrentValue();
-#endif
-
     if (m_repl_option.GetOptionValue().GetCurrentValue()) {
       Target *target = m_interpreter.GetExecutionContext().GetTargetPtr();
 
       // If we weren't passed in a target, let's see if the dummy target can
       // make a REPL:
       if (!target)
-        target = GetDummyTarget();
+        target = &GetDummyTarget();
 
       if (target) {
         // Drop into REPL
@@ -741,11 +692,11 @@ bool CommandObjectExpression::DoExecute(llvm::StringRef command,
     }
   }
 
-  Target *target = GetSelectedOrDummyTarget();
+  Target &target = GetSelectedOrDummyTarget();
   if (EvaluateExpression(expr, &(result.GetOutputStream()),
                          &(result.GetErrorStream()), &result)) {
 
-    if (!m_fixed_expression.empty() && target->GetEnableNotifyAboutFixIts()) {
+    if (!m_fixed_expression.empty() && target.GetEnableNotifyAboutFixIts()) {
       CommandHistory &history = m_interpreter.GetCommandHistory();
       // FIXME: Can we figure out what the user actually typed (e.g. some alias
       // for expr???)
@@ -760,12 +711,12 @@ bool CommandObjectExpression::DoExecute(llvm::StringRef command,
       history.AppendString(fixed_command);
     }
     // Increment statistics to record this expression evaluation success.
-    target->IncrementStats(StatisticKind::ExpressionSuccessful);
+    target.IncrementStats(StatisticKind::ExpressionSuccessful);
     return true;
   }
 
   // Increment statistics to record this expression evaluation failure.
-  target->IncrementStats(StatisticKind::ExpressionFailure);
+  target.IncrementStats(StatisticKind::ExpressionFailure);
   result.SetStatus(eReturnStatusFailed);
   return false;
 }

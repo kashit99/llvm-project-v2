@@ -9,11 +9,19 @@
 #ifndef POLLY_CODEGENERATION_H
 #define POLLY_CODEGENERATION_H
 
-#include "polly/CodeGen/IRBuilder.h"
+#include "IRBuilder.h"
+#include "polly/Config/config.h"
 #include "polly/ScopPass.h"
 #include "llvm/IR/PassManager.h"
 
+namespace llvm {
+
+class BasicBlock;
+} // namespace llvm
+
 namespace polly {
+
+class Scop;
 
 enum VectorizerChoice {
   VECTORIZER_NONE,

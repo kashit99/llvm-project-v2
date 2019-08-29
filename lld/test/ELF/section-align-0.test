@@ -15,6 +15,6 @@ Sections:
     AddressAlign:    0
 
 Symbols:
-  - Name:          _start
-    Section:       .text
-    Binding:       STB_GLOBAL
+  Global:
+    - Name:            _start
+      Section:         .text

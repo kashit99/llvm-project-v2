@@ -10,7 +10,7 @@
 # CHECK-NEXT: Binding: Global
 # CHECK-NEXT: Type: None
 # CHECK-NEXT: Other:
-# CHECK-NEXT: Section: .data
+# CHECK-NEXT: Section: .dynamic
 
         .data
         .globl g

@@ -33,7 +33,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "omptarget-nvptx.h"
-#include "target_impl.h"
 
 typedef struct ConvergentSimdJob {
   omptarget_nvptx_TaskDescr taskDescr;
@@ -49,12 +48,13 @@ EXTERN bool __kmpc_kernel_convergent_simd(void *buffer, uint32_t Mask,
                                           int32_t *LaneId, int32_t *NumLanes) {
   PRINT0(LD_IO, "call to __kmpc_kernel_convergent_simd\n");
   uint32_t ConvergentMask = Mask;
-  int32_t ConvergentSize = __kmpc_impl_popc(ConvergentMask);
+  int32_t ConvergentSize = __popc(ConvergentMask);
   uint32_t WorkRemaining = ConvergentMask >> (*LaneSource + 1);
-  *LaneSource += __kmpc_impl_ffs(WorkRemaining);
-  *IsFinal = __kmpc_impl_popc(WorkRemaining) == 1;
-  uint32_t lanemask_lt = __kmpc_impl_lanemask_lt();
-  *LaneId = __kmpc_impl_popc(ConvergentMask & lanemask_lt);
+  *LaneSource += __ffs(WorkRemaining);
+  *IsFinal = __popc(WorkRemaining) == 1;
+  uint32_t lanemask_lt;
+  asm("mov.u32 %0, %%lanemask_lt;" : "=r"(lanemask_lt));
+  *LaneId = __popc(ConvergentMask & lanemask_lt);
 
   int threadId = GetLogicalThreadIdInBlock(isSPMDMode());
   int sourceThreadId = (threadId & ~(WARPSIZE - 1)) + *LaneSource;
@@ -64,7 +64,7 @@ EXTERN bool __kmpc_kernel_convergent_simd(void *buffer, uint32_t Mask,
       omptarget_nvptx_threadPrivateContext->SimdLimitForNextSimd(threadId);
   job->slimForNextSimd = SimdLimit;
 
-  int32_t SimdLimitSource = __kmpc_impl_shfl_sync(Mask, SimdLimit, *LaneSource);
+  int32_t SimdLimitSource = __SHFL_SYNC(Mask, SimdLimit, *LaneSource);
   // reset simdlimit to avoid propagating to successive #simd
   if (SimdLimitSource > 0 && threadId == sourceThreadId)
     omptarget_nvptx_threadPrivateContext->SimdLimitForNextSimd(threadId) = 0;
@@ -122,12 +122,13 @@ EXTERN bool __kmpc_kernel_convergent_parallel(void *buffer, uint32_t Mask,
                                               int32_t *LaneSource) {
   PRINT0(LD_IO, "call to __kmpc_kernel_convergent_parallel\n");
   uint32_t ConvergentMask = Mask;
-  int32_t ConvergentSize = __kmpc_impl_popc(ConvergentMask);
+  int32_t ConvergentSize = __popc(ConvergentMask);
   uint32_t WorkRemaining = ConvergentMask >> (*LaneSource + 1);
-  *LaneSource += __kmpc_impl_ffs(WorkRemaining);
-  *IsFinal = __kmpc_impl_popc(WorkRemaining) == 1;
-  uint32_t lanemask_lt = __kmpc_impl_lanemask_lt();
-  uint32_t OmpId = __kmpc_impl_popc(ConvergentMask & lanemask_lt);
+  *LaneSource += __ffs(WorkRemaining);
+  *IsFinal = __popc(WorkRemaining) == 1;
+  uint32_t lanemask_lt;
+  asm("mov.u32 %0, %%lanemask_lt;" : "=r"(lanemask_lt));
+  uint32_t OmpId = __popc(ConvergentMask & lanemask_lt);
 
   int threadId = GetLogicalThreadIdInBlock(isSPMDMode());
   int sourceThreadId = (threadId & ~(WARPSIZE - 1)) + *LaneSource;
@@ -137,8 +138,7 @@ EXTERN bool __kmpc_kernel_convergent_parallel(void *buffer, uint32_t Mask,
       omptarget_nvptx_threadPrivateContext->NumThreadsForNextParallel(threadId);
   job->tnumForNextPar = NumThreadsClause;
 
-  int32_t NumThreadsSource =
-      __kmpc_impl_shfl_sync(Mask, NumThreadsClause, *LaneSource);
+  int32_t NumThreadsSource = __SHFL_SYNC(Mask, NumThreadsClause, *LaneSource);
   // reset numthreads to avoid propagating to successive #parallel
   if (NumThreadsSource > 0 && threadId == sourceThreadId)
     omptarget_nvptx_threadPrivateContext->NumThreadsForNextParallel(threadId) =
@@ -250,7 +250,8 @@ EXTERN void __kmpc_kernel_prepare_parallel(void *WorkFn,
       omptarget_nvptx_threadPrivateContext->NumThreadsForNextParallel(threadId);
 
   uint16_t NumThreads =
-      determineNumberOfThreads(NumThreadsClause, nThreads, threadLimit);
+      determineNumberOfThreads(NumThreadsClause, currTaskDescr->NThreads(),
+                               currTaskDescr->ThreadLimit());
 
   if (NumThreadsClause != 0) {
     // Reset request to avoid propagating to successive #parallel
@@ -264,8 +265,7 @@ EXTERN void __kmpc_kernel_prepare_parallel(void *WorkFn,
 
   // Set number of threads on work descriptor.
   omptarget_nvptx_WorkDescr &workDescr = getMyWorkDescriptor();
-  workDescr.WorkTaskDescr()->CopyToWorkDescr(currTaskDescr);
-  threadsInTeam = NumThreads;
+  workDescr.WorkTaskDescr()->CopyToWorkDescr(currTaskDescr, NumThreads);
 }
 
 // All workers call this function.  Deactivate those not needed.
@@ -295,7 +295,7 @@ EXTERN bool __kmpc_kernel_parallel(void **WorkFn,
   // Set to true for workers participating in the parallel region.
   bool isActive = false;
   // Initialize state for active threads.
-  if (threadId < threadsInTeam) {
+  if (threadId < workDescr.WorkTaskDescr()->ThreadsInTeam()) {
     // init work descriptor from workdesccr
     omptarget_nvptx_TaskDescr *newTaskDescr =
         omptarget_nvptx_threadPrivateContext->Level1TaskDescr(threadId);
@@ -308,10 +308,9 @@ EXTERN bool __kmpc_kernel_parallel(void **WorkFn,
     PRINT(LD_PAR,
           "thread will execute parallel region with id %d in a team of "
           "%d threads\n",
-          (int)newTaskDescr->ThreadId(), (int)nThreads);
+          (int)newTaskDescr->ThreadId(), (int)newTaskDescr->NThreads());
 
     isActive = true;
-    IncParallelLevel(threadsInTeam != 1);
   }
 
   return isActive;
@@ -328,8 +327,6 @@ EXTERN void __kmpc_kernel_end_parallel() {
   omptarget_nvptx_TaskDescr *currTaskDescr = getMyTopTaskDescriptor(threadId);
   omptarget_nvptx_threadPrivateContext->SetTopLevelTaskDescr(
       threadId, currTaskDescr->GetPrevTaskDescr());
-
-  DecParallelLevel(threadsInTeam != 1);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -339,11 +336,14 @@ EXTERN void __kmpc_kernel_end_parallel() {
 EXTERN void __kmpc_serialized_parallel(kmp_Ident *loc, uint32_t global_tid) {
   PRINT0(LD_IO, "call to __kmpc_serialized_parallel\n");
 
-  IncParallelLevel(/*ActiveParallel=*/false);
-
   if (checkRuntimeUninitialized(loc)) {
     ASSERT0(LT_FUSSY, checkSPMDMode(loc),
             "Expected SPMD mode with uninitialized runtime.");
+    __SYNCTHREADS();
+    if (GetThreadIdInBlock() == 0)
+      ++parallelLevel;
+    __SYNCTHREADS();
+
     return;
   }
 
@@ -368,6 +368,7 @@ EXTERN void __kmpc_serialized_parallel(kmp_Ident *loc, uint32_t global_tid) {
   // - each thread becomes ID 0 in its serialized parallel, and
   // - there is only one thread per team
   newTaskDescr->ThreadId() = 0;
+  newTaskDescr->ThreadsInTeam() = 1;
 
   // set new task descriptor as top
   omptarget_nvptx_threadPrivateContext->SetTopLevelTaskDescr(threadId,
@@ -378,11 +379,13 @@ EXTERN void __kmpc_end_serialized_parallel(kmp_Ident *loc,
                                            uint32_t global_tid) {
   PRINT0(LD_IO, "call to __kmpc_end_serialized_parallel\n");
 
-  DecParallelLevel(/*ActiveParallel=*/false);
-
   if (checkRuntimeUninitialized(loc)) {
     ASSERT0(LT_FUSSY, checkSPMDMode(loc),
             "Expected SPMD mode with uninitialized runtime.");
+    __SYNCTHREADS();
+    if (GetThreadIdInBlock() == 0)
+      --parallelLevel;
+    __SYNCTHREADS();
     return;
   }
 
@@ -401,7 +404,21 @@ EXTERN void __kmpc_end_serialized_parallel(kmp_Ident *loc,
 EXTERN uint16_t __kmpc_parallel_level(kmp_Ident *loc, uint32_t global_tid) {
   PRINT0(LD_IO, "call to __kmpc_parallel_level\n");
 
-  return parallelLevel[GetWarpId()] & (OMP_ACTIVE_PARALLEL_LEVEL - 1);
+  if (checkRuntimeUninitialized(loc)) {
+    ASSERT0(LT_FUSSY, checkSPMDMode(loc),
+            "Expected SPMD mode with uninitialized runtime.");
+    return parallelLevel;
+  }
+
+  int threadId = GetLogicalThreadIdInBlock(checkSPMDMode(loc));
+  omptarget_nvptx_TaskDescr *currTaskDescr =
+      omptarget_nvptx_threadPrivateContext->GetTopLevelTaskDescr(threadId);
+  if (currTaskDescr->InL2OrHigherParallelRegion())
+    return 2;
+  else if (currTaskDescr->InParallelRegion())
+    return 1;
+  else
+    return 0;
 }
 
 // This kmpc call returns the thread id across all teams. It's value is
@@ -410,7 +427,8 @@ EXTERN uint16_t __kmpc_parallel_level(kmp_Ident *loc, uint32_t global_tid) {
 // of this call.
 EXTERN int32_t __kmpc_global_thread_num(kmp_Ident *loc) {
   int tid = GetLogicalThreadIdInBlock(checkSPMDMode(loc));
-  return GetOmpThreadId(tid, checkSPMDMode(loc));
+  return GetOmpThreadId(tid, checkSPMDMode(loc),
+                        checkRuntimeUninitialized(loc));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

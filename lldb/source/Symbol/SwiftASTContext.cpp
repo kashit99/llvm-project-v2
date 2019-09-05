@@ -50,7 +50,6 @@
 #include "swift/Frontend/PrintingDiagnosticConsumer.h"
 #include "swift/IRGen/Linking.h"
 #include "swift/SIL/SILModule.h"
-#include "swift/Serialization/ModuleFile.h"
 #include "swift/Serialization/Validation.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/DeclObjC.h"
@@ -2671,10 +2670,8 @@ swift::CompilerInvocation &SwiftASTContext::GetCompilerInvocation() {
 
 swift::SourceManager &SwiftASTContext::GetSourceManager() {
   if (!m_source_manager_up) {
-    auto OverlayFS = llvm::IntrusiveRefCntPtr<llvm::vfs::OverlayFileSystem>(
-        new llvm::vfs::OverlayFileSystem(llvm::vfs::getRealFileSystem()));
-    OverlayFS->pushOverlay(FileSystem::Instance().GetVirtualFileSystem());
-    m_source_manager_up = std::make_unique<swift::SourceManager>(OverlayFS);
+    m_source_manager_up = std::make_unique<swift::SourceManager>(
+        FileSystem::Instance().GetVirtualFileSystem());
   }
   return *m_source_manager_up;
 }
@@ -3320,7 +3317,8 @@ public:
     }
 
     clang::FileSystemOptions file_system_options;
-    clang::FileManager file_manager(file_system_options);
+    clang::FileManager file_manager(
+        file_system_options, FileSystem::Instance().GetVirtualFileSystem());
     clang_types.ForEach([&](lldb::TypeSP &clang_type_sp) {
       if (!clang_type_sp)
         return true;

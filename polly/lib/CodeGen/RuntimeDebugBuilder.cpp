@@ -11,6 +11,7 @@
 #include "polly/CodeGen/RuntimeDebugBuilder.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Module.h"
+#include "llvm/Support/Debug.h"
 #include <string>
 #include <vector>
 

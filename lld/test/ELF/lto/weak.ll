@@ -1,7 +1,4 @@
 ; REQUIRES: x86
-
-;; Test weak symbols are supported in LTO.
-
 ; RUN: llvm-as %s -o %t.o
 ; RUN: ld.lld %t.o %t.o -o %t.so -shared
 ; RUN: llvm-readobj --symbols %t.so | FileCheck %s
@@ -14,9 +11,6 @@ define weak void @f() {
 }
 
 ; CHECK:      Name: f
-; CHECK-NEXT: Value:
+; CHECK-NEXT: Value: 0x1000
 ; CHECK-NEXT: Size: 1
 ; CHECK-NEXT: Binding: Weak
-; CHECK-NEXT: Type: Function
-; CHECK-NEXT: Other: 0
-; CHECK-NEXT: Section: .text

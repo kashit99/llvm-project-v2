@@ -27,11 +27,14 @@ Sections:
     Info:            .text
     Relocations:
       - Offset:          0x0000000000000000
+        Symbol:          ''
         Type:            R_ARM_V4BX
 Symbols:
-  - Name:            .text
-    Type:            STT_SECTION
-    Section:         .text
-  - Name:            _start
-    Section:         .text
-    Binding:         STB_GLOBAL
+  Global:
+    - Name:            _start
+      Section:         .text
+  Local:
+    - Name:            .text
+      Type:            STT_SECTION
+      Section:         .text
+DynamicSymbols:

@@ -15,9 +15,8 @@
 #include "llvm/Target/TargetOptions.h"
 
 namespace lld {
-llvm::TargetOptions initTargetOptionsFromCodeGenFlags();
-llvm::Optional<llvm::Reloc::Model> getRelocModelFromCMModel();
-llvm::Optional<llvm::CodeModel::Model> getCodeModelFromCMModel();
-std::string getCPUStr();
-std::vector<std::string> getMAttrs();
+llvm::TargetOptions InitTargetOptionsFromCodeGenFlags();
+llvm::Optional<llvm::CodeModel::Model> GetCodeModelFromCMModel();
+std::string GetCPUStr();
+std::vector<std::string> GetMAttrs();
 }

@@ -20,5 +20,6 @@ Sections:
     AddressAlign:    0x0000000000000010
     Content:         "00000000"
 Symbols:
-  - Type:            STT_NOTYPE
-    Section:         .symtab
+  Local:
+    - Type:            STT_NOTYPE
+      Section:         .symtab

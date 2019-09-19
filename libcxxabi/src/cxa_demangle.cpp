@@ -171,16 +171,6 @@ struct DumpVisitor {
       return printStr("SpecialSubKind::iostream");
     }
   }
-  void print(TemplateParamKind TPK) {
-    switch (TPK) {
-    case TemplateParamKind::Type:
-      return printStr("TemplateParamKind::Type");
-    case TemplateParamKind::NonType:
-      return printStr("TemplateParamKind::NonType");
-    case TemplateParamKind::Template:
-      return printStr("TemplateParamKind::Template");
-    }
-  }
 
   void newLine() {
     printStr("\n");

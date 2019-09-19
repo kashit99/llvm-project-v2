@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "polly/RegisterPasses.h"
-#include "llvm/PassRegistry.h"
+#include "llvm/Transforms/IPO/PassManagerBuilder.h"
 
 namespace {
 

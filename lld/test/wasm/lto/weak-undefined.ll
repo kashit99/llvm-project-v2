@@ -17,4 +17,4 @@ entry:
     ret void
 }
 
-; CHECK: Name:            'undefined:foo'
+; CHECK: Name:            undefined function foo

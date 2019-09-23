@@ -482,10 +482,6 @@ public:
   DISPATCHER_CONTEXT *getDispatcherContext() { return &_dispContext; }
   void setDispatcherContext(DISPATCHER_CONTEXT *disp) { _dispContext = *disp; }
 
-  // libunwind does not and should not depend on C++ library which means that we
-  // need our own defition of inline placement new.
-  static void *operator new(size_t, UnwindCursor<A, R> *p) { return p; }
-
 private:
 
   pint_t getLastPC() const { return _dispContext.ControlPc; }
@@ -897,10 +893,6 @@ public:
 #ifdef __arm__
   virtual void        saveVFPAsX();
 #endif
-
-  // libunwind does not and should not depend on C++ library which means that we
-  // need our own defition of inline placement new.
-  static void *operator new(size_t, UnwindCursor<A, R> *p) { return p; }
 
 private:
 
@@ -1740,7 +1732,7 @@ bool UnwindCursor<A, R>::getInfoFromCompactEncodingSection(pint_t pc,
     --personalityIndex; // change 1-based to zero-based index
     if (personalityIndex > sectionHeader.personalityArrayCount()) {
       _LIBUNWIND_DEBUG_LOG("found encoding 0x%08X with personality index %d,  "
-                            "but personality table has only %d entries",
+                            "but personality table has only %d entires",
                             encoding, personalityIndex,
                             sectionHeader.personalityArrayCount());
       return false;
@@ -1991,10 +1983,7 @@ int UnwindCursor<A, R>::step() {
 
 template <typename A, typename R>
 void UnwindCursor<A, R>::getInfo(unw_proc_info_t *info) {
-  if (_unwindInfoMissing)
-    memset(info, 0, sizeof(*info));
-  else
-    *info = _info;
+  *info = _info;
 }
 
 template <typename A, typename R>

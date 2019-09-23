@@ -9,11 +9,7 @@
 #ifndef POLLY_CANONICALIZATION_H
 #define POLLY_CANONICALIZATION_H
 
-namespace llvm {
-namespace legacy {
-class PassManagerBase;
-}
-} // namespace llvm
+#include "llvm/IR/LegacyPassManager.h"
 
 namespace polly {
 

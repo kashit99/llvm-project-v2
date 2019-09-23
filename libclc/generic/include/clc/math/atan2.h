@@ -20,10 +20,5 @@
  * THE SOFTWARE.
  */
 
-#define __CLC_FUNCTION atan2
-#define __CLC_BODY <clc/math/binary_decl_tt.inc>
-
+#define __CLC_BODY <clc/math/atan2.inc>
 #include <clc/math/gentype.inc>
-
-#undef __CLC_BODY
-#undef __CLC_FUNCTION

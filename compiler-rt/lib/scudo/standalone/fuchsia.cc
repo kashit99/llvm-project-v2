@@ -23,6 +23,11 @@
 
 namespace scudo {
 
+void yieldPlatform() {
+  const zx_status_t Status = _zx_nanosleep(0);
+  CHECK_EQ(Status, ZX_OK);
+}
+
 uptr getPageSize() { return PAGE_SIZE; }
 
 void NORETURN die() { __builtin_trap(); }
@@ -150,20 +155,18 @@ const char *getEnv(const char *Name) { return getenv(Name); }
 // Note: we need to flag these methods with __TA_NO_THREAD_SAFETY_ANALYSIS
 // because the Fuchsia implementation of sync_mutex_t has clang thread safety
 // annotations. Were we to apply proper capability annotations to the top level
-// HybridMutex class itself, they would not be needed. As it stands, the
+// BlockingMutex class itself, they would not be needed. As it stands, the
 // thread analysis thinks that we are locking the mutex and accidentally leaving
 // it locked on the way out.
-bool HybridMutex::tryLock() __TA_NO_THREAD_SAFETY_ANALYSIS {
+void BlockingMutex::lock() __TA_NO_THREAD_SAFETY_ANALYSIS {
   // Size and alignment must be compatible between both types.
-  return sync_mutex_trylock(&M) == ZX_OK;
+  COMPILER_CHECK(sizeof(sync_mutex_t) <= sizeof(OpaqueStorage));
+  COMPILER_CHECK(!(alignof(decltype(OpaqueStorage)) % alignof(sync_mutex_t)));
+  sync_mutex_lock(reinterpret_cast<sync_mutex_t *>(OpaqueStorage));
 }
 
-void HybridMutex::lockSlow() __TA_NO_THREAD_SAFETY_ANALYSIS {
-  sync_mutex_lock(&M);
-}
-
-void HybridMutex::unlock() __TA_NO_THREAD_SAFETY_ANALYSIS {
-  sync_mutex_unlock(&M);
+void BlockingMutex::unlock() __TA_NO_THREAD_SAFETY_ANALYSIS {
+  sync_mutex_unlock(reinterpret_cast<sync_mutex_t *>(OpaqueStorage));
 }
 
 u64 getMonotonicTime() { return _zx_clock_get_monotonic(); }

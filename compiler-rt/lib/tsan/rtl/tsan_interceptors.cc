@@ -253,8 +253,7 @@ ScopedInterceptor::ScopedInterceptor(ThreadState *thr, const char *fname,
   if (!thr_->ignore_interceptors) FuncEntry(thr, pc);
   DPrintf("#%d: intercept %s()\n", thr_->tid, fname);
   ignoring_ =
-      !thr_->in_ignored_lib && (flags()->ignore_interceptors_accesses ||
-                                libignore()->IsIgnored(pc, &in_ignored_lib_));
+      !thr_->in_ignored_lib && libignore()->IsIgnored(pc, &in_ignored_lib_);
   EnableIgnores();
 }
 
@@ -487,7 +486,7 @@ static void JmpBufGarbageCollect(ThreadState *thr, uptr sp) {
   }
 }
 
-static void SetJmp(ThreadState *thr, uptr sp) {
+static void SetJmp(ThreadState *thr, uptr sp, uptr mangled_sp) {
   if (!thr->is_inited)  // called from libc guts during bootstrap
     return;
   // Cleanup old bufs.
@@ -495,6 +494,7 @@ static void SetJmp(ThreadState *thr, uptr sp) {
   // Remember the buf.
   JmpBuf *buf = thr->jmp_bufs.PushBack();
   buf->sp = sp;
+  buf->mangled_sp = mangled_sp;
   buf->shadow_stack_pos = thr->shadow_stack_pos;
   ThreadSignalContext *sctx = SigCtx(thr);
   buf->int_signal_send = sctx ? sctx->int_signal_send : 0;
@@ -506,11 +506,32 @@ static void SetJmp(ThreadState *thr, uptr sp) {
 }
 
 static void LongJmp(ThreadState *thr, uptr *env) {
-  uptr sp = ExtractLongJmpSp(env);
-  // Find the saved buf with matching sp.
+#ifdef __powerpc__
+  uptr mangled_sp = env[0];
+#elif SANITIZER_FREEBSD
+  uptr mangled_sp = env[2];
+#elif SANITIZER_NETBSD
+  uptr mangled_sp = env[6];
+#elif SANITIZER_MAC
+# ifdef __aarch64__
+  uptr mangled_sp =
+      (GetMacosVersion() >= MACOS_VERSION_MOJAVE) ? env[12] : env[13];
+# else
+    uptr mangled_sp = env[2];
+# endif
+#elif SANITIZER_LINUX
+# ifdef __aarch64__
+  uptr mangled_sp = env[13];
+# elif defined(__mips64)
+  uptr mangled_sp = env[1];
+# else
+  uptr mangled_sp = env[6];
+# endif
+#endif
+  // Find the saved buf by mangled_sp.
   for (uptr i = 0; i < thr->jmp_bufs.Size(); i++) {
     JmpBuf *buf = &thr->jmp_bufs[i];
-    if (buf->sp == sp) {
+    if (buf->mangled_sp == mangled_sp) {
       CHECK_GE(thr->shadow_stack_pos, buf->shadow_stack_pos);
       // Unwind the stack.
       while (thr->shadow_stack_pos > buf->shadow_stack_pos)
@@ -532,9 +553,9 @@ static void LongJmp(ThreadState *thr, uptr *env) {
 }
 
 // FIXME: put everything below into a common extern "C" block?
-extern "C" void __tsan_setjmp(uptr sp) {
+extern "C" void __tsan_setjmp(uptr sp, uptr mangled_sp) {
   cur_thread_init();
-  SetJmp(cur_thread(), sp);
+  SetJmp(cur_thread(), sp, mangled_sp);
 }
 
 #if SANITIZER_MAC

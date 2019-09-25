@@ -72,7 +72,7 @@ void *MapAllocator::allocate(uptr Size, uptr AlignmentHint, uptr *BlockEnd) {
   H->BlockEnd = CommitBase + CommitSize;
   H->Data = Data;
   {
-    ScopedLock L(Mutex);
+    SpinMutexLock L(&Mutex);
     if (!Tail) {
       Tail = H;
     } else {
@@ -95,7 +95,7 @@ void *MapAllocator::allocate(uptr Size, uptr AlignmentHint, uptr *BlockEnd) {
 void MapAllocator::deallocate(void *Ptr) {
   LargeBlock::Header *H = LargeBlock::getHeader(Ptr);
   {
-    ScopedLock L(Mutex);
+    SpinMutexLock L(&Mutex);
     LargeBlock::Header *Prev = H->Prev;
     LargeBlock::Header *Next = H->Next;
     if (Prev) {

@@ -52,7 +52,6 @@ if [ "`uname -a | grep Linux`" != "" ]; then
 		../../sanitizer_common/sanitizer_linux.cc
 		../../sanitizer_common/sanitizer_linux_libcdep.cc
 		../../sanitizer_common/sanitizer_stoptheworld_linux_libcdep.cc
-		../../sanitizer_common/sanitizer_stoptheworld_netbsd_libcdep.cc
 		"
 	if [ "`uname -a | grep ppc64le`" != "" ]; then
 		SUFFIX="linux_ppc64le"
@@ -80,7 +79,6 @@ elif [ "`uname -a | grep FreeBSD`" != "" ]; then
 		../../sanitizer_common/sanitizer_linux.cc
 		../../sanitizer_common/sanitizer_linux_libcdep.cc
 		../../sanitizer_common/sanitizer_stoptheworld_linux_libcdep.cc
-		../../sanitizer_common/sanitizer_stoptheworld_netbsd_libcdep.cc
 	"
 elif [ "`uname -a | grep NetBSD`" != "" ]; then
 	SUFFIX="netbsd_amd64"
@@ -98,7 +96,6 @@ elif [ "`uname -a | grep NetBSD`" != "" ]; then
 		../../sanitizer_common/sanitizer_linux_libcdep.cc
 		../../sanitizer_common/sanitizer_netbsd.cc
 		../../sanitizer_common/sanitizer_stoptheworld_linux_libcdep.cc
-		../../sanitizer_common/sanitizer_stoptheworld_netbsd_libcdep.cc
 	"
 elif [ "`uname -a | grep Darwin`" != "" ]; then
 	SUFFIX="darwin_amd64"

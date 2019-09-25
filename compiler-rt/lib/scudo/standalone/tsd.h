@@ -15,11 +15,6 @@
 
 #include <limits.h> // for PTHREAD_DESTRUCTOR_ITERATIONS
 
-// With some build setups, this might still not be defined.
-#ifndef PTHREAD_DESTRUCTOR_ITERATIONS
-#define PTHREAD_DESTRUCTOR_ITERATIONS 4
-#endif
-
 namespace scudo {
 
 template <class Allocator> struct ALIGNED(SCUDO_CACHE_LINE_SIZE) TSD {
@@ -57,7 +52,7 @@ template <class Allocator> struct ALIGNED(SCUDO_CACHE_LINE_SIZE) TSD {
   INLINE uptr getPrecedence() { return atomic_load_relaxed(&Precedence); }
 
 private:
-  HybridMutex Mutex;
+  StaticSpinMutex Mutex;
   atomic_uptr Precedence;
 };
 

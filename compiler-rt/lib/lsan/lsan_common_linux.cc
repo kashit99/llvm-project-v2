@@ -7,15 +7,14 @@
 //===----------------------------------------------------------------------===//
 //
 // This file is a part of LeakSanitizer.
-// Implementation of common leak checking functionality. Linux/NetBSD-specific
-// code.
+// Implementation of common leak checking functionality. Linux-specific code.
 //
 //===----------------------------------------------------------------------===//
 
 #include "sanitizer_common/sanitizer_platform.h"
 #include "lsan_common.h"
 
-#if CAN_SANITIZE_LEAKS && (SANITIZER_LINUX || SANITIZER_NETBSD)
+#if CAN_SANITIZE_LEAKS && SANITIZER_LINUX
 #include <link.h>
 
 #include "sanitizer_common/sanitizer_common.h"
@@ -137,4 +136,4 @@ void DoStopTheWorld(StopTheWorldCallback callback, void *argument) {
 
 } // namespace __lsan
 
-#endif
+#endif // CAN_SANITIZE_LEAKS && SANITIZER_LINUX

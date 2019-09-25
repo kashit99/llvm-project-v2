@@ -45,7 +45,7 @@ public:
       NewHeader.State = Chunk::State::Available;
       Chunk::compareExchangeHeader(Allocator.Cookie, Ptr, &NewHeader, &Header);
 
-      void *BlockBegin = Allocator::getBlockBegin(Ptr, &NewHeader);
+      void *BlockBegin = Chunk::getBlockBegin(Ptr, &Header);
       const uptr ClassId = Header.ClassId;
       if (ClassId)
         Cache.deallocate(ClassId, BlockBegin);
@@ -482,19 +482,12 @@ private:
       reportSanityCheckError("class ID");
   }
 
-  static INLINE void *getBlockBegin(const void *Ptr,
-                                    Chunk::UnpackedHeader *Header) {
-    return reinterpret_cast<void *>(reinterpret_cast<uptr>(Ptr) -
-                                    Chunk::getHeaderSize() -
-                                    (Header->Offset << MinAlignmentLog));
-  }
-
   // Return the size of a chunk as requested during its allocation.
   INLINE uptr getSize(const void *Ptr, Chunk::UnpackedHeader *Header) {
     const uptr SizeOrUnusedBytes = Header->SizeOrUnusedBytes;
     if (Header->ClassId)
       return SizeOrUnusedBytes;
-    return SecondaryT::getBlockEnd(getBlockBegin(Ptr, Header)) -
+    return SecondaryT::getBlockEnd(Chunk::getBlockBegin(Ptr, Header)) -
            reinterpret_cast<uptr>(Ptr) - SizeOrUnusedBytes;
   }
 
@@ -512,7 +505,7 @@ private:
     if (BypassQuarantine) {
       NewHeader.State = Chunk::State::Available;
       Chunk::compareExchangeHeader(Cookie, Ptr, &NewHeader, Header);
-      void *BlockBegin = getBlockBegin(Ptr, &NewHeader);
+      void *BlockBegin = Chunk::getBlockBegin(Ptr, Header);
       const uptr ClassId = NewHeader.ClassId;
       if (ClassId) {
         bool UnlockRequired;

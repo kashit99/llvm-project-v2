@@ -82,7 +82,7 @@ public:
   }
 
 private:
-  HybridMutex Mutex;
+  StaticSpinMutex Mutex;
   LargeBlock::Header *Tail;
   uptr AllocatedBytes;
   uptr FreedBytes;

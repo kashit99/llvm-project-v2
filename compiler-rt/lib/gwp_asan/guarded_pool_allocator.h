@@ -41,14 +41,16 @@ public:
   struct AllocationMetadata {
     // Maximum number of stack trace frames to collect for allocations + frees.
     // TODO(hctim): Implement stack frame compression, a-la Chromium.
-    static constexpr size_t kMaximumStackFrames = 64;
+    // Currently the maximum stack frames is one, as we don't collect traces.
+    static constexpr size_t kMaximumStackFrames = 1;
 
-    // Records the given allocation metadata into this struct.
-    void RecordAllocation(uintptr_t Addr, size_t Size,
-                          options::Backtrace_t Backtrace);
+    // Records the given allocation metadata into this struct. In the future,
+    // this will collect the allocation trace as well.
+    void RecordAllocation(uintptr_t Addr, size_t Size);
 
-    // Record that this allocation is now deallocated.
-    void RecordDeallocation(options::Backtrace_t Backtrace);
+    // Record that this allocation is now deallocated. In future, this will
+    // collect the deallocation trace as well.
+    void RecordDeallocation();
 
     struct CallSiteInfo {
       // The backtrace to the allocation/deallocation. If the first value is
@@ -94,11 +96,14 @@ public:
   ALWAYS_INLINE bool shouldSample() {
     // NextSampleCounter == 0 means we "should regenerate the counter".
     //                   == 1 means we "should sample this allocation".
-    if (UNLIKELY(ThreadLocals.NextSampleCounter == 0))
-      ThreadLocals.NextSampleCounter =
-          (getRandomUnsigned32() % AdjustedSampleRate) + 1;
+    if (UNLIKELY(NextSampleCounter == 0)) {
+      // GuardedPagePoolEnd == 0 if GWP-ASan is disabled.
+      if (UNLIKELY(GuardedPagePoolEnd == 0))
+        return false;
+      NextSampleCounter = (getRandomUnsigned32() % AdjustedSampleRate) + 1;
+    }
 
-    return UNLIKELY(--ThreadLocals.NextSampleCounter == 0);
+    return UNLIKELY(--NextSampleCounter == 0);
   }
 
   // Returns whether the provided pointer is a current sampled allocation that
@@ -132,10 +137,6 @@ public:
   // occur.
   static void reportError(uintptr_t AccessPtr, Error E = Error::UNKNOWN);
 
-  // Get the current thread ID, or kInvalidThreadID if failure. Note: This
-  // implementation is platform-specific.
-  static uint64_t getThreadID();
-
 private:
   static constexpr size_t kInvalidSlotID = SIZE_MAX;
 
@@ -149,6 +150,10 @@ private:
   void *mapMemory(size_t Size) const;
   void markReadWrite(void *Ptr, size_t Size) const;
   void markInaccessible(void *Ptr, size_t Size) const;
+
+  // Get the current thread ID, or kInvalidThreadID if failure. Note: This
+  // implementation is platform-specific.
+  static uint64_t getThreadID();
 
   // Get the page size from the platform-specific implementation. Only needs to
   // be called once, and the result should be cached in PageSize in this class.
@@ -232,8 +237,6 @@ private:
   // general) use printf() from the cstdlib as it may malloc(), causing infinite
   // recursion.
   options::Printf_t Printf = nullptr;
-  options::Backtrace_t Backtrace = nullptr;
-  options::PrintBacktrace_t PrintBacktrace = nullptr;
 
   // The adjusted sample rate for allocation sampling. Default *must* be
   // nonzero, as dynamic initialisation may call malloc (e.g. from libstdc++)
@@ -242,23 +245,9 @@ private:
   // GWP-ASan is disabled, we wish to never spend wasted cycles recalculating
   // the sample rate.
   uint32_t AdjustedSampleRate = UINT32_MAX;
-
-  // Pack the thread local variables into a struct to ensure that they're in
-  // the same cache line for performance reasons. These are the most touched
-  // variables in GWP-ASan.
-  struct alignas(8) ThreadLocalPackedVariables {
-    constexpr ThreadLocalPackedVariables() {}
-    // Thread-local decrementing counter that indicates that a given allocation
-    // should be sampled when it reaches zero.
-    uint32_t NextSampleCounter = 0;
-    // Guard against recursivity. Unwinders often contain complex behaviour that
-    // may not be safe for the allocator (i.e. the unwinder calls dlopen(),
-    // which calls malloc()). When recursive behaviour is detected, we will
-    // automatically fall back to the supporting allocator to supply the
-    // allocation.
-    bool RecursiveGuard = false;
-  };
-  static TLS_INITIAL_EXEC ThreadLocalPackedVariables ThreadLocals;
+  // Thread-local decrementing counter that indicates that a given allocation
+  // should be sampled when it reaches zero.
+  static TLS_INITIAL_EXEC uint64_t NextSampleCounter;
 };
 } // namespace gwp_asan
 

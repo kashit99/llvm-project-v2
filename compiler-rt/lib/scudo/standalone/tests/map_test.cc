@@ -11,14 +11,8 @@
 #include "gtest/gtest.h"
 
 #include <string.h>
-#include <unistd.h>
 
 static const char *MappingName = "scudo:test";
-
-TEST(ScudoMapTest, PageSize) {
-  EXPECT_EQ(scudo::getPageSizeCached(),
-            static_cast<scudo::uptr>(getpagesize()));
-}
 
 TEST(ScudoMapTest, MapNoAccessUnmap) {
   const scudo::uptr Size = 4 * scudo::getPageSizeCached();

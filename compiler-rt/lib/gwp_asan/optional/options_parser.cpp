@@ -47,8 +47,6 @@ Options *getOptionsInternal() {
 } // anonymous namespace
 
 void initOptions() {
-  __sanitizer::SetCommonFlagsDefaults();
-
   Options *o = getOptionsInternal();
   o->setDefaults();
 
@@ -87,7 +85,7 @@ void initOptions() {
   o->Printf = __sanitizer::Printf;
 }
 
-Options &getOptions() { return *getOptionsInternal(); }
+const Options &getOptions() { return *getOptionsInternal(); }
 
 } // namespace options
 } // namespace gwp_asan

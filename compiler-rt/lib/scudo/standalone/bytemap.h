@@ -45,8 +45,8 @@ public:
         map(nullptr, sizeof(atomic_uptr) * Level1Size, "scudo:bytemap"));
   }
   void init() {
-    Mutex.init();
     initLinkerInitialized();
+    Mutex.init();
   }
 
   void reset() {
@@ -92,7 +92,7 @@ private:
   u8 *getOrCreate(uptr Index) {
     u8 *Res = get(Index);
     if (!Res) {
-      ScopedLock L(Mutex);
+      SpinMutexLock L(&Mutex);
       if (!(Res = get(Index))) {
         Res = reinterpret_cast<u8 *>(map(nullptr, Level2Size, "scudo:bytemap"));
         atomic_store(&Level1Map[Index], reinterpret_cast<uptr>(Res),
@@ -103,7 +103,7 @@ private:
   }
 
   atomic_uptr *Level1Map;
-  HybridMutex Mutex;
+  StaticSpinMutex Mutex;
 };
 
 } // namespace scudo

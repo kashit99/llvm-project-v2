@@ -94,7 +94,7 @@ private:
   }
 
   void initOnceMaybe(Allocator *Instance) {
-    ScopedLock L(Mutex);
+    SpinMutexLock L(&Mutex);
     if (Initialized)
       return;
     initLinkerInitialized(Instance); // Sets Initialized.
@@ -126,7 +126,9 @@ private:
         }
         const uptr Precedence = TSDs[Index].getPrecedence();
         // A 0 precedence here means another thread just locked this TSD.
-        if (Precedence && Precedence < LowestPrecedence) {
+        if (UNLIKELY(Precedence == 0))
+          continue;
+        if (Precedence < LowestPrecedence) {
           CandidateTSD = &TSDs[Index];
           LowestPrecedence = Precedence;
         }
@@ -152,7 +154,7 @@ private:
   u32 NumberOfCoPrimes;
   u32 CoPrimes[MaxTSDCount];
   bool Initialized;
-  HybridMutex Mutex;
+  StaticSpinMutex Mutex;
 #if SCUDO_LINUX && !SCUDO_ANDROID
   static THREADLOCAL TSD<Allocator> *ThreadTSD;
 #endif

@@ -14,8 +14,6 @@
 // Execution Parameters
 ////////////////////////////////////////////////////////////////////////////////
 
-#include "target_impl.h"
-
 INLINE void setExecutionParameters(ExecutionMode EMode, RuntimeMode RMode) {
   execution_param = EMode;
   execution_param |= RMode;
@@ -104,10 +102,6 @@ INLINE int GetNumberOfBlocksInKernel() { return gridDim.x; }
 
 INLINE int GetNumberOfThreadsInBlock() { return blockDim.x; }
 
-INLINE unsigned GetWarpId() { return threadIdx.x / WARPSIZE; }
-
-INLINE unsigned GetLaneId() { return threadIdx.x & (WARPSIZE - 1); }
-
 ////////////////////////////////////////////////////////////////////////////////
 //
 // Calls to the Generic Scheme Implementation Layer (assuming 1D layout)
@@ -151,32 +145,45 @@ INLINE int GetLogicalThreadIdInBlock(bool isSPMDExecutionMode) {
 //
 ////////////////////////////////////////////////////////////////////////////////
 
-INLINE int GetOmpThreadId(int threadId, bool isSPMDExecutionMode) {
+INLINE int GetOmpThreadId(int threadId, bool isSPMDExecutionMode,
+                          bool isRuntimeUninitialized) {
   // omp_thread_num
   int rc;
-  if ((parallelLevel[GetWarpId()] & (OMP_ACTIVE_PARALLEL_LEVEL - 1)) > 1) {
-    rc = 0;
-  } else if (isSPMDExecutionMode) {
-    rc = GetThreadIdInBlock();
+
+  if (isRuntimeUninitialized) {
+    ASSERT0(LT_FUSSY, isSPMDExecutionMode,
+            "Uninitialized runtime with non-SPMD mode.");
+    // For level 2 parallelism all parallel regions are executed sequentially.
+    if (parallelLevel > 0)
+      rc = 0;
+    else
+      rc = GetThreadIdInBlock();
   } else {
     omptarget_nvptx_TaskDescr *currTaskDescr =
         omptarget_nvptx_threadPrivateContext->GetTopLevelTaskDescr(threadId);
-    ASSERT0(LT_FUSSY, currTaskDescr, "expected a top task descr");
     rc = currTaskDescr->ThreadId();
   }
   return rc;
 }
 
-INLINE int GetNumberOfOmpThreads(bool isSPMDExecutionMode) {
+INLINE int GetNumberOfOmpThreads(int threadId, bool isSPMDExecutionMode,
+                                 bool isRuntimeUninitialized) {
   // omp_num_threads
   int rc;
-  int Level = parallelLevel[GetWarpId()];
-  if (Level != OMP_ACTIVE_PARALLEL_LEVEL + 1) {
-    rc = 1;
-  } else if (isSPMDExecutionMode) {
-    rc = GetNumberOfThreadsInBlock();
+
+  if (isRuntimeUninitialized) {
+    ASSERT0(LT_FUSSY, isSPMDExecutionMode,
+            "Uninitialized runtime with non-SPMD mode.");
+    // For level 2 parallelism all parallel regions are executed sequentially.
+    if (parallelLevel > 0)
+      rc = 1;
+    else
+      rc = GetNumberOfThreadsInBlock();
   } else {
-    rc = threadsInTeam;
+    omptarget_nvptx_TaskDescr *currTaskDescr =
+        omptarget_nvptx_threadPrivateContext->GetTopLevelTaskDescr(threadId);
+    ASSERT0(LT_FUSSY, currTaskDescr, "expected a top task descr");
+    rc = currTaskDescr->ThreadsInTeam();
   }
 
   return rc;
@@ -199,33 +206,6 @@ INLINE int GetNumberOfOmpTeams() {
 // Masters
 
 INLINE int IsTeamMaster(int ompThreadId) { return (ompThreadId == 0); }
-
-////////////////////////////////////////////////////////////////////////////////
-// Parallel level
-
-INLINE void IncParallelLevel(bool ActiveParallel, __kmpc_impl_lanemask_t Mask) {
-  __kmpc_impl_syncwarp(Mask);
-  __kmpc_impl_lanemask_t LaneMaskLt = __kmpc_impl_lanemask_lt();
-  unsigned Rank = __kmpc_impl_popc(Mask & LaneMaskLt);
-  if (Rank == 0) {
-    parallelLevel[GetWarpId()] +=
-        (1 + (ActiveParallel ? OMP_ACTIVE_PARALLEL_LEVEL : 0));
-    __threadfence();
-  }
-  __kmpc_impl_syncwarp(Mask);
-}
-
-INLINE void DecParallelLevel(bool ActiveParallel, __kmpc_impl_lanemask_t Mask) {
-  __kmpc_impl_syncwarp(Mask);
-  __kmpc_impl_lanemask_t LaneMaskLt = __kmpc_impl_lanemask_lt();
-  unsigned Rank = __kmpc_impl_popc(Mask & LaneMaskLt);
-  if (Rank == 0) {
-    parallelLevel[GetWarpId()] -=
-        (1 + (ActiveParallel ? OMP_ACTIVE_PARALLEL_LEVEL : 0));
-    __threadfence();
-  }
-  __kmpc_impl_syncwarp(Mask);
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 // get OpenMP number of procs

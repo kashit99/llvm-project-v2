@@ -16,11 +16,12 @@
 #include "polly/CodeGen/CodeGeneration.h"
 #include "polly/CodeGen/IslAst.h"
 #include "polly/CodeGen/IslExprBuilder.h"
-#include "polly/CodeGen/LoopGeneratorsGOMP.h"
-#include "polly/CodeGen/LoopGeneratorsKMP.h"
+#include "polly/CodeGen/LoopGenerators.h"
 #include "polly/CodeGen/RuntimeDebugBuilder.h"
+#include "polly/Config/config.h"
 #include "polly/Options.h"
 #include "polly/ScopInfo.h"
+#include "polly/Support/GICHelper.h"
 #include "polly/Support/ISLTools.h"
 #include "polly/Support/SCEVValidator.h"
 #include "polly/Support/ScopHelper.h"
@@ -79,9 +80,6 @@ STATISTIC(ParallelLoops, "Number of generated parallel for-loops");
 STATISTIC(VectorLoops, "Number of generated vector for-loops");
 STATISTIC(IfConditions, "Number of generated if-conditions");
 
-/// OpenMP backend options
-enum class OpenMPBackend { GNU, LLVM };
-
 static cl::opt<bool> PollyGenerateRTCPrint(
     "polly-codegen-emit-rtc-print",
     cl::desc("Emit code that prints the runtime check result dynamically."),
@@ -100,12 +98,6 @@ static cl::opt<int> PollyTargetFirstLevelCacheLineSize(
     "polly-target-first-level-cache-line-size",
     cl::desc("The size of the first level cache line size specified in bytes."),
     cl::Hidden, cl::init(64), cl::ZeroOrMore, cl::cat(PollyCategory));
-
-static cl::opt<OpenMPBackend> PollyOmpBackend(
-    "polly-omp-backend", cl::desc("Choose the OpenMP library to use:"),
-    cl::values(clEnumValN(OpenMPBackend::GNU, "GNU", "GNU OpenMP"),
-               clEnumValN(OpenMPBackend::LLVM, "LLVM", "LLVM OpenMP")),
-    cl::Hidden, cl::init(OpenMPBackend::GNU), cl::cat(PollyCategory));
 
 isl::ast_expr IslNodeBuilder::getUpperBound(isl::ast_node For,
                                             ICmpInst::Predicate &Predicate) {
@@ -231,12 +223,11 @@ void addReferencesFromStmt(const ScopStmt *Stmt, void *UserPtr,
 
   if (Stmt->isBlockStmt())
     findReferencesInBlock(References, Stmt, Stmt->getBasicBlock());
-  else if (Stmt->isRegionStmt()) {
+  else {
+    assert(Stmt->isRegionStmt() &&
+           "Stmt was neither block nor region statement");
     for (BasicBlock *BB : Stmt->getRegion()->blocks())
       findReferencesInBlock(References, Stmt, BB);
-  } else {
-    assert(Stmt->isCopyStmt());
-    // Copy Stmts have no instructions that we need to consider.
   }
 
   for (auto &Access : *Stmt) {
@@ -677,21 +668,10 @@ void IslNodeBuilder::createForParallel(__isl_take isl_ast_node *For) {
   }
 
   ValueMapT NewValues;
+  ParallelLoopGenerator ParallelLoopGen(Builder, LI, DT, DL);
 
-  std::unique_ptr<ParallelLoopGenerator> ParallelLoopGenPtr;
-
-  switch (PollyOmpBackend) {
-  case OpenMPBackend::GNU:
-    ParallelLoopGenPtr.reset(
-        new ParallelLoopGeneratorGOMP(Builder, LI, DT, DL));
-    break;
-  case OpenMPBackend::LLVM:
-    ParallelLoopGenPtr.reset(new ParallelLoopGeneratorKMP(Builder, LI, DT, DL));
-    break;
-  }
-
-  IV = ParallelLoopGenPtr->createParallelLoop(
-      ValueLB, ValueUB, ValueInc, SubtreeValues, NewValues, &LoopBody);
+  IV = ParallelLoopGen.createParallelLoop(ValueLB, ValueUB, ValueInc,
+                                          SubtreeValues, NewValues, &LoopBody);
   BasicBlock::iterator AfterLoop = Builder.GetInsertPoint();
   Builder.SetInsertPoint(&*LoopBody);
 

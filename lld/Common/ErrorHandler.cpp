@@ -1,8 +1,9 @@
 //===- ErrorHandler.cpp ---------------------------------------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                             The LLVM Linker
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -26,29 +27,29 @@ using namespace lld;
 
 // The functions defined in this file can be called from multiple threads,
 // but outs() or errs() are not thread-safe. We protect them using a mutex.
-static std::mutex mu;
+static std::mutex Mu;
 
 // Prints "\n" or does nothing, depending on Msg contents of
 // the previous call of this function.
-static void newline(raw_ostream *errorOS, const Twine &msg) {
+static void newline(raw_ostream *ErrorOS, const Twine &Msg) {
   // True if the previous error message contained "\n".
   // We want to separate multi-line error messages with a newline.
-  static bool flag;
+  static bool Flag;
 
-  if (flag)
-    *errorOS << "\n";
-  flag = StringRef(msg.str()).contains('\n');
+  if (Flag)
+    *ErrorOS << "\n";
+  Flag = StringRef(Msg.str()).contains('\n');
 }
 
 ErrorHandler &lld::errorHandler() {
-  static ErrorHandler handler;
-  return handler;
+  static ErrorHandler Handler;
+  return Handler;
 }
 
-void lld::exitLld(int val) {
+void lld::exitLld(int Val) {
   // Delete any temporary file, while keeping the memory mapping open.
-  if (errorHandler().outputBuffer)
-    errorHandler().outputBuffer->discard();
+  if (errorHandler().OutputBuffer)
+    errorHandler().OutputBuffer->discard();
 
   // Dealloc/destroy ManagedStatic variables before calling
   // _exit(). In a non-LTO build, this is a nop. In an LTO
@@ -57,87 +58,87 @@ void lld::exitLld(int val) {
 
   outs().flush();
   errs().flush();
-  _exit(val);
+  _exit(Val);
 }
 
-void lld::diagnosticHandler(const DiagnosticInfo &di) {
-  SmallString<128> s;
-  raw_svector_ostream os(s);
-  DiagnosticPrinterRawOStream dp(os);
-  di.print(dp);
-  switch (di.getSeverity()) {
+void lld::diagnosticHandler(const DiagnosticInfo &DI) {
+  SmallString<128> S;
+  raw_svector_ostream OS(S);
+  DiagnosticPrinterRawOStream DP(OS);
+  DI.print(DP);
+  switch (DI.getSeverity()) {
   case DS_Error:
-    error(s);
+    error(S);
     break;
   case DS_Warning:
-    warn(s);
+    warn(S);
     break;
   case DS_Remark:
   case DS_Note:
-    message(s);
+    message(S);
     break;
   }
 }
 
-void lld::checkError(Error e) {
-  handleAllErrors(std::move(e),
-                  [&](ErrorInfoBase &eib) { error(eib.message()); });
+void lld::checkError(Error E) {
+  handleAllErrors(std::move(E),
+                  [&](ErrorInfoBase &EIB) { error(EIB.message()); });
 }
 
-void ErrorHandler::print(StringRef s, raw_ostream::Colors c) {
-  *errorOS << logName << ": ";
-  if (colorDiagnostics) {
-    errorOS->changeColor(c, true);
-    *errorOS << s;
-    errorOS->resetColor();
+void ErrorHandler::print(StringRef S, raw_ostream::Colors C) {
+  *ErrorOS << LogName << ": ";
+  if (ColorDiagnostics) {
+    ErrorOS->changeColor(C, true);
+    *ErrorOS << S;
+    ErrorOS->resetColor();
   } else {
-    *errorOS << s;
+    *ErrorOS << S;
   }
 }
 
-void ErrorHandler::log(const Twine &msg) {
-  if (verbose) {
-    std::lock_guard<std::mutex> lock(mu);
-    *errorOS << logName << ": " << msg << "\n";
+void ErrorHandler::log(const Twine &Msg) {
+  if (Verbose) {
+    std::lock_guard<std::mutex> Lock(Mu);
+    *ErrorOS << LogName << ": " << Msg << "\n";
   }
 }
 
-void ErrorHandler::message(const Twine &msg) {
-  std::lock_guard<std::mutex> lock(mu);
-  outs() << msg << "\n";
+void ErrorHandler::message(const Twine &Msg) {
+  std::lock_guard<std::mutex> Lock(Mu);
+  outs() << Msg << "\n";
   outs().flush();
 }
 
-void ErrorHandler::warn(const Twine &msg) {
-  if (fatalWarnings) {
-    error(msg);
+void ErrorHandler::warn(const Twine &Msg) {
+  if (FatalWarnings) {
+    error(Msg);
     return;
   }
 
-  std::lock_guard<std::mutex> lock(mu);
-  newline(errorOS, msg);
+  std::lock_guard<std::mutex> Lock(Mu);
+  newline(ErrorOS, Msg);
   print("warning: ", raw_ostream::MAGENTA);
-  *errorOS << msg << "\n";
+  *ErrorOS << Msg << "\n";
 }
 
-void ErrorHandler::error(const Twine &msg) {
-  std::lock_guard<std::mutex> lock(mu);
-  newline(errorOS, msg);
+void ErrorHandler::error(const Twine &Msg) {
+  std::lock_guard<std::mutex> Lock(Mu);
+  newline(ErrorOS, Msg);
 
-  if (errorLimit == 0 || errorCount < errorLimit) {
+  if (ErrorLimit == 0 || ErrorCount < ErrorLimit) {
     print("error: ", raw_ostream::RED);
-    *errorOS << msg << "\n";
-  } else if (errorCount == errorLimit) {
+    *ErrorOS << Msg << "\n";
+  } else if (ErrorCount == ErrorLimit) {
     print("error: ", raw_ostream::RED);
-    *errorOS << errorLimitExceededMsg << "\n";
-    if (exitEarly)
+    *ErrorOS << ErrorLimitExceededMsg << "\n";
+    if (ExitEarly)
       exitLld(1);
   }
 
-  ++errorCount;
+  ++ErrorCount;
 }
 
-void ErrorHandler::fatal(const Twine &msg) {
-  error(msg);
+void ErrorHandler::fatal(const Twine &Msg) {
+  error(Msg);
   exitLld(1);
 }

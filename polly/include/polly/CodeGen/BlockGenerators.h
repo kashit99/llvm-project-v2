@@ -1,8 +1,9 @@
 //===-BlockGenerators.h - Helper to generate code for statements-*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -16,12 +17,24 @@
 #define POLLY_BLOCK_GENERATORS_H
 
 #include "polly/CodeGen/IRBuilder.h"
+#include "polly/Support/GICHelper.h"
 #include "polly/Support/ScopHelper.h"
+#include "llvm/ADT/MapVector.h"
 #include "llvm/Analysis/ScalarEvolutionExpressions.h"
-#include "isl/isl-noexceptions.h"
+#include "isl/map.h"
+
+struct isl_ast_build;
+struct isl_id_to_ast_expr;
+
+namespace llvm {
+class Pass;
+class Region;
+class ScalarEvolution;
+} // namespace llvm
 
 namespace polly {
 using namespace llvm;
+class ScopStmt;
 class MemoryAccess;
 class ScopArrayInfo;
 class IslExprBuilder;

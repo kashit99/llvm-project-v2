@@ -1,8 +1,9 @@
 //===--------------------------- DwarfParser.hpp --------------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is dual licensed under the MIT and the University of Illinois Open
+// Source Licenses. See LICENSE.TXT for details.
 //
 //
 //  Parses DWARF CFIs (FDEs and CIEs).
@@ -19,7 +20,6 @@
 
 #include "libunwind.h"
 #include "dwarf2.h"
-#include "Registers.hpp"
 
 #include "config.h"
 
@@ -106,7 +106,7 @@ public:
                                FDE_Info *fdeInfo, CIE_Info *cieInfo);
   static bool parseFDEInstructions(A &addressSpace, const FDE_Info &fdeInfo,
                                    const CIE_Info &cieInfo, pint_t upToPC,
-                                   int arch, PrologInfo *results);
+                                   PrologInfo *results);
 
   static const char *parseCIE(A &addressSpace, pint_t cie, CIE_Info *cieInfo);
 
@@ -114,7 +114,7 @@ private:
   static bool parseInstructions(A &addressSpace, pint_t instructions,
                                 pint_t instructionsEnd, const CIE_Info &cieInfo,
                                 pint_t pcoffset,
-                                PrologInfoStackEntry *&rememberStack, int arch,
+                                PrologInfoStackEntry *&rememberStack,
                                 PrologInfo *results);
 };
 
@@ -354,7 +354,7 @@ template <typename A>
 bool CFI_Parser<A>::parseFDEInstructions(A &addressSpace,
                                          const FDE_Info &fdeInfo,
                                          const CIE_Info &cieInfo, pint_t upToPC,
-                                         int arch, PrologInfo *results) {
+                                         PrologInfo *results) {
   // clear results
   memset(results, '\0', sizeof(PrologInfo));
   PrologInfoStackEntry *rememberStack = NULL;
@@ -362,11 +362,10 @@ bool CFI_Parser<A>::parseFDEInstructions(A &addressSpace,
   // parse CIE then FDE instructions
   return parseInstructions(addressSpace, cieInfo.cieInstructions,
                            cieInfo.cieStart + cieInfo.cieLength, cieInfo,
-                           (pint_t)(-1), rememberStack, arch, results) &&
+                           (pint_t)(-1), rememberStack, results) &&
          parseInstructions(addressSpace, fdeInfo.fdeInstructions,
                            fdeInfo.fdeStart + fdeInfo.fdeLength, cieInfo,
-                           upToPC - fdeInfo.pcStart, rememberStack, arch,
-                           results);
+                           upToPC - fdeInfo.pcStart, rememberStack, results);
 }
 
 /// "run" the DWARF instructions
@@ -375,7 +374,7 @@ bool CFI_Parser<A>::parseInstructions(A &addressSpace, pint_t instructions,
                                       pint_t instructionsEnd,
                                       const CIE_Info &cieInfo, pint_t pcoffset,
                                       PrologInfoStackEntry *&rememberStack,
-                                      int arch, PrologInfo *results) {
+                                      PrologInfo *results) {
   pint_t p = instructions;
   pint_t codeOffset = 0;
   PrologInfo initialState = *results;
@@ -679,40 +678,11 @@ bool CFI_Parser<A>::parseInstructions(A &addressSpace, pint_t instructions,
           "DW_CFA_GNU_negative_offset_extended(%" PRId64 ")\n", offset);
       break;
 
-#if defined(_LIBUNWIND_TARGET_AARCH64) || defined(_LIBUNWIND_TARGET_SPARC)
-    // The same constant is used to represent different instructions on
-    // AArch64 (negate_ra_state) and SPARC (window_save).
-    static_assert(DW_CFA_AARCH64_negate_ra_state == DW_CFA_GNU_window_save,
-                  "uses the same constant");
-    case DW_CFA_AARCH64_negate_ra_state:
-      switch (arch) {
 #if defined(_LIBUNWIND_TARGET_AARCH64)
-      case REGISTERS_ARM64:
-        results->savedRegisters[UNW_ARM64_RA_SIGN_STATE].value ^= 0x1;
-        _LIBUNWIND_TRACE_DWARF("DW_CFA_AARCH64_negate_ra_state\n");
-        break;
-#endif
-#if defined(_LIBUNWIND_TARGET_SPARC)
-      // case DW_CFA_GNU_window_save:
-      case REGISTERS_SPARC:
-        _LIBUNWIND_TRACE_DWARF("DW_CFA_GNU_window_save()\n");
-        for (reg = UNW_SPARC_O0; reg <= UNW_SPARC_O7; reg++) {
-          results->savedRegisters[reg].location = kRegisterInRegister;
-          results->savedRegisters[reg].value =
-              ((int64_t)reg - UNW_SPARC_O0) + UNW_SPARC_I0;
-        }
-
-        for (reg = UNW_SPARC_L0; reg <= UNW_SPARC_I7; reg++) {
-          results->savedRegisters[reg].location = kRegisterInCFA;
-          results->savedRegisters[reg].value =
-              ((int64_t)reg - UNW_SPARC_L0) * 4;
-        }
-        break;
-#endif
-      }
+    case DW_CFA_AARCH64_negate_ra_state:
+      results->savedRegisters[UNW_ARM64_RA_SIGN_STATE].value ^= 0x1;
+      _LIBUNWIND_TRACE_DWARF("DW_CFA_AARCH64_negate_ra_state\n");
       break;
-#else
-      (void)arch;
 #endif
 
     default:

@@ -1,8 +1,9 @@
 //===- lld/Common/Driver.h - Linker Driver Emulator -----------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                             The LLVM Linker
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -14,28 +15,28 @@
 
 namespace lld {
 namespace coff {
-bool link(llvm::ArrayRef<const char *> args, bool canExitEarly,
-          llvm::raw_ostream &diag = llvm::errs());
+bool link(llvm::ArrayRef<const char *> Args, bool CanExitEarly,
+          llvm::raw_ostream &Diag = llvm::errs());
 }
 
 namespace mingw {
-bool link(llvm::ArrayRef<const char *> args,
-          llvm::raw_ostream &diag = llvm::errs());
+bool link(llvm::ArrayRef<const char *> Args,
+          llvm::raw_ostream &Diag = llvm::errs());
 }
 
 namespace elf {
-bool link(llvm::ArrayRef<const char *> args, bool canExitEarly,
-          llvm::raw_ostream &diag = llvm::errs());
+bool link(llvm::ArrayRef<const char *> Args, bool CanExitEarly,
+          llvm::raw_ostream &Diag = llvm::errs());
 }
 
 namespace mach_o {
-bool link(llvm::ArrayRef<const char *> args, bool canExitEarly,
-          llvm::raw_ostream &diag = llvm::errs());
+bool link(llvm::ArrayRef<const char *> Args, bool CanExitEarly,
+          llvm::raw_ostream &Diag = llvm::errs());
 }
 
 namespace wasm {
-bool link(llvm::ArrayRef<const char *> args, bool canExitEarly,
-          llvm::raw_ostream &diag = llvm::errs());
+bool link(llvm::ArrayRef<const char *> Args, bool CanExitEarly,
+          llvm::raw_ostream &Diag = llvm::errs());
 }
 }
 

@@ -1,8 +1,9 @@
 //===- ScriptLexer.h --------------------------------------------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                             The LLVM Linker
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -20,25 +21,25 @@ namespace elf {
 
 class ScriptLexer {
 public:
-  explicit ScriptLexer(MemoryBufferRef mb);
+  explicit ScriptLexer(MemoryBufferRef MB);
 
-  void setError(const Twine &msg);
-  void tokenize(MemoryBufferRef mb);
-  static StringRef skipSpace(StringRef s);
+  void setError(const Twine &Msg);
+  void tokenize(MemoryBufferRef MB);
+  static StringRef skipSpace(StringRef S);
   bool atEOF();
   StringRef next();
   StringRef peek();
   StringRef peek2();
   void skip();
-  bool consume(StringRef tok);
-  void expect(StringRef expect);
-  bool consumeLabel(StringRef tok);
+  bool consume(StringRef Tok);
+  void expect(StringRef Expect);
+  bool consumeLabel(StringRef Tok);
   std::string getCurrentLocation();
 
-  std::vector<MemoryBufferRef> mbs;
-  std::vector<StringRef> tokens;
-  bool inExpr = false;
-  size_t pos = 0;
+  std::vector<MemoryBufferRef> MBs;
+  std::vector<StringRef> Tokens;
+  bool InExpr = false;
+  size_t Pos = 0;
 
 private:
   void maybeSplitExpr();

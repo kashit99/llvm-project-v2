@@ -1,8 +1,9 @@
 //===- Timer.h ----------------------------------------------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                             The LLVM Linker
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -21,18 +22,18 @@ namespace lld {
 class Timer;
 
 struct ScopedTimer {
-  explicit ScopedTimer(Timer &t);
+  explicit ScopedTimer(Timer &T);
 
   ~ScopedTimer();
 
   void stop();
 
-  Timer *t = nullptr;
+  Timer *T = nullptr;
 };
 
 class Timer {
 public:
-  Timer(llvm::StringRef name, Timer &parent);
+  Timer(llvm::StringRef Name, Timer &Parent);
 
   static Timer &root();
 
@@ -43,14 +44,14 @@ public:
   double millis() const;
 
 private:
-  explicit Timer(llvm::StringRef name);
-  void print(int depth, double totalDuration, bool recurse = true) const;
+  explicit Timer(llvm::StringRef Name);
+  void print(int Depth, double TotalDuration, bool Recurse = true) const;
 
-  std::chrono::time_point<std::chrono::high_resolution_clock> startTime;
-  std::chrono::nanoseconds total;
-  std::vector<Timer *> children;
-  std::string name;
-  Timer *parent;
+  std::chrono::time_point<std::chrono::high_resolution_clock> StartTime;
+  std::chrono::nanoseconds Total;
+  std::vector<Timer *> Children;
+  std::string Name;
+  Timer *Parent;
 };
 
 } // namespace lld

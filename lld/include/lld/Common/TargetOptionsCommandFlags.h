@@ -1,8 +1,9 @@
 //===-- TargetOptionsCommandFlags.h ----------------------------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -15,8 +16,8 @@
 #include "llvm/Target/TargetOptions.h"
 
 namespace lld {
-llvm::TargetOptions initTargetOptionsFromCodeGenFlags();
-llvm::Optional<llvm::CodeModel::Model> getCodeModelFromCMModel();
-std::string getCPUStr();
-std::vector<std::string> getMAttrs();
+llvm::TargetOptions InitTargetOptionsFromCodeGenFlags();
+llvm::Optional<llvm::CodeModel::Model> GetCodeModelFromCMModel();
+std::string GetCPUStr();
+std::vector<std::string> GetMAttrs();
 }

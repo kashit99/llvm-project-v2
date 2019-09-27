@@ -1,8 +1,9 @@
 //===- lib/ReaderWriter/MachO/StubsPass.cpp ---------------------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                             The LLVM Linker
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -270,8 +271,9 @@ public:
     mergedFile.addAtom(*helperCacheNLPAtom);
 
     // Add reference to dyld_stub_binder in libSystem.dylib
-    auto I = llvm::find_if(
-        mergedFile.sharedLibrary(), [&](const SharedLibraryAtom *atom) {
+    auto I = std::find_if(
+        mergedFile.sharedLibrary().begin(), mergedFile.sharedLibrary().end(),
+        [&](const SharedLibraryAtom *atom) {
           return atom->name().equals(_stubInfo.binderSymbolName);
         });
     assert(I != mergedFile.sharedLibrary().end() &&

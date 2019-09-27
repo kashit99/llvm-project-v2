@@ -1,8 +1,9 @@
 //===- IslAst.cpp - isl code generator interface --------------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -37,6 +38,8 @@
 #include "polly/Support/GICHelper.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/IR/Function.h"
+#include "llvm/Pass.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 #include "isl/aff.h"
@@ -44,6 +47,7 @@
 #include "isl/ast_build.h"
 #include "isl/id.h"
 #include "isl/isl-noexceptions.h"
+#include "isl/map.h"
 #include "isl/printer.h"
 #include "isl/schedule.h"
 #include "isl/set.h"
@@ -51,6 +55,10 @@
 #include "isl/val.h"
 #include <cassert>
 #include <cstdlib>
+#include <cstring>
+#include <map>
+#include <string>
+#include <utility>
 
 #define DEBUG_TYPE "polly-ast"
 
@@ -521,7 +529,13 @@ IslAst::~IslAst() {
 void IslAst::init(const Dependences &D) {
   bool PerformParallelTest = PollyParallel || DetectParallel ||
                              PollyVectorizerChoice != VECTORIZER_NONE;
+
+  // We can not perform the dependence analysis and, consequently,
+  // the parallel code generation in case the schedule tree contains
+  // extension nodes.
   auto ScheduleTree = S.getScheduleTree();
+  PerformParallelTest =
+      PerformParallelTest && !S.containsExtensionNode(ScheduleTree);
 
   // Skip AST and code generation if there was no benefit achieved.
   if (!benefitsFromPolly(S, PerformParallelTest))

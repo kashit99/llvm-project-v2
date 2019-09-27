@@ -1,8 +1,9 @@
 //===- lib/ReaderWriter/MachO/MachONormalizedFileFromAtoms.cpp ------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                             The LLVM Linker
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -587,8 +588,7 @@ void Util::layoutSectionsInTextSegment(size_t hlcSize, SegmentInfo *seg,
 
 void Util::assignAddressesToSections(const NormalizedFile &file) {
   // NOTE!: Keep this in sync with organizeSections.
-  size_t hlcSize = headerAndLoadCommandsSize(file,
-                                      _ctx.generateFunctionStartsLoadCommand());
+  size_t hlcSize = headerAndLoadCommandsSize(file);
   uint64_t address = 0;
   for (SegmentInfo *seg : _segmentInfos) {
     if (seg->name.equals("__PAGEZERO")) {

@@ -18,10 +18,16 @@ edge), read on.
 
 The basic steps needed to build libc++ are:
 
-#. Checkout LLVM, libunwind, and related projects:
+#. Checkout LLVM:
 
    * ``cd where-you-want-llvm-to-live``
-   * ``git clone https://github.com/llvm/llvm-project.git``
+   * ``svn co http://llvm.org/svn/llvm-project/llvm/trunk llvm``
+
+#. Checkout libunwind:
+
+   * ``cd where-you-want-llvm-to-live``
+   * ``cd llvm/runtimes``
+   * ``svn co http://llvm.org/svn/llvm-project/libunwind/trunk libunwind``
 
 #. Configure and build libunwind:
 
@@ -32,7 +38,7 @@ The basic steps needed to build libc++ are:
    * ``cd where you want to build llvm``
    * ``mkdir build``
    * ``cd build``
-   * ``cmake -G <generator> -DLLVM_ENABLE_PROJECTS=libunwind [options] <path to llvm sources>``
+   * ``cmake -G <generator> [options] <path to llvm sources>``
 
    For more information about configuring libunwind see :ref:`CMake Options`.
 

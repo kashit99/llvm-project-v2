@@ -14,9 +14,7 @@ if(LLD_BUILT_STANDALONE)
 endif()
 
 llvm_canonicalize_cmake_booleans(
-  HAVE_LIBZ
-  LLVM_LIBXML2_ENABLED
-  )
+  HAVE_LIBZ)
 
 configure_lit_site_cfg(
   ${CMAKE_CURRENT_SOURCE_DIR}/lit.site.cfg.py.in
@@ -34,8 +32,8 @@ configure_lit_site_cfg(
 set(LLD_TEST_DEPS lld)
 if (NOT LLD_BUILT_STANDALONE)
   list(APPEND LLD_TEST_DEPS
-    FileCheck count llc llvm-ar llvm-as llvm-bcanalyzer llvm-config llvm-cvtres
-    llvm-dis llvm-dwarfdump llvm-lib llvm-mc llvm-nm llvm-objcopy llvm-objdump
+    FileCheck count llc llvm-ar llvm-as llvm-bcanalyzer llvm-config llvm-dis
+    llvm-dwarfdump llvm-lib llvm-mc llvm-nm llvm-objcopy llvm-objdump
     llvm-pdbutil llvm-readelf llvm-readobj not obj2yaml opt yaml2obj
     )
 endif()

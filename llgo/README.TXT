@@ -38,14 +38,20 @@ a sufficiently new CMake or C++ toolchain.
 
 To build and install llgo:
 
-    # Checkout llvm project.
-    git clone https://github.com/llvm/llvm-project.git
+    # Checkout LLVM:
+    svn co http://llvm.org/svn/llvm-project/llvm/trunk /path/to/llvm
+
+    # Checkout Clang:
+    cd /path/to/llvm/tools
+    svn co http://llvm.org/svn/llvm-project/cfe/trunk clang
+
+    # Checkout llgo:
+    svn co http://llvm.org/svn/llvm-project/llgo/trunk llgo
 
     # Build LLVM, Clang and llgo: (see also http://llvm.org/docs/CMake.html)
-    cd llvm-project
-    mkdir build
-    cd build
-    cmake ../llvm -DLLVM_ENABLE_PROJECTS='clang;llgo' -DCMAKE_INSTALL_PREFIX=/path/to/llvm-inst
+    mkdir /path/to/llvm-build
+    cd /path/to/llvm-build
+    cmake /path/to/llvm -DCMAKE_INSTALL_PREFIX=/path/to/llvm-inst
     make install
 
 Running

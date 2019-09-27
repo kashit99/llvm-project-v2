@@ -4,9 +4,10 @@
 
 //===----------------------------------------------------------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is dual licensed under the MIT and the University of Illinois Open
+// Source Licenses. See LICENSE.txt for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -19,6 +20,8 @@
 #if OMPT_SUPPORT
 #include "ompt-specific.h"
 #endif
+
+#if OMP_40_ENABLED
 
 // TODO: Improve memory allocation? keep a list of pre-allocated structures?
 // allocate in blocks? re-use list finished list entries?
@@ -482,43 +485,43 @@ kmp_int32 __kmpc_omp_task_with_deps(ident_t *loc_ref, kmp_int32 gtid,
 #if OMPT_OPTIONAL
   /* OMPT grab all dependences if requested by the tool */
   if (ndeps + ndeps_noalias > 0 &&
-      ompt_enabled.ompt_callback_dependences) {
+      ompt_enabled.ompt_callback_task_dependences) {
     kmp_int32 i;
 
     new_taskdata->ompt_task_info.ndeps = ndeps + ndeps_noalias;
     new_taskdata->ompt_task_info.deps =
-        (ompt_dependence_t *)KMP_OMPT_DEPS_ALLOC(
-            thread, (ndeps + ndeps_noalias) * sizeof(ompt_dependence_t));
+        (ompt_task_dependence_t *)KMP_OMPT_DEPS_ALLOC(
+            thread, (ndeps + ndeps_noalias) * sizeof(ompt_task_dependence_t));
 
     KMP_ASSERT(new_taskdata->ompt_task_info.deps != NULL);
 
     for (i = 0; i < ndeps; i++) {
-      new_taskdata->ompt_task_info.deps[i].variable.ptr =
+      new_taskdata->ompt_task_info.deps[i].variable_addr =
           (void *)dep_list[i].base_addr;
       if (dep_list[i].flags.in && dep_list[i].flags.out)
         new_taskdata->ompt_task_info.deps[i].dependence_type =
-            ompt_dependence_type_inout;
+            ompt_task_dependence_type_inout;
       else if (dep_list[i].flags.out)
         new_taskdata->ompt_task_info.deps[i].dependence_type =
-            ompt_dependence_type_out;
+            ompt_task_dependence_type_out;
       else if (dep_list[i].flags.in)
         new_taskdata->ompt_task_info.deps[i].dependence_type =
-            ompt_dependence_type_in;
+            ompt_task_dependence_type_in;
     }
     for (i = 0; i < ndeps_noalias; i++) {
-      new_taskdata->ompt_task_info.deps[ndeps + i].variable.ptr =
+      new_taskdata->ompt_task_info.deps[ndeps + i].variable_addr =
           (void *)noalias_dep_list[i].base_addr;
       if (noalias_dep_list[i].flags.in && noalias_dep_list[i].flags.out)
         new_taskdata->ompt_task_info.deps[ndeps + i].dependence_type =
-            ompt_dependence_type_inout;
+            ompt_task_dependence_type_inout;
       else if (noalias_dep_list[i].flags.out)
         new_taskdata->ompt_task_info.deps[ndeps + i].dependence_type =
-            ompt_dependence_type_out;
+            ompt_task_dependence_type_out;
       else if (noalias_dep_list[i].flags.in)
         new_taskdata->ompt_task_info.deps[ndeps + i].dependence_type =
-            ompt_dependence_type_in;
+            ompt_task_dependence_type_in;
     }
-    ompt_callbacks.ompt_callback(ompt_callback_dependences)(
+    ompt_callbacks.ompt_callback(ompt_callback_task_dependences)(
         &(new_taskdata->ompt_task_info.task_data),
         new_taskdata->ompt_task_info.deps, new_taskdata->ompt_task_info.ndeps);
     /* We can now free the allocated memory for the dependencies */
@@ -533,8 +536,10 @@ kmp_int32 __kmpc_omp_task_with_deps(ident_t *loc_ref, kmp_int32 gtid,
   bool serial = current_task->td_flags.team_serial ||
                 current_task->td_flags.tasking_ser ||
                 current_task->td_flags.final;
+#if OMP_45_ENABLED
   kmp_task_team_t *task_team = thread->th.th_task_team;
   serial = serial && !(task_team && task_team->tt.tt_found_proxy_tasks);
+#endif
 
   if (!serial && (ndeps > 0 || ndeps_noalias > 0)) {
     /* if no dependencies have been tracked yet, create the dependence hash */
@@ -619,8 +624,10 @@ void __kmpc_omp_wait_deps(ident_t *loc_ref, kmp_int32 gtid, kmp_int32 ndeps,
   bool ignore = current_task->td_flags.team_serial ||
                 current_task->td_flags.tasking_ser ||
                 current_task->td_flags.final;
+#if OMP_45_ENABLED
   ignore = ignore && thread->th.th_task_team != NULL &&
            thread->th.th_task_team->tt.tt_found_proxy_tasks == FALSE;
+#endif
   ignore = ignore || current_task->td_dephash == NULL;
 
   if (ignore) {
@@ -653,3 +660,5 @@ void __kmpc_omp_wait_deps(ident_t *loc_ref, kmp_int32 gtid, kmp_int32 ndeps,
   KA_TRACE(10, ("__kmpc_omp_wait_deps(exit): T#%d finished waiting : loc=%p\n",
                 gtid, loc_ref));
 }
+
+#endif /* OMP_40_ENABLED */

@@ -1,8 +1,9 @@
 //===- Codegen/IRBuilder.h - The IR builder used by Polly -*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -15,11 +16,12 @@
 #define POLLY_CODEGEN_IRBUILDER_H
 
 #include "llvm/ADT/MapVector.h"
+#include "llvm/Analysis/LoopInfo.h"
+#include "llvm/Analysis/ScalarEvolution.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/ValueMap.h"
 
 namespace llvm {
-class Loop;
-class SCEV;
 class ScalarEvolution;
 } // namespace llvm
 

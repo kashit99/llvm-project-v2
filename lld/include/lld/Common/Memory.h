@@ -1,8 +1,9 @@
 //===- Memory.h -------------------------------------------------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                             The LLVM Linker
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -28,30 +29,30 @@
 namespace lld {
 
 // Use this arena if your object doesn't have a destructor.
-extern llvm::BumpPtrAllocator bAlloc;
-extern llvm::StringSaver saver;
+extern llvm::BumpPtrAllocator BAlloc;
+extern llvm::StringSaver Saver;
 
 void freeArena();
 
 // These two classes are hack to keep track of all
 // SpecificBumpPtrAllocator instances.
 struct SpecificAllocBase {
-  SpecificAllocBase() { instances.push_back(this); }
+  SpecificAllocBase() { Instances.push_back(this); }
   virtual ~SpecificAllocBase() = default;
   virtual void reset() = 0;
-  static std::vector<SpecificAllocBase *> instances;
+  static std::vector<SpecificAllocBase *> Instances;
 };
 
 template <class T> struct SpecificAlloc : public SpecificAllocBase {
-  void reset() override { alloc.DestroyAll(); }
-  llvm::SpecificBumpPtrAllocator<T> alloc;
+  void reset() override { Alloc.DestroyAll(); }
+  llvm::SpecificBumpPtrAllocator<T> Alloc;
 };
 
 // Use this arena if your object has a destructor.
 // Your destructor will be invoked from freeArena().
-template <typename T, typename... U> T *make(U &&... args) {
-  static SpecificAlloc<T> alloc;
-  return new (alloc.alloc.Allocate()) T(std::forward<U>(args)...);
+template <typename T, typename... U> T *make(U &&... Args) {
+  static SpecificAlloc<T> Alloc;
+  return new (Alloc.Alloc.Allocate()) T(std::forward<U>(Args)...);
 }
 
 } // namespace lld

@@ -1,8 +1,9 @@
 //===- Support/GICHelper.h -- Helper functions for ISL --------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -16,9 +17,23 @@
 #include "llvm/ADT/APInt.h"
 #include "llvm/IR/DiagnosticInfo.h"
 #include "llvm/Support/raw_ostream.h"
+#include "isl/aff.h"
 #include "isl/ctx.h"
 #include "isl/isl-noexceptions.h"
+#include "isl/map.h"
 #include "isl/options.h"
+#include "isl/set.h"
+#include "isl/union_map.h"
+#include "isl/union_set.h"
+#include <functional>
+#include <string>
+
+struct isl_schedule;
+struct isl_multi_aff;
+
+namespace llvm {
+class Value;
+} // namespace llvm
 
 namespace polly {
 

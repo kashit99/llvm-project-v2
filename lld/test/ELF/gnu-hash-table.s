@@ -36,20 +36,20 @@
 # RUN: ld.lld -shared --hash-style both -o %t-ppc64le.so  %t-ppc64le.o  %t2-ppc64le.a  %t3-ppc64le.so
 # RUN: ld.lld -shared --hash-style both -o %t-ppc64.so  %t-ppc64.o  %t2-ppc64.a  %t3-ppc64.so
 
-# RUN: llvm-readobj --dyn-syms --gnu-hash-table %te-i386.so \
+# RUN: llvm-readobj -dyn-symbols -gnu-hash-table %te-i386.so \
 # RUN:   | FileCheck %s -check-prefix=EMPTY
-# RUN: llvm-readobj --sections --dyn-syms --gnu-hash-table %t-i386.so \
+# RUN: llvm-readobj -sections -dyn-symbols -gnu-hash-table %t-i386.so \
 # RUN:   | FileCheck %s -check-prefix=I386
-# RUN: llvm-readobj --sections --dyn-syms --gnu-hash-table %t-x86_64.so \
+# RUN: llvm-readobj -sections -dyn-symbols -gnu-hash-table %t-x86_64.so \
 # RUN:   | FileCheck %s -check-prefix=X86_64
-# RUN: llvm-readobj --sections --dyn-syms --gnu-hash-table %t-ppc64le.so \
+# RUN: llvm-readobj -sections -dyn-symbols -gnu-hash-table %t-ppc64le.so \
 # RUN:   | FileCheck %s -check-prefix=PPC64
-# RUN: llvm-readobj --sections --dyn-syms --gnu-hash-table %t-ppc64.so \
+# RUN: llvm-readobj -sections -dyn-symbols -gnu-hash-table %t-ppc64.so \
 # RUN:   | FileCheck %s -check-prefix=PPC64
 
 # EMPTY:      DynamicSymbols [
 # EMPTY:        Symbol {
-# EMPTY:          Name: foo
+# EMPTY:          Name: foo@
 # EMPTY-NEXT:     Value: 0x0
 # EMPTY-NEXT:     Size: 0
 # EMPTY-NEXT:     Binding: Global
@@ -87,32 +87,32 @@
 # I386:      ]
 # I386:      DynamicSymbols [
 # I386:        Symbol {
-# I386:          Name:
+# I386:          Name: @
 # I386:          Binding: Local
 # I386:          Section: Undefined
 # I386:        }
 # I386:        Symbol {
-# I386:          Name: baz
+# I386:          Name: baz@
 # I386:          Binding: Global
 # I386:          Section: Undefined
 # I386:        }
 # I386:        Symbol {
-# I386:          Name: xyz
+# I386:          Name: xyz@
 # I386:          Binding: Global
 # I386:          Section: Undefined
 # I386:        }
 # I386:        Symbol {
-# I386:          Name: zed
+# I386:          Name: zed@
 # I386:          Binding: Weak
 # I386:          Section: Undefined
 # I386:        }
 # I386:        Symbol {
-# I386:          Name: bar
+# I386:          Name: bar@
 # I386:          Binding: Global
 # I386:          Section: .text
 # I386:        }
 # I386:        Symbol {
-# I386:          Name: foo
+# I386:          Name: foo@
 # I386:          Binding: Global
 # I386:          Section: .text
 # I386:        }
@@ -147,32 +147,32 @@
 # X86_64:      ]
 # X86_64:      DynamicSymbols [
 # X86_64:        Symbol {
-# X86_64:          Name:
+# X86_64:          Name: @
 # X86_64:          Binding: Local
 # X86_64:          Section: Undefined
 # X86_64:        }
 # X86_64:        Symbol {
-# X86_64:          Name: baz
+# X86_64:          Name: baz@
 # X86_64:          Binding: Global
 # X86_64:          Section: Undefined
 # X86_64:        }
 # X86_64:        Symbol {
-# X86_64:          Name: xyz
+# X86_64:          Name: xyz@
 # X86_64:          Binding: Global
 # X86_64:          Section: Undefined
 # X86_64:        }
 # X86_64:        Symbol {
-# X86_64:          Name: zed
+# X86_64:          Name: zed@
 # X86_64:          Binding: Weak
 # X86_64:          Section: Undefined
 # X86_64:        }
 # X86_64:        Symbol {
-# X86_64:          Name: bar
+# X86_64:          Name: bar@
 # X86_64:          Binding: Global
 # X86_64:          Section: .text
 # X86_64:        }
 # X86_64:        Symbol {
-# X86_64:          Name: foo
+# X86_64:          Name: foo@
 # X86_64:          Binding: Global
 # X86_64:          Section: .text
 # X86_64:        }
@@ -207,32 +207,32 @@
 # PPC64:      ]
 # PPC64:      DynamicSymbols [
 # PPC64:        Symbol {
-# PPC64:          Name:
+# PPC64:          Name: @
 # PPC64:          Binding: Local
 # PPC64:          Section: Undefined
 # PPC64:        }
 # PPC64:        Symbol {
-# PPC64:          Name: baz
+# PPC64:          Name: baz@
 # PPC64:          Binding: Global
 # PPC64:          Section: Undefined
 # PPC64:        }
 # PPC64:        Symbol {
-# PPC64:          Name: xyz
+# PPC64:          Name: xyz@
 # PPC64:          Binding: Global
 # PPC64:          Section: Undefined
 # PPC64:        }
 # PPC64:        Symbol {
-# PPC64:          Name: zed
+# PPC64:          Name: zed@
 # PPC64:          Binding: Weak
 # PPC64:          Section: Undefined
 # PPC64:        }
 # PPC64:        Symbol {
-# PPC64:          Name: bar
+# PPC64:          Name: bar@
 # PPC64:          Binding: Global
 # PPC64:          Section: .text
 # PPC64:        }
 # PPC64:        Symbol {
-# PPC64:          Name: foo
+# PPC64:          Name: foo@
 # PPC64:          Binding: Global
 # PPC64:          Section: .text
 # PPC64:        }

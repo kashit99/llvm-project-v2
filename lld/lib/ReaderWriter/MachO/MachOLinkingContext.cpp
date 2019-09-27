@@ -1,8 +1,9 @@
 //===- lib/ReaderWriter/MachO/MachOLinkingContext.cpp ---------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                             The LLVM Linker
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -767,7 +768,8 @@ void MachOLinkingContext::registerDylib(MachODylibFile *dylib,
                                         bool upward) const {
   std::lock_guard<std::mutex> lock(_dylibsMutex);
 
-  if (!llvm::count(_allDylibs, dylib))
+  if (std::find(_allDylibs.begin(),
+                _allDylibs.end(), dylib) == _allDylibs.end())
     _allDylibs.push_back(dylib);
   _pathToDylibMap[dylib->installName()] = dylib;
   // If path is different than install name, register path too.
@@ -1014,10 +1016,11 @@ static bool isLibrary(const std::unique_ptr<Node> &elem) {
 // new undefines from libraries.
 void MachOLinkingContext::finalizeInputFiles() {
   std::vector<std::unique_ptr<Node>> &elements = getNodes();
-  llvm::stable_sort(elements, [](const std::unique_ptr<Node> &a,
-                                 const std::unique_ptr<Node> &b) {
-    return !isLibrary(a) && isLibrary(b);
-  });
+  std::stable_sort(elements.begin(), elements.end(),
+                   [](const std::unique_ptr<Node> &a,
+                      const std::unique_ptr<Node> &b) {
+                     return !isLibrary(a) && isLibrary(b);
+                   });
   size_t numLibs = std::count_if(elements.begin(), elements.end(), isLibrary);
   elements.push_back(llvm::make_unique<GroupEnd>(numLibs));
 }

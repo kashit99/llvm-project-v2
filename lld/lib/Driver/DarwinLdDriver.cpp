@@ -1,8 +1,9 @@
 //===- lib/Driver/DarwinLdDriver.cpp --------------------------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                             The LLVM Linker
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 ///
@@ -333,8 +334,8 @@ bool parse(llvm::ArrayRef<const char *> args, MachOLinkingContext &ctx) {
          Twine(unknownArg->getAsString(parsedArgs)));
   }
 
-  errorHandler().verbose = parsedArgs.hasArg(OPT_v);
-  errorHandler().errorLimit = args::getInteger(parsedArgs, OPT_error_limit, 20);
+  errorHandler().Verbose = parsedArgs.hasArg(OPT_v);
+  errorHandler().ErrorLimit = args::getInteger(parsedArgs, OPT_error_limit, 20);
 
   // Figure out output kind ( -dylib, -r, -bundle, -preload, or -static )
   llvm::MachO::HeaderFileType fileType = llvm::MachO::MH_EXECUTE;
@@ -637,7 +638,7 @@ bool parse(llvm::ArrayRef<const char *> args, MachOLinkingContext &ctx) {
 
   // Now that we've constructed the final set of search paths, print out those
   // search paths in verbose mode.
-  if (errorHandler().verbose) {
+  if (errorHandler().Verbose) {
     message("Library search paths:");
     for (auto path : ctx.searchDirs()) {
       message("    " + path);
@@ -1145,13 +1146,13 @@ static void createFiles(MachOLinkingContext &ctx, bool Implicit) {
 /// This is where the link is actually performed.
 bool link(llvm::ArrayRef<const char *> args, bool CanExitEarly,
           raw_ostream &Error) {
-  errorHandler().logName = args::getFilenameWithoutExe(args[0]);
-  errorHandler().errorLimitExceededMsg =
+  errorHandler().LogName = args::getFilenameWithoutExe(args[0]);
+  errorHandler().ErrorLimitExceededMsg =
       "too many errors emitted, stopping now (use "
       "'-error-limit 0' to see all errors)";
-  errorHandler().errorOS = &Error;
-  errorHandler().exitEarly = CanExitEarly;
-  errorHandler().colorDiagnostics = Error.has_colors();
+  errorHandler().ErrorOS = &Error;
+  errorHandler().ExitEarly = CanExitEarly;
+  errorHandler().ColorDiagnostics = Error.has_colors();
 
   MachOLinkingContext ctx;
   if (!parse(args, ctx))
@@ -1196,9 +1197,9 @@ bool link(llvm::ArrayRef<const char *> args, bool CanExitEarly,
   if (auto ec = pm.runOnFile(*merged)) {
     // FIXME: This should be passed to logAllUnhandledErrors but it needs
     // to be passed a Twine instead of a string.
-    *errorHandler().errorOS << "Failed to run passes on file '"
+    *errorHandler().ErrorOS << "Failed to run passes on file '"
                             << ctx.outputPath() << "': ";
-    logAllUnhandledErrors(std::move(ec), *errorHandler().errorOS,
+    logAllUnhandledErrors(std::move(ec), *errorHandler().ErrorOS,
                           std::string());
     return false;
   }
@@ -1210,9 +1211,9 @@ bool link(llvm::ArrayRef<const char *> args, bool CanExitEarly,
   if (auto ec = ctx.writeFile(*merged)) {
     // FIXME: This should be passed to logAllUnhandledErrors but it needs
     // to be passed a Twine instead of a string.
-    *errorHandler().errorOS << "Failed to write file '" << ctx.outputPath()
+    *errorHandler().ErrorOS << "Failed to write file '" << ctx.outputPath()
                             << "': ";
-    logAllUnhandledErrors(std::move(ec), *errorHandler().errorOS,
+    logAllUnhandledErrors(std::move(ec), *errorHandler().ErrorOS,
                           std::string());
     return false;
   }

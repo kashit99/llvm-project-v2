@@ -1,8 +1,9 @@
 //===------------------------- cxa_handlers.cpp ---------------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is dual licensed under the MIT and the University of Illinois Open
+// Source Licenses. See LICENSE.TXT for details.
 //
 //
 // This file implements the functionality associated with the terminate_handler,
@@ -73,7 +74,6 @@ __attribute__((noreturn))
 void
 terminate() _NOEXCEPT
 {
-#ifndef _LIBCXXABI_NO_EXCEPTIONS
     // If there might be an uncaught exception
     using namespace __cxxabiv1;
     __cxa_eh_globals* globals = __cxa_get_globals_fast();
@@ -88,7 +88,6 @@ terminate() _NOEXCEPT
                 __terminate(exception_header->terminateHandler);
         }
     }
-#endif
     __terminate(get_terminate());
 }
 

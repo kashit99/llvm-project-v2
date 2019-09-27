@@ -1,8 +1,9 @@
 //===- lib/ReaderWriter/MachO/CompactUnwindPass.cpp -------------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                             The LLVM Linker
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 ///
@@ -387,9 +388,12 @@ private:
 
       // Gather the personality functions now, so that they're in deterministic
       // order (derived from the DefinedAtom order).
-      if (unwindEntry.personalityFunction &&
-          !llvm::count(personalities, unwindEntry.personalityFunction))
-        personalities.push_back(unwindEntry.personalityFunction);
+      if (unwindEntry.personalityFunction) {
+        auto pFunc = std::find(personalities.begin(), personalities.end(),
+                               unwindEntry.personalityFunction);
+        if (pFunc == personalities.end())
+          personalities.push_back(unwindEntry.personalityFunction);
+      }
     }
   }
 
@@ -548,7 +552,8 @@ private:
       }
     }
 
-    auto personality = llvm::find(personalities, entry.personalityFunction);
+    auto personality = std::find(personalities.begin(), personalities.end(),
+                                 entry.personalityFunction);
     uint32_t personalityIdx = personality == personalities.end()
                                   ? 0
                                   : personality - personalities.begin() + 1;

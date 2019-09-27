@@ -18,7 +18,7 @@
 #ifdef CODE
 #include "stdio.h"
 #include "omp.h"
-#include "omp-tools.h"
+#include "ompt.h"
 
 int main()
 {
@@ -52,7 +52,7 @@ int main()
 
 #ifdef TOOL
 
-#include <omp-tools.h>
+#include <ompt.h>
 #include "stdio.h"
 
 #ifdef SECOND_TOOL

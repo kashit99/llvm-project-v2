@@ -9,7 +9,6 @@
 # RUN: llvm-objdump -d %t2 | FileCheck %s
 
 # CHECK: Disassembly of section .text:
-# CHECK-EMPTY:
 
 .text
 .global _start
@@ -31,8 +30,9 @@ bar:
   nop
   blr
 
-# CHECK: 1001000c:       {{.*}}     bl .-12
+# FIXME: The printing here is misleading, the branch offset here is negative.
+# CHECK: 1001000c:       {{.*}}     bl .+67108852
 # CHECK: 10010010:       {{.*}}     nop
-# CHECK: 10010014:       {{.*}}     bl .-20
+# CHECK: 10010014:       {{.*}}     bl .+67108844
 # CHECK: 10010018:       {{.*}}     nop
 # CHECK: 1001001c:       {{.*}}     blr

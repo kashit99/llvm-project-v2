@@ -20,70 +20,70 @@ namespace elf {
 class InputSection;
 
 struct LLDDWARFSection final : public llvm::DWARFSection {
-  InputSectionBase *sec = nullptr;
+  InputSectionBase *Sec = nullptr;
 };
 
 template <class ELFT> class LLDDwarfObj final : public llvm::DWARFObject {
 public:
-  explicit LLDDwarfObj(ObjFile<ELFT> *obj);
+  explicit LLDDwarfObj(ObjFile<ELFT> *Obj);
 
   void forEachInfoSections(
-      llvm::function_ref<void(const llvm::DWARFSection &)> f) const override {
-    f(infoSection);
+      llvm::function_ref<void(const llvm::DWARFSection &)> F) const override {
+    F(InfoSection);
   }
 
   const llvm::DWARFSection &getRangeSection() const override {
-    return rangeSection;
+    return RangeSection;
   }
 
   const llvm::DWARFSection &getRnglistsSection() const override {
-    return rngListsSection;
+    return RngListsSection;
   }
 
   const llvm::DWARFSection &getLineSection() const override {
-    return lineSection;
+    return LineSection;
   }
 
   const llvm::DWARFSection &getAddrSection() const override {
-    return addrSection;
+    return AddrSection;
   }
 
   const llvm::DWARFSection &getGnuPubNamesSection() const override {
-    return gnuPubNamesSection;
+    return GnuPubNamesSection;
   }
 
   const llvm::DWARFSection &getGnuPubTypesSection() const override {
-    return gnuPubTypesSection;
+    return GnuPubTypesSection;
   }
 
   StringRef getFileName() const override { return ""; }
-  StringRef getAbbrevSection() const override { return abbrevSection; }
-  StringRef getStringSection() const override { return strSection; }
-  StringRef getLineStringSection() const override { return lineStringSection; }
+  StringRef getAbbrevSection() const override { return AbbrevSection; }
+  StringRef getStringSection() const override { return StrSection; }
+  StringRef getLineStringSection() const override { return LineStringSection; }
 
   bool isLittleEndian() const override {
     return ELFT::TargetEndianness == llvm::support::little;
   }
 
-  llvm::Optional<llvm::RelocAddrEntry> find(const llvm::DWARFSection &sec,
-                                            uint64_t pos) const override;
+  llvm::Optional<llvm::RelocAddrEntry> find(const llvm::DWARFSection &Sec,
+                                            uint64_t Pos) const override;
 
 private:
   template <class RelTy>
-  llvm::Optional<llvm::RelocAddrEntry> findAux(const InputSectionBase &sec,
-                                               uint64_t pos,
-                                               ArrayRef<RelTy> rels) const;
+  llvm::Optional<llvm::RelocAddrEntry> findAux(const InputSectionBase &Sec,
+                                               uint64_t Pos,
+                                               ArrayRef<RelTy> Rels) const;
 
-  LLDDWARFSection gnuPubNamesSection;
-  LLDDWARFSection gnuPubTypesSection;
-  LLDDWARFSection infoSection;
-  LLDDWARFSection rangeSection;
-  LLDDWARFSection rngListsSection;
-  LLDDWARFSection lineSection;
-  LLDDWARFSection addrSection;
-  StringRef abbrevSection;
-  StringRef strSection;
-  StringRef lineStringSection;
+  LLDDWARFSection GnuPubNamesSection;
+  LLDDWARFSection GnuPubTypesSection;
+  LLDDWARFSection InfoSection;
+  LLDDWARFSection RangeSection;
+  LLDDWARFSection RngListsSection;
+  LLDDWARFSection LineSection;
+  LLDDWARFSection AddrSection;
+  StringRef AbbrevSection;
+  StringRef StrSection;
+  StringRef LineStringSection;
 };
 
 } // namespace elf

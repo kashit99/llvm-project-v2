@@ -29,11 +29,19 @@
 #include "polly/Support/ScopHelper.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/PostOrderIterator.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallSet.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Statistic.h"
+#include "llvm/ADT/StringExtras.h"
+#include "llvm/ADT/StringMap.h"
 #include "llvm/Analysis/AliasAnalysis.h"
+#include "llvm/Analysis/AliasSetTracker.h"
 #include "llvm/Analysis/AssumptionCache.h"
 #include "llvm/Analysis/Loads.h"
 #include "llvm/Analysis/LoopInfo.h"
@@ -42,29 +50,58 @@
 #include "llvm/Analysis/RegionIterator.h"
 #include "llvm/Analysis/ScalarEvolution.h"
 #include "llvm/Analysis/ScalarEvolutionExpressions.h"
+#include "llvm/IR/Argument.h"
 #include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/CFG.h"
 #include "llvm/IR/ConstantRange.h"
+#include "llvm/IR/Constants.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/DebugLoc.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/DiagnosticInfo.h"
 #include "llvm/IR/Dominators.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/InstrTypes.h"
 #include "llvm/IR/Instruction.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/PassManager.h"
 #include "llvm/IR/Type.h"
+#include "llvm/IR/Use.h"
+#include "llvm/IR/User.h"
 #include "llvm/IR/Value.h"
+#include "llvm/Pass.h"
+#include "llvm/Support/Casting.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/MathExtras.h"
 #include "llvm/Support/raw_ostream.h"
 #include "isl/aff.h"
+#include "isl/constraint.h"
 #include "isl/local_space.h"
 #include "isl/map.h"
 #include "isl/options.h"
+#include "isl/printer.h"
+#include "isl/schedule.h"
+#include "isl/schedule_node.h"
 #include "isl/set.h"
+#include "isl/union_map.h"
+#include "isl/union_set.h"
+#include "isl/val.h"
+#include <algorithm>
 #include <cassert>
+#include <cstdlib>
+#include <cstring>
+#include <deque>
+#include <iterator>
+#include <memory>
+#include <string>
+#include <tuple>
+#include <utility>
+#include <vector>
 
 using namespace llvm;
 using namespace polly;
@@ -110,17 +147,54 @@ STATISTIC(NumSingletonWrites, "Number of singleton writes after ScopInfo");
 STATISTIC(NumSingletonWritesInLoops,
           "Number of singleton writes nested in affine loops after ScopInfo");
 
-int const polly::MaxDisjunctsInDomain = 20;
+// The maximal number of basic sets we allow during domain construction to
+// be created. More complex scops will result in very high compile time and
+// are also unlikely to result in good code
+static int const MaxDisjunctsInDomain = 20;
 
 // The number of disjunct in the context after which we stop to add more
 // disjuncts. This parameter is there to avoid exponential growth in the
 // number of disjunct when adding non-convex sets to the context.
 static int const MaxDisjunctsInContext = 4;
 
+// The maximal number of dimensions we allow during invariant load construction.
+// More complex access ranges will result in very high compile time and are also
+// unlikely to result in good code. This value is very high and should only
+// trigger for corner cases (e.g., the "dct_luma" function in h264, SPEC2006).
+static int const MaxDimensionsInAccessRange = 9;
+
+static cl::opt<int>
+    OptComputeOut("polly-analysis-computeout",
+                  cl::desc("Bound the scop analysis by a maximal amount of "
+                           "computational steps (0 means no bound)"),
+                  cl::Hidden, cl::init(800000), cl::ZeroOrMore,
+                  cl::cat(PollyCategory));
+
 static cl::opt<bool> PollyRemarksMinimal(
     "polly-remarks-minimal",
     cl::desc("Do not emit remarks about assumptions that are known"),
     cl::Hidden, cl::ZeroOrMore, cl::init(false), cl::cat(PollyCategory));
+
+static cl::opt<int> RunTimeChecksMaxAccessDisjuncts(
+    "polly-rtc-max-array-disjuncts",
+    cl::desc("The maximal number of disjunts allowed in memory accesses to "
+             "to build RTCs."),
+    cl::Hidden, cl::ZeroOrMore, cl::init(8), cl::cat(PollyCategory));
+
+static cl::opt<unsigned> RunTimeChecksMaxParameters(
+    "polly-rtc-max-parameters",
+    cl::desc("The maximal number of parameters allowed in RTCs."), cl::Hidden,
+    cl::ZeroOrMore, cl::init(8), cl::cat(PollyCategory));
+
+static cl::opt<unsigned> RunTimeChecksMaxArraysPerGroup(
+    "polly-rtc-max-arrays-per-group",
+    cl::desc("The maximal number of arrays to compare in each alias group."),
+    cl::Hidden, cl::ZeroOrMore, cl::init(20), cl::cat(PollyCategory));
+
+static cl::opt<std::string> UserContextStr(
+    "polly-context", cl::value_desc("isl parameter set"),
+    cl::desc("Provide additional constraints on the context parameters"),
+    cl::init(""), cl::cat(PollyCategory));
 
 static cl::opt<bool>
     IslOnErrorAbort("polly-on-isl-error-abort",
@@ -141,6 +215,16 @@ static cl::opt<bool> PollyIgnoreParamBounds(
     "polly-ignore-parameter-bounds",
     cl::desc(
         "Do not add parameter bounds and do no gist simplify sets accordingly"),
+    cl::Hidden, cl::init(false), cl::cat(PollyCategory));
+
+static cl::opt<bool> PollyAllowDereferenceOfAllFunctionParams(
+    "polly-allow-dereference-of-all-function-parameters",
+    cl::desc(
+        "Treat all parameters to functions that are pointers as dereferencible."
+        " This is useful for invariant load hoisting, since we can generate"
+        " less runtime checks. This is only valid if all pointers to functions"
+        " are always initialized, so that Polly can choose to hoist"
+        " their loads. "),
     cl::Hidden, cl::init(false), cl::cat(PollyCategory));
 
 static cl::opt<bool> PollyPreciseFoldAccesses(
@@ -759,7 +843,7 @@ void MemoryAccess::computeBoundsOnAccessRelation(unsigned ElementSize) {
   if (Range.isFullSet())
     return;
 
-  if (Range.isUpperWrapped() || Range.isSignWrappedSet())
+  if (Range.isWrappedSet() || Range.isSignWrappedSet())
     return;
 
   bool isWrapping = Range.isSignWrappedSet();
@@ -1935,6 +2019,11 @@ isl::id Scop::getIdForParam(const SCEV *Parameter) const {
   return ParameterIds.lookup(Parameter);
 }
 
+isl::set Scop::addNonEmptyDomainConstraints(isl::set C) const {
+  isl::set DomainContext = getDomains().params();
+  return C.intersect_params(DomainContext);
+}
+
 bool Scop::isDominatedBy(const DominatorTree &DT, BasicBlock *BB) const {
   return DT.dominates(BB, getEntry());
 }
@@ -2009,6 +2098,64 @@ void Scop::addUserAssumptions(
     ORE.emit(OptimizationRemarkAnalysis(DEBUG_TYPE, "UserAssumption", CI)
              << "Use user assumption: " << stringFromIslObj(AssumptionCtx));
     Context = Context.intersect(isl::manage(AssumptionCtx));
+  }
+}
+
+void Scop::addUserContext() {
+  if (UserContextStr.empty())
+    return;
+
+  isl::set UserContext = isl::set(getIslCtx(), UserContextStr.c_str());
+  isl::space Space = getParamSpace();
+  if (Space.dim(isl::dim::param) != UserContext.dim(isl::dim::param)) {
+    std::string SpaceStr = Space.to_str();
+    errs() << "Error: the context provided in -polly-context has not the same "
+           << "number of dimensions than the computed context. Due to this "
+           << "mismatch, the -polly-context option is ignored. Please provide "
+           << "the context in the parameter space: " << SpaceStr << ".\n";
+    return;
+  }
+
+  for (unsigned i = 0; i < Space.dim(isl::dim::param); i++) {
+    std::string NameContext = Context.get_dim_name(isl::dim::param, i);
+    std::string NameUserContext = UserContext.get_dim_name(isl::dim::param, i);
+
+    if (NameContext != NameUserContext) {
+      std::string SpaceStr = Space.to_str();
+      errs() << "Error: the name of dimension " << i
+             << " provided in -polly-context "
+             << "is '" << NameUserContext << "', but the name in the computed "
+             << "context is '" << NameContext
+             << "'. Due to this name mismatch, "
+             << "the -polly-context option is ignored. Please provide "
+             << "the context in the parameter space: " << SpaceStr << ".\n";
+      return;
+    }
+
+    UserContext = UserContext.set_dim_id(isl::dim::param, i,
+                                         Space.get_dim_id(isl::dim::param, i));
+  }
+
+  Context = Context.intersect(UserContext);
+}
+
+void Scop::buildInvariantEquivalenceClasses() {
+  DenseMap<std::pair<const SCEV *, Type *>, LoadInst *> EquivClasses;
+
+  const InvariantLoadsSetTy &RIL = getRequiredInvariantLoads();
+  for (LoadInst *LInst : RIL) {
+    const SCEV *PointerSCEV = SE->getSCEV(LInst->getPointerOperand());
+
+    Type *Ty = LInst->getType();
+    LoadInst *&ClassRep = EquivClasses[std::make_pair(PointerSCEV, Ty)];
+    if (ClassRep) {
+      InvEquivClassVMap[LInst] = ClassRep;
+      continue;
+    }
+
+    ClassRep = LInst;
+    InvariantEquivClasses.emplace_back(
+        InvariantEquivClassTy{PointerSCEV, MemoryAccessList(), nullptr, Ty});
   }
 }
 
@@ -2132,6 +2279,105 @@ void Scop::simplifyContexts() {
   //   only executed for the case m >= 0, it is sufficient to assume p >= 0.
   AssumedContext = simplifyAssumptionContext(AssumedContext, *this);
   InvalidContext = InvalidContext.align_params(getParamSpace());
+}
+
+/// Add the minimal/maximal access in @p Set to @p User.
+///
+/// @return True if more accesses should be added, false if we reached the
+///         maximal number of run-time checks to be generated.
+static bool buildMinMaxAccess(isl::set Set,
+                              Scop::MinMaxVectorTy &MinMaxAccesses, Scop &S) {
+  isl::pw_multi_aff MinPMA, MaxPMA;
+  isl::pw_aff LastDimAff;
+  isl::aff OneAff;
+  unsigned Pos;
+
+  Set = Set.remove_divs();
+  polly::simplify(Set);
+
+  if (Set.n_basic_set() > RunTimeChecksMaxAccessDisjuncts)
+    Set = Set.simple_hull();
+
+  // Restrict the number of parameters involved in the access as the lexmin/
+  // lexmax computation will take too long if this number is high.
+  //
+  // Experiments with a simple test case using an i7 4800MQ:
+  //
+  //  #Parameters involved | Time (in sec)
+  //            6          |     0.01
+  //            7          |     0.04
+  //            8          |     0.12
+  //            9          |     0.40
+  //           10          |     1.54
+  //           11          |     6.78
+  //           12          |    30.38
+  //
+  if (isl_set_n_param(Set.get()) > RunTimeChecksMaxParameters) {
+    unsigned InvolvedParams = 0;
+    for (unsigned u = 0, e = isl_set_n_param(Set.get()); u < e; u++)
+      if (Set.involves_dims(isl::dim::param, u, 1))
+        InvolvedParams++;
+
+    if (InvolvedParams > RunTimeChecksMaxParameters)
+      return false;
+  }
+
+  MinPMA = Set.lexmin_pw_multi_aff();
+  MaxPMA = Set.lexmax_pw_multi_aff();
+
+  MinPMA = MinPMA.coalesce();
+  MaxPMA = MaxPMA.coalesce();
+
+  // Adjust the last dimension of the maximal access by one as we want to
+  // enclose the accessed memory region by MinPMA and MaxPMA. The pointer
+  // we test during code generation might now point after the end of the
+  // allocated array but we will never dereference it anyway.
+  assert((!MaxPMA || MaxPMA.dim(isl::dim::out)) &&
+         "Assumed at least one output dimension");
+
+  Pos = MaxPMA.dim(isl::dim::out) - 1;
+  LastDimAff = MaxPMA.get_pw_aff(Pos);
+  OneAff = isl::aff(isl::local_space(LastDimAff.get_domain_space()));
+  OneAff = OneAff.add_constant_si(1);
+  LastDimAff = LastDimAff.add(OneAff);
+  MaxPMA = MaxPMA.set_pw_aff(Pos, LastDimAff);
+
+  if (!MinPMA || !MaxPMA)
+    return false;
+
+  MinMaxAccesses.push_back(std::make_pair(MinPMA, MaxPMA));
+
+  return true;
+}
+
+static isl::set getAccessDomain(MemoryAccess *MA) {
+  isl::set Domain = MA->getStatement()->getDomain();
+  Domain = Domain.project_out(isl::dim::set, 0, Domain.n_dim());
+  return Domain.reset_tuple_id();
+}
+
+/// Wrapper function to calculate minimal/maximal accesses to each array.
+static bool calculateMinMaxAccess(Scop::AliasGroupTy AliasGroup, Scop &S,
+                                  Scop::MinMaxVectorTy &MinMaxAccesses) {
+  MinMaxAccesses.reserve(AliasGroup.size());
+
+  isl::union_set Domains = S.getDomains();
+  isl::union_map Accesses = isl::union_map::empty(S.getParamSpace());
+
+  for (MemoryAccess *MA : AliasGroup)
+    Accesses = Accesses.add_map(MA->getAccessRelation());
+
+  Accesses = Accesses.intersect_domain(Domains);
+  isl::union_set Locations = Accesses.range();
+
+  bool LimitReached = false;
+  for (isl::set Set : Locations.get_set_list()) {
+    LimitReached |= !buildMinMaxAccess(Set, MinMaxAccesses, S);
+    if (LimitReached)
+      break;
+  }
+
+  return !LimitReached;
 }
 
 /// Helper to treat non-affine regions and basic blocks the same.
@@ -2790,6 +3036,239 @@ bool Scop::addLoopBoundsToHeaderDomain(
   return true;
 }
 
+MemoryAccess *Scop::lookupBasePtrAccess(MemoryAccess *MA) {
+  Value *PointerBase = MA->getOriginalBaseAddr();
+
+  auto *PointerBaseInst = dyn_cast<Instruction>(PointerBase);
+  if (!PointerBaseInst)
+    return nullptr;
+
+  auto *BasePtrStmt = getStmtFor(PointerBaseInst);
+  if (!BasePtrStmt)
+    return nullptr;
+
+  return BasePtrStmt->getArrayAccessOrNULLFor(PointerBaseInst);
+}
+
+bool Scop::hasNonHoistableBasePtrInScop(MemoryAccess *MA,
+                                        isl::union_map Writes) {
+  if (auto *BasePtrMA = lookupBasePtrAccess(MA)) {
+    return getNonHoistableCtx(BasePtrMA, Writes).is_null();
+  }
+
+  Value *BaseAddr = MA->getOriginalBaseAddr();
+  if (auto *BasePtrInst = dyn_cast<Instruction>(BaseAddr))
+    if (!isa<LoadInst>(BasePtrInst))
+      return contains(BasePtrInst);
+
+  return false;
+}
+
+bool Scop::buildAliasChecks(AliasAnalysis &AA) {
+  if (!PollyUseRuntimeAliasChecks)
+    return true;
+
+  if (buildAliasGroups(AA)) {
+    // Aliasing assumptions do not go through addAssumption but we still want to
+    // collect statistics so we do it here explicitly.
+    if (MinMaxAliasGroups.size())
+      AssumptionsAliasing++;
+    return true;
+  }
+
+  // If a problem occurs while building the alias groups we need to delete
+  // this SCoP and pretend it wasn't valid in the first place. To this end
+  // we make the assumed context infeasible.
+  invalidate(ALIASING, DebugLoc());
+
+  LLVM_DEBUG(
+      dbgs() << "\n\nNOTE: Run time checks for " << getNameStr()
+             << " could not be created as the number of parameters involved "
+                "is too high. The SCoP will be "
+                "dismissed.\nUse:\n\t--polly-rtc-max-parameters=X\nto adjust "
+                "the maximal number of parameters but be advised that the "
+                "compile time might increase exponentially.\n\n");
+  return false;
+}
+
+std::tuple<Scop::AliasGroupVectorTy, DenseSet<const ScopArrayInfo *>>
+Scop::buildAliasGroupsForAccesses(AliasAnalysis &AA) {
+  AliasSetTracker AST(AA);
+
+  DenseMap<Value *, MemoryAccess *> PtrToAcc;
+  DenseSet<const ScopArrayInfo *> HasWriteAccess;
+  for (ScopStmt &Stmt : *this) {
+
+    isl::set StmtDomain = Stmt.getDomain();
+    bool StmtDomainEmpty = StmtDomain.is_empty();
+
+    // Statements with an empty domain will never be executed.
+    if (StmtDomainEmpty)
+      continue;
+
+    for (MemoryAccess *MA : Stmt) {
+      if (MA->isScalarKind())
+        continue;
+      if (!MA->isRead())
+        HasWriteAccess.insert(MA->getScopArrayInfo());
+      MemAccInst Acc(MA->getAccessInstruction());
+      if (MA->isRead() && isa<MemTransferInst>(Acc))
+        PtrToAcc[cast<MemTransferInst>(Acc)->getRawSource()] = MA;
+      else
+        PtrToAcc[Acc.getPointerOperand()] = MA;
+      AST.add(Acc);
+    }
+  }
+
+  AliasGroupVectorTy AliasGroups;
+  for (AliasSet &AS : AST) {
+    if (AS.isMustAlias() || AS.isForwardingAliasSet())
+      continue;
+    AliasGroupTy AG;
+    for (auto &PR : AS)
+      AG.push_back(PtrToAcc[PR.getValue()]);
+    if (AG.size() < 2)
+      continue;
+    AliasGroups.push_back(std::move(AG));
+  }
+
+  return std::make_tuple(AliasGroups, HasWriteAccess);
+}
+
+void Scop::splitAliasGroupsByDomain(AliasGroupVectorTy &AliasGroups) {
+  for (unsigned u = 0; u < AliasGroups.size(); u++) {
+    AliasGroupTy NewAG;
+    AliasGroupTy &AG = AliasGroups[u];
+    AliasGroupTy::iterator AGI = AG.begin();
+    isl::set AGDomain = getAccessDomain(*AGI);
+    while (AGI != AG.end()) {
+      MemoryAccess *MA = *AGI;
+      isl::set MADomain = getAccessDomain(MA);
+      if (AGDomain.is_disjoint(MADomain)) {
+        NewAG.push_back(MA);
+        AGI = AG.erase(AGI);
+      } else {
+        AGDomain = AGDomain.unite(MADomain);
+        AGI++;
+      }
+    }
+    if (NewAG.size() > 1)
+      AliasGroups.push_back(std::move(NewAG));
+  }
+}
+
+bool Scop::buildAliasGroups(AliasAnalysis &AA) {
+  // To create sound alias checks we perform the following steps:
+  //   o) We partition each group into read only and non read only accesses.
+  //   o) For each group with more than one base pointer we then compute minimal
+  //      and maximal accesses to each array of a group in read only and non
+  //      read only partitions separately.
+  AliasGroupVectorTy AliasGroups;
+  DenseSet<const ScopArrayInfo *> HasWriteAccess;
+
+  std::tie(AliasGroups, HasWriteAccess) = buildAliasGroupsForAccesses(AA);
+
+  splitAliasGroupsByDomain(AliasGroups);
+
+  for (AliasGroupTy &AG : AliasGroups) {
+    if (!hasFeasibleRuntimeContext())
+      return false;
+
+    {
+      IslMaxOperationsGuard MaxOpGuard(getIslCtx().get(), OptComputeOut);
+      bool Valid = buildAliasGroup(AG, HasWriteAccess);
+      if (!Valid)
+        return false;
+    }
+    if (isl_ctx_last_error(getIslCtx().get()) == isl_error_quota) {
+      invalidate(COMPLEXITY, DebugLoc());
+      return false;
+    }
+  }
+
+  return true;
+}
+
+bool Scop::buildAliasGroup(Scop::AliasGroupTy &AliasGroup,
+                           DenseSet<const ScopArrayInfo *> HasWriteAccess) {
+  AliasGroupTy ReadOnlyAccesses;
+  AliasGroupTy ReadWriteAccesses;
+  SmallPtrSet<const ScopArrayInfo *, 4> ReadWriteArrays;
+  SmallPtrSet<const ScopArrayInfo *, 4> ReadOnlyArrays;
+
+  if (AliasGroup.size() < 2)
+    return true;
+
+  for (MemoryAccess *Access : AliasGroup) {
+    ORE.emit(OptimizationRemarkAnalysis(DEBUG_TYPE, "PossibleAlias",
+                                        Access->getAccessInstruction())
+             << "Possibly aliasing pointer, use restrict keyword.");
+    const ScopArrayInfo *Array = Access->getScopArrayInfo();
+    if (HasWriteAccess.count(Array)) {
+      ReadWriteArrays.insert(Array);
+      ReadWriteAccesses.push_back(Access);
+    } else {
+      ReadOnlyArrays.insert(Array);
+      ReadOnlyAccesses.push_back(Access);
+    }
+  }
+
+  // If there are no read-only pointers, and less than two read-write pointers,
+  // no alias check is needed.
+  if (ReadOnlyAccesses.empty() && ReadWriteArrays.size() <= 1)
+    return true;
+
+  // If there is no read-write pointer, no alias check is needed.
+  if (ReadWriteArrays.empty())
+    return true;
+
+  // For non-affine accesses, no alias check can be generated as we cannot
+  // compute a sufficiently tight lower and upper bound: bail out.
+  for (MemoryAccess *MA : AliasGroup) {
+    if (!MA->isAffine()) {
+      invalidate(ALIASING, MA->getAccessInstruction()->getDebugLoc(),
+                 MA->getAccessInstruction()->getParent());
+      return false;
+    }
+  }
+
+  // Ensure that for all memory accesses for which we generate alias checks,
+  // their base pointers are available.
+  for (MemoryAccess *MA : AliasGroup) {
+    if (MemoryAccess *BasePtrMA = lookupBasePtrAccess(MA))
+      addRequiredInvariantLoad(
+          cast<LoadInst>(BasePtrMA->getAccessInstruction()));
+  }
+
+  MinMaxAliasGroups.emplace_back();
+  MinMaxVectorPairTy &pair = MinMaxAliasGroups.back();
+  MinMaxVectorTy &MinMaxAccessesReadWrite = pair.first;
+  MinMaxVectorTy &MinMaxAccessesReadOnly = pair.second;
+
+  bool Valid;
+
+  Valid =
+      calculateMinMaxAccess(ReadWriteAccesses, *this, MinMaxAccessesReadWrite);
+
+  if (!Valid)
+    return false;
+
+  // Bail out if the number of values we need to compare is too large.
+  // This is important as the number of comparisons grows quadratically with
+  // the number of values we need to compare.
+  if (MinMaxAccessesReadWrite.size() + ReadOnlyArrays.size() >
+      RunTimeChecksMaxArraysPerGroup)
+    return false;
+
+  Valid =
+      calculateMinMaxAccess(ReadOnlyAccesses, *this, MinMaxAccessesReadOnly);
+
+  if (!Valid)
+    return false;
+
+  return true;
+}
+
 /// Get the smallest loop that contains @p S but is not in @p S.
 static Loop *getLoopSurroundingScop(Scop &S, LoopInfo &LI) {
   // Start with the smallest loop containing the entry and expand that
@@ -3101,6 +3580,364 @@ InvariantEquivClassTy *Scop::lookupInvariantEquivClass(Value *Val) {
   return nullptr;
 }
 
+bool isAParameter(llvm::Value *maybeParam, const Function &F) {
+  for (const llvm::Argument &Arg : F.args())
+    if (&Arg == maybeParam)
+      return true;
+
+  return false;
+}
+
+bool Scop::canAlwaysBeHoisted(MemoryAccess *MA, bool StmtInvalidCtxIsEmpty,
+                              bool MAInvalidCtxIsEmpty,
+                              bool NonHoistableCtxIsEmpty) {
+  LoadInst *LInst = cast<LoadInst>(MA->getAccessInstruction());
+  const DataLayout &DL = LInst->getParent()->getModule()->getDataLayout();
+  if (PollyAllowDereferenceOfAllFunctionParams &&
+      isAParameter(LInst->getPointerOperand(), getFunction()))
+    return true;
+
+  // TODO: We can provide more information for better but more expensive
+  //       results.
+  if (!isDereferenceableAndAlignedPointer(LInst->getPointerOperand(),
+                                          LInst->getAlignment(), DL))
+    return false;
+
+  // If the location might be overwritten we do not hoist it unconditionally.
+  //
+  // TODO: This is probably too conservative.
+  if (!NonHoistableCtxIsEmpty)
+    return false;
+
+  // If a dereferenceable load is in a statement that is modeled precisely we
+  // can hoist it.
+  if (StmtInvalidCtxIsEmpty && MAInvalidCtxIsEmpty)
+    return true;
+
+  // Even if the statement is not modeled precisely we can hoist the load if it
+  // does not involve any parameters that might have been specialized by the
+  // statement domain.
+  for (unsigned u = 0, e = MA->getNumSubscripts(); u < e; u++)
+    if (!isa<SCEVConstant>(MA->getSubscript(u)))
+      return false;
+  return true;
+}
+
+void Scop::addInvariantLoads(ScopStmt &Stmt, InvariantAccessesTy &InvMAs) {
+  if (InvMAs.empty())
+    return;
+
+  isl::set StmtInvalidCtx = Stmt.getInvalidContext();
+  bool StmtInvalidCtxIsEmpty = StmtInvalidCtx.is_empty();
+
+  // Get the context under which the statement is executed but remove the error
+  // context under which this statement is reached.
+  isl::set DomainCtx = Stmt.getDomain().params();
+  DomainCtx = DomainCtx.subtract(StmtInvalidCtx);
+
+  if (DomainCtx.n_basic_set() >= MaxDisjunctsInDomain) {
+    auto *AccInst = InvMAs.front().MA->getAccessInstruction();
+    invalidate(COMPLEXITY, AccInst->getDebugLoc(), AccInst->getParent());
+    return;
+  }
+
+  // Project out all parameters that relate to loads in the statement. Otherwise
+  // we could have cyclic dependences on the constraints under which the
+  // hoisted loads are executed and we could not determine an order in which to
+  // pre-load them. This happens because not only lower bounds are part of the
+  // domain but also upper bounds.
+  for (auto &InvMA : InvMAs) {
+    auto *MA = InvMA.MA;
+    Instruction *AccInst = MA->getAccessInstruction();
+    if (SE->isSCEVable(AccInst->getType())) {
+      SetVector<Value *> Values;
+      for (const SCEV *Parameter : Parameters) {
+        Values.clear();
+        findValues(Parameter, *SE, Values);
+        if (!Values.count(AccInst))
+          continue;
+
+        if (isl::id ParamId = getIdForParam(Parameter)) {
+          int Dim = DomainCtx.find_dim_by_id(isl::dim::param, ParamId);
+          if (Dim >= 0)
+            DomainCtx = DomainCtx.eliminate(isl::dim::param, Dim, 1);
+        }
+      }
+    }
+  }
+
+  for (auto &InvMA : InvMAs) {
+    auto *MA = InvMA.MA;
+    isl::set NHCtx = InvMA.NonHoistableCtx;
+
+    // Check for another invariant access that accesses the same location as
+    // MA and if found consolidate them. Otherwise create a new equivalence
+    // class at the end of InvariantEquivClasses.
+    LoadInst *LInst = cast<LoadInst>(MA->getAccessInstruction());
+    Type *Ty = LInst->getType();
+    const SCEV *PointerSCEV = SE->getSCEV(LInst->getPointerOperand());
+
+    isl::set MAInvalidCtx = MA->getInvalidContext();
+    bool NonHoistableCtxIsEmpty = NHCtx.is_empty();
+    bool MAInvalidCtxIsEmpty = MAInvalidCtx.is_empty();
+
+    isl::set MACtx;
+    // Check if we know that this pointer can be speculatively accessed.
+    if (canAlwaysBeHoisted(MA, StmtInvalidCtxIsEmpty, MAInvalidCtxIsEmpty,
+                           NonHoistableCtxIsEmpty)) {
+      MACtx = isl::set::universe(DomainCtx.get_space());
+    } else {
+      MACtx = DomainCtx;
+      MACtx = MACtx.subtract(MAInvalidCtx.unite(NHCtx));
+      MACtx = MACtx.gist_params(getContext());
+    }
+
+    bool Consolidated = false;
+    for (auto &IAClass : InvariantEquivClasses) {
+      if (PointerSCEV != IAClass.IdentifyingPointer || Ty != IAClass.AccessType)
+        continue;
+
+      // If the pointer and the type is equal check if the access function wrt.
+      // to the domain is equal too. It can happen that the domain fixes
+      // parameter values and these can be different for distinct part of the
+      // SCoP. If this happens we cannot consolidate the loads but need to
+      // create a new invariant load equivalence class.
+      auto &MAs = IAClass.InvariantAccesses;
+      if (!MAs.empty()) {
+        auto *LastMA = MAs.front();
+
+        isl::set AR = MA->getAccessRelation().range();
+        isl::set LastAR = LastMA->getAccessRelation().range();
+        bool SameAR = AR.is_equal(LastAR);
+
+        if (!SameAR)
+          continue;
+      }
+
+      // Add MA to the list of accesses that are in this class.
+      MAs.push_front(MA);
+
+      Consolidated = true;
+
+      // Unify the execution context of the class and this statement.
+      isl::set IAClassDomainCtx = IAClass.ExecutionContext;
+      if (IAClassDomainCtx)
+        IAClassDomainCtx = IAClassDomainCtx.unite(MACtx).coalesce();
+      else
+        IAClassDomainCtx = MACtx;
+      IAClass.ExecutionContext = IAClassDomainCtx;
+      break;
+    }
+
+    if (Consolidated)
+      continue;
+
+    MACtx = MACtx.coalesce();
+
+    // If we did not consolidate MA, thus did not find an equivalence class
+    // for it, we create a new one.
+    InvariantEquivClasses.emplace_back(
+        InvariantEquivClassTy{PointerSCEV, MemoryAccessList{MA}, MACtx, Ty});
+  }
+}
+
+/// Check if an access range is too complex.
+///
+/// An access range is too complex, if it contains either many disjuncts or
+/// very complex expressions. As a simple heuristic, we assume if a set to
+/// be too complex if the sum of existentially quantified dimensions and
+/// set dimensions is larger than a threshold. This reliably detects both
+/// sets with many disjuncts as well as sets with many divisions as they
+/// arise in h264.
+///
+/// @param AccessRange The range to check for complexity.
+///
+/// @returns True if the access range is too complex.
+static bool isAccessRangeTooComplex(isl::set AccessRange) {
+  unsigned NumTotalDims = 0;
+
+  for (isl::basic_set BSet : AccessRange.get_basic_set_list()) {
+    NumTotalDims += BSet.dim(isl::dim::div);
+    NumTotalDims += BSet.dim(isl::dim::set);
+  }
+
+  if (NumTotalDims > MaxDimensionsInAccessRange)
+    return true;
+
+  return false;
+}
+
+isl::set Scop::getNonHoistableCtx(MemoryAccess *Access, isl::union_map Writes) {
+  // TODO: Loads that are not loop carried, hence are in a statement with
+  //       zero iterators, are by construction invariant, though we
+  //       currently "hoist" them anyway. This is necessary because we allow
+  //       them to be treated as parameters (e.g., in conditions) and our code
+  //       generation would otherwise use the old value.
+
+  auto &Stmt = *Access->getStatement();
+  BasicBlock *BB = Stmt.getEntryBlock();
+
+  if (Access->isScalarKind() || Access->isWrite() || !Access->isAffine() ||
+      Access->isMemoryIntrinsic())
+    return nullptr;
+
+  // Skip accesses that have an invariant base pointer which is defined but
+  // not loaded inside the SCoP. This can happened e.g., if a readnone call
+  // returns a pointer that is used as a base address. However, as we want
+  // to hoist indirect pointers, we allow the base pointer to be defined in
+  // the region if it is also a memory access. Each ScopArrayInfo object
+  // that has a base pointer origin has a base pointer that is loaded and
+  // that it is invariant, thus it will be hoisted too. However, if there is
+  // no base pointer origin we check that the base pointer is defined
+  // outside the region.
+  auto *LI = cast<LoadInst>(Access->getAccessInstruction());
+  if (hasNonHoistableBasePtrInScop(Access, Writes))
+    return nullptr;
+
+  isl::map AccessRelation = Access->getAccessRelation();
+  assert(!AccessRelation.is_empty());
+
+  if (AccessRelation.involves_dims(isl::dim::in, 0, Stmt.getNumIterators()))
+    return nullptr;
+
+  AccessRelation = AccessRelation.intersect_domain(Stmt.getDomain());
+  isl::set SafeToLoad;
+
+  auto &DL = getFunction().getParent()->getDataLayout();
+  if (isSafeToLoadUnconditionally(LI->getPointerOperand(), LI->getAlignment(),
+                                  DL)) {
+    SafeToLoad = isl::set::universe(AccessRelation.get_space().range());
+  } else if (BB != LI->getParent()) {
+    // Skip accesses in non-affine subregions as they might not be executed
+    // under the same condition as the entry of the non-affine subregion.
+    return nullptr;
+  } else {
+    SafeToLoad = AccessRelation.range();
+  }
+
+  if (isAccessRangeTooComplex(AccessRelation.range()))
+    return nullptr;
+
+  isl::union_map Written = Writes.intersect_range(SafeToLoad);
+  isl::set WrittenCtx = Written.params();
+  bool IsWritten = !WrittenCtx.is_empty();
+
+  if (!IsWritten)
+    return WrittenCtx;
+
+  WrittenCtx = WrittenCtx.remove_divs();
+  bool TooComplex = WrittenCtx.n_basic_set() >= MaxDisjunctsInDomain;
+  if (TooComplex || !isRequiredInvariantLoad(LI))
+    return nullptr;
+
+  addAssumption(INVARIANTLOAD, WrittenCtx, LI->getDebugLoc(), AS_RESTRICTION,
+                LI->getParent());
+  return WrittenCtx;
+}
+
+void Scop::verifyInvariantLoads() {
+  auto &RIL = getRequiredInvariantLoads();
+  for (LoadInst *LI : RIL) {
+    assert(LI && contains(LI));
+    // If there exists a statement in the scop which has a memory access for
+    // @p LI, then mark this scop as infeasible for optimization.
+    for (ScopStmt &Stmt : Stmts)
+      if (Stmt.getArrayAccessOrNULLFor(LI)) {
+        invalidate(INVARIANTLOAD, LI->getDebugLoc(), LI->getParent());
+        return;
+      }
+  }
+}
+
+void Scop::hoistInvariantLoads() {
+  if (!PollyInvariantLoadHoisting)
+    return;
+
+  isl::union_map Writes = getWrites();
+  for (ScopStmt &Stmt : *this) {
+    InvariantAccessesTy InvariantAccesses;
+
+    for (MemoryAccess *Access : Stmt)
+      if (isl::set NHCtx = getNonHoistableCtx(Access, Writes))
+        InvariantAccesses.push_back({Access, NHCtx});
+
+    // Transfer the memory access from the statement to the SCoP.
+    for (auto InvMA : InvariantAccesses)
+      Stmt.removeMemoryAccess(InvMA.MA);
+    addInvariantLoads(Stmt, InvariantAccesses);
+  }
+}
+
+/// Find the canonical scop array info object for a set of invariant load
+/// hoisted loads. The canonical array is the one that corresponds to the
+/// first load in the list of accesses which is used as base pointer of a
+/// scop array.
+static const ScopArrayInfo *findCanonicalArray(Scop *S,
+                                               MemoryAccessList &Accesses) {
+  for (MemoryAccess *Access : Accesses) {
+    const ScopArrayInfo *CanonicalArray = S->getScopArrayInfoOrNull(
+        Access->getAccessInstruction(), MemoryKind::Array);
+    if (CanonicalArray)
+      return CanonicalArray;
+  }
+  return nullptr;
+}
+
+/// Check if @p Array severs as base array in an invariant load.
+static bool isUsedForIndirectHoistedLoad(Scop *S, const ScopArrayInfo *Array) {
+  for (InvariantEquivClassTy &EqClass2 : S->getInvariantAccesses())
+    for (MemoryAccess *Access2 : EqClass2.InvariantAccesses)
+      if (Access2->getScopArrayInfo() == Array)
+        return true;
+  return false;
+}
+
+/// Replace the base pointer arrays in all memory accesses referencing @p Old,
+/// with a reference to @p New.
+static void replaceBasePtrArrays(Scop *S, const ScopArrayInfo *Old,
+                                 const ScopArrayInfo *New) {
+  for (ScopStmt &Stmt : *S)
+    for (MemoryAccess *Access : Stmt) {
+      if (Access->getLatestScopArrayInfo() != Old)
+        continue;
+
+      isl::id Id = New->getBasePtrId();
+      isl::map Map = Access->getAccessRelation();
+      Map = Map.set_tuple_id(isl::dim::out, Id);
+      Access->setAccessRelation(Map);
+    }
+}
+
+void Scop::canonicalizeDynamicBasePtrs() {
+  for (InvariantEquivClassTy &EqClass : InvariantEquivClasses) {
+    MemoryAccessList &BasePtrAccesses = EqClass.InvariantAccesses;
+
+    const ScopArrayInfo *CanonicalBasePtrSAI =
+        findCanonicalArray(this, BasePtrAccesses);
+
+    if (!CanonicalBasePtrSAI)
+      continue;
+
+    for (MemoryAccess *BasePtrAccess : BasePtrAccesses) {
+      const ScopArrayInfo *BasePtrSAI = getScopArrayInfoOrNull(
+          BasePtrAccess->getAccessInstruction(), MemoryKind::Array);
+      if (!BasePtrSAI || BasePtrSAI == CanonicalBasePtrSAI ||
+          !BasePtrSAI->isCompatibleWith(CanonicalBasePtrSAI))
+        continue;
+
+      // we currently do not canonicalize arrays where some accesses are
+      // hoisted as invariant loads. If we would, we need to update the access
+      // function of the invariant loads as well. However, as this is not a
+      // very common situation, we leave this for now to avoid further
+      // complexity increases.
+      if (isUsedForIndirectHoistedLoad(this, BasePtrSAI))
+        continue;
+
+      replaceBasePtrArrays(this, BasePtrSAI, CanonicalBasePtrSAI);
+    }
+  }
+}
+
 ScopArrayInfo *Scop::getOrCreateScopArrayInfo(Value *BasePtr, Type *ElementType,
                                               ArrayRef<const SCEV *> Sizes,
                                               MemoryKind Kind,
@@ -3258,28 +4095,9 @@ bool Scop::hasFeasibleRuntimeContext() const {
 
   auto DomainContext = getDomains().params();
   IsFeasible = !DomainContext.is_subset(NegativeContext);
-  IsFeasible &= !getContext().is_subset(NegativeContext);
+  IsFeasible &= !Context.is_subset(NegativeContext);
 
   return IsFeasible;
-}
-
-isl::set Scop::addNonEmptyDomainConstraints(isl::set C) const {
-  isl::set DomainContext = getDomains().params();
-  return C.intersect_params(DomainContext);
-}
-
-MemoryAccess *Scop::lookupBasePtrAccess(MemoryAccess *MA) {
-  Value *PointerBase = MA->getOriginalBaseAddr();
-
-  auto *PointerBaseInst = dyn_cast<Instruction>(PointerBase);
-  if (!PointerBaseInst)
-    return nullptr;
-
-  auto *BasePtrStmt = getStmtFor(PointerBaseInst);
-  if (!BasePtrStmt)
-    return nullptr;
-
-  return BasePtrStmt->getArrayAccessOrNULLFor(PointerBaseInst);
 }
 
 static std::string toString(AssumptionKind Kind) {
@@ -3407,6 +4225,39 @@ void Scop::recordAssumption(AssumptionKind Kind, isl::set Set, DebugLoc Loc,
   assert((Set.is_params() || BB) &&
          "Assumptions without a basic block must be parameter sets");
   RecordedAssumptions.push_back({Kind, Sign, Set, Loc, BB});
+}
+
+void Scop::addRecordedAssumptions() {
+  while (!RecordedAssumptions.empty()) {
+    Assumption AS = RecordedAssumptions.pop_back_val();
+
+    if (!AS.BB) {
+      addAssumption(AS.Kind, AS.Set, AS.Loc, AS.Sign, nullptr /* BasicBlock */);
+      continue;
+    }
+
+    // If the domain was deleted the assumptions are void.
+    isl_set *Dom = getDomainConditions(AS.BB).release();
+    if (!Dom)
+      continue;
+
+    // If a basic block was given use its domain to simplify the assumption.
+    // In case of restrictions we know they only have to hold on the domain,
+    // thus we can intersect them with the domain of the block. However, for
+    // assumptions the domain has to imply them, thus:
+    //                     _              _____
+    //   Dom => S   <==>   A v B   <==>   A - B
+    //
+    // To avoid the complement we will register A - B as a restriction not an
+    // assumption.
+    isl_set *S = AS.Set.copy();
+    if (AS.Sign == AS_RESTRICTION)
+      S = isl_set_params(isl_set_intersect(S, Dom));
+    else /* (AS.Sign == AS_ASSUMPTION) */
+      S = isl_set_params(isl_set_subtract(Dom, S));
+
+    addAssumption(AS.Kind, isl::manage(S), AS.Loc, AS_RESTRICTION, AS.BB);
+  }
 }
 
 void Scop::invalidate(AssumptionKind Kind, DebugLoc Loc, BasicBlock *BB) {
@@ -3608,8 +4459,26 @@ isl::union_map Scop::getAccesses(ScopArrayInfo *Array) {
       [Array](MemoryAccess &MA) { return MA.getScopArrayInfo() == Array; });
 }
 
+// Check whether @p Node is an extension node.
+//
+// @return true if @p Node is an extension node.
+isl_bool isNotExtNode(__isl_keep isl_schedule_node *Node, void *User) {
+  if (isl_schedule_node_get_type(Node) == isl_schedule_node_extension)
+    return isl_bool_error;
+  else
+    return isl_bool_true;
+}
+
+bool Scop::containsExtensionNode(isl::schedule Schedule) {
+  return isl_schedule_foreach_schedule_node_top_down(
+             Schedule.get(), isNotExtNode, nullptr) == isl_stat_error;
+}
+
 isl::union_map Scop::getSchedule() const {
   auto Tree = getScheduleTree();
+  if (containsExtensionNode(Tree))
+    return nullptr;
+
   return Tree.get_map();
 }
 
@@ -4008,10 +4877,6 @@ bool Scop::isEscaping(Instruction *Inst) {
       return true;
   }
   return false;
-}
-
-void Scop::incrementNumberOfAliasingAssumptions(unsigned step) {
-  AssumptionsAliasing += step;
 }
 
 Scop::ScopStatistics Scop::getStatistics() const {

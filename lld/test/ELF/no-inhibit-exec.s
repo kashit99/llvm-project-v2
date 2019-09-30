@@ -6,9 +6,8 @@
 # RUN: llvm-readobj -r %t2 | FileCheck %s --check-prefix=RELOC
 
 # CHECK: Disassembly of section .text:
-# CHECK-EMPTY:
 # CHECK-NEXT: _start
-# CHECK-NEXT: 201120: {{.*}} callq -2101541
+# CHECK-NEXT: 201000: {{.*}} callq -2101253
 
 # RELOC:      Relocations [
 # RELOC-NEXT: ]

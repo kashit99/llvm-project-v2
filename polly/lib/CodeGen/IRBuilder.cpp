@@ -16,6 +16,7 @@
 #include "polly/Support/ScopHelper.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/Metadata.h"
+#include "llvm/Support/Debug.h"
 
 using namespace llvm;
 using namespace polly;

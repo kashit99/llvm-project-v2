@@ -1,8 +1,9 @@
 //===- SymbolTable.cpp ----------------------------------------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                             The LLVM Linker
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -399,7 +400,7 @@ Symbol *SymbolTable::addRegular(InputFile *F, StringRef N,
   return S;
 }
 
-std::pair<DefinedRegular *, bool>
+std::pair<Symbol *, bool>
 SymbolTable::addComdat(InputFile *F, StringRef N,
                        const coff_symbol_generic *Sym) {
   Symbol *S;
@@ -408,12 +409,11 @@ SymbolTable::addComdat(InputFile *F, StringRef N,
   if (WasInserted || !isa<DefinedRegular>(S)) {
     replaceSymbol<DefinedRegular>(S, F, N, /*IsCOMDAT*/ true,
                                   /*IsExternal*/ true, Sym, nullptr);
-    return {cast<DefinedRegular>(S), true};
+    return {S, true};
   }
-  auto *ExistingSymbol = cast<DefinedRegular>(S);
-  if (!ExistingSymbol->isCOMDAT())
+  if (!cast<DefinedRegular>(S)->isCOMDAT())
     reportDuplicate(S, F);
-  return {ExistingSymbol, false};
+  return {S, false};
 }
 
 Symbol *SymbolTable::addCommon(InputFile *F, StringRef N, uint64_t Size,

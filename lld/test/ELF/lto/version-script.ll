@@ -21,7 +21,7 @@ define void @bar() {
 
 ; DSO: DynamicSymbols [
 ; DSO:   Symbol {
-; DSO:     Name:
+; DSO:     Name: @ (0)
 ; DSO:     Value: 0x0
 ; DSO:     Size: 0
 ; DSO:     Binding: Local

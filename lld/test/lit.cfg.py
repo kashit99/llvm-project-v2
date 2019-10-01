@@ -72,7 +72,6 @@ llvm_config.feature_config(
                           'AVR': 'avr',
                           'Hexagon': 'hexagon',
                           'Mips': 'mips',
-                          'MSP430': 'msp430',
                           'PowerPC': 'ppc',
                           'RISCV': 'riscv',
                           'Sparc': 'sparc',
@@ -87,11 +86,11 @@ config.environment['LLD_IN_TEST'] = '1'
 # Indirectly check if the mt.exe Microsoft utility exists by searching for
 # cvtres, which always accompanies it.  Alternatively, check if we can use
 # libxml2 to merge manifests.
-if (lit.util.which('cvtres', config.environment['PATH']) or 
-        config.llvm_libxml2_enabled):
+if (lit.util.which('cvtres', config.environment['PATH'])) or \
+        (config.llvm_libxml2_enabled == '1'):
     config.available_features.add('manifest_tool')
 
-if config.llvm_libxml2_enabled:
+if (config.llvm_libxml2_enabled == '1'):
     config.available_features.add('libxml2')
 
 if config.have_dia_sdk:

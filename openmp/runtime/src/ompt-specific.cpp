@@ -4,9 +4,10 @@
 
 //===----------------------------------------------------------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is dual licensed under the MIT and the University of Illinois Open
+// Source Licenses. See LICENSE.txt for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -213,7 +214,7 @@ void __ompt_thread_assign_wait_id(void *variable) {
   ti->th.ompt_thread_info.wait_id = (ompt_wait_id_t)variable;
 }
 
-int __ompt_get_state_internal(ompt_wait_id_t *omp_wait_id) {
+ompt_state_t __ompt_get_state_internal(ompt_wait_id_t *omp_wait_id) {
   kmp_info_t *ti = ompt_get_thread();
 
   if (ti) {

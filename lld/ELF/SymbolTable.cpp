@@ -1,8 +1,9 @@
 //===- SymbolTable.cpp ----------------------------------------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                             The LLVM Linker
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -326,7 +327,7 @@ Symbol *SymbolTable::addUndefined(StringRef Name, uint8_t Binding,
 
     // We don't report backward references to weak symbols as they can be
     // overridden later.
-    if (Backref && !S->isWeak())
+    if (Backref && S->Binding != STB_WEAK)
       warn("backward reference detected: " + Name + " in " + toString(File) +
            " refers to " + toString(S->File));
   }

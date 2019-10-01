@@ -4,9 +4,10 @@
 
 //===----------------------------------------------------------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is dual licensed under the MIT and the University of Illinois Open
+// Source Licenses. See LICENSE.txt for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -118,10 +119,10 @@ public:
 };
 
 #if OMPT_SUPPORT
-OMPT_NOINLINE
-static void __ompt_implicit_task_end(kmp_info_t *this_thr,
-                                     ompt_state_t ompt_state,
-                                     ompt_data_t *tId) {
+static inline void __ompt_implicit_task_end(kmp_info_t *this_thr,
+                                            ompt_state_t ompt_state,
+                                            ompt_data_t *tId,
+                                            ompt_data_t *pId) {
   int ds_tid = this_thr->th.th_info.ds.ds_tid;
   if (ompt_state == ompt_state_wait_barrier_implicit) {
     this_thr->th.ompt_thread_info.state = ompt_state_overhead;
@@ -139,7 +140,7 @@ static void __ompt_implicit_task_end(kmp_info_t *this_thr,
     if (!KMP_MASTER_TID(ds_tid)) {
       if (ompt_enabled.ompt_callback_implicit_task) {
         ompt_callbacks.ompt_callback(ompt_callback_implicit_task)(
-            ompt_scope_end, NULL, tId, 0, ds_tid, ompt_task_implicit);
+            ompt_scope_end, NULL, tId, 0, ds_tid);
       }
       // return to idle state
       this_thr->th.ompt_thread_info.state = ompt_state_idle;
@@ -241,6 +242,7 @@ final_spin=FALSE)
 */
 #if OMPT_SUPPORT
   ompt_state_t ompt_entry_state;
+  ompt_data_t *pId = NULL;
   ompt_data_t *tId;
   if (ompt_enabled.enabled) {
     ompt_entry_state = this_thr->th.ompt_thread_info.state;
@@ -249,17 +251,20 @@ final_spin=FALSE)
       ompt_lw_taskteam_t *team =
           this_thr->th.th_team->t.ompt_serialized_team_info;
       if (team) {
+        pId = &(team->ompt_team_info.parallel_data);
         tId = &(team->ompt_task_info.task_data);
       } else {
+        pId = OMPT_CUR_TEAM_DATA(this_thr);
         tId = OMPT_CUR_TASK_DATA(this_thr);
       }
     } else {
+      pId = NULL;
       tId = &(this_thr->th.ompt_thread_info.task_data);
     }
-    if (final_spin && (__kmp_tasking_mode == tskm_immediate_exec ||
-                       this_thr->th.th_task_team == NULL)) {
+        if (final_spin && (__kmp_tasking_mode == tskm_immediate_exec ||
+                           this_thr->th.th_task_team == NULL)) {
       // implicit task is done. Either no taskqueue, or task-team finished
-      __ompt_implicit_task_end(this_thr, ompt_entry_state, tId);
+      __ompt_implicit_task_end(this_thr, ompt_entry_state, tId, pId);
     }
   }
 #endif
@@ -267,20 +272,12 @@ final_spin=FALSE)
   // Setup for waiting
   KMP_INIT_YIELD(spins);
 
-  if (__kmp_dflt_blocktime != KMP_MAX_BLOCKTIME
-#if OMP_50_ENABLED
-      || __kmp_pause_status == kmp_soft_paused
-#endif
-      ) {
+  if (__kmp_dflt_blocktime != KMP_MAX_BLOCKTIME) {
 #if KMP_USE_MONITOR
 // The worker threads cannot rely on the team struct existing at this point.
 // Use the bt values cached in the thread struct instead.
 #ifdef KMP_ADJUST_BLOCKTIME
-    if (
-#if OMP_50_ENABLED
-        __kmp_pause_status == kmp_soft_paused ||
-#endif
-        (__kmp_zero_bt && !this_thr->th.th_team_bt_set))
+    if (__kmp_zero_bt && !this_thr->th.th_team_bt_set)
       // Force immediate suspend if not set by user and more threads than
       // available procs
       hibernate = 0;
@@ -303,13 +300,7 @@ final_spin=FALSE)
                   th_gtid, __kmp_global.g.g_time.dt.t_value, hibernate,
                   hibernate - __kmp_global.g.g_time.dt.t_value));
 #else
-#if OMP_50_ENABLED
-    if (__kmp_pause_status == kmp_soft_paused) {
-      // Force immediate suspend
-      hibernate_goal = KMP_NOW();
-    } else
-#endif
-      hibernate_goal = KMP_NOW() + this_thr->th.th_team_bt_intervals;
+    hibernate_goal = KMP_NOW() + this_thr->th.th_team_bt_intervals;
     poll_count = 0;
 #endif // KMP_USE_MONITOR
   }
@@ -343,7 +334,7 @@ final_spin=FALSE)
 #if OMPT_SUPPORT
           // task-team is done now, other cases should be catched above
           if (final_spin && ompt_enabled.enabled)
-            __ompt_implicit_task_end(this_thr, ompt_entry_state, tId);
+            __ompt_implicit_task_end(this_thr, ompt_entry_state, tId, pId);
 #endif
           this_thr->th.th_task_team = NULL;
           this_thr->th.th_reap_state = KMP_SAFE_TO_REAP;
@@ -402,11 +393,7 @@ final_spin=FALSE)
 #endif
 
     // Don't suspend if KMP_BLOCKTIME is set to "infinite"
-    if (__kmp_dflt_blocktime == KMP_MAX_BLOCKTIME
-#if OMP_50_ENABLED
-        && __kmp_pause_status != kmp_soft_paused
-#endif
-        )
+    if (__kmp_dflt_blocktime == KMP_MAX_BLOCKTIME)
       continue;
 
     // Don't suspend if there is a likelihood of new tasks being spawned.
@@ -422,14 +409,7 @@ final_spin=FALSE)
       continue;
 #endif
 
-#if OMP_50_ENABLED
-    if (__kmp_dflt_blocktime == KMP_MAX_BLOCKTIME &&
-        __kmp_pause_status != kmp_soft_paused)
-      continue;
-#endif
-
     KF_TRACE(50, ("__kmp_wait_sleep: T#%d suspend time reached\n", th_gtid));
-
 #if KMP_OS_UNIX
     if (final_spin)
       KMP_ATOMIC_ST_REL(&this_thr->th.th_blocking, false);
@@ -456,7 +436,7 @@ final_spin=FALSE)
   if (ompt_enabled.enabled && ompt_exit_state != ompt_state_undefined) {
 #if OMPT_OPTIONAL
     if (final_spin) {
-      __ompt_implicit_task_end(this_thr, ompt_exit_state, tId);
+      __ompt_implicit_task_end(this_thr, ompt_exit_state, tId, pId);
       ompt_exit_state = this_thr->th.ompt_thread_info.state;
     }
 #endif

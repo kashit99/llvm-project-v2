@@ -1,32 +1,27 @@
 //===--- StringView.h -------------------------------------------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
 //
-//===----------------------------------------------------------------------===//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
-// FIXME: Use std::string_view instead when we support C++17.
 //
+// This file is copied from llvm/lib/Demangle/StringView.h.
 //===----------------------------------------------------------------------===//
 
-#ifndef DEMANGLE_STRINGVIEW_H
-#define DEMANGLE_STRINGVIEW_H
+#ifndef LIBCXX_DEMANGLE_STRINGVIEW_H
+#define LIBCXX_DEMANGLE_STRINGVIEW_H
 
-#include "DemangleConfig.h"
 #include <algorithm>
 #include <cassert>
 #include <cstring>
 
-DEMANGLE_NAMESPACE_BEGIN
-
+namespace {
 class StringView {
   const char *First;
   const char *Last;
 
 public:
-  static const size_t npos = ~size_t(0);
-
   template <size_t N>
   StringView(const char (&Str)[N]) : First(Str), Last(Str + N - 1) {}
   StringView(const char *First_, const char *Last_)
@@ -40,17 +35,6 @@ public:
     return StringView(begin() + From, size() - From);
   }
 
-  size_t find(char C, size_t From = 0) const {
-    size_t FindBegin = std::min(From, size());
-    // Avoid calling memchr with nullptr.
-    if (FindBegin < size()) {
-      // Just forward to memchr, which is faster than a hand-rolled loop.
-      if (const void *P = ::memchr(First + FindBegin, C, size() - FindBegin))
-        return size_t(static_cast<const char *>(P) - First);
-    }
-    return npos;
-  }
-
   StringView substr(size_t From, size_t To) const {
     if (To >= size())
       To = size() - 1;
@@ -61,24 +45,13 @@ public:
 
   StringView dropFront(size_t N = 1) const {
     if (N >= size())
-      N = size();
+      N = size() - 1;
     return StringView(First + N, Last);
-  }
-
-  StringView dropBack(size_t N = 1) const {
-    if (N >= size())
-      N = size();
-    return StringView(First, Last - N);
   }
 
   char front() const {
     assert(!empty());
     return *begin();
-  }
-
-  char back() const {
-    assert(!empty());
-    return *(end() - 1);
   }
 
   char popFront() {
@@ -120,7 +93,6 @@ inline bool operator==(const StringView &LHS, const StringView &RHS) {
   return LHS.size() == RHS.size() &&
          std::equal(LHS.begin(), LHS.end(), RHS.begin());
 }
-
-DEMANGLE_NAMESPACE_END
+} // namespace
 
 #endif

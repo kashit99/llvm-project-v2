@@ -1,8 +1,9 @@
 //===- Symbols.cpp --------------------------------------------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                             The LLVM Linker
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -37,7 +38,6 @@ Defined *ElfSym::GlobalOffsetTable;
 Defined *ElfSym::MipsGp;
 Defined *ElfSym::MipsGpDisp;
 Defined *ElfSym::MipsLocalGp;
-Defined *ElfSym::RelaIpltStart;
 Defined *ElfSym::RelaIpltEnd;
 
 static uint64_t getSymVA(const Symbol &Sym, int64_t &Addend) {

@@ -1,8 +1,9 @@
 //===- OutputSections.cpp -------------------------------------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                             The LLVM Linker
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -141,7 +142,7 @@ DataSection::DataSection(ArrayRef<OutputSegment *> Segments)
     if (Config->Pic) {
       assert(Segments.size() <= 1 &&
              "Currenly only a single data segment is supported in PIC mode");
-      InitExpr.Opcode = WASM_OPCODE_GLOBAL_GET;
+      InitExpr.Opcode = WASM_OPCODE_GET_GLOBAL;
       InitExpr.Value.Global = WasmSym::MemoryBase->getGlobalIndex();
     } else {
       InitExpr.Opcode = WASM_OPCODE_I32_CONST;

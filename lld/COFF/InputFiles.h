@@ -1,8 +1,9 @@
 //===- InputFiles.h ---------------------------------------------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                             The LLVM Linker
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -153,11 +154,9 @@ public:
   // When using Microsoft precompiled headers, this is the PCH's key.
   // The same key is used by both the precompiled object, and objects using the
   // precompiled object. Any difference indicates out-of-date objects.
-  llvm::Optional<uint32_t> PCHSignature;
+  llvm::Optional<llvm::codeview::EndPrecompRecord> EndPrecomp;
 
 private:
-  const coff_section* getSection(uint32_t I);
-
   void initializeChunks();
   void initializeSymbols();
 

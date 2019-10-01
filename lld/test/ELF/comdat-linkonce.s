@@ -4,12 +4,7 @@
 // RUN: ld.lld -shared %t.o %t2.o -o %t
 // RUN: ld.lld -shared %t2.o %t.o -o %t
 
-.section .gnu.linkonce.t.__x86.get_pc_thunk.bx
+.section .gnu.linkonce.t.zed
 .globl abc
 abc:
-nop
-
-.section .gnu.linkonce.t.__i686.get_pc_thunk.bx
-.globl def
-def:
 nop

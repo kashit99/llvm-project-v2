@@ -1,8 +1,9 @@
 //===------------ libcall.cu - NVPTX OpenMP user calls ----------- CUDA -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is dual licensed under the MIT and the University of Illinois Open
+// Source Licenses. See LICENSE.txt for details.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -38,17 +39,14 @@ EXTERN void omp_set_num_threads(int num) {
   if (num <= 0) {
     WARNING0(LW_INPUT, "expected positive num; ignore\n");
   } else {
-    omptarget_nvptx_TaskDescr *currTaskDescr =
-        getMyTopTaskDescriptor(/*isSPMDExecutionMode=*/false);
+    omptarget_nvptx_TaskDescr *currTaskDescr = getMyTopTaskDescriptor();
     currTaskDescr->NThreads() = num;
   }
 }
 
 EXTERN int omp_get_num_threads(void) {
-  bool isSPMDExecutionMode = isSPMDMode();
-  int tid = GetLogicalThreadIdInBlock(isSPMDExecutionMode);
-  int rc =
-      GetNumberOfOmpThreads(tid, isSPMDExecutionMode, isRuntimeUninitialized());
+  int tid = GetLogicalThreadIdInBlock();
+  int rc = GetNumberOfOmpThreads(tid, isSPMDMode(), isRuntimeUninitialized());
   PRINT(LD_IO, "call omp_get_num_threads() return %d\n", rc);
   return rc;
 }
@@ -60,8 +58,7 @@ EXTERN int omp_get_max_threads(void) {
     // We're already in parallel region.
     return 1;  // default is 1 thread avail
   }
-  omptarget_nvptx_TaskDescr *currTaskDescr =
-      getMyTopTaskDescriptor(isSPMDMode());
+  omptarget_nvptx_TaskDescr *currTaskDescr = getMyTopTaskDescriptor();
   int rc = 1; // default is 1 thread avail
   if (!currTaskDescr->InParallelRegion()) {
     // Not currently in a parallel region, return what was set.
@@ -79,23 +76,21 @@ EXTERN int omp_get_thread_limit(void) {
     return 0;  // default is 0
   }
   // per contention group.. meaning threads in current team
-  omptarget_nvptx_TaskDescr *currTaskDescr =
-      getMyTopTaskDescriptor(isSPMDMode());
+  omptarget_nvptx_TaskDescr *currTaskDescr = getMyTopTaskDescriptor();
   int rc = currTaskDescr->ThreadLimit();
   PRINT(LD_IO, "call omp_get_thread_limit() return %d\n", rc);
   return rc;
 }
 
 EXTERN int omp_get_thread_num() {
-  bool isSPMDExecutionMode = isSPMDMode();
-  int tid = GetLogicalThreadIdInBlock(isSPMDExecutionMode);
-  int rc = GetOmpThreadId(tid, isSPMDExecutionMode, isRuntimeUninitialized());
+  int tid = GetLogicalThreadIdInBlock();
+  int rc = GetOmpThreadId(tid, isSPMDMode(), isRuntimeUninitialized());
   PRINT(LD_IO, "call omp_get_thread_num() returns %d\n", rc);
   return rc;
 }
 
 EXTERN int omp_get_num_procs(void) {
-  int rc = GetNumberOfProcsInDevice(isSPMDMode());
+  int rc = GetNumberOfProcsInDevice();
   PRINT(LD_IO, "call omp_get_num_procs() returns %d\n", rc);
   return rc;
 }
@@ -107,8 +102,7 @@ EXTERN int omp_in_parallel(void) {
             "Expected SPMD mode only with uninitialized runtime.");
     rc = 1;  // SPMD mode is always in parallel.
   } else {
-    omptarget_nvptx_TaskDescr *currTaskDescr =
-        getMyTopTaskDescriptor(isSPMDMode());
+    omptarget_nvptx_TaskDescr *currTaskDescr = getMyTopTaskDescriptor();
     if (currTaskDescr->InParallelRegion()) {
       rc = 1;
     }
@@ -164,11 +158,10 @@ EXTERN int omp_get_level(void) {
   if (isRuntimeUninitialized()) {
     ASSERT0(LT_FUSSY, isSPMDMode(),
             "Expected SPMD mode only with uninitialized runtime.");
-    return parallelLevel;
+    return omptarget_nvptx_simpleThreadPrivateContext->GetParallelLevel();
   }
   int level = 0;
-  omptarget_nvptx_TaskDescr *currTaskDescr =
-      getMyTopTaskDescriptor(isSPMDMode());
+  omptarget_nvptx_TaskDescr *currTaskDescr = getMyTopTaskDescriptor();
   ASSERT0(LT_FUSSY, currTaskDescr,
           "do not expect fct to be called in a non-active thread");
   do {
@@ -188,8 +181,7 @@ EXTERN int omp_get_active_level(void) {
     return 1;
   }
   int level = 0; // no active level parallelism
-  omptarget_nvptx_TaskDescr *currTaskDescr =
-      getMyTopTaskDescriptor(isSPMDMode());
+  omptarget_nvptx_TaskDescr *currTaskDescr = getMyTopTaskDescriptor();
   ASSERT0(LT_FUSSY, currTaskDescr,
           "do not expect fct to be called in a non-active thread");
   do {
@@ -216,8 +208,7 @@ EXTERN int omp_get_ancestor_thread_num(int level) {
   } else if (level > 0) {
     int totLevel = omp_get_level();
     if (level <= totLevel) {
-      omptarget_nvptx_TaskDescr *currTaskDescr =
-          getMyTopTaskDescriptor(isSPMDMode());
+      omptarget_nvptx_TaskDescr *currTaskDescr = getMyTopTaskDescriptor();
       int steps = totLevel - level;
       PRINT(LD_IO, "backtrack %d steps\n", steps);
       ASSERT0(LT_FUSSY, currTaskDescr,
@@ -268,8 +259,7 @@ EXTERN int omp_get_team_size(int level) {
   } else if (level > 0) {
     int totLevel = omp_get_level();
     if (level <= totLevel) {
-      omptarget_nvptx_TaskDescr *currTaskDescr =
-          getMyTopTaskDescriptor(isSPMDMode());
+      omptarget_nvptx_TaskDescr *currTaskDescr = getMyTopTaskDescriptor();
       int steps = totLevel - level;
       ASSERT0(LT_FUSSY, currTaskDescr,
               "do not expect fct to be called in a non-active thread");
@@ -298,8 +288,7 @@ EXTERN void omp_get_schedule(omp_sched_t *kind, int *modifier) {
     *kind = omp_sched_static;
     *modifier = 1;
   } else {
-    omptarget_nvptx_TaskDescr *currTaskDescr =
-        getMyTopTaskDescriptor(isSPMDMode());
+    omptarget_nvptx_TaskDescr *currTaskDescr = getMyTopTaskDescriptor();
     *kind = currTaskDescr->GetRuntimeSched();
     *modifier = currTaskDescr->RuntimeChunkSize();
   }
@@ -316,8 +305,7 @@ EXTERN void omp_set_schedule(omp_sched_t kind, int modifier) {
     return;
   }
   if (kind >= omp_sched_static && kind < omp_sched_auto) {
-    omptarget_nvptx_TaskDescr *currTaskDescr =
-        getMyTopTaskDescriptor(isSPMDMode());
+    omptarget_nvptx_TaskDescr *currTaskDescr = getMyTopTaskDescriptor();
     currTaskDescr->SetRuntimeSched(kind);
     currTaskDescr->RuntimeChunkSize() = modifier;
     PRINT(LD_IOD, "omp_set_schedule did set sched %d & modif %" PRIu64 "\n",

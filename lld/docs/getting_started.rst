@@ -28,15 +28,23 @@ On Unix-like Systems
 .. _libc++: http://libcxx.llvm.org/
 .. _Python 2.4: http://python.org/download/
 
-2. Check out LLVM and subprojects (including lld)::
+2. Check out LLVM::
 
-     $ git clone https://github.com/llvm/llvm-project.git
+     $ cd path/to/llvm-project
+     $ svn co http://llvm.org/svn/llvm-project/llvm/trunk llvm
+
+3. Check out lld::
+
+     $ cd llvm/tools
+     $ svn co http://llvm.org/svn/llvm-project/lld/trunk lld
+
+  * lld can also be checked out to ``path/to/llvm-project`` and built as an external
+    project.
 
 4. Build LLVM and lld::
 
-     $ cd llvm-project
-     $ mkdir build && cd build
-     $ cmake -G "Unix Makefiles" -DLLVM_ENABLE_PROJECTS=lld ../llvm
+     $ cd path/to/llvm-build/llvm (out of source build required)
+     $ cmake -G "Unix Makefiles" path/to/llvm-project/llvm
      $ make
 
   * If you want to build with clang and it is not the default compiler or
@@ -63,12 +71,23 @@ Using Visual Studio
 .. _Visual Studio 12 (2013) or later: http://www.microsoft.com/visualstudio/11/en-us
 .. _Python 2.4: http://python.org/download/
 
-#. Check out LLVM as above.
+#. Check out LLVM::
+
+     $ cd path/to/llvm-project
+     $ svn co http://llvm.org/svn/llvm-project/llvm/trunk llvm
+
+#. Check out lld::
+
+     $ cd llvm/tools
+     $ svn co http://llvm.org/svn/llvm-project/lld/trunk lld
+
+  * lld can also be checked out to ``path/to/llvm-project`` and built as an external
+    project.
 
 #. Generate Visual Studio project files::
 
-     $ cd llvm-project/build (out of source build required)
-     $ cmake -G "Visual Studio 11" -DLLVM_ENABLE_PROJECTS=lld ../llvm
+     $ cd path/to/llvm-build/llvm (out of source build required)
+     $ cmake -G "Visual Studio 11" path/to/llvm-project/llvm
 
 #. Build
 

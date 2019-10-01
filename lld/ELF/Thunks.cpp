@@ -1,8 +1,9 @@
 //===- Thunks.cpp --------------------------------------------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                             The LLVM Linker
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
 //
 //===---------------------------------------------------------------------===//
 //
@@ -483,7 +484,7 @@ void ARMV7PILongThunk::writeLong(uint8_t *Buf) {
   };
   uint64_t S = getARMThunkDestVA(Destination);
   uint64_t P = getThunkTargetSym()->getVA();
-  int64_t Offset = S - P - 16;
+  uint64_t Offset = S - P - 16;
   memcpy(Buf, Data, sizeof(Data));
   Target->relocateOne(Buf, R_ARM_MOVW_PREL_NC, Offset);
   Target->relocateOne(Buf + 4, R_ARM_MOVT_PREL, Offset);
@@ -504,7 +505,7 @@ void ThumbV7PILongThunk::writeLong(uint8_t *Buf) {
   };
   uint64_t S = getARMThunkDestVA(Destination);
   uint64_t P = getThunkTargetSym()->getVA() & ~0x1;
-  int64_t Offset = S - P - 12;
+  uint64_t Offset = S - P - 12;
   memcpy(Buf, Data, sizeof(Data));
   Target->relocateOne(Buf, R_ARM_THM_MOVW_PREL_NC, Offset);
   Target->relocateOne(Buf + 4, R_ARM_THM_MOVT_PREL, Offset);
@@ -721,7 +722,7 @@ Thunk::~Thunk() = default;
 static Thunk *addThunkAArch64(RelType Type, Symbol &S) {
   if (Type != R_AARCH64_CALL26 && Type != R_AARCH64_JUMP26)
     fatal("unrecognized relocation type");
-  if (Config->PicThunk)
+  if (Config->Pic)
     return make<AArch64ADRPThunk>(S);
   return make<AArch64ABSLongThunk>(S);
 }
@@ -738,7 +739,7 @@ static Thunk *addThunkPreArmv7(RelType Reloc, Symbol &S) {
   case R_ARM_JUMP24:
   case R_ARM_CALL:
   case R_ARM_THM_CALL:
-    if (Config->PicThunk)
+    if (Config->Pic)
       return make<ARMV5PILongThunk>(S);
     return make<ARMV5ABSLongThunk>(S);
   }
@@ -793,13 +794,13 @@ static Thunk *addThunkArm(RelType Reloc, Symbol &S) {
   case R_ARM_PLT32:
   case R_ARM_JUMP24:
   case R_ARM_CALL:
-    if (Config->PicThunk)
+    if (Config->Pic)
       return make<ARMV7PILongThunk>(S);
     return make<ARMV7ABSLongThunk>(S);
   case R_ARM_THM_JUMP19:
   case R_ARM_THM_JUMP24:
   case R_ARM_THM_CALL:
-    if (Config->PicThunk)
+    if (Config->Pic)
       return make<ThumbV7PILongThunk>(S);
     return make<ThumbV7ABSLongThunk>(S);
   }
@@ -819,7 +820,7 @@ static Thunk *addThunkPPC64(RelType Type, Symbol &S) {
   if (S.isInPlt())
     return make<PPC64PltCallStub>(S);
 
-  if (Config->PicThunk)
+  if (Config->Pic)
     return make<PPC64PILongBranchThunk>(S);
 
   return make<PPC64PDLongBranchThunk>(S);

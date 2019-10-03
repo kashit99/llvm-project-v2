@@ -7,8 +7,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-// UNSUPPORTED: c++98, c++03, c++11, c++14
-
 // Test for remove, remove_if
 #include "support/pstl_test_config.h"
 
@@ -21,7 +19,7 @@ using namespace TestUtils;
 
 struct run_remove
 {
-#if _PSTL_ICC_17_VC141_TEST_SIMD_LAMBDA_DEBUG_32_BROKEN ||                                                             \
+#if _PSTL_ICC_17_VC141_TEST_SIMD_LAMBDA_DEBUG_32_BROKEN ||                                                            \
     _PSTL_ICC_16_VC14_TEST_SIMD_LAMBDA_DEBUG_32_BROKEN //dummy specialization by policy type, in case of broken configuration
     template <typename InputIterator, typename OutputIterator, typename Size, typename T>
     void
@@ -59,7 +57,7 @@ struct run_remove
 
 struct run_remove_if
 {
-#if _PSTL_ICC_17_VC141_TEST_SIMD_LAMBDA_DEBUG_32_BROKEN ||                                                             \
+#if _PSTL_ICC_17_VC141_TEST_SIMD_LAMBDA_DEBUG_32_BROKEN ||                                                            \
     _PSTL_ICC_16_VC14_TEST_SIMD_LAMBDA_DEBUG_32_BROKEN //dummy specialization by policy type, in case of broken configuration
     template <typename InputIterator, typename OutputIterator, typename Size, typename Predicate>
     void
@@ -130,11 +128,11 @@ struct test_non_const
     }
 };
 
-int
+int32_t
 main()
 {
 #if !_PSTL_ICC_18_TEST_EARLY_EXIT_MONOTONIC_RELEASE_BROKEN
-    test<int32_t>(666, 42, [](int32_t) { return true; }, [](size_t j) { return j; });
+    test<int32_t>(666, 42, [](int32_t val) { return true; }, [](size_t j) { return j; });
 #endif
 
     test<int32_t>(666, 2001, [](const int32_t& val) { return val != 2001; },

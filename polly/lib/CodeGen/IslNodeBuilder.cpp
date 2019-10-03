@@ -231,12 +231,11 @@ void addReferencesFromStmt(const ScopStmt *Stmt, void *UserPtr,
 
   if (Stmt->isBlockStmt())
     findReferencesInBlock(References, Stmt, Stmt->getBasicBlock());
-  else if (Stmt->isRegionStmt()) {
+  else {
+    assert(Stmt->isRegionStmt() &&
+           "Stmt was neither block nor region statement");
     for (BasicBlock *BB : Stmt->getRegion()->blocks())
       findReferencesInBlock(References, Stmt, BB);
-  } else {
-    assert(Stmt->isCopyStmt());
-    // Copy Stmts have no instructions that we need to consider.
   }
 
   for (auto &Access : *Stmt) {
@@ -1213,8 +1212,7 @@ Value *IslNodeBuilder::preloadUnconditionally(isl_set *AccessRange,
   Ptr = Builder.CreatePointerCast(Ptr, Ty->getPointerTo(AS), Name + ".cast");
   PreloadVal = Builder.CreateLoad(Ptr, Name + ".load");
   if (LoadInst *PreloadInst = dyn_cast<LoadInst>(PreloadVal))
-    PreloadInst->setAlignment(
-        MaybeAlign(dyn_cast<LoadInst>(AccInst)->getAlignment()));
+    PreloadInst->setAlignment(dyn_cast<LoadInst>(AccInst)->getAlignment());
 
   // TODO: This is only a hot fix for SCoP sequences that use the same load
   //       instruction contained and hoisted by one of the SCoPs.
@@ -1497,8 +1495,7 @@ void IslNodeBuilder::allocateNewArrays(BBPair StartExitBlocks) {
 
       auto *CreatedArray = new AllocaInst(NewArrayType, DL.getAllocaAddrSpace(),
                                           SAI->getName(), &*InstIt);
-      CreatedArray->setAlignment(
-          MaybeAlign(PollyTargetFirstLevelCacheLineSize));
+      CreatedArray->setAlignment(PollyTargetFirstLevelCacheLineSize);
       SAI->setBasePtr(CreatedArray);
     }
   }

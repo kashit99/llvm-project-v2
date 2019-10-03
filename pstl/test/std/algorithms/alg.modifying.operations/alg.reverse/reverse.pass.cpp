@@ -7,8 +7,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-// UNSUPPORTED: c++98, c++03, c++11, c++14
-
 #include "support/pstl_test_config.h"
 
 #include <iterator>
@@ -21,7 +19,7 @@ using namespace TestUtils;
 
 struct test_one_policy
 {
-#if _PSTL_ICC_18_VC141_TEST_SIMD_LAMBDA_RELEASE_BROKEN || _PSTL_ICC_17_VC141_TEST_SIMD_LAMBDA_DEBUG_32_BROKEN ||       \
+#if _PSTL_ICC_18_VC141_TEST_SIMD_LAMBDA_RELEASE_BROKEN || _PSTL_ICC_17_VC141_TEST_SIMD_LAMBDA_DEBUG_32_BROKEN ||     \
     _PSTL_ICC_16_VC14_TEST_SIMD_LAMBDA_DEBUG_32_BROKEN // dummy specialization by policy type, in case of broken configuration
     template <typename Iterator1, typename Iterator2>
     typename std::enable_if<is_same_iterator_category<Iterator1, std::random_access_iterator_tag>::value, void>::type
@@ -54,7 +52,7 @@ struct test_one_policy
 
     template <typename ExecutionPolicy, typename Iterator1, typename Iterator2>
     typename std::enable_if<is_same_iterator_category<Iterator1, std::forward_iterator_tag>::value>::type
-    operator()(ExecutionPolicy&&, Iterator1, Iterator1, Iterator2, Iterator2)
+    operator()(ExecutionPolicy&& exec, Iterator1 data_b, Iterator1 data_e, Iterator2 actual_b, Iterator2 actual_e)
     {
     }
 };
@@ -89,7 +87,7 @@ struct wrapper
     }
 };
 
-int
+int32_t
 main()
 {
     test<int32_t>();

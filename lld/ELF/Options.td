@@ -171,9 +171,6 @@ defm fini: Eq<"fini", "Specify a finalizer function">, MetaVarName<"<symbol>">;
 def fix_cortex_a53_843419: F<"fix-cortex-a53-843419">,
   HelpText<"Apply fixes for AArch64 Cortex-A53 erratum 843419">;
 
-def fix_cortex_a8: F<"fix-cortex-a8">,
-  HelpText<"Apply fixes for ARM Cortex-A8 erratum 657417">;
-
 // This option is intentionally hidden from the user as the implementation
 // is not complete.
 def require_cet: F<"require-cet">;
@@ -309,7 +306,7 @@ def push_state: F<"push-state">,
 def print_map: F<"print-map">,
   HelpText<"Print a link map to the standard output">;
 
-defm reproduce: Eq<"reproduce", "Write a tar file containing input files and command line options to reproduce link">;
+defm reproduce: Eq<"reproduce", "Dump linker invocation and input files for debugging">;
 
 defm rpath: Eq<"rpath", "Add a DT_RUNPATH to the output">;
 
@@ -419,9 +416,6 @@ defm wrap: Eq<"wrap", "Use wrapper functions for symbol">,
 def z: JoinedOrSeparate<["-"], "z">, MetaVarName<"<option>">,
   HelpText<"Linker option extensions">;
 
-def visual_studio_diagnostics_format : F<"vs-diagnostics">,
-HelpText<"Format diagnostics for Visual Studio compatiblity">;
-
 // Aliases
 def: Separate<["-"], "f">, Alias<auxiliary>, HelpText<"Alias for --auxiliary">;
 def: F<"call_shared">, Alias<Bdynamic>, HelpText<"Alias for --Bdynamic">;
@@ -481,7 +475,6 @@ def lto_cs_profile_generate: F<"lto-cs-profile-generate">,
   HelpText<"Perform context senstive PGO instrumentation">;
 def lto_cs_profile_file: J<"lto-cs-profile-file=">,
   HelpText<"Context sensitive profile file path">;
-def lto_obj_path_eq: J<"lto-obj-path=">;
 def lto_sample_profile: J<"lto-sample-profile=">,
   HelpText<"Sample profile file path">;
 def disable_verify: F<"disable-verify">;
@@ -499,12 +492,7 @@ def save_temps: F<"save-temps">;
 def thinlto_cache_dir: J<"thinlto-cache-dir=">,
   HelpText<"Path to ThinLTO cached object file directory">;
 defm thinlto_cache_policy: Eq<"thinlto-cache-policy", "Pruning policy for the ThinLTO cache">;
-def thinlto_emit_imports_files: F<"thinlto-emit-imports-files">;
-def thinlto_index_only: F<"thinlto-index-only">;
-def thinlto_index_only_eq: J<"thinlto-index-only=">;
 def thinlto_jobs: J<"thinlto-jobs=">, HelpText<"Number of ThinLTO jobs">;
-def thinlto_object_suffix_replace_eq: J<"thinlto-object-suffix-replace=">;
-def thinlto_prefix_replace_eq: J<"thinlto-prefix-replace=">;
 
 def: J<"plugin-opt=O">, Alias<lto_O>, HelpText<"Alias for -lto-O">;
 def: F<"plugin-opt=debug-pass-manager">,
@@ -518,31 +506,19 @@ def: J<"plugin-opt=lto-partitions=">, Alias<lto_partitions>, HelpText<"Alias for
 def plugin_opt_mcpu_eq: J<"plugin-opt=mcpu=">;
 def: F<"plugin-opt=new-pass-manager">,
   Alias<lto_new_pass_manager>, HelpText<"Alias for -lto-new-pass-manager">;
+def plugin_opt_obj_path_eq: J<"plugin-opt=obj-path=">;
 def: F<"plugin-opt=cs-profile-generate">,
   Alias<lto_cs_profile_generate>, HelpText<"Alias for -lto-cs-profile-generate">;
 def: J<"plugin-opt=cs-profile-path=">,
   Alias<lto_cs_profile_file>, HelpText<"Alias for -lto-cs-profile-file">;
-def: J<"plugin-opt=obj-path=">,
-  Alias<lto_obj_path_eq>,
-  HelpText<"Alias for -lto-obj-path=">;
 def: J<"plugin-opt=sample-profile=">,
   Alias<lto_sample_profile>, HelpText<"Alias for -lto-sample-profile">;
 def: F<"plugin-opt=save-temps">, Alias<save_temps>, HelpText<"Alias for -save-temps">;
-def: F<"plugin-opt=thinlto-emit-imports-files">,
-  Alias<thinlto_emit_imports_files>,
-  HelpText<"Alias for -thinlto-emit-imports-files">;
-def: F<"plugin-opt=thinlto-index-only">,
-  Alias<thinlto_index_only>,
-  HelpText<"Alias for -thinlto-index-only">;
-def: J<"plugin-opt=thinlto-index-only=">,
-  Alias<thinlto_index_only_eq>,
-  HelpText<"Alias for -thinlto-index-only=">;
-def: J<"plugin-opt=thinlto-object-suffix-replace=">,
- Alias<thinlto_object_suffix_replace_eq>,
- HelpText<"Alias for -thinlto-object-suffix-replace=">;
-def: J<"plugin-opt=thinlto-prefix-replace=">,
-  Alias<thinlto_prefix_replace_eq>,
-  HelpText<"Alias for -thinlto-prefix-replace=">;
+def plugin_opt_thinlto_emit_imports_files: F<"plugin-opt=thinlto-emit-imports-files">;
+def plugin_opt_thinlto_index_only: F<"plugin-opt=thinlto-index-only">;
+def plugin_opt_thinlto_index_only_eq: J<"plugin-opt=thinlto-index-only=">;
+def plugin_opt_thinlto_object_suffix_replace_eq: J<"plugin-opt=thinlto-object-suffix-replace=">;
+def plugin_opt_thinlto_prefix_replace_eq: J<"plugin-opt=thinlto-prefix-replace=">;
 
 // Ignore LTO plugin-related options.
 // clang -flto passes -plugin and -plugin-opt to the linker. This is required

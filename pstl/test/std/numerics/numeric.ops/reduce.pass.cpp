@@ -7,8 +7,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-// UNSUPPORTED: c++98, c++03, c++11, c++14
-
 #include "support/pstl_test_config.h"
 
 #include <execution>
@@ -97,7 +95,7 @@ test_short_forms()
     }
 }
 
-int
+int32_t
 main()
 {
     // Test for popular types

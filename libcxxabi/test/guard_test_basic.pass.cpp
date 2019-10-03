@@ -10,7 +10,6 @@
 
 #define TESTING_CXA_GUARD
 #include "../src/cxa_guard_impl.h"
-#include <cassert>
 
 using namespace __cxxabiv1;
 

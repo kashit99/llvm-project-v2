@@ -10,6 +10,7 @@
 # CHECK:      error: undefined symbol: foo()
 # CHECK-NEXT: >>> referenced by test.cpp:2
 # CHECK-NEXT: >>>               {{.*}}.o:(bar())
+# CHECK:      error: undefined symbol: foo()
 # CHECK-NEXT: >>> referenced by test.cpp:3
 # CHECK-NEXT: >>>               {{.*}}.o:(baz())
 
